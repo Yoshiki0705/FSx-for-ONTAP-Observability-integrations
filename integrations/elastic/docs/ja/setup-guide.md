@@ -14,7 +14,7 @@ FSx for ONTAP 監査ログを Elasticsearch Bulk API で配信し、Kibana で�
 ## Step 1: Elasticsearch API Key の作成
 
 ```bash
-# Elastic Cloud の場合: Kibana → Stack Management → API Keys → Create
+# Elastic Cloud: Kibana -> Stack Management -> API Keys -> Create
 aws secretsmanager create-secret \
   --name "elastic/fsxn-api-key" \
   --secret-string '{"api_key":"YOUR_ENCODED_API_KEY"}' \
@@ -61,7 +61,7 @@ aws cloudformation deploy \
   --stack-name fsxn-elastic-integration \
   --parameter-overrides \
     S3AccessPointArn=$AP_ARN \
-    ElasticApiKeySecretArn=arn:aws:secretsmanager:...:secret:elastic/fsxn-api-key-XXXXX \
+    ElasticApiKeySecretArn=arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:elastic/fsxn-api-key-XXXXX \
     ElasticEndpoint=https://my-cluster.es.ap-northeast-1.aws.found.io:9243 \
     S3BucketName=$BUCKET_NAME \
     IndexPrefix=fsxn-audit \
@@ -195,9 +195,9 @@ Lambda がプレースホルダではなく実ハンドラか、スタックが�
 ## クリーンアップ
 
 ```bash
-bash integrations/elastic/scripts/cleanup.sh          # スタックのみ
-bash integrations/elastic/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
-bash integrations/elastic/scripts/cleanup.sh --all -y  # 非対話
+bash integrations/elastic/scripts/cleanup.sh          # stacks only
+bash integrations/elastic/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/elastic/scripts/cleanup.sh --all -y  # non-interactive
 ```
 
 共有リソース（S3 アクセスポイント、監査ログバケット、FPolicy Fargate スタック、

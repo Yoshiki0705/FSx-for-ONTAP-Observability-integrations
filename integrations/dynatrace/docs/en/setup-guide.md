@@ -121,7 +121,14 @@ Optional — the defaults work for most deployments:
 
 1. **Observe & Explore** → **Logs**
 2. Filter: `log.source="fsxn-ontap"`
-3. DQL: `fetch logs | filter log.source == "fsxn-ontap" | sort timestamp desc`
+3. DQL:
+
+```dql
+fetch logs
+| filter log.source == "fsxn-ontap"
+| sort timestamp desc
+| limit 20
+```
 
 ## Troubleshooting
 

@@ -560,9 +560,9 @@ POST します。
 ## クリーンアップ
 
 ```bash
-bash integrations/otel-collector/scripts/cleanup.sh          # スタックのみ
-bash integrations/otel-collector/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
-bash integrations/otel-collector/scripts/cleanup.sh --all -y  # 非対話
+bash integrations/otel-collector/scripts/cleanup.sh          # stacks only
+bash integrations/otel-collector/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/otel-collector/scripts/cleanup.sh --all -y  # non-interactive
 ```
 
 `s3://$LAMBDA_CODE_S3_BUCKET/$LAMBDA_CODE_S3_KEY` にある Lambda パッケージは削除されません。

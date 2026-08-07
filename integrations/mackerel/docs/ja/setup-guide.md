@@ -57,7 +57,7 @@ https://otlp-vaxila.mackerelio.com
 認証はトレーシングと共通の単一ヘッダーです:
 
 ```
-Mackerel-Api-Key: <Write権限のあるAPIキー>
+Mackerel-Api-Key: <your-write-scoped-api-key>
 ```
 
 > **注意**: 一部のベンダーとは異なり、Mackerel は OTLP 送信に Basic Auth やベアラートークンを使用しません。単一のカスタムヘッダーです。また、`Accept: */*` ヘッダーが必須である点にも注意してください（Mackerel公式ドキュメントで必須と明記されていますが、その理由自体は公開されていません）。
@@ -84,12 +84,12 @@ receivers:
 
 processors:
   batch:
-    # これは汎用的な batch プロセッサー設定であり、Mackerel公式が特にこの設定を
-    # 推奨しているわけではありません（公式の設定例ではこのプロセッサー自体を使わず、
-    # 下記 exporter の sending_queue のみでバッチ処理しています）。本リポジトリで
-    # 実際に検証済みの設定（otel-collector-config-mackerel.yaml）は
-    # timeout: 5s / send_batch_size: 1000 の batch プロセッサーを使用しており、
-    # このサンプルもそれに揃えています。
+    # This is a general-purpose batch processor setting (not something
+    # Mackerel's own docs specifically recommend — their own config examples
+    # skip this processor and rely solely on the exporter's sending_queue
+    # below). This repo's actual verified config
+    # (otel-collector-config-mackerel.yaml) uses a batch processor with
+    # timeout: 5s / send_batch_size: 1000; this sample mirrors that.
     timeout: 5s
     send_batch_size: 1000
 
@@ -121,8 +121,8 @@ service:
 ### 2.2 Collector のローカル起動（Docker）
 
 ```bash
-# 推奨: シェル履歴やプロセス一覧にキーを残さない方法
-echo "MACKEREL_APIKEY=YOUR_MACKEREL_API_KEY" > .env.mackerel   # .env.mackerel は .gitignore に追加
+# Preferred: keep the key out of shell history / process listings
+echo "MACKEREL_APIKEY=YOUR_MACKEREL_API_KEY" > .env.mackerel   # add .env.mackerel to .gitignore
 docker run --rm \
   -p 4317:4317 -p 4318:4318 \
   --env-file .env.mackerel \

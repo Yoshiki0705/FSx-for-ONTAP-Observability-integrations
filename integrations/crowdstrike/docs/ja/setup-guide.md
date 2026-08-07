@@ -128,13 +128,13 @@ Optional — the defaults work for most deployments:
 ## Step 5: 動作確認
 
 ```bash
-# Lambda ログ確認
+# Check Lambda logs
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-crowdstrike-integration-shipper \
   --start-time $(python3 -c "import time; print(int((time.time()-300)*1000))") \
   --region ap-northeast-1
 
-# DLQ が空であることを確認
+# Check DLQ is empty
 aws sqs get-queue-attributes \
   --queue-url <dlq-url> \
   --attribute-names ApproximateNumberOfMessages
@@ -191,9 +191,9 @@ Lambda がプレースホルダではなく実ハンドラか、スタックが�
 ## クリーンアップ
 
 ```bash
-bash integrations/crowdstrike/scripts/cleanup.sh          # スタックのみ
-bash integrations/crowdstrike/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
-bash integrations/crowdstrike/scripts/cleanup.sh --all -y  # 非対話
+bash integrations/crowdstrike/scripts/cleanup.sh          # stacks only
+bash integrations/crowdstrike/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/crowdstrike/scripts/cleanup.sh --all -y  # non-interactive
 ```
 
 共有リソース（S3 アクセスポイント、監査ログバケット、FPolicy Fargate スタック、

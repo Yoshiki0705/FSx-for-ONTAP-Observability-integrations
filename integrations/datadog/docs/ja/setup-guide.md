@@ -9,12 +9,12 @@ Amazon FSx for NetApp ONTAP の監査ログを Datadog Logs に配送するサ�
 ### 動作の仕組み
 
 ```
-FSx for ONTAP 監査ボリューム
+FSx for ONTAP audit volume
   └─ FSx for ONTAP S3 AP ──┐
                             │  (ListObjectsV2 + GetObject)
-   EventBridge Scheduler ───┴─→ Lambda シッパー ──→ Datadog Logs Intake v2
-     (5 分ごと)                     │
-                                    └─→ SSM Parameter（チェックポイント）
+   EventBridge Scheduler ───┴─→ Lambda shipper ──→ Datadog Logs Intake v2
+     (every 5 min)                  │
+                                    └─→ SSM Parameter (checkpoint)
 ```
 
 FSx for ONTAP S3 Access Point は S3 イベント通知や EventBridge のオブジェクトレベル
@@ -277,7 +277,7 @@ aws cloudformation describe-stacks \
 
 ```bash
 export DD_API_KEY_SECRET_ID="fsxn-datadog-api-key"
-export DD_APP_KEY_SECRET_ID="datadog/fsxn-app-key"   # API キーではなく Application キー
+export DD_APP_KEY_SECRET_ID="datadog/fsxn-app-key"   # Application key, not the API key
 export DD_SITE="ap1.datadoghq.com"
 
 bash integrations/datadog/scripts/setup-full-observability.sh
@@ -403,8 +403,8 @@ intake チェックが成功して invoke が失敗した場合は「認証情�
 新しい監査ログファイルを生成するには、監査対象ボリュームで操作を行います。
 
 ```bash
-# FSx for ONTAP ボリュームをマウントしたクライアントで実行
-# 未マウントの場合は先に:
+# On a client with the FSx for ONTAP volume mounted.
+# Mount first if needed:
 #   sudo mkdir -p /mnt/fsxn
 #   sudo mount -t nfs <svm-nfs-endpoint>:/vol_data /mnt/fsxn
 echo "test" > /mnt/fsxn/test-audit.txt
@@ -417,7 +417,7 @@ ONTAP は監査レコードをステージングファイルに書き込み、�
 必要で、秒単位ではありません。強制的にローテーションするには:
 
 ```bash
-# ONTAP CLI から
+# Via the ONTAP CLI
 vserver audit rotate -vserver <svm-name>
 ```
 
@@ -538,7 +538,7 @@ bash integrations/datadog/scripts/deploy.sh --code-only
 根本原因を解消してください。次回実行は同じ位置から再試行します。
 
 ```bash
-# 現在のチェックポイントを読む
+# Read the current checkpoint
 aws ssm get-parameter \
   --name /fsxn-datadog/fsxn-datadog-integration/last-processed-key \
   --region ap-northeast-1 --query 'Parameter.Value' --output text
@@ -616,8 +616,8 @@ aws lambda put-function-concurrency \
 ## クリーンアップ
 
 ```bash
-bash integrations/datadog/scripts/cleanup.sh          # スタックのみ
-bash integrations/datadog/scripts/cleanup.sh --all    # + シークレット、Layer、S3 テストデータ
+bash integrations/datadog/scripts/cleanup.sh          # stacks only
+bash integrations/datadog/scripts/cleanup.sh --all    # + secret, layer, S3 test data
 ```
 
 FSx for ONTAP S3 Access Point と監査バケットは共有リソースのため**削除されません**。

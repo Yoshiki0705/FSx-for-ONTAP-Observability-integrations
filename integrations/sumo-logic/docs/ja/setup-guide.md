@@ -153,9 +153,9 @@ Lambda がプレースホルダではなく実ハンドラか、スタックが�
 ## クリーンアップ
 
 ```bash
-bash integrations/sumo-logic/scripts/cleanup.sh          # スタックのみ
-bash integrations/sumo-logic/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
-bash integrations/sumo-logic/scripts/cleanup.sh --all -y  # 非対話
+bash integrations/sumo-logic/scripts/cleanup.sh          # stacks only
+bash integrations/sumo-logic/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/sumo-logic/scripts/cleanup.sh --all -y  # non-interactive
 ```
 
 共有リソース（S3 アクセスポイント、監査ログバケット、FPolicy Fargate スタック、

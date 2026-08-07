@@ -137,7 +137,7 @@ FACET attributes.user
 ## Step 4: 動作確認
 
 ```bash
-# テストファイルをアップロード
+# Upload a test file
 aws s3 cp integrations/datadog/tests/test_data/sample_audit_logs.json \
   s3://$BUCKET_NAME/audit/svm-prod-01/test.json
 ```
@@ -171,9 +171,9 @@ Lambda がプレースホルダではなく実ハンドラか、スタックが�
 ## クリーンアップ
 
 ```bash
-bash integrations/new-relic/scripts/cleanup.sh          # スタックのみ
-bash integrations/new-relic/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
-bash integrations/new-relic/scripts/cleanup.sh --all -y  # 非対話
+bash integrations/new-relic/scripts/cleanup.sh          # stacks only
+bash integrations/new-relic/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/new-relic/scripts/cleanup.sh --all -y  # non-interactive
 ```
 
 共有リソース（S3 アクセスポイント、監査ログバケット、FPolicy Fargate スタック、

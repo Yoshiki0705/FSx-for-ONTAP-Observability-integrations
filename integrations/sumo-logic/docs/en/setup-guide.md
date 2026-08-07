@@ -121,7 +121,10 @@ Optional — the defaults work for most deployments:
 ## Step 3: Verify
 
 ```
-_sourceCategory=aws/fsxn/audit | json auto | count by Operation
+_sourceCategory=aws/fsxn/audit
+| json auto
+| where Operation = "ReadData"
+| count by UserName
 ```
 
 ## Troubleshooting

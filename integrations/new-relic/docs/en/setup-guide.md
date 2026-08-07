@@ -64,7 +64,7 @@ aws cloudformation deploy \
   --stack-name fsxn-new-relic-integration \
   --parameter-overrides \
     S3AccessPointArn=$AP_ARN \
-    NewRelicLicenseKeySecretArn=arn:aws:secretsmanager:... \
+    NewRelicLicenseKeySecretArn=arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:new-relic/fsxn-license-key-XXXXX \
     NewRelicRegion=US \
     S3BucketName=$BUCKET_NAME \
   --capabilities CAPABILITY_IAM
@@ -123,6 +123,7 @@ Optional — the defaults work for most deployments:
 ### Parsing Rule
 1. **Logs** → **Parsing** → **Create parsing rule**
 2. NRQL: `SELECT * FROM Log WHERE source='fsxn-ontap'`
+3. Extract fields with a Grok pattern
 
 ### Alert Condition
 ```sql
@@ -133,7 +134,13 @@ FACET attributes.user
 
 ## Step 4: Verify
 
-Upload test file and check New Relic Logs UI → `source:fsxn-ontap`.
+```bash
+# Upload a test file
+aws s3 cp integrations/datadog/tests/test_data/sample_audit_logs.json \
+  s3://$BUCKET_NAME/audit/svm-prod-01/test.json
+```
+
+Search the New Relic Logs UI for `source:fsxn-ontap`.
 
 ## Troubleshooting
 

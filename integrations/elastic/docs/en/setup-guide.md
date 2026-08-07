@@ -14,6 +14,7 @@ Setup guide for shipping FSx for ONTAP audit logs to Elasticsearch via Bulk API 
 ## Step 1: Create Elasticsearch API Key
 
 ```bash
+# Elastic Cloud: Kibana -> Stack Management -> API Keys -> Create
 aws secretsmanager create-secret \
   --name "elastic/fsxn-api-key" \
   --secret-string '{"api_key":"YOUR_ENCODED_API_KEY"}' \
@@ -60,9 +61,10 @@ aws cloudformation deploy \
   --stack-name fsxn-elastic-integration \
   --parameter-overrides \
     S3AccessPointArn=$AP_ARN \
-    ElasticApiKeySecretArn=arn:aws:secretsmanager:... \
-    ElasticEndpoint=https://my-cluster.es.aws.found.io:9243 \
+    ElasticApiKeySecretArn=arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:elastic/fsxn-api-key-XXXXX \
+    ElasticEndpoint=https://my-cluster.es.ap-northeast-1.aws.found.io:9243 \
     S3BucketName=$BUCKET_NAME \
+    IndexPrefix=fsxn-audit \
   --capabilities CAPABILITY_IAM
 ```
 
