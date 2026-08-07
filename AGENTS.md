@@ -643,8 +643,15 @@ aws cloudformation deploy \
     SubnetIds=<subnet-1>,<subnet-2> \
     FsxnSvmSecurityGroupId=<sg-id> \
     ContainerImage=<ecr-uri>:v2-timeout-fix \
+    AlarmNotificationTopicArn=<sns-topic-arn> \
   --capabilities CAPABILITY_NAMED_IAM
 ```
+
+The FPolicy stack creates the ingestion queue plus its DLQ (`MaxReceiveCount`
+default 5) and two alarms: DLQ depth, and `ApproximateAgeOfOldestMessage` for a
+stalled consumer. `AlarmNotificationTopicArn` is optional — without it the alarms
+never notify anyone. Pass the `IngestionQueueArn` output to the vendor stack as
+`FPolicySqsQueueArn`.
 
 **Architecture:**
 - EMS: ONTAP EMS → Webhook (HTTPS) → API Gateway → Lambda → Vendor

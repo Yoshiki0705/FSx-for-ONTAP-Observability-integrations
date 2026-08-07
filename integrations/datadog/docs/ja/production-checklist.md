@@ -42,7 +42,15 @@ FSx for ONTAP Datadog 統合を PoC から本番に昇格する前に使用す�
 - [ ] Case Management プロジェクト作成済み（FSXN）
 - [ ] SOC トリアージランブック利用可能（Notebook）
 - [ ] Snapshot 修復 Lambda デプロイ済み（15 分クールダウン付き）
-- [ ] Snapshot Lambda TLS 設定済み（Lambda Layer に CA 証明書）
+      — `bash scripts/deploy-snapshot-remediation.sh`
+      （スタック: `template-snapshot-remediation.yaml`、手順:
+      [snapshot-remediation-setup.md](snapshot-remediation-setup.md)）
+- [ ] Snapshot Lambda TLS 設定済み — `CA_CERT_PATH` と `CA_CERT_LAYER_ARN` を設定。
+      未設定の場合は `CERT_NONE` で接続するため、PoC 用途に限られる
+- [ ] Snapshot Lambda の VPC 設定を検証済み — ONTAP 管理 LIF の TCP 443 に到達できること。
+      デプロイ成功ではなくテスト invoke で確認する
+- [ ] 修復スタックに `AlarmNotificationTopicArn` を設定済み — 封じ込めアクションの
+      サイレント失敗は、通知過多よりも危険
 
 ## 運用
 

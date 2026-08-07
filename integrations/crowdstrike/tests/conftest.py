@@ -1,5 +1,6 @@
 """Shared fixtures for CrowdStrike LogScale integration tests."""
 
+
 import sys
 from pathlib import Path
 
@@ -82,3 +83,16 @@ def sample_json_audit_logs():
         '"UserName":"admin","ObjectName":"/share/admin/config.json","ClientIP":"10.0.2.50",'
         '"Operation":"OpenObject","Result":"Success"}'
     )
+
+
+# Make the shared ONTAP audit parser importable, mirroring how deploy.sh bundles
+# it next to the handler in the Lambda zip. Without this the handler falls back
+# to JSON-only parsing and the audit-format tests fail.
+# Imports are repeated locally so this block is self-contained regardless of
+# where it sits relative to the rest of the file's imports.
+import sys as _sys
+from pathlib import Path as _Path
+
+_shared_python_dir = str(_Path(__file__).resolve().parents[3] / "shared" / "python")
+if _shared_python_dir not in _sys.path:
+    _sys.path.insert(0, _shared_python_dir)

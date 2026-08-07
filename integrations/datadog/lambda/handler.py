@@ -17,6 +17,20 @@ from typing import Any
 
 import boto3
 import urllib3
+from botocore.exceptions import ClientError
+
+# ─── ONTAP audit log parsing ────────────────────────────────────────────────
+# The shared parser is the single tested implementation of ONTAP's audit
+# formats. It handles namespaced Windows Event Log XML, EVTX detection, gzip,
+# unsuffixed rotations and single-line documents (where a declaration and the
+# content share one line — the local parsers below mishandled that case).
+# Imported defensively so a packaging miss degrades to the local parser instead
+# of breaking the function at import time.
+try:
+    from ontap_audit_parser import parse_audit_log as _parse_ontap_audit_log
+except ImportError:  # pragma: no cover - packaging fallback
+    _parse_ontap_audit_log = None
+
 
 # ─── Configuration from environment ────────────────────────────────────────
 # All configuration is driven by environment variables for multi-region support.
@@ -26,6 +40,22 @@ DATADOG_SITE = os.environ.get("DATADOG_SITE", "datadoghq.com")
 API_KEY_SECRET_ARN = os.environ.get("API_KEY_SECRET_ARN", "")
 S3_ACCESS_POINT_ARN = os.environ.get("FSX_S3_ACCESS_POINT_ARN", os.environ.get("S3_ACCESS_POINT_ARN", ""))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+# Key prefix to scan within the FSx for ONTAP S3 Access Point (e.g. "audit/").
+AUDIT_LOG_PREFIX = os.environ.get("AUDIT_LOG_PREFIX", "")
+
+# SSM Parameter Store name holding the last processed S3 key.
+# FSx for ONTAP S3 APs do not emit S3 Event Notifications, so the poller
+# tracks progress with a checkpoint instead of relying on event delivery.
+CHECKPOINT_PARAM_NAME = os.environ.get("CHECKPOINT_PARAM_NAME", "")
+
+# Upper bound on files handled per scheduled invocation. Prevents a large
+# backlog from exhausting the Lambda timeout mid-file.
+MAX_KEYS_PER_RUN = int(os.environ.get("MAX_KEYS_PER_RUN", "100"))
+
+# Stop starting new files when less than this much execution time remains,
+# so the checkpoint is always written before the runtime kills the invocation.
+SAFETY_THRESHOLD_MS = int(os.environ.get("SAFETY_THRESHOLD_MS", "30000"))
 DD_SOURCE = os.environ.get("DD_SOURCE", "fsxn")
 DD_SERVICE = os.environ.get("DD_SERVICE", "ontap-audit")
 DD_ENV = os.environ.get("DD_ENV", os.environ.get("ENV", "production"))
@@ -66,6 +96,7 @@ logger.setLevel(getattr(logging, LOG_LEVEL))
 
 secrets_client = boto3.client("secretsmanager")
 s3_client = boto3.client("s3")
+ssm_client = boto3.client("ssm")
 
 # HTTP client with connection pooling
 http = urllib3.PoolManager(
@@ -101,10 +132,18 @@ def get_api_key() -> str:
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Lambda handler for FSx for ONTAP audit log shipping to Datadog.
 
-    Supports both S3 event notifications and EventBridge events.
+    Supports two invocation modes:
+
+    1. **Scheduler polling** (production path) — ``event["source"] == "scheduler"``.
+       FSx for ONTAP S3 Access Points do not support S3 Event Notifications or
+       EventBridge object-level events, so EventBridge Scheduler invokes this
+       function periodically. New files are discovered with ``ListObjectsV2``
+       and progress is tracked in an SSM Parameter Store checkpoint.
+    2. **S3 event payload** (manual testing / backward compatibility) — the
+       event contains ``Records`` or ``detail``.
 
     Args:
-        event: S3 event notification or EventBridge event.
+        event: Scheduler payload, S3 event notification, or EventBridge event.
         context: Lambda context object.
 
     Returns:
@@ -113,6 +152,222 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info("Processing event: %s", json.dumps(event, default=str))
 
     api_key = get_api_key()
+
+    if event.get("source") == "scheduler":
+        return _handle_scheduler_event(event, api_key, context)
+
+    return _handle_s3_event(event, api_key)
+
+
+def _handle_scheduler_event(
+    event: dict[str, Any], api_key: str, context: Any = None
+) -> dict[str, Any]:
+    """Handle EventBridge Scheduler invocation (polling mode).
+
+    Lists objects under the audit prefix via the S3 Access Point, processes
+    only keys lexicographically greater than the checkpoint, and advances the
+    checkpoint after each successfully shipped file.
+
+    Processing stops at the first failing file so the checkpoint never skips
+    over an unshipped file (at-least-once delivery, no silent gaps).
+
+    Args:
+        event: Scheduler payload. May override ``prefix`` and
+            ``s3_access_point_arn``.
+        api_key: Datadog API key.
+        context: Lambda context, used to stop before the timeout.
+
+    Returns:
+        Response with status code and processing summary.
+    """
+    s3_ap_arn = event.get("s3_access_point_arn", S3_ACCESS_POINT_ARN)
+    prefix = event.get("prefix", AUDIT_LOG_PREFIX)
+
+    last_processed_key = _get_checkpoint()
+    logger.info(
+        "Scheduler mode: prefix=%s, checkpoint=%s", prefix, last_processed_key or "(none)"
+    )
+
+    new_keys = _list_new_keys(s3_ap_arn, prefix, last_processed_key)
+
+    if not new_keys:
+        logger.info("No new audit log files to process")
+        return {
+            "statusCode": 200,
+            "body": {"total_logs": 0, "total_shipped": 0, "new_files": 0, "errors": []},
+        }
+
+    # Bound the work per invocation so a large backlog drains over several runs
+    # instead of timing out mid-file.
+    if len(new_keys) > MAX_KEYS_PER_RUN:
+        logger.warning(
+            "Backlog of %d files exceeds MAX_KEYS_PER_RUN=%d; processing the "
+            "oldest %d this run (remainder drains on the next schedule)",
+            len(new_keys), MAX_KEYS_PER_RUN, MAX_KEYS_PER_RUN,
+        )
+        new_keys = new_keys[:MAX_KEYS_PER_RUN]
+
+    logger.info("Found %d new audit log file(s) to process", len(new_keys))
+
+    total_logs = 0
+    total_shipped = 0
+    errors: list[dict[str, str]] = []
+    last_successful_key = last_processed_key
+
+    for idx, key in enumerate(new_keys):
+        # Leave enough headroom to persist the checkpoint before the timeout.
+        if context is not None and hasattr(context, "get_remaining_time_in_millis"):
+            remaining_ms = context.get_remaining_time_in_millis()
+            if remaining_ms < SAFETY_THRESHOLD_MS:
+                logger.warning(
+                    "Stopping early: %dms remaining, %d file(s) deferred to next run",
+                    remaining_ms, len(new_keys) - idx,
+                )
+                break
+
+        try:
+            data = _read_s3_object(s3_ap_arn, key)
+            logs = _parse_audit_logs(data, key)
+            total_logs += len(logs)
+
+            dd_logs = _format_for_datadog(logs, key)
+            shipped = _ship_to_datadog(dd_logs, api_key)
+            total_shipped += shipped
+
+            # A file with no parseable records is a legitimately empty rotation
+            # and is checkpointed; a file whose logs all failed to ship is not
+            # (_ship_to_datadog raises in that case).
+            last_successful_key = key
+
+        except Exception as e:
+            logger.error("Failed to process %s: %s", key, str(e))
+            errors.append({"key": key, "error": str(e)})
+            # Stop on first error: advancing past a failed file would drop it.
+            break
+
+    if last_successful_key != last_processed_key:
+        _set_checkpoint(last_successful_key)
+
+    result = {
+        "statusCode": 200 if not errors else 207,
+        "body": {
+            "total_logs": total_logs,
+            "total_shipped": total_shipped,
+            "new_files": len(new_keys),
+            "processed_files": len(new_keys) - len(errors),
+            "checkpoint": last_successful_key,
+            "errors": errors,
+        },
+    }
+    logger.info("Scheduler run complete: %s", json.dumps(result))
+    return result
+
+
+# ─── Checkpoint management (SSM Parameter Store) ─────────────────────────────
+
+
+def _get_checkpoint() -> str:
+    """Retrieve the last processed S3 key from SSM Parameter Store.
+
+    Returns an empty string when no checkpoint exists yet, when the parameter
+    still holds the ``__INIT__`` sentinel written at stack creation, or when the
+    lookup fails — all of which mean "start from the beginning of the prefix".
+    """
+    if not CHECKPOINT_PARAM_NAME:
+        logger.warning(
+            "CHECKPOINT_PARAM_NAME is not set; every run will re-process the "
+            "whole prefix and duplicate logs in Datadog"
+        )
+        return ""
+    try:
+        response = ssm_client.get_parameter(Name=CHECKPOINT_PARAM_NAME)
+        value = response["Parameter"]["Value"]
+        return "" if value == "__INIT__" else value
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ParameterNotFound":
+            logger.info("No checkpoint yet; starting from the beginning of the prefix")
+            return ""
+        logger.warning("Failed to read checkpoint: %s", str(e))
+        return ""
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Failed to read checkpoint: %s", str(e))
+        return ""
+
+
+def _set_checkpoint(key: str) -> None:
+    """Persist the last successfully processed S3 key to SSM Parameter Store.
+
+    A failure here is logged but not raised: the files were already delivered,
+    so failing the invocation would re-ship them on the next run.
+    """
+    if not CHECKPOINT_PARAM_NAME:
+        return
+    try:
+        ssm_client.put_parameter(
+            Name=CHECKPOINT_PARAM_NAME,
+            Value=key,
+            Type="String",
+            Overwrite=True,
+        )
+        logger.info("Checkpoint updated: %s", key)
+    except Exception as e:
+        logger.error(
+            "Failed to update checkpoint to %s: %s — these files may be "
+            "re-shipped on the next run",
+            key, str(e),
+        )
+
+
+# ─── S3 listing ─────────────────────────────────────────────────────────────
+
+
+def _list_new_keys(s3_ap_arn: str, prefix: str, last_processed_key: str) -> list[str]:
+    """List S3 Access Point objects newer than the checkpoint.
+
+    ``ListObjectsV2`` returns keys in lexicographic order, so audit logs written
+    under a date-based prefix (``YYYY/MM/DD/``) are naturally chronological and
+    ``StartAfter`` can skip everything already processed server-side.
+
+    Args:
+        s3_ap_arn: FSx for ONTAP S3 Access Point ARN (used as ``Bucket``).
+        prefix: Key prefix to scan.
+        last_processed_key: Checkpoint; keys <= this value are skipped.
+
+    Returns:
+        Sorted list of object keys to process (directory markers excluded).
+    """
+    all_keys: list[str] = []
+    continuation_token: str | None = None
+
+    params: dict[str, Any] = {"Bucket": s3_ap_arn, "MaxKeys": 1000}
+    if prefix:
+        params["Prefix"] = prefix
+    if last_processed_key:
+        params["StartAfter"] = last_processed_key
+
+    while True:
+        if continuation_token:
+            params["ContinuationToken"] = continuation_token
+
+        response = s3_client.list_objects_v2(**params)
+
+        for obj in response.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith("/"):
+                continue  # Skip directory markers
+            all_keys.append(key)
+
+        if response.get("IsTruncated"):
+            continuation_token = response.get("NextContinuationToken")
+        else:
+            break
+
+    all_keys.sort()
+    return all_keys
+
+
+def _handle_s3_event(event: dict[str, Any], api_key: str) -> dict[str, Any]:
+    """Handle an S3 event payload (manual testing / backward compatibility)."""
     records = _extract_s3_records(event)
 
     total_logs = 0
@@ -158,17 +413,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 def _extract_s3_records(event: dict[str, Any]) -> list[dict[str, str]]:
     """Extract S3 bucket/key pairs from event.
 
-    Handles multiple invocation patterns:
-    - Scheduled invocation (EventBridge Scheduler): lists objects from S3 AP
-    - Direct invocation with S3 event payload (testing/backward compat)
-    - EventBridge S3 Object Created event (legacy/other vendor stacks)
+    Handles the non-scheduled invocation patterns:
+    - Direct invocation with an S3 event payload (testing / backward compat)
+    - EventBridge S3 Object Created event (legacy / other vendor stacks)
+
+    Scheduler invocations never reach here — ``lambda_handler`` routes them to
+    ``_handle_scheduler_event``, which discovers keys via ``ListObjectsV2``.
     """
     records = []
-
-    # Scheduled invocation — no S3 records, Lambda will list objects
-    if event.get("source") == "scheduler":
-        # Return empty — caller should use list-based processing
-        return records
 
     # S3 event notification format (backward compat / testing)
     if "Records" in event:
@@ -221,6 +473,13 @@ def _parse_audit_logs(data: bytes, key: str) -> list[dict[str, Any]]:
     Returns:
         List of parsed log events.
     """
+    if _parse_ontap_audit_log is not None:
+        return _parse_ontap_audit_log(data, key)
+
+    logger.warning(
+        "ontap_audit_parser unavailable; using the local parser. Single-line XML "
+        "documents and some edge cases are not handled."
+    )
     if key.endswith(".evtx"):
         return _parse_evtx(data)
     elif key.endswith(".xml"):
@@ -355,6 +614,18 @@ def _parse_xml_logs(data: str) -> list[dict[str, Any]]:
 
         root = ET.fromstring(data)
 
+        # Strip XML namespaces before matching tag names.
+        #
+        # ONTAP writes audit logs in the Windows Event Log XML schema, so every
+        # element carries xmlns="http://schemas.microsoft.com/win/2004/08/events/event".
+        # ElementTree then reports the tag as "{uri}Event", and a plain
+        # iter("Event") matches nothing — every event in the file falls through
+        # to the flat-record fallback below and gets merged into a single record,
+        # silently discarding all but the last event.
+        for elem in root.iter():
+            if isinstance(elem.tag, str) and "}" in elem.tag:
+                elem.tag = elem.tag.split("}", 1)[1]
+
         # Find all Event elements (handle various ONTAP XML structures)
         for event_elem in root.iter("Event"):
             event = _xml_element_to_dict(event_elem)
@@ -362,7 +633,12 @@ def _parse_xml_logs(data: str) -> list[dict[str, Any]]:
 
         # If no Event elements found, try parsing as flat records
         if not events:
-            for child in root:
+            children = list(root)
+            # Descend through a single wrapper element (e.g. <Events>), otherwise
+            # every record below it would be flattened into one dict.
+            while len(children) == 1 and len(list(children[0])) > 0:
+                children = list(children[0])
+            for child in children:
                 event = _xml_element_to_dict(child)
                 if event:
                     events.append(event)

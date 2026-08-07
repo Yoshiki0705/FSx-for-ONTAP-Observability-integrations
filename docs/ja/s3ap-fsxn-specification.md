@@ -218,7 +218,7 @@ aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 | 条件付き書き込み非対応 (If-None-Match) | Delta Lake/Iceberg/Hudi のトランザクション書き込み不可 | 読み取り専用分析、または DataSync → S3 で書き込みワークロード |
 | S3 Event Notifications 非対応 | Snowpipe 自動取り込み、Auto Loader ファイル通知モード不可 | FPolicy → Lambda、スケジュールポーリング、Snowpipe REST API |
 | SnapMirror S3 非対応 | ONTAP S3 バケットを AWS S3 にレプリケート不可 | DataSync (NFS → S3) を検証済み同期メカニズムとして使用 |
-| ListObjectsV2 高レイテンシー | 小ディレクトリでネイティブ S3 の 30-80 倍遅い | ファイルリスト事前生成、大ファイルサイズ使用、結果キャッシュ |
+| ListObjectsV2 レイテンシ | 10〜5,000 オブジェクトでネイティブ S3 比 1.3〜1.4 倍（2026-08-05 実測）。5,000 件超は未測定 | この規模では対策不要。大規模ディレクトリではファイル統合とキー空間のパーティション化 — 下記の補足を参照 |
 | SSE-FSX 暗号化のみ | SSE-S3, SSE-KMS, SSE-C 非対応 | デフォルト SSE-FSX を使用（透過的、AWS KMS 管理） |
 | Object Versioning 非対応 | S3 バージョニング不可 | ONTAP Snapshot でポイントインタイムリカバリ |
 | Presigned URL: 公式非対応 | 実際には動作するが保証なし | 非クリティカルパスのみ使用、IAM ベースアクセスを推奨 |
@@ -226,26 +226,24 @@ aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 
 プラットフォーム固有の互換性（Athena, Glue, EMR, Databricks, Snowflake, Bedrock）を含む完全なマトリクスは[完全版ドキュメント](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md)を参照。
 
+### ListObjectsV2 レイテンシ — 「30-80 倍」の記述は撤回
 
----
+2026-08-05 に再測定した結果、これまで記載していた「小規模ディレクトリでネイティブ S3 比 30-80 倍遅い」というペナルティは再現しませんでした。実測値（median）は以下です。
 
-## 8. FSx for ONTAP S3 Access Points — 制約と検証済みパターン
+| オブジェクト数 | FSx for ONTAP S3 AP | ネイティブ S3 | 比率 |
+|--------:|--------------------:|----------:|------:|
+| 10 | 38 ms | 27 ms | 1.4x |
+| 100 | 52 ms | 39 ms | 1.3x |
+| 1,000 | 162 ms | 128 ms | 1.3x |
+| 5,000 | 665 ms | 704 ms | 0.9x |
 
-包括的な互換性マトリクス、検証済みパターン、既知の制約（2026年5月 AWS サポート確認済み）については、以下を参照してください:
+**測定条件**: ap-northeast-1、SINGLE_AZ_1 ファイルシステム、SSD 1024GB、スループット 128MBps、UNIX security style ボリューム、Internet-origin アクセスポイント。データ点ごとに warm-up 1 回を破棄した上で記録試行 5 回の median。計測範囲はページネーションされた `ListObjectsV2` ループのみで、クライアント生成・認証解決・オブジェクト投入は除外しています。リトライは無効化（`max_attempts=1`）し、遅い呼び出しが再試行で隠れないようにしています。フラット構造とネスト構造（2 階層・leaf あたり 10 オブジェクト）で同じ比率になりました。
 
-📋 **[FSx for ONTAP S3 AP 互換性マトリクス](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md)**
+- エビデンス: [`verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml)
+- 再現スクリプト: [`shared/scripts/benchmark_list_objects.py`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/shared/scripts/benchmark_list_objects.py)
 
-本プロジェクトに関連する主要な制約:
+**測定範囲の限界 — 大規模ディレクトリは未測定です。** 測定は 5,000 オブジェクトで打ち切っており、単一 prefix 配下に数十万〜数百万件が存在する場合の挙動は測定していません。ONTAP は `ListObjectsV2` が要求する辞書順を得るためにディレクトリエントリをインメモリでソートするため、リスト処理のコストはディレクトリ規模に応じて増加します。したがって大規模データセットではファイル統合とキー空間のパーティション化が引き続き推奨される設計です。ただしその判断根拠はディレクトリ規模とインメモリソートであり、再現しなかった小規模でのレイテンシペナルティではありません。
 
-| 制約 | 影響 | 回避策 |
-|------|------|--------|
-| 条件付き書き込み非対応 (If-None-Match) | Delta Lake/Iceberg/Hudi のトランザクショナル書き込みがブロックされる | 読み取り専用分析、または DataSync → S3 で書き込みワークロード対応 |
-| S3 Event Notifications 非対応 | Snowpipe 自動取り込み、Auto Loader ファイル通知モード利用不可 | FPolicy → Lambda、スケジュールポーリング、または Snowpipe REST API |
-| SnapMirror S3 非対応 | ONTAP S3 バケットを AWS S3 にレプリケーション不可 | DataSync (NFS → S3) を検証済み同期メカニズムとして使用 |
-| ListObjectsV2 高レイテンシ | 小規模ディレクトリでネイティブ S3 比 30-80 倍遅い | ファイルリスト事前生成、大きなファイルサイズ使用、またはキャッシュ |
-| SSE-FSX 暗号化のみ | SSE-S3、SSE-KMS、SSE-C 非対応 | デフォルト SSE-FSX を使用（透過的、AWS KMS マネージド） |
-| Object Versioning 非対応 | S3 バージョニング利用不可 | ONTAP Snapshot でポイントインタイムリカバリ |
-| Presigned URL: 公式非対応 | 実際には動作するが保証なし | 非クリティカルパスのみで使用、IAM ベースアクセスを推奨 |
-| ONTAP 9.17.1+ 必須 | S3 Access Points の最小バージョン | デプロイ前に FSx ファイルシステムの ONTAP バージョンを確認 |
+**元の数値の出自: 未解明です。** この数値は、本セクション冒頭で参照している 2026 年 5 月の AWS サポートとのやり取りに由来し、そこではプロダクトレベルの特性として説明されていました。ただし測定記録や測定条件は残されておらず、今回の測定と比較する対象が存在しないため、差異の原因は特定できません。可能性として考えられる要因を列挙するに留めます: CLI ラッパー経由の測定でプロセス起動時間が短時間の呼び出しを支配していた、当時のファイルシステムが劣化した状態だった、あるいは当時から今回の測定までの間にプラットフォーム側の変更があった。
 
-プラットフォーム別互換性（Athena、Glue、EMR、Databricks、Snowflake、Bedrock）を含む完全なマトリクスは、[完全版ドキュメント](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md)を参照してください。
+**副次的な実測結果 — 1 ページあたりに返るキー数が異なります。** `MaxKeys=1000` を指定した場合、ネイティブ S3 は 1 API call で 1,000 キーを返しましたが、アクセスポイントは 2 call を必要としました。5,000 件では 6 call 対 5 call でした。総時間は同等なのでスループットのボトルネックではありませんが、API リクエストコストを試算する場合やページネーション深度に制限のあるクライアントを使う場合に、API call 数が同一であることを前提にしないでください。

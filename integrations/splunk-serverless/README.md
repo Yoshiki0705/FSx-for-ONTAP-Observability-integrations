@@ -26,6 +26,26 @@ FSx for ONTAP → syslog-ng (EC2) → Splunk UF (EC2) → Splunk Enterprise
 FSx for ONTAP → S3 Access Point → EventBridge → Lambda → Splunk HEC
 ```
 
+### FPolicy Path (real-time file operations)
+
+`template-fpolicy.yaml` adds real-time file operation events. FPolicy speaks a
+proprietary binary protocol over TCP, not HTTP, so a Fargate server sits in
+front of it (see `shared/templates/fpolicy-apigw.yaml`):
+
+```
+FSx for ONTAP → TCP 9898 → ECS Fargate → SQS → Lambda (-fpolicy) → Splunk HEC
+                                          (ReportBatchItemFailures)
+```
+
+> **Delivery note**: the SQS event source mapping declares
+> `FunctionResponseTypes: [ReportBatchItemFailures]` and the handler returns
+> `batchItemFailures`, so only messages that were not delivered are retried and
+> eventually redriven to the DLQ. Without this pairing, SQS deletes every
+> message in the batch as soon as the invocation returns, losing up to
+> `BatchSize` events per HEC failure. The secondary EventBridge path keeps the
+> `statusCode` response contract instead, because EventBridge has no per-item
+> failure protocol.
+
 ### Alternative: Firehose Path (High Volume)
 
 For sustained high-volume logs (>1000 events/sec), use Kinesis Data Firehose with its built-in Splunk destination:

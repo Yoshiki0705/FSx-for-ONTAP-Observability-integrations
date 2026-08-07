@@ -31,18 +31,31 @@ Parameters:
     Type: String
     Default: INFO
     AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+    Description: Lambda log level. Use DEBUG when troubleshooting delivery
 
   LambdaMemorySize:
     Type: Number
     Default: 256
     MinValue: 128
     MaxValue: 3008
+    Description: Lambda memory in MB. Raise it if large EVTX files run out of memory
 
   LambdaTimeout:
     Type: Number
     Default: 300
     MinValue: 30
     MaxValue: 900
+    Description: Lambda timeout in seconds. Must exceed the time needed to process one batch of files
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when the alarms in this stack fire.
+      Leave empty to create the alarms without notification actions — they will
+      be visible in the CloudWatch console but will not page anyone.
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
   DeadLetterQueue:
@@ -167,6 +180,35 @@ Resources:
       Threshold: 5
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  DeadLetterQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dead-letter-queue-depth'
+      AlarmDescription: >-
+        Messages have landed in the DeadLetterQueue dead-letter queue. Every message here
+        is telemetry that was never delivered. Drain it with the DLQ
+        replay runbook (docs/en/runbooks/dlq-replay.md) — messages are retained
+        for 14 days and are lost after that.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
 Outputs:
   LambdaFunctionArn:

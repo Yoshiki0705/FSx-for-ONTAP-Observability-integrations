@@ -42,7 +42,16 @@ Use this checklist before promoting the FSx for ONTAP Datadog integration from P
 - [ ] Case Management project created (FSXN)
 - [ ] SOC Triage Runbook accessible (Notebook)
 - [ ] Snapshot remediation Lambda deployed with cooldown (15 min)
-- [ ] Snapshot Lambda TLS configured (CA cert in Lambda Layer)
+      — `bash scripts/deploy-snapshot-remediation.sh`
+      (stack: `template-snapshot-remediation.yaml`, guide:
+      [snapshot-remediation-setup.md](snapshot-remediation-setup.md))
+- [ ] Snapshot Lambda TLS configured — set `CA_CERT_PATH` and `CA_CERT_LAYER_ARN`.
+      Without them the function connects with `CERT_NONE`, which is acceptable
+      for a PoC only.
+- [ ] Snapshot Lambda VPC config verified — it must reach the ONTAP management
+      LIF on TCP 443. Confirm with a test invocation, not just a successful deploy.
+- [ ] `AlarmNotificationTopicArn` set on the remediation stack — a silently
+      failing containment action is worse than a noisy one.
 
 ## Operational
 

@@ -152,6 +152,24 @@ This pattern supports two deployment models:
 
 ## Upgrade Strategy
 
+The deploy script does both steps and waits for the new code to become active,
+which is what you want for an upgrade:
+
+```bash
+# Stack + code, zero-downtime
+export DATADOG_API_KEY_SECRET_ARN=<secret-arn>
+export FSX_S3_ACCESS_POINT_ARN=<ap-arn>
+bash integrations/datadog/scripts/deploy.sh
+
+# Handler change only — leaves the stack untouched
+bash integrations/datadog/scripts/deploy.sh --code-only
+
+# Confirm the upgrade landed
+bash integrations/datadog/scripts/verify.sh
+```
+
+Equivalent manual sequence:
+
 ```bash
 # Update the CloudFormation stack (zero-downtime)
 aws cloudformation deploy \
@@ -166,7 +184,15 @@ zip function.zip handler.py
 aws lambda update-function-code \
   --function-name fsxn-datadog-integration-shipper \
   --zip-file fileb://function.zip
+aws lambda wait function-updated \
+  --function-name fsxn-datadog-integration-shipper
 ```
+
+> **The checkpoint survives an upgrade.** It lives in SSM Parameter Store, outside
+> the Lambda, so shipping resumes from the last processed key rather than
+> re-sending the whole prefix. If an upgrade changes parsing behaviour and you
+> want previously shipped files re-processed, reset the checkpoint to `__INIT__`
+> deliberately — and expect duplicates for anything already delivered.
 
 ## Security Review Checklist
 

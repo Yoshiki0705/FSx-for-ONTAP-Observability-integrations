@@ -15,6 +15,7 @@
 #   ┌─────────────────────────────────────────────────────────────────────┐
 #   │ Vendor-specific stacks (deleted by this script):                    │
 #   │                                                                     │
+#   │   ${STACK_PREFIX}-<EXTRA_STACKS>  Vendor-declared extra stacks      │
 #   │   ${STACK_PREFIX}-fpolicy       EventBridge rule + vendor Lambda    │
 #   │   ${STACK_PREFIX}-ems-webhook   API Gateway (references EMS Lambda) │
 #   │   ${STACK_PREFIX}-ems           EMS Lambda function                 │
@@ -25,6 +26,11 @@
 #   │   Secrets Manager secret                                            │
 #   │   S3 test data                                                      │
 #   └─────────────────────────────────────────────────────────────────────┘
+#
+#   Any stack a vendor's deploy.sh creates but this script does not know about
+#   is silently left behind, still costing money. Vendors with stacks beyond the
+#   four above MUST declare them in EXTRA_STACKS — see the splunk-serverless
+#   wrapper for an example.
 #
 #   ┌─────────────────────────────────────────────────────────────────────┐
 #   │ Shared resources (NOT deleted — used by all vendors):               │
@@ -39,6 +45,8 @@
 # DELETION ORDER (dependency-safe)
 # ============================================================================
 #
+#   0. EXTRA_STACKS          (vendor-declared leaf stacks, deleted first)
+#          ↓
 #   1. FPolicy stack     ─┐
 #                          ├─→ No cross-dependency between these two
 #   2. EMS Webhook stack ─┘
@@ -85,6 +93,10 @@
 #   SECRET_NAME         Secrets Manager secret name
 #   EMS_LAYER_NAME      Lambda Layer name (default: fsxn-ems-parser)
 #   VENDOR_NAME         Human-readable vendor name for display
+#   EXTRA_STACKS        Space-separated suffixes of additional stacks this
+#                       vendor's deploy scripts create, deleted before the four
+#                       standard stacks. Example: EXTRA_STACKS="firehose"
+#                       deletes ${STACK_PREFIX}-firehose.
 #
 # ============================================================================
 
@@ -97,6 +109,11 @@ STACK_PREFIX="${STACK_PREFIX:-}"
 SECRET_NAME="${SECRET_NAME:-}"
 EMS_LAYER_NAME="${EMS_LAYER_NAME:-fsxn-ems-parser}"
 VENDOR_NAME="${VENDOR_NAME:-}"
+EXTRA_STACKS="${EXTRA_STACKS:-}"
+
+# Word-split into an array once so the deletion loop and the confirmation list
+# agree on what will happen.
+read -r -a EXTRA_STACK_LIST <<< "$EXTRA_STACKS"
 
 # --- Parse arguments --------------------------------------------------------
 
@@ -160,6 +177,9 @@ echo "Region: ${AWS_REGION}"
 echo "Stack prefix: ${STACK_PREFIX}"
 echo ""
 echo "Stacks to delete (in dependency-safe order):"
+for suffix in "${EXTRA_STACK_LIST[@]+"${EXTRA_STACK_LIST[@]}"}"; do
+  echo "  0. ${STACK_PREFIX}-${suffix}$(printf '%*s' $((14 - ${#suffix})) '')(vendor extra stack)"
+done
 echo "  1. ${STACK_PREFIX}-fpolicy          (FPolicy vendor Lambda)"
 echo "  2. ${STACK_PREFIX}-ems-webhook      (EMS API Gateway)"
 echo "  3. ${STACK_PREFIX}-ems              (EMS Lambda)"
@@ -180,7 +200,7 @@ echo "  - S3 Access Point / S3 Bucket"
 echo ""
 
 if [ "$SKIP_CONFIRM" != true ]; then
-  read -p "Proceed with cleanup? (y/N): " CONFIRM
+  read -r -p "Proceed with cleanup? (y/N): " CONFIRM
   if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "Aborted."
     exit 0
@@ -234,6 +254,13 @@ delete_stack() {
 }
 
 # --- Execute cleanup --------------------------------------------------------
+
+if [ ${#EXTRA_STACK_LIST[@]} -gt 0 ]; then
+  echo "--- Step 0/4: Vendor extra stacks ---"
+  for suffix in "${EXTRA_STACK_LIST[@]}"; do
+    delete_stack "${STACK_PREFIX}-${suffix}" "vendor extra stack"
+  done
+fi
 
 echo "--- Step 1/4: FPolicy vendor Lambda ---"
 delete_stack "${STACK_PREFIX}-fpolicy" "EventBridge rule + Lambda"

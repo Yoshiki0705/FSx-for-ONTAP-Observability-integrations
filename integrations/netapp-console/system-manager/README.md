@@ -89,17 +89,14 @@ URL: `https://console.netapp.com/system-manager/<file-system-id>`
 
 ## ドキュメント
 
-### 日本語
+- [NetApp ドキュメントへのフィードバック](docs/ja/netapp-doc-feedback.md)
 
-- [アクセス方法](docs/ja/access-guide.md)
-- [監査ログ設定（スクリーンショット付き）](docs/ja/audit-log-setup.md)
-- [クォータ設定（スクリーンショット付き）](docs/ja/quota-setup.md)
+アクセス方法・監査ログ設定・クォータ設定の画面手順は未執筆です。同等の内容は
+AWS ネイティブ側の手順としてリポジトリ側に揃っています:
 
-### English
-
-- [Access Guide](docs/en/access-guide.md)
-- [Audit Log Setup (with screenshots)](docs/en/audit-log-setup.md)
-- [Quota Setup (with screenshots)](docs/en/quota-setup.md)
+- [前提条件（監査ログ有効化を含む）](../../../docs/ja/prerequisites.md)
+- [ONTAP 監査設定](../../../docs/ja/ontap-audit-setup.md)
+- [System Manager / DII の機能と AWS ネイティブ代替の対応表](../../../docs/ja/native-alternative-matrix.md)
 
 ## スクリーンショット
 

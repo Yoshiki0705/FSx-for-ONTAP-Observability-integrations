@@ -226,24 +226,40 @@ aws datasync create-task \
 
 #### Option 3: FSx for ONTAP S3 Access Point (Recommended, Latest)
 
-FSx for ONTAP S3 Access Points (released 2025) allow direct S3 API access to volume data. Attach an S3 Access Point to the audit log volume for direct Lambda read access.
+FSx for ONTAP S3 Access Points allow direct S3 API access to volume data. Attach an S3 Access Point to the audit log volume for direct Lambda read access.
 
 ```bash
-# Create S3 Access Point on FSx for ONTAP volume
-# (via FSx Console or API)
-aws fsx create-data-repository-association \
-  --file-system-id fs-0123456789abcdef0 \
-  --file-system-path /audit_logs \
-  --data-repository-configuration '{
-    "Type": "S3",
-    "AutoImportPolicy": {"Events": ["NEW", "CHANGED", "DELETED"]},
-    "AutoExportPolicy": {"Events": ["NEW", "CHANGED", "DELETED"]}
-  }' \
-  --batch-import-meta-data-on-create \
+aws fsx create-and-attach-s3-access-point \
+  --name fsxn-audit-ap \
+  --type ONTAP \
+  --ontap-configuration 'VolumeId=fsvol-0123456789abcdef0,FileSystemIdentity={Type=UNIX,UnixUser={Name=root}}' \
   --region ap-northeast-1
 ```
 
+Confirm it reached `AVAILABLE` and note the ARN — this is the value every vendor
+stack takes as `S3AccessPointArn` / `FsxS3AccessPointArn`:
+
+```bash
+aws fsx describe-s3-access-point-attachments \
+  --names fsxn-audit-ap \
+  --region ap-northeast-1 \
+  --query 'S3AccessPointAttachments[0].{Lifecycle:Lifecycle,Arn:S3AccessPoint.ResourceARN}'
+```
+
+In our testing this reached `AVAILABLE` in about 20 seconds.
+
 > 📝 FSx for ONTAP S3 Access Points differ from regular S3 Access Points. They attach directly to FSx volumes, providing S3 API access to NFS/SMB data.
+>
+> Use the `fsx` API shown above. Neither `aws s3control create-access-point`
+> (which points at an S3 bucket) nor `aws fsx create-data-repository-association`
+> (which is FSx for Lustre S3 linkage) can create one.
+
+**Network origin is decided at creation and cannot be changed.** Omitting
+`--s3-access-point 'VpcConfiguration={VpcId=...}'` — as above — creates an
+Internet-origin access point, which is what these integrations expect: the
+shipper Lambda runs outside the VPC and reaches the access point over the
+internet path. See [Deploying a vendor integration](vendor-deployment-common.md)
+for the full origin/placement matrix.
 
 ---
 

@@ -29,23 +29,54 @@ Parameters:
     Type: String
     Default: INFO
     AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+    Description: Lambda log level. Use DEBUG when troubleshooting delivery
 
   LambdaMemorySize:
     Type: Number
     Default: 256
     MinValue: 128
     MaxValue: 3008
+    Description: Lambda memory in MB. Raise it if large EVTX files run out of memory
 
   LambdaTimeout:
     Type: Number
     Default: 300
     MinValue: 30
     MaxValue: 900
+    Description: Lambda timeout in seconds. Must exceed the time needed to process one batch of files
 
   HecPath:
     Type: String
     Default: /api/v1/ingest/hec
     Description: HEC endpoint path (LogScale default /api/v1/ingest/hec, Splunk /services/collector/event)
+
+  AuditLogPrefix:
+    Type: String
+    Default: 'audit/'
+    Description: >-
+      Key prefix scanned within the FSx for ONTAP S3 Access Point
+      (e.g. audit/ for the /audit_log directory)
+
+  MaxKeysPerRun:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    MaxValue: 1000
+    Description: >-
+      Maximum audit log files processed per scheduled invocation. Bounds the work
+      per run so a large backlog drains over several runs instead of timing out
+      mid-file; the remainder is picked up on the next schedule.
+
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when any alarm in this stack fires.
+      Leave empty to create the alarms without notification actions — they will
+      be visible in the CloudWatch console but will not page anyone.
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
   DeadLetterQueue:
@@ -54,6 +85,20 @@ Resources:
       QueueName: !Sub '${AWS::StackName}-dlq'
       MessageRetentionPeriod: 1209600
       SqsManagedSseEnabled: true
+
+  # Checkpoint — tracks the last processed audit log key.
+  # FSx for ONTAP S3 Access Points do not emit S3 Event Notifications, so the
+  # poller relies on this checkpoint (not event delivery) to find new files.
+  CheckpointParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/fsxn-crowdstrike/${AWS::StackName}/last-processed-key'
+      Type: String
+      Value: '__INIT__'
+      Description: >-
+        Last processed S3 key for FSx for ONTAP audit log polling.
+        The '__INIT__' sentinel means "start from the beginning of the prefix".
+        Updated by the shipper Lambda after each successfully shipped file.
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -102,6 +147,15 @@ Resources:
               - Effect: Allow
                 Action: sqs:SendMessage
                 Resource: !GetAtt DeadLetterQueue.Arn
+        - PolicyName: SSMCheckpoint
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/fsxn-crowdstrike/${AWS::StackName}/*'
 
   LogShipperFunction:
     Type: AWS::Lambda::Function
@@ -128,6 +182,9 @@ Resources:
           SOURCETYPE: 'fsxn:audit'
           INDEX: fsxn_audit
           HEC_PATH: !Ref HecPath
+          AUDIT_LOG_PREFIX: !Ref AuditLogPrefix
+          CHECKPOINT_PARAM_NAME: !Ref CheckpointParameter
+          MAX_KEYS_PER_RUN: !Ref MaxKeysPerRun
 
   LogGroup:
     Type: AWS::Logs::LogGroup
@@ -164,7 +221,7 @@ Resources:
       Target:
         Arn: !GetAtt LogShipperFunction.Arn
         RoleArn: !GetAtt SchedulerRole.Arn
-        Input: '{"source": "scheduler"}'
+        Input: !Sub '{"source": "scheduler", "action": "process_audit_logs", "prefix": "${AuditLogPrefix}"}'
 
   ErrorAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -180,6 +237,10 @@ Resources:
       Dimensions:
         - Name: FunctionName
           Value: !Ref LogShipperFunction
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   DLQDepthAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -195,6 +256,10 @@ Resources:
       Dimensions:
         - Name: QueueName
           Value: !GetAtt DeadLetterQueue.QueueName
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   HecFailureAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -211,6 +276,10 @@ Resources:
       Dimensions:
         - Name: FunctionName
           Value: !Ref LogShipperFunction
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   DeliveryLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -227,6 +296,10 @@ Resources:
       Dimensions:
         - Name: FunctionName
           Value: !Ref LogShipperFunction
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   PipelineDashboard:
     Type: AWS::CloudWatch::Dashboard
@@ -309,6 +382,13 @@ Resources:
         }
 
 Outputs:
+  CheckpointParameterName:
+    Description: >-
+      SSM Parameter Store name holding the last processed audit log key.
+      Reset it to '__INIT__' to re-process the entire prefix from scratch
+      (this will duplicate events already in LogScale).
+    Value: !Ref CheckpointParameter
+
   LambdaFunctionArn:
     Value: !GetAtt LogShipperFunction.Arn
   DeadLetterQueueUrl:

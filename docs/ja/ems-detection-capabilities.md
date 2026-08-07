@@ -309,6 +309,6 @@ A: 両方含まれます。`cluster log-forwarding` コマンドは管理監査�
 - [アーキテクチャ進化: Syslog VPCE](architecture-evolution-syslog-vpce.md)
 - [ARP インシデント対応ガイド](arp-incident-response-guide.md)
 - [自動応答ガイド](automated-response-guide.md)
-- [EMS Webhook セットアップ (Datadog)](../integrations/datadog/docs/ja/ems-webhook-setup.md)
+- [EMS Webhook セットアップ (Datadog)](../../integrations/datadog/docs/ja/ems-fpolicy-setup.md)
 - [AWS Docs: EMS イベントの監視](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/ems-events.html)
 - [NetApp: EMS 設定](https://docs.netapp.com/us-en/ontap/error-messages/index.html)

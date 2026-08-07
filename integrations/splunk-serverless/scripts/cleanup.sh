@@ -15,6 +15,14 @@ export STACK_PREFIX="${STACK_PREFIX:-fsxn-splunk}"
 export SECRET_NAME="${SECRET_NAME:-splunk/fsxn-hec-token}"
 export VENDOR_NAME="Splunk Serverless"
 
+# deploy.sh --all also creates ${STACK_PREFIX}-firehose, which is not one of the
+# four stacks the shared script knows about. Without this it is left running.
+#
+# The stack's BackupBucket is declared DeletionPolicy: Retain, so deleting the
+# stack leaves the bucket (and any records Firehose could not deliver to Splunk)
+# in place. Remove it manually once those records are recovered.
+export EXTRA_STACKS="${EXTRA_STACKS:-firehose}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SHARED_SCRIPT="${SCRIPT_DIR}/../../../shared/scripts/cleanup-vendor.sh"
 

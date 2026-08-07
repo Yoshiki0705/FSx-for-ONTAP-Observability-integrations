@@ -41,6 +41,11 @@ while [[ $# -gt 0 ]]; do
       echo "  S3_ACCESS_POINT_ARN   FSx for ONTAP S3 Access Point ARN"
       echo "  SPLUNK_HEC_ENDPOINT   Splunk HEC endpoint URL"
       echo "  S3_BUCKET_NAME        S3 bucket name for audit logs"
+      echo ""
+      echo "Optional env vars:"
+      echo "  ALARM_TOPIC_ARN       SNS topic ARN notified when this stack's"
+      echo "                        CloudWatch alarms fire. Unset means the alarms"
+      echo "                        are created without notification actions."
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -61,8 +66,16 @@ LOG_LEVEL="${LOG_LEVEL:-INFO}"
 LAMBDA_MEMORY="${LAMBDA_MEMORY:-256}"
 LAMBDA_TIMEOUT="${LAMBDA_TIMEOUT:-300}"
 
+ALARM_TOPIC_ARN="${ALARM_TOPIC_ARN:-}"
+
+# Appended to every stack's --parameter-overrides only when set, so the
+# templates fall back to their empty default (alarms created without actions).
+ALARM_PARAMS=()
+[ -n "${ALARM_TOPIC_ARN}" ] && ALARM_PARAMS+=("AlarmNotificationTopicArn=${ALARM_TOPIC_ARN}")
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTEGRATION_DIR="$(dirname "$SCRIPT_DIR")"
+SHARED_PYTHON_DIR="$(cd "$(dirname "${INTEGRATION_DIR}")/../shared/python" && pwd)"
 
 validate_required() {
   local var_name="$1"
@@ -103,6 +116,7 @@ aws cloudformation deploy \
     LogLevel="${LOG_LEVEL}" \
     LambdaMemorySize="${LAMBDA_MEMORY}" \
     LambdaTimeout="${LAMBDA_TIMEOUT}" \
+    "${ALARM_PARAMS[@]+"${ALARM_PARAMS[@]}"}" \
   --no-fail-on-empty-changeset
 
 echo "  ✅ Main stack deployed: ${STACK_PREFIX}-integration"
@@ -118,13 +132,17 @@ if [ "$DEPLOY_MODE" = "all" ] && [ -f "${INTEGRATION_DIR}/template-firehose.yaml
       SplunkHecTokenSecretArn="${SPLUNK_SECRET_ARN}" \
       SplunkHecEndpoint="${SPLUNK_HEC_ENDPOINT}" \
       SplunkIndex="${SPLUNK_INDEX}" \
+      "${ALARM_PARAMS[@]+"${ALARM_PARAMS[@]}"}" \
     --no-fail-on-empty-changeset
   echo "  ✅ Firehose stack deployed: ${STACK_PREFIX}-firehose"
 fi
 
 echo "--- Updating Lambda function code ---"
 cd "${INTEGRATION_DIR}/lambda"
-zip -q /tmp/splunk-handler.zip handler.py
+# Bundle the shared ONTAP audit parser alongside the handler. Without it the
+# handler falls back to JSON-only parsing and XML/EVTX audit logs are not
+# parsed into fields. -j flattens paths so the import resolves at runtime.
+zip -q -j /tmp/splunk-handler.zip handler.py "${SHARED_PYTHON_DIR}/ontap_audit_parser.py"
 aws lambda update-function-code \
   --function-name "${STACK_PREFIX}-integration-shipper" \
   --zip-file fileb:///tmp/splunk-handler.zip \

@@ -5,7 +5,7 @@
 
 🌐 [日本語](docs/ja/README.md) | **English**
 
-> Ship Amazon FSx for NetApp ONTAP audit logs, EMS events, and FPolicy file operations to 9 observability vendors — EC2-free, serverless, via FSx for ONTAP S3 Access Points. Community reference implementation for AWS + storage operations teams.
+> Ship Amazon FSx for NetApp ONTAP audit logs to 9 observability vendors — plus EMS events and FPolicy file operations on 9 of them — EC2-free, serverless, via FSx for ONTAP S3 Access Points. Community reference implementation for AWS + storage operations teams. See the [telemetry path coverage](#telemetry-path-coverage) matrix for the per-vendor breakdown.
 
 ## Get Started
 
@@ -59,6 +59,40 @@
 | [Automated Incident Response](docs/en/automated-response-guide.md) | ✅ E2E verified | Storage-layer block/snapshot |
 | [Mackerel](integrations/mackerel/) | ✅ E2E verified (open beta) | OTLP/HTTP logs |
 
+### Telemetry path coverage
+
+FSx for ONTAP emits three kinds of telemetry and each needs its own handler.
+Audit logs are covered everywhere; EMS and FPolicy are implemented on a subset.
+
+| Vendor | Audit logs | EMS events | FPolicy file ops |
+|--------|:----------:|:----------:|:----------------:|
+| [Datadog](integrations/datadog/) | ✅ | ✅ | ✅ |
+| [Splunk (Serverless)](integrations/splunk-serverless/) | ✅ | ✅ | ✅ |
+| [OTel Collector](integrations/otel-collector/) | ✅ | ✅ | ✅ |
+| [Grafana Cloud](integrations/grafana/) | ✅ | ✅ | ✅ |
+| [New Relic](integrations/new-relic/) | ✅ | ✅ | ✅ |
+| [Elastic](integrations/elastic/) | ✅ | ✅ | ✅ |
+| [Dynatrace](integrations/dynatrace/) | ✅ | ✅ | ✅ |
+| [Sumo Logic](integrations/sumo-logic/) | ✅ | ✅ | ✅ |
+| [Honeycomb](integrations/honeycomb/) | ✅ | ✅ | ✅ |
+| [CrowdStrike Falcon LogScale](integrations/crowdstrike/) | ✅ | — | — |
+
+`—` means no handler exists for that path yet. `scripts/deploy.sh` skips the
+corresponding stack and prints why, rather than deploying a placeholder Lambda
+that would accept events and discard every one of them.
+
+CrowdStrike has no `template-ems.yaml` or `template-fpolicy.yaml` at all, so
+there is nothing to skip. To route EMS or FPolicy events there today, use the
+[OTel Collector](integrations/otel-collector/) integration as the ingestion point
+and configure LogScale as an OTLP exporter backend.
+
+The nine vendors with full coverage share one implementation of the plumbing:
+`shared/python/ems_event.py` handles API Gateway extraction and parser
+delegation, `shared/python/fpolicy_event.py` handles SQS batch bookkeeping and
+`batchItemFailures`, and `shared/python/vendor_shipper.py` owns the retry policy,
+credential caching and batching. Each vendor supplies only its payload format and
+endpoint.
+
 </details>
 
 <details><summary>⚠️ Constraints & Caveats</summary>
@@ -83,7 +117,7 @@ Full docs available in [English](docs/en/README.md) and [日本語](docs/ja/READ
 
 | Category | Key Documents |
 |----------|--------------|
-| Getting Started | [Prerequisites](docs/en/prerequisites.md) · [Deployment Guide](docs/en/deployment-guide.md) · [ONTAP Audit Setup](docs/en/ontap-audit-setup.md) |
+| Getting Started | [Prerequisites](docs/en/prerequisites.md) · [Deploying a Vendor Integration](docs/en/vendor-deployment-common.md) · [Deployment Guide](docs/en/deployment-guide.md) · [ONTAP Audit Setup](docs/en/ontap-audit-setup.md) |
 | Architecture | [Architecture](docs/en/architecture.md) · [Event Sources](docs/en/event-sources.md) · [S3 AP Spec](docs/en/s3ap-fsxn-specification.md) |
 | Operations | [Pipeline SLO](docs/en/pipeline-slo.md) · [Operational Guide](docs/en/operational-guide.md) · [Runbooks](docs/en/runbooks/) |
 | Security | [Cyber Resilience Map](docs/en/cyber-resilience-capability-map.md) · [Automated Response](docs/en/automated-response-guide.md) · [Data Classification](docs/en/data-classification.md) |

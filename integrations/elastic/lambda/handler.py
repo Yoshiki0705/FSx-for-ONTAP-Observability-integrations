@@ -14,6 +14,18 @@ from typing import Any, Optional
 import boto3
 import urllib3
 
+# ─── ONTAP audit log parsing ────────────────────────────────────────────────
+# ONTAP writes audit logs as EVTX or XML (vserver audit create -format), never
+# JSON. The shared parser handles namespaced Windows Event Log XML, EVTX
+# detection and JSON, and normalizes field names. Imported defensively so a
+# packaging miss degrades to the JSON-only fallback instead of breaking the
+# function at import time.
+try:
+    from ontap_audit_parser import parse_audit_log as _parse_ontap_audit_log
+except ImportError:  # pragma: no cover - packaging fallback
+    _parse_ontap_audit_log = None
+
+
 # Configuration
 ELASTIC_ENDPOINT = os.environ.get("ELASTIC_ENDPOINT", "")
 API_KEY_SECRET_ARN = os.environ["API_KEY_SECRET_ARN"]
@@ -91,11 +103,23 @@ def _extract_s3_records(event: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def _parse_logs(data: bytes, key: str) -> list[dict[str, Any]]:
+    """Parse an FSx for ONTAP audit log file into normalized events.
+
+    Delegates to the shared ONTAP parser, which understands the EVTX and XML
+    formats ONTAP actually writes. Falls back to JSON lines only if that module
+    was not packaged with this function.
+    """
+    if _parse_ontap_audit_log is not None:
+        return _parse_ontap_audit_log(data, key)
+
+    logger.warning(
+        "ontap_audit_parser unavailable; falling back to JSON-only parsing. "
+        "XML/EVTX audit logs will NOT be parsed into fields."
+    )
     if key.endswith(".gz"):
         data = gzip.decompress(data)
-    text = data.decode("utf-8", errors="replace")
     events = []
-    for line in text.strip().split("\n"):
+    for line in data.decode("utf-8", errors="replace").strip().split("\n"):
         line = line.strip()
         if not line:
             continue

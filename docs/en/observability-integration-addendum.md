@@ -213,4 +213,4 @@ This ensures you discover pipeline failures (ONTAP unreachable, Lambda misconfig
 - [Security Addendum](automated-response-security-addendum.md)
 - [EMS Detection Capabilities](ems-detection-capabilities.md)
 - [Pipeline SLO](pipeline-slo.md)
-- [OTel Collector PII Redaction Cookbook](../integrations/otel-collector/docs/en/pii-redaction-cookbook.md)
+- [OTel Collector PII Redaction Cookbook](../../integrations/otel-collector/docs/en/pii-redaction-cookbook.md)

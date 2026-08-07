@@ -281,23 +281,16 @@ def _send_otlp_payload(
 # ─── Lambda handler ────────────────────────────────────────────────────────
 
 
-def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Handle FPolicy event from EventBridge custom bus.
+def _resolve_request_headers() -> Optional[dict[str, str]]:
+    """Build the auth + static extra headers for OTLP requests.
 
-    Expects EventBridge events with source "fpolicy.fsxn" containing
-    file operation details in the "detail" field.
-
-    Args:
-        event: EventBridge event with FPolicy file operation details.
-        context: Lambda context object.
+    Shared by the SQS and EventBridge paths so both send identical headers.
 
     Returns:
-        Response dict with statusCode and processing summary.
+        Header dict, or None when no auth and no extra headers are configured.
     """
-    logger.info("FPolicy event received: %s", json.dumps(event, default=str)[:500])
-
-    # Get optional auth headers
     auth_headers: Optional[dict[str, str]] = None
+
     if API_KEY_SECRET_ARN and AUTH_MODE != "none":
         try:
             token = get_api_key()
@@ -321,6 +314,130 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "EXTRA_HEADERS_JSON is not valid JSON, ignoring: %s",
                 EXTRA_HEADERS_JSON[:100],
             )
+
+    return auth_headers
+
+
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+    """Handle FPolicy events from SQS (primary) or EventBridge (secondary).
+
+    Two trigger paths exist:
+
+    1. **SQS event source mapping** (primary): ONTAP → Fargate → SQS → Lambda.
+       Returns a ``batchItemFailures`` response so only the failing messages
+       are retried and eventually redriven to the DLQ. This requires
+       ``FunctionResponseTypes: [ReportBatchItemFailures]`` on the event source
+       mapping — without it, returning a success dict makes SQS delete every
+       message in the batch even when OTLP delivery failed.
+    2. **EventBridge rule** (secondary): a single event with source
+       ``fpolicy.fsxn`` carrying the FPolicy data in ``detail``.
+
+    Args:
+        event: SQS batch event or EventBridge event with FPolicy details.
+        context: Lambda context object.
+
+    Returns:
+        For SQS: ``{"batchItemFailures": [...]}``.
+        For EventBridge: dict with statusCode and processing summary.
+    """
+    if _is_sqs_event(event):
+        return _handle_sqs_event(event)
+
+    return _handle_eventbridge_event(event)
+
+
+def _is_sqs_event(event: dict[str, Any]) -> bool:
+    """Return True if the payload is an SQS event source mapping batch.
+
+    Args:
+        event: The raw Lambda event payload.
+
+    Returns:
+        True when at least one record carries ``eventSource == "aws:sqs"``.
+    """
+    records = event.get("Records")
+    if not isinstance(records, list) or not records:
+        return False
+    return any(r.get("eventSource") == "aws:sqs" for r in records)
+
+
+def _handle_sqs_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Process an SQS batch with per-message failure reporting.
+
+    Each message is shipped as its own OTLP request so a delivery failure is
+    attributable to exactly one message. Unparseable messages are reported as
+    failures too, so the queue's redrive policy moves them to the DLQ (visible)
+    instead of dropping them silently.
+
+    Args:
+        event: SQS batch event dict.
+
+    Returns:
+        ``{"batchItemFailures": [{"itemIdentifier": "<messageId>"}, ...]}``.
+        An empty list means the whole batch succeeded.
+    """
+    records = event["Records"]
+    logger.info("FPolicy handler invoked: SQS batch of %d record(s)", len(records))
+
+    auth_headers = _resolve_request_headers()
+    batch_item_failures: list[dict[str, str]] = []
+    shipped = 0
+
+    for record in records:
+        message_id = record.get("messageId", "")
+        try:
+            detail = json.loads(record.get("body", ""))
+            if not isinstance(detail, dict):
+                raise ValueError(
+                    f"SQS message body is not a JSON object "
+                    f"(got {type(detail).__name__})"
+                )
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.error(
+                "Unparseable SQS message %s: %s — reporting as failure for DLQ redrive",
+                message_id,
+                str(e),
+            )
+            batch_item_failures.append({"itemIdentifier": message_id})
+            continue
+
+        try:
+            payload = build_fpolicy_otlp_payload(detail)
+            if not _send_otlp_payload(payload, auth_headers, OTLP_CONTENT_TYPE):
+                raise RuntimeError("OTLP delivery failed after retries")
+            shipped += 1
+        except Exception as e:
+            logger.error(
+                "OTLP delivery failed for SQS message %s: %s — reporting for retry",
+                message_id,
+                str(e),
+            )
+            batch_item_failures.append({"itemIdentifier": message_id})
+
+    logger.info(
+        "SQS batch complete: shipped %d/%d, reporting %d failure(s)",
+        shipped,
+        len(records),
+        len(batch_item_failures),
+    )
+
+    # Response shape required by ReportBatchItemFailures. An empty list means
+    # the whole batch succeeded and every message is deleted.
+    return {"batchItemFailures": batch_item_failures}
+
+
+def _handle_eventbridge_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Handle a single FPolicy event delivered by an EventBridge rule.
+
+    Args:
+        event: EventBridge event with FPolicy file operation details.
+
+    Returns:
+        Response dict with statusCode and processing summary.
+    """
+    logger.info("FPolicy event received: %s", json.dumps(event, default=str)[:500])
+
+    auth_headers = _resolve_request_headers()
 
     try:
         # Extract event detail (EventBridge format)

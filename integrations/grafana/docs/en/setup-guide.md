@@ -110,6 +110,33 @@ Authentication uses Basic Auth:
 
 ## Step 2: CloudFormation Deploy
 
+### Recommended: use the deploy script
+
+The script deploys the stack **and** uploads the real Lambda code. The
+CloudFormation template cannot carry the handler inline, so this is the only
+one-step path to a working integration.
+
+```bash
+export GRAFANA_SECRET_ARN="..."
+export S3_ACCESS_POINT_ARN="..."
+export LOKI_ENDPOINT="..."
+export S3_BUCKET_NAME="..."
+
+bash integrations/grafana/scripts/deploy.sh
+```
+
+First run takes **3-5 minutes**, almost all of it CloudFormation creating the
+IAM role, Lambda, scheduler and alarms. Re-runs of an unchanged stack finish in
+seconds. Run `--help` for every supported variable.
+
+Add `--all` to also deploy the EMS and FPolicy stacks.
+
+> Set `ALARM_TOPIC_ARN` to an SNS topic ARN before running the script to make
+> the CloudWatch alarms actionable. Left unset, the alarms are created without
+> notification actions: visible in the console, paging nobody.
+
+### Alternative: deploy CloudFormation by hand
+
 Deploy the Lambda function and related resources using a CloudFormation template.
 
 ```bash
@@ -126,29 +153,54 @@ aws cloudformation deploy \
 
 > **Note**: Replace each parameter value with the appropriate value for your environment.
 
-### Parameter Reference
+### Upload the real Lambda code (required)
 
-| Parameter | Required | Description | Example |
-|-----------|----------|-------------|---------|
-| `S3AccessPointArn` | ✅ | ARN of the S3 Access Point for FSx for ONTAP audit logs | `arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap` |
-| `GrafanaCredentialsSecretArn` | ✅ | ARN of the Secrets Manager secret containing Grafana Cloud credentials | `arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:grafana/fsxn-loki-credentials-AbCdEf` |
-| `LokiEndpoint` | ✅ | Grafana Cloud Loki endpoint URL | `https://logs-prod-us-central1.grafana.net` |
-| `S3BucketName` | ✅ | S3 bucket name where audit logs are stored | `your-fsxn-audit-log-bucket` |
-| `LokiTenantId` | ❌ | X-Scope-OrgID header (for multi-tenant Loki, usually empty) | `""` |
-| `S3KeyPrefix` | ❌ | Audit log key prefix (for filtering) | `audit/svm-prod-01/` |
-| `LogLevel` | ❌ | Lambda のログレベル（デフォルト: `INFO`） | `INFO` |
-| `LambdaMemorySize` | ❌ | Lambda memory size in MB (default: 256) | `256` |
-| `LambdaTimeout` | ❌ | Lambda timeout in seconds (default: 300) | `300` |
-
-After deployment completes, verify the stack status:
+**The stack alone is not functional.** `template.yaml` ships a placeholder that
+raises `NotImplementedError`, because CloudFormation cannot inline a handler this
+size. `scripts/deploy.sh` already does this step; if you deployed by hand, do it
+now:
 
 ```bash
-aws cloudformation describe-stacks \
-  --stack-name fsxn-grafana-integration \
-  --query 'Stacks[0].StackStatus' --output text
+cd integrations/grafana/lambda
+zip -j function.zip handler.py ../../../shared/python/ontap_audit_parser.py
+
+aws lambda update-function-code \
+  --function-name fsxn-grafana-integration-shipper \
+  --zip-file fileb://function.zip \
+  --region ap-northeast-1
+
+aws lambda wait function-updated \
+  --function-name fsxn-grafana-integration-shipper \
+  --region ap-northeast-1
 ```
 
-If `CREATE_COMPLETE` is displayed, the deployment was successful.
+The `-j` flag flattens paths so `ontap_audit_parser` resolves at runtime. Without
+that file the handler silently falls back to JSON-only parsing, and ONTAP audit
+logs — which are always XML or EVTX — arrive with no parsed fields.
+
+### Parameter Reference
+
+<!-- generated from template.yaml; keep in sync when parameters change -->
+
+Required:
+
+| Parameter | Description |
+|-----------|-------------|
+| `S3AccessPointArn` | S3 Access Point ARN used by the Lambda for both ListObjectsV2 and GetObject. This should be an access point attached to the S3 bucket or FSx volume containing audit logs. |
+| `GrafanaCredentialsSecretArn` | Secrets Manager ARN containing JSON: {"instance_id":"`<id>`","api_key":"`<key>`"} |
+| `LokiEndpoint` | Grafana Cloud endpoint URL. Supports two modes: - OTLP Gateway (preferred): https://otlp-gateway-prod-`<region>`.grafana.net/otlp - Loki Push API (fallback): https://logs-prod-`<region>`.grafana.net The Lambda auto-detects the mode from the URL pattern. |
+
+Optional — the defaults work for most deployments:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `LokiTenantId` | `''` (empty) | X-Scope-OrgID header (optional, for multi-tenant Loki) |
+| `S3KeyPrefix` | `''` (empty) | S3 key prefix for listing audit log objects (e.g., "audit/svm-prod-01/"). Used by the scheduler-triggered polling mode to scope ListObjectsV2. |
+| `ScheduleExpression` | `rate(5 minutes)` | EventBridge Scheduler rate expression for polling new audit log files. Examples: "rate(5 minutes)", "rate(1 minute)", "rate(15 minutes)" |
+| `LogLevel` | `INFO` | Lambda log level. Use DEBUG when troubleshooting delivery |
+| `LambdaMemorySize` | `256` | Lambda memory in MB. Raise it if large EVTX files run out of memory |
+| `LambdaTimeout` | `300` | Lambda timeout in seconds. Must exceed the time needed to process one batch of files |
+| `AlarmNotificationTopicArn` | `''` (empty) | (Optional) SNS topic ARN notified when the alarms in this stack fire. Leave empty to create the alarms without notification actions — they will be visible in the CloudWatch console but will not page anyone. |
 
 ## Step 3: Sending a Test Event
 
@@ -779,3 +831,42 @@ aws cloudformation deploy \
 ```
 
 > **Hint**: Increasing memory also proportionally increases CPU allocation, improving processing speed. Changing from 256MB to 512MB can significantly reduce processing time.
+
+## Verify the deployment
+
+```bash
+bash integrations/grafana/scripts/verify.sh
+```
+
+Two layers run in sequence. First the shared AWS checks: the stack is healthy,
+the deployed Lambda is the real handler rather than the placeholder, and the
+schedule and checkpoint (where the stack creates them) are in place. Then a
+synthetic log is sent to the vendor endpoint to prove credentials and network
+reach it.
+
+Both matter. A vendor endpoint that accepts a test log tells you nothing about
+whether the pipeline is running, which is why the script exits non-zero on an
+AWS-side failure even when the endpoint responded fine.
+
+Exit codes follow `sysexits.h`: `0` pass, `69` a check failed, `78` required
+configuration missing. Set `SKIP_AWS_CHECKS=1` to test only vendor reachability
+before deploying.
+
+## Cleanup
+
+```bash
+bash integrations/grafana/scripts/cleanup.sh          # stacks only
+bash integrations/grafana/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/grafana/scripts/cleanup.sh --all -y  # non-interactive
+```
+
+Shared resources (S3 access point, audit log bucket, FPolicy Fargate stack,
+prerequisites stack) are not touched. See
+[Deploying a vendor integration](../../../../docs/en/vendor-deployment-common.md)
+for the deletion order and what is retained on purpose.
+
+## Related Documents
+
+- [Deploying a vendor integration](../../../../docs/en/vendor-deployment-common.md) — steps shared by every vendor
+- [Prerequisites](../../../../docs/en/prerequisites.md) — FSx for ONTAP, audit logging, S3 access point
+- [Deployment guide](../../../../docs/en/deployment-guide.md) — stack catalog, VPC endpoint conflicts, cost

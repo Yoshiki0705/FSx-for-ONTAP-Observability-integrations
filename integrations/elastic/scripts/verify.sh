@@ -9,6 +9,24 @@
 
 set -euo pipefail
 
+# --- AWS-side deployment checks (shared) ------------------------------------
+# The vendor-endpoint test below proves credentials and network reach the vendor.
+# It passes even when the stack was never deployed or the NotImplementedError
+# placeholder Lambda is still in place, so check the AWS side first.
+#
+# Set SKIP_AWS_CHECKS=1 to test only vendor reachability (e.g. before deploying).
+STACK_NAME="${STACK_NAME:-fsxn-elastic-integration}"
+LAMBDA_NAME="${LAMBDA_NAME:-fsxn-elastic-integration-shipper}"
+SHARED_VERIFY="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../shared/scripts" && pwd)/verify-deployment.sh"
+AWS_CHECKS_FAILED=0
+
+if [ "${SKIP_AWS_CHECKS:-0}" != "1" ] && [ -f "$SHARED_VERIFY" ]; then
+  STACK_NAME="$STACK_NAME" LAMBDA_NAME="$LAMBDA_NAME" \
+    DEPLOY_HINT="bash integrations/elastic/scripts/deploy.sh" \
+    bash "$SHARED_VERIFY" || AWS_CHECKS_FAILED=1
+  echo ""
+fi
+
 ELASTIC_URL="${ELASTIC_URL:-}"
 ELASTIC_API_KEY="${ELASTIC_API_KEY:-}"
 ELASTIC_INDEX="${ELASTIC_INDEX:-fsxn-audit}"
@@ -63,4 +81,10 @@ else
   echo "    403: API key may lack index write permission"
   echo "    404: Check ELASTIC_URL"
   exit 1
+fi
+
+# Surface an AWS-side failure even when the vendor endpoint responded fine.
+if [ "${AWS_CHECKS_FAILED}" = "1" ]; then
+  echo "❌ AWS deployment checks failed — see above."
+  exit 69
 fi

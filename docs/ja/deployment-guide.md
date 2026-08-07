@@ -21,7 +21,7 @@
 | 7 | セキュリティグループ ID | FSx 管理 IP への HTTPS (443) を許可する SG | 全 VPC モードスタック |
 | 8 | ルートテーブル ID | VPC コンソール → ルートテーブル → サブネット関連付け | `restore-verification`, `content-classification-scanner` |
 | 9 | ONTAP 管理者クレデンシャル Secret ARN | Secrets Manager → `arn:aws:secretsmanager:...` | `automated-response`, `restore-verification` |
-| 10 | S3 Access Point ARN | S3 コンソールまたは `aws fsx describe-data-repository-associations` | `prerequisites`, ベンダースタック |
+| 10 | S3 Access Point ARN | `aws fsx describe-s3-access-point-attachments` （`describe-data-repository-associations` は別機能なので**不可**）。あわせて `NetworkOrigin` も記録すること。下記 Tier 1 の注記を参照 | `prerequisites`, ベンダースタック |
 
 ## スタック一覧
 
@@ -34,6 +34,23 @@ FSx for ONTAP の監査ログをオブザーバビリティベンダーに転送
 | Prerequisites | `shared/templates/prerequisites.yaml` | FsxS3AccessPointArn | No |
 | S3 Access Point | `shared/templates/s3-access-point.yaml` | BucketName, VpcId (optional) | No |
 | Vendor (×10) | `integrations/<vendor>/template.yaml` | FsxS3AccessPointArn, VendorSecretArn | No (default) |
+| Datadog: EMS + FPolicy | `integrations/datadog/template-ems-fpolicy.yaml` | DatadogApiKeySecretArn, FPolicySqsQueueArn | No |
+| Datadog: ログアーカイブ | `integrations/datadog/template-log-archive.yaml` | DatadogExternalId, RetentionDays | No |
+| Datadog: Snapshot 修復 | `integrations/datadog/template-snapshot-remediation.yaml` | OntapManagementIp, Secret ARN, VPC/Subnet/SG | **Yes** |
+
+> **Tier 1 のデプロイが失敗する 2 大要因:**
+>
+> 1. **スタック単体では動作しません。** CloudFormation は数百行のハンドラをインライン化
+>    できないため、各ベンダーの `template.yaml` は `NotImplementedError` を投げる
+>    placeholder を配置します。スタックのデプロイと実コードのアップロードを行う
+>    ベンダーの `scripts/deploy.sh` を使うか、後から自分で
+>    `aws lambda update-function-code` を実行してください。アップロード忘れは
+>    ベンダーの `scripts/verify.sh` が検出します。
+> 2. **アクセスポイントのネットワークオリジンと Lambda の配置を一致させること。**
+>    Internet-origin のアクセスポイントは VPC 外 Lambda（デフォルト）で動作し、
+>    VPC-origin の場合は `VpcEnabled=true` とベンダー API への egress が必要です。
+>    不一致の場合 `AccessDenied ... explicit deny in a resource-based policy` で
+>    失敗し、IAM の問題のように見えます。オリジンは作成後に変更できません。
 
 ### Tier 2: インシデント対応
 
@@ -56,7 +73,7 @@ FSx for ONTAP の監査ログをオブザーバビリティベンダーに転送
 | **性能＆容量ダッシュボード** | `shared/templates/fsxn-monitoring-dashboard.yaml` | FileSystemId, FileSystemName, CapacityThresholdPercent, NotificationEmail | No |
 | **Qtree クォータ監視** | `shared/templates/qtree-quota-monitor.yaml` | OntapMgmtIp, SvmName, VPC/Subnet/SG, QuotaThresholdPercent | Yes |
 | Syslog → CloudWatch | `shared/templates/syslog-vpce-cloudwatch.yaml` | VpcId, SubnetIds, VpcCidr | Yes |
-| FPolicy Server | `shared/templates/fpolicy-server-fargate.yaml` | VpcId, SubnetIds, FsxnSvmSecurityGroupId, ContainerImage | Yes |
+| FPolicy Server | `shared/templates/fpolicy-server-fargate.yaml` | VpcId, SubnetIds, FsxnSvmSecurityGroupId, ContainerImage, AlarmNotificationTopicArn | Yes |
 | CloudWatch Log Alarm | `shared/templates/cloudwatch-log-alarm.yaml` | LogGroupName, TargetPattern | No |
 | Lakehouse Monitoring | `shared/templates/lakehouse-monitoring.yaml` | OntapMgmtEndpoint, S3AccessPointArn, VPC/Subnet/SG | Yes |
 
@@ -68,7 +85,7 @@ aws cloudformation deploy \
   --stack-name fsxn-monitoring \
   --parameter-overrides \
     FileSystemId=fs-0123456789abcdef0 \
-    FileSystemName=FSxN-Prod \
+    FileSystemName=fsxn-prod \
     CapacityThresholdPercent=80 \
     NotificationEmail=storage-team@example.com
 ```

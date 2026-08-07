@@ -1,0 +1,355 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  FSx for ONTAP Datadog Integration - Snapshot remediation Lambda.
+  Creates a timestamped ONTAP snapshot for evidence preservation when a Datadog
+  Workflow (triggered by a confirmed mass-deletion or ransomware signal) invokes
+  it. Includes a cooldown so a sustained attack cannot cause a snapshot storm.
+
+# ============================================================
+# Deployment notes
+#
+# This stack is OPTIONAL and separate from the log shipping stacks. Deploy it
+# only if you want Datadog Workflow Automation to trigger a containment action.
+#
+# VPC is MANDATORY here, unlike the audit log shipper: the ONTAP management LIF
+# is only reachable from inside the VPC. The shipper reads the S3 Access Point
+# over the internet path and therefore runs outside the VPC — do not copy its
+# network configuration to this function.
+#
+# Setup guide: docs/{en,ja}/snapshot-remediation-setup.md
+# ============================================================
+
+Parameters:
+  OntapManagementIp:
+    Type: String
+    Description: >-
+      FSx for ONTAP management endpoint IP (the SVM or file system management
+      LIF). Must be reachable on TCP 443 from the subnets below.
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+
+  OntapCredentialsSecretArn:
+    Type: String
+    Description: >-
+      Secrets Manager ARN for the ONTAP credentials. The secret must be JSON
+      shaped {"username": "...", "password": "..."} and the account needs
+      permission to create snapshots on the target volume.
+    AllowedPattern: 'arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:.+'
+
+  VpcSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Subnets with a route to the ONTAP management LIF. Use private subnets in
+      the same VPC as the FSx for ONTAP file system.
+
+  VpcSecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: >-
+      Security groups for the Lambda ENI. Must allow outbound TCP 443 to the
+      ONTAP management LIF, and Secrets Manager access (NAT Gateway or an
+      interface VPC endpoint for secretsmanager).
+
+  DefaultVolume:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Fallback volume name when the invocation payload omits
+      volume_name. Leave empty to require it in every request.
+
+  DefaultSvm:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Fallback SVM name when the invocation payload omits svm_name.
+      Leave empty to require it in every request.
+
+  CooldownMinutes:
+    Type: Number
+    Default: 15
+    MinValue: 0
+    MaxValue: 1440
+    Description: >-
+      Minimum minutes between remediation snapshots on the same volume.
+      Prevents a snapshot storm during a sustained attack. Set 0 to disable
+      (not recommended).
+
+  OntapTimeoutSeconds:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 60
+    Description: Per-request ONTAP REST API read timeout in seconds.
+
+  CaCertPath:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Path to the ONTAP CA certificate inside the function package or
+      an attached Lambda Layer, e.g. /opt/certs/ontap-ca.pem. When empty the
+      function falls back to CERT_NONE, which is acceptable for a PoC but should
+      be set for production — see the production checklist.
+
+  CaCertLayerArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Lambda Layer ARN containing the CA certificate referenced by
+      CaCertPath.
+
+  InvokerRoleArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) IAM role ARN allowed to invoke this function — typically the
+      Datadog AWS integration role used by Workflow Automation. Leave empty to
+      grant no resource-based permission (you can then only invoke it with your
+      own IAM identity, which is the safer default while testing).
+
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when the error or DLQ alarm fires.
+      Strongly recommended here: a silently failing containment action is worse
+      than a noisy one.
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+    Description: Lambda function log level
+
+  LambdaTimeout:
+    Type: Number
+    Default: 60
+    MinValue: 10
+    MaxValue: 300
+    Description: >-
+      Lambda timeout in seconds. Must exceed OntapTimeoutSeconds by enough
+      margin for the three sequential ONTAP calls (list, lookup, create).
+
+Conditions:
+  HasCaCertLayer: !Not [!Equals [!Ref CaCertLayerArn, '']]
+  HasInvokerRole: !Not [!Equals [!Ref InvokerRoleArn, '']]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
+
+Resources:
+  # Captures asynchronous invocations that failed after Lambda's own retries, so
+  # a containment action is never lost without a trace.
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days (maximum)
+      KmsMasterKeyId: alias/aws/sqs
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-snapshot'
+      # Longer than the 30 days used elsewhere: these entries are the audit
+      # trail for actions taken against production storage.
+      RetentionInDays: 365
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SecretsManagerRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref OntapCredentialsSecretArn
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-snapshot:*'
+        - PolicyName: SQSDeadLetterWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !GetAtt DeadLetterQueue.Arn
+        - PolicyName: VpcNetworkInterface
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # ec2 network interface actions do not support resource-level
+              # permissions for Lambda ENI management, hence the wildcard.
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  SnapshotRemediationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-snapshot'
+      Runtime: python3.12
+      Handler: snapshot_remediation.lambda_handler
+      Architectures:
+        - arm64
+      MemorySize: 256
+      Timeout: !Ref LambdaTimeout
+      Role: !GetAtt LambdaExecutionRole.Arn
+      # A containment action must not run concurrently with itself: parallel
+      # invocations would each pass the cooldown check before any snapshot
+      # exists, defeating it.
+      ReservedConcurrentExecutions: 1
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Layers: !If
+        - HasCaCertLayer
+        - - !Ref CaCertLayerArn
+        - !Ref AWS::NoValue
+      VpcConfig:
+        SubnetIds: !Ref VpcSubnetIds
+        SecurityGroupIds: !Ref VpcSecurityGroupIds
+      Environment:
+        Variables:
+          ONTAP_MGMT_IP: !Ref OntapManagementIp
+          ONTAP_CREDENTIALS_SECRET_ARN: !Ref OntapCredentialsSecretArn
+          DEFAULT_VOLUME: !Ref DefaultVolume
+          DEFAULT_SVM: !Ref DefaultSvm
+          COOLDOWN_MINUTES: !Ref CooldownMinutes
+          ONTAP_TIMEOUT_SECONDS: !Ref OntapTimeoutSeconds
+          CA_CERT_PATH: !Ref CaCertPath
+          LOG_LEVEL: !Ref LogLevel
+      LoggingConfig:
+        LogGroup: !Ref LogGroup
+      # Placeholder only. CloudFormation cannot inline the full handler, so the
+      # real lambda/snapshot_remediation.py must be uploaded after the stack is
+      # created. `scripts/deploy-snapshot-remediation.sh` does this for you.
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              raise NotImplementedError(
+                  "Placeholder code is still deployed. Upload the real handler: "
+                  "bash integrations/datadog/scripts/deploy-snapshot-remediation.sh"
+              )
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  # Allows the Datadog Workflow Automation role to invoke the function.
+  InvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasInvokerRole
+    Properties:
+      FunctionName: !Ref SnapshotRemediationFunction
+      Action: lambda:InvokeFunction
+      Principal: !Ref InvokerRoleArn
+
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-errors'
+      AlarmDescription: >-
+        Snapshot remediation Lambda failed. A requested containment action did
+        not complete — verify manually whether a snapshot exists on the target
+        volume. Runbook: docs/en/runbooks/lambda-errors.md
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SnapshotRemediationFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      # Threshold 0: unlike log shipping, a single failed remediation matters.
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  DLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-messages'
+      AlarmDescription: >-
+        A snapshot remediation request reached the Dead Letter Queue and was
+        never executed. Runbook: docs/en/runbooks/dlq-replay.md
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+Outputs:
+  SnapshotRemediationFunctionArn:
+    Description: >-
+      ARN of the snapshot remediation Lambda. Use this as the target in the
+      Datadog Workflow "AWS Lambda: Invoke function" action.
+    Value: !GetAtt SnapshotRemediationFunction.Arn
+
+  SnapshotRemediationFunctionName:
+    Description: >-
+      Name of the snapshot remediation Lambda. Use this with
+      `aws lambda update-function-code` to upload the real handler.
+    Value: !Ref SnapshotRemediationFunction
+
+  DeadLetterQueueUrl:
+    Description: URL of the Dead Letter Queue for failed remediation requests
+    Value: !Ref DeadLetterQueue
+
+  LogGroupName:
+    Description: >-
+      CloudWatch Log Group holding the remediation audit trail
+      (365 day retention)
+    Value: !Ref LogGroup

@@ -5,6 +5,12 @@
 - **検証日時** — 2026-05-16T21:33:03+09:00
 - **検証者** — Yoshiki Fujiwara / Solutions Architect
 
+> **記録の位置づけ**: これは 2026-05-16 実施時点の記録です。以下のコマンドは当時は正しく、
+> その後テンプレートが変更されています。特にパラメータ `S3AccessPointArn` は後に
+> `FsxS3AccessPointArn` にリネームされ、デプロイはスクリプト化されました。
+> 現在の手順は[セットアップガイド](../../integrations/datadog/docs/ja/setup-guide.md)を、
+> 最新の検証結果は本文書末尾の 2026-08-07 再検証を参照してください。
+
 ### 検証環境
 
 - **AWS リージョン** — ap-northeast-1
@@ -624,3 +630,71 @@ python3 shared/scripts/test-xml-e2e.py --vendor datadog
 |-------------|------|
 | `fsxn-datadog-api-key` | Datadog API Key（ログ取り込み用） |
 | `datadog/fsxn-app-key` | Datadog Application Key（Pipeline/Dashboard/Monitor 管理用） |
+
+---
+
+## 再検証: 2026-08-07
+
+初見の読者が再現できることを確認するため、実際の FSx for ONTAP ファイルシステムに対して
+文書化された手順を通しで再実行しました。対象は監査ログ経路（セットアップガイド Step 1-5）で、
+EMS / FPolicy / ログアーカイブは再実行していません。
+
+- **AWS リージョン**: ap-northeast-1
+- **Datadog サイト**: ap1.datadoghq.com（AP1 東京、有料プラン）
+- **アクセスポイント**: `aws fsx create-and-attach-s3-access-point` で新規作成、Internet-origin
+- **撤収**: `scripts/cleanup.sh` で全リソース削除、残存なし
+
+### 結果
+
+| ステップ | 結果 | 備考 |
+|---------|------|------|
+| Step 2 アクセスポイント作成（ガイド逐語） | ✅ | 約 20 秒で `AVAILABLE`、`NetworkOrigin: Internet` |
+| Step 3 `scripts/deploy.sh` | ✅ | スタック + 実ハンドラ（9,754 bytes）、3〜5 分 |
+| Step 5 `scripts/verify.sh` | ✅ | 4/4 チェック PASS |
+| 名前空間付き ONTAP XML → Datadog | ✅ | 2 ファイル / 3 イベントを配送・インデックス |
+| SSM チェックポイントの前進 | ✅ | 最後に配送したキーまで前進 |
+| 直後の再実行での冪等性 | ✅ | `new_files=0`、重複なし |
+| EventBridge Scheduler の自走 | ✅ | 5 分間隔で自動実行 |
+| 実行中の Lambda エラー | ✅ | 0 件 |
+| アクセスポイントのリソースポリシーは必要か | ✅ 不要 | 同一アカウントの IAM のみで十分 |
+| `scripts/cleanup.sh` での撤収 | ✅ | スタック / Lambda / SSM パラメータ / アラームすべて削除 |
+
+### 発見・修正した欠陥
+
+**1. 名前空間付き ONTAP XML が 1 レコードに統合されデータが失われていた**
+
+ONTAP は Windows Event Log XML スキーマで監査ログを書くため、全要素に
+`xmlns="http://schemas.microsoft.com/win/2004/08/events/event"` が付きます。
+ElementTree はこれを `{uri}Event` と報告するので `iter("Event")` が 0 件になり、
+全イベントがフラットレコードのフォールバックに落ちてファイル全体が 1 件のログエントリに
+統合され、最後のイベント以外が破棄されていました。
+
+実データで確認: 2 イベントのファイルが修正前は **1** 件、修正後は **2** 件配送されました。
+`4663 ReadData` が `4660 Delete` と並んで Datadog に現れたのは修正後のみです。
+
+3 箇所を修正し、それぞれ回帰テストを追加しました。
+
+| 箇所 | 修正前の症状 |
+|------|------------|
+| `integrations/datadog/lambda/handler.py` | 最後のイベントのみ |
+| `shared/lambda-layers/log-parser`（DOM 経路） | 最後のイベントのみ。ストリーミング経路（閾値以上のファイル）は元々正しく、同じファイルがサイズ次第で正しく解析されるかどうか変わっていた |
+| `integrations/crowdstrike/lambda/handler.py` | 0 件（フォールバックなし） |
+
+共有 log-parser レイヤーにはテストが 1 つも無く、これがバグ生存の理由でした。
+`shared/lambda-layers/log-parser/tests/` を新規追加しています。
+
+**2. VPC-origin アクセスポイントの再利用時に誤解を招くエラーが出る**
+
+VPC-origin のアクセスポイントは、アクセスポイントポリシーが存在しなくても VPC 外の Lambda を
+`AccessDenied ... explicit deny in a resource-based policy` で拒否します。文言は IAM を
+示唆しますが原因はネットワークオリジンで、作成後に変更できません。
+セットアップガイドにデプロイ前のオリジン判定方法を追加しました。
+
+### ドキュメントの訂正
+
+| ドキュメント | 訂正内容 |
+|-------------|---------|
+| `getting-started.md` | `aws s3control create-access-point` → `aws fsx create-and-attach-s3-access-point`、`S3AccessPointArn` → `FsxS3AccessPointArn`、`CAPABILITY_IAM` → `CAPABILITY_NAMED_IAM`、必須のコードアップロード手順を追加 |
+| `quick-start-minimum.md` | コードアップロード手順を追加（`template.yaml` 単体では placeholder が残りログが 1 件も届かない） |
+| `deployment-guide.md` | アクセスポイント取得コマンドを `describe-s3-access-point-attachments` に訂正、Tier 1 にコードアップロードとネットワークオリジンの注記を追加 |
+| Datadog `setup-guide.md` | 既存アクセスポイントのオリジン判定、デプロイ所要時間、ONTAP ローテーションを待たない検証手順を追加 |

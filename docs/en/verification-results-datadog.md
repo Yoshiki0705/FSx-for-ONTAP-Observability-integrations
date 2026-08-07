@@ -5,6 +5,13 @@
 - **Verification Date**: 2026-05-16T21:33:03+09:00
 - **Verifier**: Yoshiki Fujiwara / Solutions Architect
 
+> **Record status**: this is a point-in-time record of the 2026-05-16 run. The
+> commands below were correct then; the template has changed since. In
+> particular the parameter `S3AccessPointArn` was later renamed
+> `FsxS3AccessPointArn`, and deployment is now scripted. Follow the
+> [Setup Guide](../../integrations/datadog/docs/en/setup-guide.md) for current
+> steps and see the 2026-08-07 re-verification at the end of this document.
+
 ### Verification Environment
 
 - **AWS Region**: ap-northeast-1
@@ -630,3 +637,73 @@ Each monitor includes:
 |-------------|---------|
 | `fsxn-datadog-api-key` | Datadog API Key (log ingestion) |
 | `datadog/fsxn-app-key` | Datadog Application Key (Pipeline/Dashboard/Monitor management) |
+
+---
+
+## Re-verification: 2026-08-07
+
+Re-ran the documented path end to end against a live FSx for ONTAP file system to
+confirm a first-time reader can reproduce it. Scope was the audit log path
+(Setup Guide Steps 1-5); EMS, FPolicy and log archive were not re-run.
+
+- **AWS Region**: ap-northeast-1
+- **Datadog Site**: ap1.datadoghq.com (AP1 Tokyo, paid plan)
+- **Access point**: created fresh with `aws fsx create-and-attach-s3-access-point`, Internet-origin
+- **Teardown**: all resources removed via `scripts/cleanup.sh`; no residue
+
+### Results
+
+| Step | Result | Note |
+|------|--------|------|
+| Step 2 access point creation (verbatim from the guide) | ✅ | `AVAILABLE` in ~20s, `NetworkOrigin: Internet` |
+| Step 3 `scripts/deploy.sh` | ✅ | Stack + real handler (9,754 bytes), 3-5 min |
+| Step 5 `scripts/verify.sh` | ✅ | 4/4 checks passed |
+| Namespaced ONTAP XML → Datadog | ✅ | 2 files / 3 events shipped and indexed |
+| SSM checkpoint advance | ✅ | Advanced to the last shipped key |
+| Idempotency on immediate re-run | ✅ | `new_files=0`, no duplicates |
+| EventBridge Scheduler self-firing | ✅ | Automatic invocations at 5-minute intervals |
+| Lambda errors during the run | ✅ | 0 |
+| Access point resource policy needed? | ✅ No | Same-account IAM was sufficient |
+| `scripts/cleanup.sh` teardown | ✅ | Stack, Lambda, SSM parameter, alarms all removed |
+
+### Defects found and fixed
+
+**1. Namespaced ONTAP XML collapsed into a single record (data loss).**
+
+ONTAP writes audit logs in the Windows Event Log XML schema, so every element
+carries `xmlns="http://schemas.microsoft.com/win/2004/08/events/event"`.
+ElementTree reports such tags as `{uri}Event`, so `iter("Event")` matched
+nothing; every event fell through to the flat-record fallback, which merged the
+whole file into one log entry and discarded all but the last event.
+
+Confirmed against live data: a 2-event file delivered **1** event before the fix
+and **2** after. Only after the fix did the `4663 ReadData` event appear in
+Datadog alongside the `4660 Delete` event.
+
+Fixed in three places, each with regression tests:
+
+| Location | Symptom before fix |
+|----------|-------------------|
+| `integrations/datadog/lambda/handler.py` | Last event only |
+| `shared/lambda-layers/log-parser` (DOM path) | Last event only. The streaming path (files ≥ threshold) was already correct, so the same file parsed correctly or not depending on its size |
+| `integrations/crowdstrike/lambda/handler.py` | Zero events (no fallback) |
+
+The shared log-parser layer had no tests at all, which is why this survived;
+`shared/lambda-layers/log-parser/tests/` was added.
+
+**2. Reusing a VPC-origin access point fails with a misleading error.**
+
+A VPC-origin access point rejects a VPC-external Lambda with
+`AccessDenied ... explicit deny in a resource-based policy`, even though no
+access point policy exists. The wording points at IAM; the cause is the network
+origin, which cannot be changed after creation. The Setup Guide now shows how to
+detect the origin before deploying.
+
+### Documentation corrections
+
+| Document | Correction |
+|----------|-----------|
+| `getting-started.md` | `aws s3control create-access-point` → `aws fsx create-and-attach-s3-access-point`; `S3AccessPointArn` → `FsxS3AccessPointArn`; `CAPABILITY_IAM` → `CAPABILITY_NAMED_IAM`; added the required code-upload step |
+| `quick-start-minimum.md` | Added the code-upload step — deploying `template.yaml` alone leaves the placeholder and no log ever arrives |
+| `deployment-guide.md` | Access point discovery command corrected to `describe-s3-access-point-attachments`; added Tier 1 notes on code upload and network origin |
+| Datadog `setup-guide.md` | Added existing-access-point origin detection, deploy duration, and a validation path that does not wait for ONTAP rotation |

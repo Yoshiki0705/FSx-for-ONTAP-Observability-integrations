@@ -468,6 +468,21 @@ def _parse_xml_dom(data: str) -> list[AuditEvent]:
         xml_content = _prepare_xml_content(data)
         root = _parse_xml_string(xml_content)
 
+        # Strip XML namespaces before matching tag names.
+        #
+        # ONTAP writes audit logs in the Windows Event Log XML schema, so every
+        # element carries xmlns="http://schemas.microsoft.com/win/2004/08/events/event"
+        # and ElementTree reports the tag as "{uri}Event". Without this, the
+        # iter("Event") below matches nothing, every event falls through to the
+        # flat-record fallback and gets merged into a single record — silently
+        # discarding all but the last event in the file.
+        #
+        # _parse_xml_streaming already handles this via rpartition("}"); this
+        # keeps the DOM path (used for files < XML_STREAMING_THRESHOLD) consistent.
+        for elem in root.iter():
+            if isinstance(elem.tag, str) and "}" in elem.tag:
+                elem.tag = elem.tag.split("}", 1)[1]
+
         for event_elem in root.iter("Event"):
             raw = _xml_element_to_flat_dict(event_elem)
             if raw:
@@ -477,7 +492,12 @@ def _parse_xml_dom(data: str) -> list[AuditEvent]:
         # in some configurations (e.g., single-event files or fragments).
         # Try parsing direct children as individual events.
         if not events:
-            for child in root:
+            children = list(root)
+            # Descend through a single wrapper element (e.g. <Events>), otherwise
+            # every record below it would be flattened into one dict.
+            while len(children) == 1 and len(list(children[0])) > 0:
+                children = list(children[0])
+            for child in children:
                 raw = _xml_element_to_flat_dict(child)
                 if raw:
                     events.append(normalize_event(raw))

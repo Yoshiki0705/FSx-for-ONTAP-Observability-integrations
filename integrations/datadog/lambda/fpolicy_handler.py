@@ -31,8 +31,10 @@ ENABLE_GZIP = os.environ.get("ENABLE_GZIP", "false").lower() == "true"
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 
-DD_SOURCE = "fsxn-fpolicy"
-DD_SERVICE = "fsxn-ontap"
+# Overridable so the log pipeline / facet filters can be retargeted without a
+# code change. The defaults match what template-ems-fpolicy.yaml sets.
+DD_SOURCE = os.environ.get("DD_SOURCE", "fsxn-fpolicy")
+DD_SERVICE = os.environ.get("DD_SERVICE", "fsxn-ontap")
 MAX_BATCH_SIZE_BYTES = 5 * 1024 * 1024  # 5MB per request (Datadog limit)
 MAX_BATCH_ITEMS = 1000  # Max items per batch (Datadog limit)
 MAX_RETRIES = 3
@@ -84,26 +86,128 @@ def get_api_key() -> str:
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Handle FPolicy event from EventBridge.
+    """Handle FPolicy events from SQS (primary) or EventBridge (secondary).
 
-    Receives an EventBridge event with source 'fpolicy.fsxn' containing
-    FPolicy file operation data, formats for Datadog Logs API v2, and
-    ships with retry logic.
+    Two trigger paths exist:
+
+    1. **SQS event source mapping** (primary): ONTAP → Fargate → SQS → Lambda.
+       Returns a ``batchItemFailures`` response so only the failing messages are
+       retried and eventually redriven to the DLQ. This requires
+       ``FunctionResponseTypes: [ReportBatchItemFailures]`` on the event source
+       mapping — without it, a partial failure re-delivers the whole batch.
+    2. **EventBridge rule** (secondary): a single event with source
+       ``fpolicy.fsxn`` carrying the FPolicy data in ``detail``.
 
     Args:
-        event: EventBridge event with source 'fpolicy.fsxn'. The ``detail``
-            field contains the FPolicy file operation data.
+        event: SQS batch event or EventBridge event.
         context: Lambda context object.
 
     Returns:
-        Dict with statusCode and processing summary.
+        For SQS: ``{"batchItemFailures": [...]}``.
+        For EventBridge: dict with statusCode and processing summary.
+
+    Raises:
+        Exception: On transient failures (Secrets Manager, Datadog delivery) so
+            the invocation fails and the events are retried rather than dropped.
     """
+    if _is_sqs_event(event):
+        return _handle_sqs_event(event)
+
+    return _handle_eventbridge_event(event)
+
+
+def _is_sqs_event(event: dict[str, Any]) -> bool:
+    """Return True if the payload is an SQS event source mapping batch."""
+    records = event.get("Records")
+    if not isinstance(records, list) or not records:
+        return False
+    return any(r.get("eventSource") == "aws:sqs" for r in records)
+
+
+def _handle_sqs_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Process an SQS batch with per-message failure reporting.
+
+    Messages that cannot be parsed are reported as individual failures, so a
+    single malformed message is redriven to the DLQ after ``maxReceiveCount``
+    attempts instead of blocking (or silently discarding) the whole batch.
+
+    Delivery to Datadog is still done as one batched shipment for efficiency.
+    If that shipment fails, every message in the batch is reported as failed so
+    SQS re-delivers all of them — at-least-once, never silently dropped.
+    """
+    records = event["Records"]
+    logger.info("FPolicy handler invoked: SQS batch of %d record(s)", len(records))
+
+    # A Secrets Manager failure is transient and applies to the whole batch:
+    # raise so SQS re-delivers everything instead of deleting the messages.
+    api_key = get_api_key()
+
+    batch_item_failures: list[dict[str, str]] = []
+    fpolicy_events: list[dict[str, Any]] = []
+    shippable_message_ids: list[str] = []
+
+    for record in records:
+        message_id = record.get("messageId", "")
+        try:
+            parsed = json.loads(record.get("body", ""))
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    f"SQS message body is not a JSON object "
+                    f"(got {type(parsed).__name__})"
+                )
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            # Poison pill: retrying will never succeed, but reporting it as a
+            # failure is still correct — the queue's redrive policy moves it to
+            # the DLQ, which is visible, instead of dropping it silently.
+            logger.error(
+                "Unparseable SQS message %s: %s — reporting as failure for DLQ redrive",
+                message_id, str(e),
+            )
+            batch_item_failures.append({"itemIdentifier": message_id})
+            continue
+
+        fpolicy_events.append(parsed)
+        shippable_message_ids.append(message_id)
+
+    if fpolicy_events:
+        dd_logs = _format_for_datadog(fpolicy_events)
+        try:
+            shipped = _ship_to_datadog(dd_logs, api_key)
+            logger.info(
+                "Shipped %d/%d FPolicy event(s) from %d SQS message(s)",
+                shipped, len(dd_logs), len(shippable_message_ids),
+            )
+        except Exception as e:
+            # Delivery failure is not attributable to a single message, so retry
+            # all messages that were successfully parsed.
+            logger.error(
+                "Datadog delivery failed for %d message(s): %s — reporting all for retry",
+                len(shippable_message_ids), str(e),
+            )
+            batch_item_failures.extend(
+                {"itemIdentifier": mid} for mid in shippable_message_ids
+            )
+
+    if batch_item_failures:
+        logger.warning(
+            "Reporting %d/%d SQS message(s) as failed", len(batch_item_failures), len(records)
+        )
+
+    # Response shape required by ReportBatchItemFailures. An empty list means
+    # the whole batch succeeded and every message is deleted.
+    return {"batchItemFailures": batch_item_failures}
+
+
+def _handle_eventbridge_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Process a single FPolicy event delivered by an EventBridge rule."""
     logger.info("FPolicy handler invoked: source=%s", event.get("source", "unknown"))
 
-    # Extract FPolicy event detail from EventBridge event
     try:
         fpolicy_events = _extract_fpolicy_events(event)
     except (KeyError, ValueError) as e:
+        # Malformed EventBridge payloads are not retryable. EventBridge has no
+        # per-item failure protocol, so report the rejection and let the rule's
+        # own DLQ (if configured) capture it.
         logger.error("Failed to extract FPolicy event: %s", str(e))
         return {
             "statusCode": 400,
@@ -119,20 +223,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     logger.info("Extracted %d FPolicy event(s)", len(fpolicy_events))
 
-    # Get API key
-    try:
-        api_key = get_api_key()
-    except Exception as e:
-        logger.error("Failed to retrieve API key: %s", str(e))
-        return {
-            "statusCode": 500,
-            "body": {"error": "Failed to retrieve API key"},
-        }
+    # Let Secrets Manager and Datadog delivery failures propagate: a failed
+    # invocation is retried by EventBridge, a swallowed error is data loss.
+    api_key = get_api_key()
 
-    # Format for Datadog Logs API v2
     dd_logs = _format_for_datadog(fpolicy_events)
-
-    # Ship to Datadog in batches
     shipped = _ship_to_datadog(dd_logs, api_key)
 
     result = {

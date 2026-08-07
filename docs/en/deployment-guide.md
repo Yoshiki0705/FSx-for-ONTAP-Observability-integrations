@@ -21,7 +21,7 @@ Gather the following from your existing environment:
 | 7 | Security Group ID | SG that allows HTTPS (443) to FSx management IP | All VPC-mode stacks |
 | 8 | Route Table IDs | VPC Console → Route tables → associated with subnets | `restore-verification`, `content-classification-scanner` |
 | 9 | ONTAP Admin Credentials Secret ARN | Secrets Manager → `arn:aws:secretsmanager:...` | `automated-response`, `restore-verification` |
-| 10 | S3 Access Point ARN | S3 Console or `aws fsx describe-data-repository-associations` | `prerequisites`, vendor stacks |
+| 10 | S3 Access Point ARN | `aws fsx describe-s3-access-point-attachments` (**not** `describe-data-repository-associations`, which covers a different feature). Also record `NetworkOrigin` — see the Tier 1 note below | `prerequisites`, vendor stacks |
 
 ## Stack Catalog
 
@@ -34,6 +34,24 @@ These stacks ship FSx for ONTAP audit logs to observability vendors. They are th
 | Prerequisites | `shared/templates/prerequisites.yaml` | FsxS3AccessPointArn | No |
 | S3 Access Point | `shared/templates/s3-access-point.yaml` | BucketName, VpcId (optional) | No |
 | Vendor (×10) | `integrations/<vendor>/template.yaml` | FsxS3AccessPointArn, VendorSecretArn | No (default) |
+| Datadog: EMS + FPolicy | `integrations/datadog/template-ems-fpolicy.yaml` | DatadogApiKeySecretArn, FPolicySqsQueueArn | No |
+| Datadog: Log Archive | `integrations/datadog/template-log-archive.yaml` | DatadogExternalId, RetentionDays | No |
+| Datadog: Snapshot Remediation | `integrations/datadog/template-snapshot-remediation.yaml` | OntapManagementIp, Secret ARN, VPC/Subnet/SG | **Yes** |
+
+> **Two things that make a Tier 1 deployment fail:**
+>
+> 1. **The stack alone is not functional.** CloudFormation cannot inline a
+>    multi-hundred-line handler, so every vendor `template.yaml` ships a
+>    placeholder that raises `NotImplementedError`. Use the vendor's
+>    `scripts/deploy.sh`, which deploys the stack and uploads the real code, or
+>    run `aws lambda update-function-code` yourself afterwards. The vendor's
+>    `scripts/verify.sh` detects a forgotten upload.
+> 2. **Access point network origin must match the Lambda placement.** An
+>    Internet-origin access point works with a VPC-external Lambda (the default);
+>    a VPC-origin one requires `VpcEnabled=true` plus internet egress for the
+>    vendor API. Mismatched, it fails with
+>    `AccessDenied ... explicit deny in a resource-based policy`, which reads like
+>    an IAM problem. The origin cannot be changed after creation.
 
 ### Tier 2: Incident Response
 
@@ -56,7 +74,7 @@ These stacks ship FSx for ONTAP audit logs to observability vendors. They are th
 | **Performance & Capacity Dashboard** | `shared/templates/fsxn-monitoring-dashboard.yaml` | FileSystemId, FileSystemName, CapacityThresholdPercent, NotificationEmail | No |
 | **Qtree Quota Monitor** | `shared/templates/qtree-quota-monitor.yaml` | OntapMgmtIp, SvmName, VPC/Subnet/SG, QuotaThresholdPercent | Yes |
 | Syslog → CloudWatch | `shared/templates/syslog-vpce-cloudwatch.yaml` | VpcId, SubnetIds, VpcCidr | Yes |
-| FPolicy Server | `shared/templates/fpolicy-server-fargate.yaml` | VpcId, SubnetIds, FsxnSvmSecurityGroupId, ContainerImage | Yes |
+| FPolicy Server | `shared/templates/fpolicy-server-fargate.yaml` | VpcId, SubnetIds, FsxnSvmSecurityGroupId, ContainerImage, AlarmNotificationTopicArn | Yes |
 | CloudWatch Log Alarm | `shared/templates/cloudwatch-log-alarm.yaml` | LogGroupName, TargetPattern | No |
 | Lakehouse Monitoring | `shared/templates/lakehouse-monitoring.yaml` | OntapMgmtEndpoint, S3AccessPointArn, VPC/Subnet/SG | Yes |
 
@@ -68,7 +86,7 @@ aws cloudformation deploy \
   --stack-name fsxn-monitoring \
   --parameter-overrides \
     FileSystemId=fs-0123456789abcdef0 \
-    FileSystemName=FSxN-Prod \
+    FileSystemName=fsxn-prod \
     CapacityThresholdPercent=80 \
     NotificationEmail=storage-team@example.com
 ```

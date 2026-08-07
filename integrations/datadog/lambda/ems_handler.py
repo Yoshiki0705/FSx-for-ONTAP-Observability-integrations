@@ -49,8 +49,10 @@ ENABLE_GZIP = os.environ.get("ENABLE_GZIP", "false").lower() == "true"
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 
-DD_SOURCE = "fsxn-ems"
-DD_SERVICE = "fsxn-ontap"
+# Overridable so the log pipeline / facet filters can be retargeted without a
+# code change. The defaults match what template-ems-fpolicy.yaml sets.
+DD_SOURCE = os.environ.get("DD_SOURCE", "fsxn-ems")
+DD_SERVICE = os.environ.get("DD_SERVICE", "fsxn-ontap")
 MAX_BATCH_SIZE_BYTES = 5 * 1024 * 1024  # 5MB per request (Datadog limit)
 MAX_BATCH_ITEMS = 1000  # Max items per batch (Datadog limit)
 MAX_RETRIES = 3

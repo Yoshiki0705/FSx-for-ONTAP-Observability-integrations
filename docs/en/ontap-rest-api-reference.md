@@ -323,4 +323,4 @@ When ONTAP sends EMS events to a webhook destination, the payload uses **hyphena
 - [Automated Response Guide](automated-response-guide.md)
 - [ARP Incident Response Guide](arp-incident-response-guide.md)
 - [EMS Detection Capabilities](ems-detection-capabilities.md)
-- [FPolicy Setup (Grafana example)](../integrations/grafana/docs/en/fpolicy-setup.md)
+- [FPolicy Setup (Grafana example)](../../integrations/grafana/docs/en/fpolicy-setup.md)

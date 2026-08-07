@@ -285,4 +285,4 @@ Vendor Dashboard Alert
 - [ARP Incident Response Guide](arp-incident-response-guide.md)
 - [Automated Response Guide](automated-response-guide.md)
 - [EMS Detection Capabilities](ems-detection-capabilities.md)
-- [OTel Collector PII Redaction Cookbook](../integrations/otel-collector/docs/en/pii-redaction-cookbook.md)
+- [OTel Collector PII Redaction Cookbook](../../integrations/otel-collector/docs/en/pii-redaction-cookbook.md)

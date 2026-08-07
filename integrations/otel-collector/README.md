@@ -39,8 +39,17 @@ S3 Access Point → Lambda (OTLP Shipper) → OTel Collector → Grafana Cloud (
                                                          → Honeycomb (OTLP)
                                                          → Datadog (exporter)
 EMS Webhook    → Lambda (EMS Handler)   → OTel Collector → (same backends)
-FPolicy Events → Lambda (FPolicy)       → OTel Collector → (same backends)
+FPolicy Events → SQS → Lambda (FPolicy) → OTel Collector → (same backends)
+                 (ReportBatchItemFailures)
 ```
+
+> **Delivery note**: the FPolicy SQS event source mapping declares
+> `FunctionResponseTypes: [ReportBatchItemFailures]` and the handler returns
+> `batchItemFailures`. Each SQS message is shipped as its own OTLP request, so a
+> failure is attributed to exactly one message and only that message is retried
+> and eventually redriven to the DLQ. Without this pairing, SQS deletes every
+> message in the batch as soon as the invocation returns, losing up to
+> `BatchSize` events per failure.
 
 ## 5-Minute Local Validation
 
@@ -128,7 +137,7 @@ bash scripts/test-local-multi-backend.sh
 |-----------|------|-------------|
 | Lambda OTLP Shipper | `lambda/handler.py` | Reads S3 audit logs, maps to OTLP, sends via HTTP |
 | EMS Handler | `lambda/ems_handler.py` | Receives EMS webhook events, forwards as OTLP |
-| FPolicy Handler | `lambda/fpolicy_handler.py` | Receives FPolicy events from EventBridge, forwards as OTLP |
+| FPolicy Handler | `lambda/fpolicy_handler.py` | Receives FPolicy events from SQS (primary) or EventBridge (secondary), forwards as OTLP |
 | OTel Config (default) | `otel-collector-config.yaml` | Grafana Cloud + Honeycomb (otlp_http) |
 | OTel Config (Datadog) | `otel-collector-config-datadog.yaml` | Datadog exporter |
 | OTel Config (Triple) | `otel-collector-config-triple.yaml` | Datadog + Grafana + Honeycomb simultaneous |

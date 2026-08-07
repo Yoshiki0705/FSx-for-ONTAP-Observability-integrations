@@ -423,16 +423,17 @@ class TestLambdaHandler:
         body = result["body"]
         assert "error" in body
 
-    def test_api_key_retrieval_failure_returns_500(self, reset_fpolicy_handler, sample_fpolicy_create_event):
+    def test_api_key_retrieval_failure_propagates(self, reset_fpolicy_handler, sample_fpolicy_create_event):
+        """A Secrets Manager failure must fail the invocation, not be swallowed.
+
+        Returning an error dict would mark the invocation successful, so
+        EventBridge would not retry and the FPolicy event would be lost.
+        """
         handler = reset_fpolicy_handler
         with patch.object(handler.secrets_client, "get_secret_value") as mock_secrets:
             mock_secrets.side_effect = Exception("Access denied")
-            result = handler.lambda_handler(sample_fpolicy_create_event, None)
-
-        assert result["statusCode"] == 500
-        body = result["body"]
-        assert "error" in body
-        assert "API key" in body["error"]
+            with pytest.raises(Exception, match="Access denied"):
+                handler.lambda_handler(sample_fpolicy_create_event, None)
 
     def test_shipping_failure_returns_207(self, reset_fpolicy_handler, sample_fpolicy_create_event):
         """When shipping fails, handler returns 207."""
@@ -525,7 +526,7 @@ class TestSqsEventExtraction:
         assert result[0]["file_path"] == "valid.txt"
 
     def test_sqs_full_handler_flow(self, reset_fpolicy_handler):
-        """Full handler flow with SQS event → 200 with shipped count."""
+        """Full handler flow with SQS event → empty batchItemFailures."""
         handler = reset_fpolicy_handler
         sqs_event = {
             "Records": [
@@ -551,5 +552,130 @@ class TestSqsEventExtraction:
             with patch.object(handler.http, "request", return_value=mock_response):
                 result = handler.lambda_handler(sqs_event, None)
 
+        # ReportBatchItemFailures contract: empty list == whole batch succeeded
+        assert result == {"batchItemFailures": []}
+
+
+def _sqs_record(message_id: str, body: str) -> dict:
+    """Build a minimal SQS event source mapping record."""
+    return {"eventSource": "aws:sqs", "messageId": message_id, "body": body}
+
+
+class TestSqsPartialBatchFailure:
+    """SQS batches must report per-message failures, never drop events silently.
+
+    Without ReportBatchItemFailures semantics, returning a success response for a
+    batch tells SQS to delete every message in it — including ones that were
+    never shipped to Datadog. These tests pin the partial-failure contract.
+    """
+
+    @staticmethod
+    def _valid_body(file_path: str = "report.xlsx") -> str:
+        return json.dumps(
+            {
+                "operation_type": "create",
+                "file_path": file_path,
+                "vserver": "svm-prod",
+                "timestamp": "2026-08-07T09:00:00Z",
+                "protocol": "cifs",
+                "user": "jdoe",
+            }
+        )
+
+    def test_unparseable_message_reported_for_dlq_redrive(self, reset_fpolicy_handler):
+        """A malformed message is reported as failed so redrive moves it to the DLQ."""
+        handler = reset_fpolicy_handler
+        sqs_event = {
+            "Records": [
+                _sqs_record("msg-good", self._valid_body()),
+                _sqs_record("msg-bad", "{not valid json"),
+            ]
+        }
+        mock_response = MagicMock()
+        mock_response.status = 202
+
+        with patch.object(handler.secrets_client, "get_secret_value") as mock_secrets:
+            mock_secrets.return_value = {"SecretString": json.dumps({"api_key": "k"})}
+            with patch.object(handler.http, "request", return_value=mock_response):
+                result = handler.lambda_handler(sqs_event, None)
+
+        # Only the malformed message is retried; the good one is deleted.
+        assert result == {"batchItemFailures": [{"itemIdentifier": "msg-bad"}]}
+
+    def test_non_object_body_reported_as_failure(self, reset_fpolicy_handler):
+        """A JSON scalar body is valid JSON but not an FPolicy event."""
+        handler = reset_fpolicy_handler
+        sqs_event = {"Records": [_sqs_record("msg-scalar", json.dumps("just-a-string"))]}
+
+        with patch.object(handler.secrets_client, "get_secret_value") as mock_secrets:
+            mock_secrets.return_value = {"SecretString": json.dumps({"api_key": "k"})}
+            result = handler.lambda_handler(sqs_event, None)
+
+        assert result == {"batchItemFailures": [{"itemIdentifier": "msg-scalar"}]}
+
+    def test_delivery_failure_reports_all_parsed_messages(self, reset_fpolicy_handler):
+        """If Datadog delivery fails, every parsed message must be retried."""
+        handler = reset_fpolicy_handler
+        sqs_event = {
+            "Records": [
+                _sqs_record("msg-1", self._valid_body("a.txt")),
+                _sqs_record("msg-2", self._valid_body("b.txt")),
+            ]
+        }
+
+        with patch.object(handler.secrets_client, "get_secret_value") as mock_secrets:
+            mock_secrets.return_value = {"SecretString": json.dumps({"api_key": "k"})}
+            with patch.object(
+                handler, "_ship_to_datadog", side_effect=RuntimeError("intake 503")
+            ):
+                result = handler.lambda_handler(sqs_event, None)
+
+        assert result["batchItemFailures"] == [
+            {"itemIdentifier": "msg-1"},
+            {"itemIdentifier": "msg-2"},
+        ]
+
+    def test_secrets_failure_raises_so_whole_batch_is_retried(self, reset_fpolicy_handler):
+        """Secrets Manager failure is batch-wide and transient — fail the invocation."""
+        handler = reset_fpolicy_handler
+        sqs_event = {"Records": [_sqs_record("msg-1", self._valid_body())]}
+
+        with patch.object(handler.secrets_client, "get_secret_value") as mock_secrets:
+            mock_secrets.side_effect = Exception("throttled")
+            with pytest.raises(Exception, match="throttled"):
+                handler.lambda_handler(sqs_event, None)
+
+    def test_all_messages_succeed_returns_empty_failures(self, reset_fpolicy_handler):
+        """A fully successful batch reports no failures so all messages are deleted."""
+        handler = reset_fpolicy_handler
+        sqs_event = {
+            "Records": [
+                _sqs_record("msg-1", self._valid_body("a.txt")),
+                _sqs_record("msg-2", self._valid_body("b.txt")),
+            ]
+        }
+        mock_response = MagicMock()
+        mock_response.status = 202
+
+        with patch.object(handler.secrets_client, "get_secret_value") as mock_secrets:
+            mock_secrets.return_value = {"SecretString": json.dumps({"api_key": "k"})}
+            with patch.object(handler.http, "request", return_value=mock_response):
+                result = handler.lambda_handler(sqs_event, None)
+
+        assert result == {"batchItemFailures": []}
+
+    def test_eventbridge_event_still_returns_status_code(
+        self, reset_fpolicy_handler, sample_fpolicy_create_event
+    ):
+        """The EventBridge path keeps its statusCode contract (no SQS Records)."""
+        handler = reset_fpolicy_handler
+        mock_response = MagicMock()
+        mock_response.status = 202
+
+        with patch.object(handler.secrets_client, "get_secret_value") as mock_secrets:
+            mock_secrets.return_value = {"SecretString": json.dumps({"api_key": "k"})}
+            with patch.object(handler.http, "request", return_value=mock_response):
+                result = handler.lambda_handler(sample_fpolicy_create_event, None)
+
         assert result["statusCode"] == 200
-        assert result["body"]["shipped"] == 1
+        assert "batchItemFailures" not in result

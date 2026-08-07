@@ -4,7 +4,7 @@
 
 > 📖 **Shared docs**: [Delivery Guarantee Patterns](../../docs/en/delivery-guarantees.md) | [Webhook Security](../../docs/en/webhook-security.md)
 >
-> 📋 **Datadog docs**: [Production Checklist](docs/en/production-checklist.md) | [SPL vs CQL Comparison](docs/en/spl-cql-comparison.md) | [Field Mapping](docs/en/field-mapping.md) | [Setup Guide](docs/en/setup-guide.md)
+> 📋 **Datadog docs**: [Setup Guide](docs/en/setup-guide.md) | [EMS / FPolicy Setup](docs/en/ems-fpolicy-setup.md) | [Log Archive Setup](docs/en/log-archive-setup.md) | [Snapshot Remediation](docs/en/snapshot-remediation-setup.md) | [Field Mapping](docs/en/field-mapping.md) | [Production Checklist](docs/en/production-checklist.md) | [SPL vs CQL Comparison](docs/en/spl-cql-comparison.md)
 
 ## Overview
 
@@ -17,35 +17,86 @@ EC2-free integration that ships Amazon FSx for NetApp ONTAP audit logs to Datado
 ## Architecture
 
 ```
-FSx for ONTAP audit volume → FSx for ONTAP S3 Access Point → EventBridge Scheduler → Lambda → Datadog Logs API v2
+FSx for ONTAP audit volume
+  └─ FSx for ONTAP S3 AP ──┐
+                            │  (ListObjectsV2 + GetObject)
+   EventBridge Scheduler ───┴─→ Lambda shipper ──→ Datadog Logs API v2
+     (every 5 min)                  │
+                                    └─→ SSM Parameter (checkpoint)
 ```
+
+FSx for ONTAP S3 Access Points do not emit S3 Event Notifications, so the shipper
+polls on a schedule and tracks the last processed key in an SSM Parameter Store
+checkpoint. Only keys after the checkpoint are processed, so each rotated audit
+file is shipped once.
+
+Two optional real-time sources close the rotation-latency gap:
+
+| Source | Latency | Stack | Guide |
+|--------|---------|-------|-------|
+| Audit logs | Minutes (rotation + schedule) | `template.yaml` | [Setup Guide](docs/en/setup-guide.md) |
+| EMS webhooks | Seconds | `template-ems-fpolicy.yaml` | [EMS / FPolicy](docs/en/ems-fpolicy-setup.md) |
+| FPolicy | Sub-second | `template-ems-fpolicy.yaml` | [EMS / FPolicy](docs/en/ems-fpolicy-setup.md) |
 
 ## Quick Deploy
 
+The deploy script deploys the stack **and** uploads the real Lambda code.
+CloudFormation cannot inline a multi-hundred-line handler, so `template.yaml`
+ships a placeholder that raises `NotImplementedError` — deploying the template
+alone leaves a non-functional pipeline.
+
 ```bash
-aws cloudformation deploy \
-  --template-file template.yaml \
-  --stack-name fsxn-datadog-integration \
-  --parameter-overrides \
-    FsxS3AccessPointArn=arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit \
-    DatadogApiKeySecretArn=arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dd-api-key \
-    DatadogSite=ap1.datadoghq.com \
-  --capabilities CAPABILITY_NAMED_IAM
+export DATADOG_API_KEY_SECRET_ARN="arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:fsxn-datadog-api-key-XXXXXX"
+export FSX_S3_ACCESS_POINT_ARN="arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap"
+export DATADOG_SITE="ap1.datadoghq.com"
+
+bash scripts/deploy.sh          # audit log path only
+bash scripts/deploy.sh --all    # + EMS and FPolicy
+bash scripts/verify.sh          # confirm end to end
 ```
 
+To deploy by hand, see [Setup Guide Step 3.2](docs/en/setup-guide.md#32-alternative-deploy-cloudformation-by-hand)
+— and do not skip Step 3.3, which uploads the handler code.
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `deploy.sh` | Deploy stacks + upload real Lambda code (`--all`, `--code-only`) |
+| `verify.sh` | 4-stage post-deployment check: stack, code, invocation, intake |
+| `deploy-snapshot-remediation.sh` | Deploy the optional snapshot remediation Lambda |
+| `setup-full-observability.sh` | Configure Datadog: pipeline, facets, monitors, metrics, SDS |
+| `setup-facets.sh` | Facets only |
+| `create-alerts.sh` | Monitors only |
+| `create-dashboard.sh` | Dashboard only |
+| `cleanup.sh` | Delete stacks in dependency-safe order (`--all`, `--delete-log-archive`) |
+
 ## Parameters
+
+`template.yaml` — audit log shipper:
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | FsxS3AccessPointArn | ✅ | - | FSx for ONTAP S3 Access Point ARN (attached to audit volume) |
-| DatadogApiKeySecretArn | ✅ | - | Secrets Manager ARN for DD API key |
-| DatadogSite | ❌ | ap1.datadoghq.com | Datadog site region |
-| AuditLogPrefix | ❌ | audit/ | Key prefix for audit log files |
-| ScheduleRate | ❌ | rate(5 minutes) | How often to check for new audit logs |
+| DatadogApiKeySecretArn | ✅ | - | Secrets Manager ARN for the DD API key |
+| DatadogSite | ❌ | ap1.datadoghq.com | Datadog site; determines the intake endpoint |
+| AuditLogPrefix | ❌ | audit/ | Key prefix scanned within the access point |
+| ScheduleRate | ❌ | rate(5 minutes) | How often to poll for new audit logs |
+| MaxKeysPerRun | ❌ | 100 | Files per invocation; a larger backlog drains over several runs |
+| Environment | ❌ | production | Value of the `env:` tag and `DD_ENV` |
+| EnableGzip | ❌ | false | Gzip the payload — see the known issue below |
 | LogLevel | ❌ | INFO | Lambda log level |
 | LambdaMemorySize | ❌ | 256 | Lambda memory (MB) |
 | LambdaTimeout | ❌ | 300 | Lambda timeout (seconds) |
-| VpcEnabled | ❌ | false | Enable VPC config (requires NAT Gateway for S3 AP access) |
+| AlarmNotificationTopicArn | ❌ | `''` | SNS topic for the alarms. **Empty means nobody is notified** |
+| VpcEnabled | ❌ | false | Set `true` only for a VPC-origin access point |
+| VpcSubnetIds | ❌ | `''` | Required when `VpcEnabled=true` |
+| VpcSecurityGroupIds | ❌ | `''` | Required when `VpcEnabled=true` |
+
+Other stacks are documented in their own guides:
+[EMS / FPolicy](docs/en/ems-fpolicy-setup.md#parameter-reference),
+[Log Archive](docs/en/log-archive-setup.md#parameter-reference),
+[Snapshot Remediation](docs/en/snapshot-remediation-setup.md#parameter-reference).
 
 ## Datadog Sites
 
@@ -67,14 +118,59 @@ aws cloudformation deploy \
 
 ## Monitoring
 
-- CloudWatch Alarm: Lambda errors > 5 in 10 minutes
-- CloudWatch Alarm: Lambda throttling detected
-- CloudWatch Alarm: DLQ messages appearing
-- Dead Letter Queue: Failed events preserved for 14 days
+AWS-side pipeline health (Datadog-side monitors are covered further down):
+
+| Stack | Alarm | Condition |
+|-------|-------|-----------|
+| `template.yaml` | errors | Lambda errors > 5 in 10 minutes |
+| `template.yaml` | throttles | Lambda throttling detected |
+| `template.yaml` | dlq-messages | Messages appearing in the DLQ |
+| `template-ems-fpolicy.yaml` | ems-errors | EMS webhook Lambda failing (ONTAP receives 5xx) |
+| `template-ems-fpolicy.yaml` | fpolicy-errors / fpolicy-throttles / fpolicy-dlq-messages | FPolicy delivery problems |
+
+Dead Letter Queues retain failed events for 14 days. Replay procedure:
+[dlq-replay.md](../../docs/en/runbooks/dlq-replay.md).
+
+> **Alarms do not notify anyone unless `AlarmNotificationTopicArn` is set.**
+> Without it they are visible in the CloudWatch console only. This matters most
+> for the EMS path: EMS is invoked synchronously by API Gateway, so a Lambda DLQ
+> never applies and the alarm is the only signal that events are being lost.
+
+A CloudWatch dashboard (`<stack>-health`) is created with the main stack for
+Lambda errors, duration, invocations and DLQ depth.
 
 ## E2E Verification Results
 
-✅ **Verified on paid Datadog AP1 plan** (June 2026)
+✅ **Verified on paid Datadog AP1 plan** (June 2026, re-verified August 2026)
+
+### August 2026 re-verification — full documented path
+
+Ran the [Setup Guide](docs/en/setup-guide.md) start to finish against a live FSx
+for ONTAP file system to confirm a first-time reader can reproduce it:
+
+| Step | Result |
+|------|--------|
+| `aws fsx create-and-attach-s3-access-point` (Step 2, verbatim) | ✅ `AVAILABLE` in ~20s, `NetworkOrigin: Internet` |
+| `scripts/deploy.sh` (Step 3.1) | ✅ Stack + real Lambda code, 3-5 min |
+| `scripts/verify.sh` (Step 5.1) | ✅ 4/4 checks passed |
+| Namespaced ONTAP XML → Datadog | ✅ 2 files / 3 events shipped and indexed |
+| SSM checkpoint advance + idempotent re-run | ✅ Re-run is a no-op (no duplicates) |
+| EventBridge Scheduler self-firing | ✅ Automatic invocations at 5-min intervals |
+| Lambda errors during the run | ✅ 0 |
+| Access point resource policy required? | ✅ No — same-account IAM was sufficient |
+
+Two defects were found and fixed during this run:
+
+- **Namespaced XML collapsed into one record.** ONTAP writes the Windows Event
+  Log XML schema, so every element carries an `xmlns`. `iter("Event")` matched
+  nothing, and the fallback merged the whole file into a single log entry —
+  silently discarding every event but the last. Confirmed against live data: a
+  2-event file delivered 1 event before the fix and 2 after. The same defect was
+  present in `shared/lambda-layers/log-parser` (DOM path only) and
+  `integrations/crowdstrike`; all three are fixed with regression tests.
+- **Reusing an existing VPC-origin access point** produced
+  `AccessDenied ... explicit deny in a resource-based policy`, which reads like
+  an IAM problem. The guide now shows how to detect the origin before deploying.
 
 | Component | Status | Evidence |
 |-----------|--------|----------|
@@ -109,6 +205,18 @@ The pipeline (`FSx for ONTAP Audit Logs`) applies to logs matching `source:fsxn`
 2. **Status Remapper** — Maps `result` field to Datadog log status
 3. **Date Remapper** — Uses `timestamp` field as the log timestamp
 4. **Attribute Remapper** — Maps `user` → `usr.id`, `client_ip` → `network.client.ip`
+
+> **Two refinements to the above**, which the [Setup Guide](docs/en/setup-guide.md#42-create-the-log-pipeline)
+> covers in full:
+> - The Date Remapper (3) is redundant. The handler already sets the top-level
+>   `date` field, which Datadog uses natively.
+> - A Status Remapper (2) applied straight to `result` leaves failures at `info`,
+>   because ONTAP emits `Success` / `Failure` rather than Datadog status values.
+>   Map them with a Category Processor first, then remap — otherwise the events
+>   you most want to alert on are not marked as errors.
+>
+> No Grok Parser is needed: the handler ships structured JSON, so
+> `@attributes.*` fields are available without one.
 
 ## Security Monitors
 
@@ -224,15 +332,55 @@ The FSx for ONTAP Audit Log Overview dashboard includes:
 
 ![Enhanced Dashboard](screenshots/datadog-dashboard-enhanced.png)
 
-## Full Setup (One Script)
+## Datadog-side Setup (One Script)
 
-Deploy the complete observability stack (Pipeline + Monitors + Metrics + Scanner) with a single script:
+Configure the Datadog side — Pipeline, Facets, Monitors, Log-based Metrics and
+Sensitive Data Scanner rules — with a single script:
 
 ```bash
 export DD_API_KEY_SECRET_ID="fsxn-datadog-api-key"
-export DD_APP_KEY_SECRET_ID="datadog/fsxn-app-key"
+export DD_APP_KEY_SECRET_ID="datadog/fsxn-app-key"   # Application key, not the API key
 export DD_SITE="ap1.datadoghq.com"
 bash scripts/setup-full-observability.sh
 ```
 
-This creates everything in ~30 seconds via Datadog API. No manual UI clicks needed.
+This creates everything in ~30 seconds via the Datadog API. No manual UI clicks
+needed.
+
+> This script configures **Datadog only**. It does not deploy any AWS resources —
+> run `scripts/deploy.sh` first, or there will be no logs for the pipeline to
+> process.
+
+## Cleanup
+
+```bash
+bash scripts/cleanup.sh                        # stacks only
+bash scripts/cleanup.sh --all                  # + secret, layer, S3 test data
+bash scripts/cleanup.sh --delete-log-archive   # + log archive stack (bucket is retained)
+```
+
+Stacks are deleted in dependency-safe order: the EMS API Gateway stack must go
+before the stack that owns the EMS Lambda. The FSx for ONTAP S3 Access Point, the
+audit bucket and the shared FPolicy Fargate stack (`fsxn-fp-srv`) are shared
+resources and are not removed.
+
+## Optional Components
+
+| Component | Stack | Purpose |
+|-----------|-------|---------|
+| [EMS / FPolicy](docs/en/ems-fpolicy-setup.md) | `template-ems-fpolicy.yaml` | Real-time ONTAP system and file events |
+| [Log Archive](docs/en/log-archive-setup.md) | `template-log-archive.yaml` | S3 archival + rehydration for multi-year retention |
+| [Snapshot Remediation](docs/en/snapshot-remediation-setup.md) | `template-snapshot-remediation.yaml` | Datadog Workflow creates an ONTAP snapshot for evidence preservation |
+
+Snapshot remediation takes an action against production storage. It runs **inside
+the VPC** (the ONTAP management LIF has no internet path), unlike the audit
+shipper which runs outside it — do not copy network settings between the two.
+
+## Testing
+
+```bash
+python3 -m pytest integrations/datadog/tests/ -v
+cfn-lint integrations/datadog/template*.yaml
+cfn-guard validate -d integrations/datadog/template.yaml \
+  -r guard/rules/critical-security.guard --show-summary fail
+```

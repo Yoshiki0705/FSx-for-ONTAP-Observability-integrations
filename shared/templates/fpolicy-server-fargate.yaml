@@ -62,17 +62,139 @@ Parameters:
     Default: default
     Description: EventBridge bus name for FPolicy events
 
+  MaxReceiveCount:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 1000
+    Description: >-
+      Receives of a single FPolicy message before it is redriven to the dead
+      letter queue. AWS recommends at least 5: a receive is counted even when
+      the whole batch failed for an unrelated reason (throttling, a transient
+      backend error), so a low value sends healthy messages to the DLQ.
+      https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html
+
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when the DLQ or queue-backlog alarm
+      fires. Leave empty to create the alarms without notification actions —
+      they will be visible in the CloudWatch console but will not page anyone.
+
+  QueueAgeAlarmThresholdSeconds:
+    Type: Number
+    Default: 900
+    MinValue: 60
+    MaxValue: 43200
+    Description: >-
+      Age of the oldest unprocessed FPolicy message that triggers the backlog
+      alarm. This is the signal for a stalled consumer — most often a stale
+      Fargate task IP registered on the ONTAP external engine, or a vendor
+      Lambda that is failing every batch.
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
+
 Resources:
   # ============================================================
-  # SQS Queue for FPolicy events
+  # SQS Queue for FPolicy events (+ Dead Letter Queue)
+  #
+  # The redrive policy is what makes per-message failure handling safe. Vendor
+  # FPolicy Lambdas report individual failures via ReportBatchItemFailures, so a
+  # message that can never be parsed is retried rather than deleted. Without a
+  # redrive policy that message is retried forever: it blocks nothing (other
+  # messages still flow) but it is never surfaced and never drained.
+  #
   # ============================================================
+  FPolicyDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-fpolicy-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days (maximum)
+      KmsMasterKeyId: alias/aws/sqs
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Component
+          Value: fpolicy
+
   FPolicyQueue:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub "${AWS::StackName}-fpolicy-queue"
-      VisibilityTimeout: 300
+      # AWS recommends a visibility timeout of at least 6x the consuming
+      # function's timeout, so a throttled retry still has headroom. Vendor
+      # FPolicy Lambdas default to a 60s timeout, hence 360.
+      # Hard constraint: the function timeout must be <= this value, or Lambda
+      # rejects the event source mapping.
+      # https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html
+      VisibilityTimeout: 360
       MessageRetentionPeriod: 1209600
       KmsMasterKeyId: alias/aws/sqs
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FPolicyDeadLetterQueue.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Component
+          Value: fpolicy
+
+  # ============================================================
+  # CloudWatch Alarms — FPolicy delivery health
+  # ============================================================
+  FPolicyDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-fpolicy-dlq-messages"
+      AlarmDescription: >-
+        Messages in the FPolicy Dead Letter Queue — these file operation events
+        exhausted their retries and never reached the observability backend.
+        Runbook: docs/en/runbooks/dlq-replay.md
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FPolicyDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  # Detects a stalled consumer. Queue depth alone is a poor signal here because
+  # FPolicy traffic is bursty by nature — a deep queue that is draining is
+  # normal, a queue whose oldest message keeps ageing is not.
+  FPolicyQueueBacklogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-fpolicy-queue-backlog"
+      AlarmDescription: >-
+        FPolicy events are not being consumed. Most common cause: the Fargate
+        task restarted and ONTAP still points at the old task IP — re-register
+        with `bash shared/scripts/fpolicy-update-engine-ip.sh --auto`.
+        Otherwise check the vendor Lambda's error rate.
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FPolicyQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref QueueAgeAlarmThresholdSeconds
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   # ============================================================
   # ECS Cluster
@@ -248,8 +370,20 @@ Outputs:
     Value: !Ref FPolicyQueue
 
   FPolicyQueueArn:
-    Description: SQS Queue ARN
+    Description: >-
+      SQS Queue ARN. Pass this as FPolicySqsQueueArn when deploying a vendor
+      FPolicy stack so the event source mapping is created.
     Value: !GetAtt FPolicyQueue.Arn
+
+  FPolicyDeadLetterQueueUrl:
+    Description: >-
+      URL of the FPolicy Dead Letter Queue. Messages land here after 3 failed
+      receives. Replay procedure: docs/en/runbooks/dlq-replay.md
+    Value: !Ref FPolicyDeadLetterQueue
+
+  FPolicyDeadLetterQueueArn:
+    Description: ARN of the FPolicy Dead Letter Queue
+    Value: !GetAtt FPolicyDeadLetterQueue.Arn
 
   SecurityGroupId:
     Description: FPolicy Server Security Group ID

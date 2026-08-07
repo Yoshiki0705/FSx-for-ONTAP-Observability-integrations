@@ -32,9 +32,17 @@ Parameters:
     Default: 60
     MinValue: 10
     MaxValue: 300
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when the alarms in this stack fire.
+      Leave empty to create the alarms without notification actions — they will
+      be visible in the CloudWatch console but will not page anyone.
 
 Conditions:
   HasEmsParserLayer: !Not [!Equals [!Ref EmsParserLayerArn, '']]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
   EmsLambdaExecutionRole:
@@ -100,6 +108,10 @@ Resources:
       Threshold: 3
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
 Outputs:
   EmsHandlerFunctionArn:

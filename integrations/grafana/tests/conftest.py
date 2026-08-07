@@ -1,4 +1,6 @@
 """Pytest fixtures for Grafana integration tests."""
+
+
 import sys
 from pathlib import Path
 
@@ -58,3 +60,16 @@ def s3_event():
             }
         ]
     }
+
+
+# Make the shared ONTAP audit parser importable, mirroring how deploy.sh bundles
+# it next to the handler in the Lambda zip. Without this the handler falls back
+# to JSON-only parsing and the audit-format tests fail.
+# Imports are repeated locally so this block is self-contained regardless of
+# where it sits relative to the rest of the file's imports.
+import sys as _sys
+from pathlib import Path as _Path
+
+_shared_python_dir = str(_Path(__file__).resolve().parents[3] / "shared" / "python")
+if _shared_python_dir not in _sys.path:
+    _sys.path.insert(0, _shared_python_dir)

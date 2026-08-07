@@ -272,7 +272,7 @@ Lambda 内のパーサーは ONTAP XML 監査ログを以下のように処理�
 
 **入力** (ONTAP が出力する XML):
 ```xml
-<Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
   <System>
     <EventID>4663</EventID>
     <TimeCreated SystemTime="2026-06-06T01:55:00.000000Z"/>
@@ -294,6 +294,13 @@ Lambda 内のパーサーは ONTAP XML 監査ログを以下のように処理�
 2. `<TimeCreated SystemTime="...">` → `timestamp` に正規化
 3. 共通スキーマに変換 (user, path, event_type, result, client_ip, svm, operation)
 4. 元の全フィールドを `raw` に保持 → LogScale で詳細検索可能
+
+> **名前空間に関する補足**: ONTAP は Windows Event Log XML スキーマで出力するため、
+> 上記のとおり全要素に `xmlns="http://schemas.microsoft.com/win/2004/08/events/event"` が
+> 付きます。XML パーサーはタグ照合の前に名前空間を除去するため、名前空間付き・無しの
+> どちらの文書でも 1 つの `<Event>` が 1 レコードになります。
+> 動作確認用のフィクスチャを作る場合は、名前空間を含めてください。含めないと実際の
+> 入力を再現できません。
 
 **出力** (LogScale に送信される JSON):
 ```json

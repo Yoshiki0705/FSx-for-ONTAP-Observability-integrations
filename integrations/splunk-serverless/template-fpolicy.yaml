@@ -74,9 +74,17 @@ Parameters:
     MinValue: 10
     MaxValue: 900
     Description: Lambda function timeout in seconds
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when the alarms in this stack fire.
+      Leave empty to create the alarms without notification actions — they will
+      be visible in the CloudWatch console but will not page anyone.
 
 Conditions:
   HasFPolicySqsQueue: !Not [!Equals [!Ref FPolicySqsQueueArn, '']]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
   # ============================================================
@@ -237,6 +245,12 @@ Resources:
       FunctionName: !GetAtt FPolicyFunction.Arn
       BatchSize: 10
       Enabled: true
+      # Required for the handler's batchItemFailures response to take effect.
+      # Without it, SQS deletes every message in the batch as soon as the
+      # invocation returns without raising — silently dropping up to
+      # BatchSize events whenever Splunk HEC delivery fails.
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
 
   # ============================================================
   # CloudWatch Alarm for FPolicy handler errors
@@ -257,6 +271,35 @@ Resources:
       Threshold: 0
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  FPolicyDeadLetterQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-f-policy-dead-letter-queue-depth'
+      AlarmDescription: >-
+        Messages have landed in the FPolicyDeadLetterQueue dead-letter queue. Every message here
+        is telemetry that was never delivered. Drain it with the DLQ
+        replay runbook (docs/en/runbooks/dlq-replay.md) — messages are retained
+        for 14 days and are lost after that.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FPolicyDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
 Outputs:
   FPolicyLambdaFunctionArn:

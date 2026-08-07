@@ -745,7 +745,7 @@ aws lambda delete-layer-version --layer-name fsxn-shared-python --version-number
 - [デプロイメントガイド](deployment-guide.md) — VPC Endpoint 設定、パラメータファイル、デプロイ前検証を含む完全なデプロイ手順
 - [Verified-Clean Recovery Point ガイド](verified-recovery-point-guide.md) — インシデント後のスナップショット検証ワークフロー
 - [ARP インシデント対応ガイド](arp-incident-response-guide.md)
-- [EMS Webhook セットアップ](../integrations/datadog/docs/ja/ems-webhook-setup.md)
+- [EMS Webhook セットアップ](../../integrations/datadog/docs/ja/ems-fpolicy-setup.md)
 - [FPolicy 運用ノート](operational-notes-fpolicy.md)
 - [パイプライン SLO](pipeline-slo.md)
 - [CloudWatch Log Alarm ガイド](syslog-vpce-setup-guide.md)

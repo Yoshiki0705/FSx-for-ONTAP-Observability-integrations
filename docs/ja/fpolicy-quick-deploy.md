@@ -55,9 +55,28 @@ aws cloudformation deploy \
     SubnetIds=<your-private-subnet> \
     FsxnSvmSecurityGroupId=<fsx-svm-security-group-id> \
     ContainerImage=${ECR_URI}:latest \
+    AlarmNotificationTopicArn=<sns-topic-arn> \
   --capabilities CAPABILITY_NAMED_IAM \
   --region <your-region>
 ```
+
+このスタックは取り込みキューと**その DLQ** を作成します。ベンダー Lambda が処理できない
+メッセージは `MaxReceiveCount`（既定 5）回の受信後に DLQ へ退避され、無限リトライには
+なりません。DLQ にメッセージが入ると `FPolicyDLQAlarm` が発火します。
+
+`AlarmNotificationTopicArn` は任意ですが設定を推奨します。未設定の場合、DLQ アラームと
+バックログアラームは CloudWatch コンソールでしか確認できず、誰にも通知されません。
+
+| 出力 | 用途 |
+|------|------|
+| `FPolicyQueueArn` | ベンダースタックの `FPolicySqsQueueArn` に渡す（Step 4） |
+| `FPolicyDeadLetterQueueUrl` | バックエンドに届かなかったイベントの確認 |
+
+> **キューのタイミングに関する補足**: キューの可視性タイムアウトは 360 秒です。これは
+> ベンダー FPolicy Lambda の既定タイムアウト 60 秒の 6 倍で、AWS の推奨に沿っています。
+> ベンダー Lambda のタイムアウトを 360 秒より大きくする場合はこちらも引き上げてください。
+> 関数タイムアウトがキューの可視性タイムアウトを超えると Lambda がイベントソース
+> マッピングを拒否します。
 
 ## Step 4: Datadog シッピング Lambda デプロイ
 

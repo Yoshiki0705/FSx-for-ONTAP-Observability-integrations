@@ -1,3 +1,5 @@
+
+
 import sys
 from pathlib import Path
 
@@ -40,3 +42,26 @@ def sample_logs():
          "ObjectName": "/vol/data/file.txt", "Result": "Success"},
     ]
     return "\n".join(json.dumps(l) for l in logs)
+
+
+# Make the shared ONTAP audit parser importable, mirroring how deploy.sh bundles
+# it next to the handler in the Lambda zip. Without this the handler falls back
+# to JSON-only parsing and the audit-format tests fail.
+# Imports are repeated locally so this block is self-contained regardless of
+# where it sits relative to the rest of the file's imports.
+import sys as _sys
+from pathlib import Path as _Path
+
+_shared_python_dir = str(_Path(__file__).resolve().parents[3] / "shared" / "python")
+if _shared_python_dir not in _sys.path:
+    _sys.path.insert(0, _shared_python_dir)
+
+# The EMS handler delegates parsing to the ems_parser Lambda Layer. Adding the
+# layer's source to sys.path lets the EMS tests exercise the real parser instead
+# of the passthrough fallback.
+_ems_parser_dir = str(
+    _Path(__file__).resolve().parents[3]
+    / "shared" / "lambda-layers" / "ems-parser" / "python"
+)
+if _ems_parser_dir not in _sys.path:
+    _sys.path.insert(0, _ems_parser_dir)

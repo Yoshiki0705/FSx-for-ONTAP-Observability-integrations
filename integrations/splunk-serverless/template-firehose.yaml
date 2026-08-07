@@ -33,13 +33,32 @@ Parameters:
     Default: INFO
     AllowedValues: [DEBUG, INFO, WARNING, ERROR]
     Description: Log level for the transformation Lambda function
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when the alarms in this stack fire.
+      Leave empty to create the alarms without notification actions — they will
+      be visible in the CloudWatch console but will not page anyone.
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
   # ============================================================
   # S3 Backup Bucket for Failed Delivery Records
   # ============================================================
+  # Retained on stack deletion for two reasons:
+  #   1. This bucket holds the records Firehose could not deliver to Splunk HEC.
+  #      They are the only remaining copy, so deleting the stack must not
+  #      destroy them.
+  #   2. CloudFormation cannot delete a non-empty bucket. Without Retain, stack
+  #      deletion fails with DELETE_FAILED as soon as any delivery has failed.
+  # Delete it manually once the records have been recovered or written off.
   BackupBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub '${AWS::StackName}-backup-${AWS::AccountId}'
       BucketEncryption:
@@ -250,6 +269,10 @@ Resources:
       Threshold: 1.0
       ComparisonOperator: LessThanThreshold
       TreatMissingData: breaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
 Outputs:
   DeliveryStreamArn:

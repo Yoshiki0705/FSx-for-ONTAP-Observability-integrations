@@ -230,21 +230,36 @@ aws datasync create-task \
 FSx for ONTAP の S3 Access Point 機能（2025年リリース）を使用すると、ボリュームデータに直接 S3 API でアクセスできます。監査ログボリュームに S3 Access Point をアタッチすることで、Lambda から直接読み取り可能です。
 
 ```bash
-# FSx for ONTAP ボリュームに S3 Access Point を作成
-# （FSx コンソールまたは API 経由）
-aws fsx create-data-repository-association \
-  --file-system-id fs-0123456789abcdef0 \
-  --file-system-path /audit_logs \
-  --data-repository-configuration '{
-    "Type": "S3",
-    "AutoImportPolicy": {"Events": ["NEW", "CHANGED", "DELETED"]},
-    "AutoExportPolicy": {"Events": ["NEW", "CHANGED", "DELETED"]}
-  }' \
-  --batch-import-meta-data-on-create \
+aws fsx create-and-attach-s3-access-point \
+  --name fsxn-audit-ap \
+  --type ONTAP \
+  --ontap-configuration 'VolumeId=fsvol-0123456789abcdef0,FileSystemIdentity={Type=UNIX,UnixUser={Name=root}}' \
   --region ap-northeast-1
 ```
 
+`AVAILABLE` になったことを確認し ARN を記録します。これが各ベンダースタックの
+`S3AccessPointArn` / `FsxS3AccessPointArn` に渡す値です:
+
+```bash
+aws fsx describe-s3-access-point-attachments \
+  --names fsxn-audit-ap \
+  --region ap-northeast-1 \
+  --query 'S3AccessPointAttachments[0].{Lifecycle:Lifecycle,Arn:S3AccessPoint.ResourceARN}'
+```
+
+検証環境では約 20 秒で `AVAILABLE` になりました。
+
 > 📝 FSx for ONTAP S3 Access Point は通常の S3 Access Point とは異なります。FSx ボリュームに直接アタッチされ、NFS/SMB データに S3 API でアクセスできる機能です。
+>
+> 作成には上記の `fsx` API を使います。`aws s3control create-access-point`（S3 バケットを
+> 指す API）でも `aws fsx create-data-repository-association`（FSx for Lustre の S3 連携）
+> でも作成できません。
+
+**ネットワークオリジンは作成時に決まり、後から変更できません。** 上記のように
+`--s3-access-point 'VpcConfiguration={VpcId=...}'` を省略すると Internet オリジンの
+アクセスポイントになります。本統合群はこれを前提としており、シッパー Lambda は VPC 外で
+動作しインターネット経路でアクセスポイントに到達します。オリジンと Lambda 配置の
+組み合わせ一覧は[ベンダー統合のデプロイ](vendor-deployment-common.md)を参照してください。
 
 ---
 

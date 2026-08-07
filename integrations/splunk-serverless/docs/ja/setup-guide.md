@@ -73,6 +73,33 @@ aws secretsmanager get-secret-value \
 
 ## Step 3: CloudFormation デプロイ
 
+### 推奨: デプロイスクリプトを使う
+
+このスクリプトはスタックのデプロイと実 Lambda コードのアップロードを**両方**行います。
+CloudFormation テンプレートはハンドラをインラインに持てないため、1 ステップで動作する
+統合を得られる唯一の経路です。
+
+```bash
+export SPLUNK_SECRET_ARN="..."
+export S3_ACCESS_POINT_ARN="..."
+export SPLUNK_HEC_ENDPOINT="..."
+export S3_BUCKET_NAME="..."
+
+bash integrations/splunk-serverless/scripts/deploy.sh
+```
+
+初回は **3〜5 分**かかり、そのほとんどは CloudFormation が IAM ロール・Lambda・
+スケジューラ・アラームを作成する時間です。変更のないスタックへの再実行は数秒で
+終わります。対応する変数の一覧は `--help` で確認できます。
+
+`--all` を付けると EMS / FPolicy スタックも対象になります。
+
+> スクリプト実行前に `ALARM_TOPIC_ARN` に SNS トピック ARN を設定すると、CloudWatch
+> アラームが通知されるようになります。未設定の場合アラームは通知アクションなしで
+> 作成され、コンソールには表示されますが誰にも通知されません。
+
+### 代替: CloudFormation を手動でデプロイする
+
 ### 3.1 スタックのデプロイ
 
 ```bash
@@ -100,14 +127,57 @@ aws cloudformation describe-stacks \
 
 出力が `CREATE_COMPLETE` または `UPDATE_COMPLETE` であることを確認してください。
 
-### パラメータ説明
+### 実 Lambda コードのアップロード（必須）
 
-| パラメータ | 説明 |
-|-----------|------|
-| `S3AccessPointArn` | FSx for ONTAP 監査ログ用 S3 Access Point の ARN |
-| `SplunkHecTokenSecretArn` | Secrets Manager に保存した HEC トークンの ARN |
-| `SplunkHecEndpoint` | Splunk HEC エンドポイント URL（ポート 8088） |
-| `S3BucketName` | 監査ログが出力される S3 バケット名 |
+**スタックだけでは動作しません。** CloudFormation はこの規模のハンドラをインラインに
+書けないため、`template.yaml` は `NotImplementedError` を投げるプレースホルダを
+持っています。`scripts/deploy.sh` を使った場合はこの手順は済んでいます。手動で
+デプロイした場合は、ここで実行してください:
+
+```bash
+cd integrations/splunk-serverless/lambda
+zip -j function.zip handler.py ../../../shared/python/ontap_audit_parser.py
+
+aws lambda update-function-code \
+  --function-name fsxn-splunk-integration-shipper \
+  --zip-file fileb://function.zip \
+  --region ap-northeast-1
+
+aws lambda wait function-updated \
+  --function-name fsxn-splunk-integration-shipper \
+  --region ap-northeast-1
+```
+
+`-j` はパスを平坦化し、実行時に `ontap_audit_parser` が解決できるようにします。この
+ファイルを同梱しないとハンドラは JSON 専用の解析に静かにフォールバックし、ONTAP の
+監査ログ（常に XML か EVTX）はフィールド解析されずに配送されます。
+
+### パラメータリファレンス
+
+<!-- generated from template.yaml; keep in sync when parameters change -->
+
+Required:
+
+| Parameter | Description |
+|-----------|-------------|
+| `S3AccessPointArn` | ARN of the S3 Access Point for FSx for ONTAP audit logs |
+| `SplunkHecTokenSecretArn` | ARN of the Secrets Manager secret containing the Splunk HEC token |
+| `SplunkHecEndpoint` | Splunk HEC endpoint URL (e.g., https://splunk.example.com:8088) |
+| `S3BucketName` | S3 bucket name for event notification |
+| `EmsApiKeySecretArn` | ARN of the Secrets Manager secret containing the EMS webhook API key |
+
+Optional — the defaults work for most deployments:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `S3KeyPrefix` | `''` (empty) | S3 key prefix filter for audit log objects |
+| `SplunkIndex` | `fsxn_audit` | Splunk index for audit logs |
+| `SplunkSourcetype` | `fsxn:ontap:audit` | Splunk sourcetype assigned to every shipped audit event |
+| `VerifySSL` | `true` | Verify SSL certificates (set false for self-signed certs) |
+| `LogLevel` | `INFO` | Lambda log level. Use DEBUG when troubleshooting delivery |
+| `LambdaMemorySize` | `256` | Lambda memory in MB. Raise it if large EVTX files run out of memory |
+| `LambdaTimeout` | `300` | Lambda timeout in seconds. Must exceed the time needed to process one batch of files |
+| `AlarmNotificationTopicArn` | `''` (empty) | (Optional) SNS topic ARN notified when the alarms in this stack fire. Leave empty to create the alarms without notification actions — they will be visible in the CloudWatch console but will not page anyone. |
 
 ## Step 4: テストイベント送信
 
@@ -337,3 +407,40 @@ aws sqs get-queue-attributes \
   --attribute-names ApproximateNumberOfMessages \
   --region ap-northeast-1
 ```
+
+## デプロイの検証
+
+```bash
+bash integrations/splunk-serverless/scripts/verify.sh
+```
+
+2 層が順に実行されます。まず共有の AWS 側チェック（スタックが正常か、デプロイ済み
+Lambda がプレースホルダではなく実ハンドラか、スタックが作成する場合はスケジュールと
+チェックポイントが揃っているか）。次にベンダーのエンドポイントへ合成ログを送り、
+資格情報とネットワーク到達性を確認します。
+
+どちらも必要です。ベンダーのエンドポイントがテストログを受理しても、パイプラインが
+動いている保証にはなりません。そのため AWS 側が失敗した場合は、エンドポイントが
+正常応答していてもスクリプトは非ゼロで終了します。
+
+終了コードは `sysexits.h` 準拠で `0` 成功、`69` チェック失敗、`78` 必要な設定が
+不足。デプロイ前にベンダー疎通だけ試す場合は `SKIP_AWS_CHECKS=1` を設定します。
+
+## クリーンアップ
+
+```bash
+bash integrations/splunk-serverless/scripts/cleanup.sh          # スタックのみ
+bash integrations/splunk-serverless/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
+bash integrations/splunk-serverless/scripts/cleanup.sh --all -y  # 非対話
+```
+
+共有リソース（S3 アクセスポイント、監査ログバケット、FPolicy Fargate スタック、
+前提スタック）は削除されません。削除順と意図的に残すものについては
+[ベンダー統合のデプロイ](../../../../docs/ja/vendor-deployment-common.md)
+を参照してください。
+
+## 関連ドキュメント
+
+- [ベンダー統合のデプロイ](../../../../docs/ja/vendor-deployment-common.md) — 全ベンダー共通の手順
+- [前提条件](../../../../docs/ja/prerequisites.md) — FSx for ONTAP、監査ログ有効化、S3 アクセスポイント
+- [デプロイガイド](../../../../docs/ja/deployment-guide.md) — スタックカタログ、VPC エンドポイント競合、コスト

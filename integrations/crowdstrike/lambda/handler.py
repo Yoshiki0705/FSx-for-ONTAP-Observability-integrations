@@ -17,6 +17,20 @@ from typing import Any
 
 import boto3
 import urllib3
+from botocore.exceptions import ClientError
+
+# ─── ONTAP audit log parsing ────────────────────────────────────────────────
+# The shared parser is the single tested implementation of ONTAP's audit
+# formats. It handles namespaced Windows Event Log XML, EVTX detection, gzip,
+# unsuffixed rotations and single-line documents (where a declaration and the
+# content share one line — the local parsers below mishandled that case).
+# Imported defensively so a packaging miss degrades to the local parser instead
+# of breaking the function at import time.
+try:
+    from ontap_audit_parser import parse_audit_log as _parse_ontap_audit_log
+except ImportError:  # pragma: no cover - packaging fallback
+    _parse_ontap_audit_log = None
+
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -29,6 +43,21 @@ SOURCETYPE = os.environ.get("SOURCETYPE", "fsxn:audit")
 INDEX = os.environ.get("INDEX", "fsxn_audit")
 HEC_PATH = os.environ.get("HEC_PATH", "/api/v1/ingest/hec")
 
+# Key prefix to scan within the FSx for ONTAP S3 Access Point (e.g. "audit/").
+AUDIT_LOG_PREFIX = os.environ.get("AUDIT_LOG_PREFIX", "")
+
+# SSM Parameter Store name holding the last processed S3 key.
+# FSx for ONTAP S3 APs do not emit S3 Event Notifications, so the poller tracks
+# progress with a checkpoint instead of relying on event delivery.
+CHECKPOINT_PARAM_NAME = os.environ.get("CHECKPOINT_PARAM_NAME", "")
+
+# Upper bound on files handled per scheduled invocation.
+MAX_KEYS_PER_RUN = int(os.environ.get("MAX_KEYS_PER_RUN", "100"))
+
+# Stop starting new files when less than this much execution time remains, so
+# the checkpoint is always written before the runtime kills the invocation.
+SAFETY_THRESHOLD_MS = int(os.environ.get("SAFETY_THRESHOLD_MS", "30000"))
+
 MAX_BATCH_SIZE_BYTES = 5 * 1024 * 1024
 MAX_RETRIES = 3
 
@@ -37,6 +66,7 @@ logger.setLevel(getattr(logging, LOG_LEVEL))
 
 secrets_client = boto3.client("secretsmanager")
 s3_client = boto3.client("s3")
+ssm_client = boto3.client("ssm")
 http = urllib3.PoolManager(num_pools=4, maxsize=10, retries=urllib3.Retry(total=0))
 
 _token_cache = None
@@ -57,12 +87,55 @@ def get_ingest_token() -> str:
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Lambda handler for shipping audit logs to CrowdStrike LogScale."""
+    """Lambda handler for shipping audit logs to CrowdStrike LogScale.
+
+    Supports two invocation modes:
+
+    1. **Scheduler polling** (production path) — ``event["source"] == "scheduler"``.
+       FSx for ONTAP S3 Access Points do not support S3 Event Notifications, so
+       EventBridge Scheduler invokes this function periodically. New files are
+       discovered with ``ListObjectsV2`` and progress is tracked in an SSM
+       Parameter Store checkpoint.
+    2. **S3 event payload** (manual testing / backward compatibility) — the event
+       contains ``Records`` or ``detail``.
+    """
     logger.info("Processing event: %s", json.dumps(event, default=str))
-    invocation_start = time.time()
 
     token = get_ingest_token()
+
+    if event.get("source") == "scheduler":
+        keys = _list_new_keys(
+            event.get("prefix", AUDIT_LOG_PREFIX), _get_checkpoint()
+        )
+        return _process_keys(keys, token, context, advance_checkpoint=True)
+
     records = _extract_s3_records(event)
+    return _process_keys([r["key"] for r in records], token, context,
+                         advance_checkpoint=False)
+
+
+def _process_keys(
+    keys: list[str],
+    token: str,
+    context: Any = None,
+    advance_checkpoint: bool = False,
+) -> dict[str, Any]:
+    """Read, parse and ship the given S3 Access Point keys.
+
+    Processing stops at the first failing key when checkpointing, so the
+    checkpoint never advances past a file whose events were not delivered.
+    """
+    invocation_start = time.time()
+
+    if advance_checkpoint and len(keys) > MAX_KEYS_PER_RUN:
+        logger.warning(
+            "Backlog of %d files exceeds MAX_KEYS_PER_RUN=%d; processing the "
+            "oldest %d this run (remainder drains on the next schedule)",
+            len(keys), MAX_KEYS_PER_RUN, MAX_KEYS_PER_RUN,
+        )
+        keys = keys[:MAX_KEYS_PER_RUN]
+
+    records = [{"bucket": S3_ACCESS_POINT_ARN, "key": k} for k in keys]
 
     total_logs = 0
     total_shipped = 0
@@ -73,9 +146,25 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     max_log_file_age_seconds = 0.0
     errors: list[dict[str, str]] = []
 
-    for record in records:
+    last_processed_key = _get_checkpoint() if advance_checkpoint else ""
+    last_successful_key = last_processed_key
+
+    for idx, record in enumerate(records):
         bucket = record["bucket"]
         key = record["key"]
+
+        # Leave enough headroom to persist the checkpoint before the timeout.
+        if advance_checkpoint and context is not None and hasattr(
+            context, "get_remaining_time_in_millis"
+        ):
+            remaining_ms = context.get_remaining_time_in_millis()
+            if remaining_ms < SAFETY_THRESHOLD_MS:
+                logger.warning(
+                    "Stopping early: %dms remaining, %d file(s) deferred to next run",
+                    remaining_ms, len(records) - idx,
+                )
+                break
+
         logger.info("Processing: s3://%s/%s", bucket, key)
 
         try:
@@ -94,14 +183,25 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             shipped = _ship_to_logscale(hec_events, token)
             total_shipped += shipped
             files_processed += 1
-            if shipped > 0:
-                hec_success += 1
-            else:
+            if logs and shipped == 0:
+                # Events existed but none reached LogScale — do not checkpoint
+                # past this file.
                 hec_failure += 1
+                raise RuntimeError(
+                    f"LogScale delivery failed for {key} ({len(logs)} events)"
+                )
+            hec_success += 1
+            last_successful_key = key
         except Exception as e:
             logger.error("Failed: %s/%s: %s", bucket, key, str(e))
             errors.append({"bucket": bucket, "key": key, "error": str(e)})
             hec_failure += 1
+            if advance_checkpoint:
+                # Stop here: advancing past a failed file would drop its events.
+                break
+
+    if advance_checkpoint and last_successful_key != last_processed_key:
+        _set_checkpoint(last_successful_key)
 
     delivery_latency_ms = (time.time() - invocation_start) * 1000
 
@@ -117,12 +217,108 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         log_file_age_seconds=max_log_file_age_seconds,
     )
 
-    result = {
-        "statusCode": 200 if not errors else 207,
-        "body": {"total_logs": total_logs, "total_shipped": total_shipped, "errors": errors},
+    body: dict[str, Any] = {
+        "total_logs": total_logs,
+        "total_shipped": total_shipped,
+        "errors": errors,
     }
+    if advance_checkpoint:
+        body["new_files"] = files_scanned
+        body["processed_files"] = files_processed
+        body["checkpoint"] = last_successful_key
+
+    result = {"statusCode": 200 if not errors else 207, "body": body}
     logger.info("Complete: %s", json.dumps(result))
     return result
+
+
+# ─── Checkpoint management (SSM Parameter Store) ─────────────────────────────
+
+
+def _get_checkpoint() -> str:
+    """Retrieve the last processed S3 key from SSM Parameter Store.
+
+    Returns an empty string when no checkpoint exists yet, when the parameter
+    still holds the ``__INIT__`` sentinel written at stack creation, or when the
+    lookup fails — all of which mean "start from the beginning of the prefix".
+    """
+    if not CHECKPOINT_PARAM_NAME:
+        logger.warning(
+            "CHECKPOINT_PARAM_NAME is not set; every run will re-process the "
+            "whole prefix and duplicate events in LogScale"
+        )
+        return ""
+    try:
+        value = ssm_client.get_parameter(Name=CHECKPOINT_PARAM_NAME)["Parameter"]["Value"]
+        return "" if value == "__INIT__" else value
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ParameterNotFound":
+            logger.info("No checkpoint yet; starting from the beginning of the prefix")
+            return ""
+        logger.warning("Failed to read checkpoint: %s", str(e))
+        return ""
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Failed to read checkpoint: %s", str(e))
+        return ""
+
+
+def _set_checkpoint(key: str) -> None:
+    """Persist the last successfully processed S3 key.
+
+    A failure here is logged but not raised: the events were already delivered,
+    so failing the invocation would only re-ship them.
+    """
+    if not CHECKPOINT_PARAM_NAME:
+        return
+    try:
+        ssm_client.put_parameter(
+            Name=CHECKPOINT_PARAM_NAME, Value=key, Type="String", Overwrite=True
+        )
+        logger.info("Checkpoint updated: %s", key)
+    except Exception as e:
+        logger.error(
+            "Failed to update checkpoint to %s: %s — these files may be "
+            "re-shipped on the next run", key, str(e),
+        )
+
+
+def _list_new_keys(prefix: str, last_processed_key: str) -> list[str]:
+    """List S3 Access Point objects newer than the checkpoint.
+
+    ``ListObjectsV2`` returns keys in lexicographic order, so audit logs written
+    under a date-based prefix (``YYYY/MM/DD/``) are naturally chronological and
+    ``StartAfter`` can skip everything already processed server-side.
+    """
+    all_keys: list[str] = []
+    continuation_token: str | None = None
+
+    params: dict[str, Any] = {"Bucket": S3_ACCESS_POINT_ARN, "MaxKeys": 1000}
+    if prefix:
+        params["Prefix"] = prefix
+    if last_processed_key:
+        params["StartAfter"] = last_processed_key
+
+    logger.info(
+        "Scheduler mode: prefix=%s, checkpoint=%s", prefix, last_processed_key or "(none)"
+    )
+
+    while True:
+        if continuation_token:
+            params["ContinuationToken"] = continuation_token
+        response = s3_client.list_objects_v2(**params)
+        for obj in response.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith("/"):
+                continue  # Skip directory markers
+            all_keys.append(key)
+        if response.get("IsTruncated"):
+            continuation_token = response.get("NextContinuationToken")
+        else:
+            break
+
+    all_keys.sort()
+    logger.info("Found %d new audit log file(s) to process", len(all_keys))
+    return all_keys
 
 
 def _emit_pipeline_metrics(
@@ -193,6 +389,13 @@ def _extract_s3_records(event: dict[str, Any]) -> list[dict[str, str]]:
 
 def _parse_audit_logs(data: bytes, key: str) -> list[dict[str, Any]]:
     """Parse FSx for ONTAP audit logs (XML, JSON, or EVTX)."""
+    if _parse_ontap_audit_log is not None:
+        return _parse_ontap_audit_log(data, key)
+
+    logger.warning(
+        "ontap_audit_parser unavailable; using the local parser. Single-line XML "
+        "documents and some edge cases are not handled."
+    )
     if key.endswith(".xml") or (not key.endswith(".evtx") and data.strip()[:5] == b"<?xml"):
         return _parse_xml(data.decode("utf-8", errors="replace"))
     elif key.endswith(".json") or key.endswith(".json.gz"):
@@ -223,6 +426,17 @@ def _parse_xml(data: str) -> list[dict[str, Any]]:
                 data = f"<AuditEvents>{''.join(lines[1:])}</AuditEvents>"
 
         root = ET.fromstring(data)
+
+        # Strip XML namespaces before matching tag names.
+        #
+        # ONTAP writes audit logs in the Windows Event Log XML schema, so every
+        # element carries xmlns="http://schemas.microsoft.com/win/2004/08/events/event"
+        # and ElementTree reports the tag as "{uri}Event". Without this the
+        # iter("Event") below matches nothing and the file yields zero events.
+        for elem in root.iter():
+            if isinstance(elem.tag, str) and "}" in elem.tag:
+                elem.tag = elem.tag.split("}", 1)[1]
+
         for event_elem in root.iter("Event"):
             event = {}
             for child in event_elem.iter():

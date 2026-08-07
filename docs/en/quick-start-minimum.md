@@ -23,25 +23,36 @@ Ship audit events to Datadog with the simplest possible configuration.
 ## Steps
 
 ```bash
-# 1. Deploy (single command)
-aws cloudformation deploy \
-  --template-file integrations/datadog/template.yaml \
-  --stack-name fsxn-datadog-integration \
-  --parameter-overrides \
-    FsxS3AccessPointArn=<your-fsx-s3-ap-arn> \
-    DatadogApiKeySecretArn=<your-secret-arn> \
-    DatadogSite=<your-site> \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region <your-region>
+# 1. Deploy (single command — deploys the stack AND uploads the Lambda code)
+export DATADOG_API_KEY_SECRET_ARN=<your-secret-arn>
+export FSX_S3_ACCESS_POINT_ARN=<your-fsx-s3-ap-arn>
+export DATADOG_SITE=<your-site>
 
-# 2. Perform a test file operation on the audited share
+bash integrations/datadog/scripts/deploy.sh    # 3-5 minutes on first run
+
+# 2. Confirm the pipeline is wired end to end
+export DD_API_KEY_SECRET_ID=fsxn-datadog-api-key
+export DD_SITE=<your-site>
+
+bash integrations/datadog/scripts/verify.sh    # expect 4/4 checks passed
+
+# 3. Perform a test file operation on the audited share
 #    (create/delete a file via SMB or NFS)
 
-# 3. Wait 5-10 minutes
+# 4. Wait for ONTAP to rotate the audit log, then for the next 5-minute schedule
 
-# 4. Verify in Datadog
+# 5. Verify in Datadog
 #    Search: source:fsxn
 ```
+
+> **Do not deploy `template.yaml` on its own.** CloudFormation cannot inline the
+> handler, so the template ships a placeholder that raises `NotImplementedError`.
+> `deploy.sh` uploads the real code as its final step; without that step no log
+> ever arrives and step 5 cannot succeed. `verify.sh` check 2 detects this.
+
+If you prefer raw CloudFormation, see
+[Setup Guide Step 3](../../integrations/datadog/docs/en/setup-guide.md#step-3-deploy)
+— it covers both the manual deploy and the required code upload.
 
 ## Success Criteria
 

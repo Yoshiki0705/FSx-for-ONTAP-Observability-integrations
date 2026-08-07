@@ -469,3 +469,190 @@ class TestLambdaHandler:
 
         result = fpolicy_handler.lambda_handler(direct_event, None)
         assert result["statusCode"] == 200
+
+
+# ─── SQS event source mapping (primary FPolicy path) ───────────────────────
+
+
+def _sqs_record(message_id, detail):
+    """Build one SQS event source mapping record carrying an FPolicy event."""
+    return {
+        "messageId": message_id,
+        "eventSource": "aws:sqs",
+        "body": json.dumps(detail),
+    }
+
+
+SAMPLE_SQS_DETAIL_A = {
+    "operation_type": "create",
+    "file_path": "/vol/data/a.txt",
+    "user": "admin@corp.local",
+    "client_ip": "198.51.100.10",
+    "svm": "svm-prod-01",
+    "protocol": "cifs",
+    "timestamp": "2026-01-15T12:00:01Z",
+}
+
+SAMPLE_SQS_DETAIL_B = {
+    "operation_type": "write",
+    "file_path": "/vol/data/b.txt",
+    "user": "admin@corp.local",
+    "client_ip": "198.51.100.11",
+    "svm": "svm-prod-01",
+    "protocol": "nfs",
+    "timestamp": "2026-01-15T12:00:02Z",
+}
+
+
+class TestSqsBatchHandling:
+    """Tests for the SQS → Lambda → OTLP path.
+
+    Before partial batch failure support, an SQS batch fell through to the
+    EventBridge branch: ``event.get("detail", event)`` returned the whole SQS
+    envelope, so the handler shipped one meaningless record with
+    ``operation=unknown`` and silently dropped every real FPolicy event in the
+    batch. These tests pin the corrected behaviour.
+    """
+
+    @patch("fpolicy_handler.http")
+    def test_sqs_batch_returns_batch_item_failures_shape(self, mock_http):
+        """An SQS batch returns the ReportBatchItemFailures response shape."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_http.request.return_value = mock_response
+
+        event = {
+            "Records": [
+                _sqs_record("m1", SAMPLE_SQS_DETAIL_A),
+                _sqs_record("m2", SAMPLE_SQS_DETAIL_B),
+            ]
+        }
+
+        result = fpolicy_handler.lambda_handler(event, None)
+
+        assert result == {"batchItemFailures": []}
+        assert "statusCode" not in result
+
+    @patch("fpolicy_handler.http")
+    def test_every_sqs_message_is_shipped(self, mock_http):
+        """Each SQS message produces its own OTLP request — none are dropped."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_http.request.return_value = mock_response
+
+        event = {
+            "Records": [
+                _sqs_record("m1", SAMPLE_SQS_DETAIL_A),
+                _sqs_record("m2", SAMPLE_SQS_DETAIL_B),
+            ]
+        }
+
+        fpolicy_handler.lambda_handler(event, None)
+
+        assert mock_http.request.call_count == 2
+
+    @patch("fpolicy_handler.http")
+    def test_sqs_message_fields_reach_otlp_attributes(self, mock_http):
+        """The FPolicy fields from the SQS body land in OTLP attributes.
+
+        Guards against regressing to the old behaviour where the SQS envelope
+        was shipped and every field came out as "unknown".
+        """
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_http.request.return_value = mock_response
+
+        event = {"Records": [_sqs_record("m1", SAMPLE_SQS_DETAIL_A)]}
+
+        fpolicy_handler.lambda_handler(event, None)
+
+        sent = json.loads(mock_http.request.call_args[1]["body"])
+        records = sent["resourceLogs"][0]["scopeLogs"][0]["logRecords"]
+        attrs = {a["key"]: a["value"]["stringValue"] for a in records[0]["attributes"]}
+        assert attrs["operation_type"] == "create"
+        assert attrs["file_path"] == "/vol/data/a.txt"
+        assert attrs["client_ip"] == "198.51.100.10"
+
+    @patch("fpolicy_handler.http")
+    def test_otlp_failure_reports_only_the_failing_message(self, mock_http):
+        """A per-message delivery failure reports just that message."""
+        ok = MagicMock()
+        ok.status = 200
+        bad = MagicMock()
+        bad.status = 500
+        bad.data = b"Error"
+        # First message succeeds; the second exhausts its retries.
+        mock_http.request.side_effect = [ok, bad, bad, bad]
+
+        event = {
+            "Records": [
+                _sqs_record("m1", SAMPLE_SQS_DETAIL_A),
+                _sqs_record("m2", SAMPLE_SQS_DETAIL_B),
+            ]
+        }
+
+        with patch("fpolicy_handler.time.sleep"):
+            result = fpolicy_handler.lambda_handler(event, None)
+
+        assert result["batchItemFailures"] == [{"itemIdentifier": "m2"}]
+
+    @patch("fpolicy_handler.http")
+    def test_unparseable_message_reported_for_dlq_redrive(self, mock_http):
+        """A malformed body is reported so the redrive policy sends it to the DLQ."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_http.request.return_value = mock_response
+
+        event = {
+            "Records": [
+                {"messageId": "bad", "eventSource": "aws:sqs", "body": "not json {{"},
+                _sqs_record("good", SAMPLE_SQS_DETAIL_A),
+            ]
+        }
+
+        result = fpolicy_handler.lambda_handler(event, None)
+
+        assert result["batchItemFailures"] == [{"itemIdentifier": "bad"}]
+        # The well-formed message was still delivered.
+        assert mock_http.request.call_count == 1
+
+    @patch("fpolicy_handler.http")
+    def test_non_object_body_reported_as_failure(self, mock_http):
+        """A JSON body that is not an object cannot be mapped, so it is reported."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_http.request.return_value = mock_response
+
+        event = {
+            "Records": [
+                {"messageId": "arr", "eventSource": "aws:sqs", "body": "[1, 2, 3]"}
+            ]
+        }
+
+        result = fpolicy_handler.lambda_handler(event, None)
+
+        assert result["batchItemFailures"] == [{"itemIdentifier": "arr"}]
+        mock_http.request.assert_not_called()
+
+    @patch("fpolicy_handler.http")
+    def test_eventbridge_event_keeps_status_code_contract(self, mock_http):
+        """Non-SQS payloads still return the statusCode response shape."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_http.request.return_value = mock_response
+
+        result = fpolicy_handler.lambda_handler(SAMPLE_FILE_CREATE_EVENT, None)
+
+        assert result["statusCode"] == 200
+        assert "batchItemFailures" not in result
+
+    @patch("fpolicy_handler.http")
+    def test_empty_records_list_uses_eventbridge_path(self, mock_http):
+        """An empty Records list is not an SQS batch, so it takes the other path."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_http.request.return_value = mock_response
+
+        result = fpolicy_handler.lambda_handler({"Records": []}, None)
+
+        assert "batchItemFailures" not in result

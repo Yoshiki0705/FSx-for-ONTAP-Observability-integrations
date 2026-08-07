@@ -34,6 +34,18 @@ import urllib3
 from otlp_auth import build_auth_headers, validate_auth_mode_header, validate_extra_headers_json
 from otlp_protobuf import encode_logs_data
 
+# ─── ONTAP audit log parsing ────────────────────────────────────────────────
+# ONTAP writes audit logs as EVTX or XML (vserver audit create -format), never
+# JSON. The shared parser handles namespaced Windows Event Log XML, EVTX
+# detection and JSON, and normalizes field names. Imported defensively so a
+# packaging miss degrades to the JSON-only fallback instead of breaking the
+# function at import time.
+try:
+    from ontap_audit_parser import parse_audit_log as _parse_ontap_audit_log
+except ImportError:  # pragma: no cover - packaging fallback
+    _parse_ontap_audit_log = None
+
+
 # ─── Configuration from environment ────────────────────────────────────────
 
 OTLP_ENDPOINT = os.environ.get("OTLP_ENDPOINT", "http://localhost:4318")
@@ -352,7 +364,12 @@ def _parse_json_logs(data: str) -> list[dict[str, Any]]:
 
 
 def _parse_audit_logs(data: bytes, key: str) -> list[dict[str, Any]]:
-    """Parse FSx for ONTAP audit logs based on file extension.
+    """Parse an FSx for ONTAP audit log file into normalized events.
+
+    Delegates to the shared ONTAP parser, which understands the EVTX and XML
+    formats ONTAP actually writes (`vserver audit create -format {evtx|xml}`).
+    The previous JSON-only implementation dropped every non-JSON line, so an XML
+    audit log yielded zero events with nothing but a debug log to show for it.
 
     Args:
         data: Raw file content.
@@ -361,7 +378,13 @@ def _parse_audit_logs(data: bytes, key: str) -> list[dict[str, Any]]:
     Returns:
         List of parsed log events.
     """
-    # For this integration, we support JSON format
+    if _parse_ontap_audit_log is not None:
+        return _parse_ontap_audit_log(data, key)
+
+    logger.warning(
+        "ontap_audit_parser unavailable; falling back to JSON-only parsing. "
+        "XML/EVTX audit logs will NOT be parsed into fields."
+    )
     text = data.decode("utf-8", errors="replace")
     return _parse_json_logs(text)
 

@@ -1,11 +1,17 @@
 """Pytest configuration and shared fixtures for Datadog integration tests."""
 
+
 import sys
 from pathlib import Path
 
 # Isolate this vendor's handler module: purge any previously cached handler
 # so that `import handler` in test files resolves to THIS vendor's lambda/.
-_handler_modules = ["handler", "ems_handler", "fpolicy_handler"]
+_handler_modules = [
+    "handler",
+    "ems_handler",
+    "fpolicy_handler",
+    "snapshot_remediation",
+]
 for _m in _handler_modules:
     sys.modules.pop(_m, None)
 _lambda_dir = str(Path(__file__).parent.parent / "lambda")
@@ -26,9 +32,12 @@ def env_vars(monkeypatch):
     monkeypatch.setenv("API_KEY_SECRET_ARN", "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dd-api-key")
     monkeypatch.setenv("S3_ACCESS_POINT_ARN", "arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
-    monkeypatch.setenv("DD_SOURCE", "fsxn")
-    monkeypatch.setenv("DD_SERVICE", "ontap-audit")
     monkeypatch.setenv("ENV", "test")
+    # DD_SOURCE / DD_SERVICE are deliberately NOT set here. All three handlers
+    # read them at import time with per-handler defaults (fsxn / fsxn-ems /
+    # fsxn-fpolicy), and a single shared value would silently override the EMS
+    # and FPolicy defaults that the log pipeline and facets filter on.
+    # Tests that need a non-default value patch the module attribute directly.
 
 
 @pytest.fixture
@@ -125,3 +134,16 @@ def mock_boto3_clients():
             "SecretString": json.dumps({"api_key": "test-dd-api-key-12345"})
         }
         yield {"s3": mock_s3, "secrets": mock_secrets}
+
+
+# Make the shared ONTAP audit parser importable, mirroring how deploy.sh bundles
+# it next to the handler in the Lambda zip. Without this the handler falls back
+# to JSON-only parsing and the audit-format tests fail.
+# Imports are repeated locally so this block is self-contained regardless of
+# where it sits relative to the rest of the file's imports.
+import sys as _sys
+from pathlib import Path as _Path
+
+_shared_python_dir = str(_Path(__file__).resolve().parents[3] / "shared" / "python")
+if _shared_python_dir not in _sys.path:
+    _sys.path.insert(0, _shared_python_dir)

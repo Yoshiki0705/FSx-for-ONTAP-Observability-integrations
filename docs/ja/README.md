@@ -5,14 +5,14 @@
 
 🌐 **日本語** | [English](../en/README.md)
 
-> Amazon FSx for NetApp ONTAP の監査ログ・EMS イベント・FPolicy ファイル操作を 9 つの Observability ベンダーへ EC2 不要で配信するサーバーレスパターン集。FSx for ONTAP S3 Access Points 経由。AWS + ストレージ運用チーム向けコミュニティリファレンス実装。
+> Amazon FSx for NetApp ONTAP の監査ログを 9 つの Observability ベンダーへ、さらに EMS イベントと FPolicy ファイル操作をそのうち 9 ベンダーへ、EC2 不要で配信するサーバーレスパターン集。FSx for ONTAP S3 Access Points 経由。AWS + ストレージ運用チーム向けコミュニティリファレンス実装。ベンダーごとの内訳は[テレメトリ経路のカバレッジ](#テレメトリ経路のカバレッジ)を参照。
 
 ## はじめる
 
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
 | パイプラインを E2E で検証（初回） | [最小テストパス](quick-start-minimum.md) | 15 分 |
-| ベンダー統合を本番デプロイ | [デプロイガイド](../../docs/en/deployment-guide.md) | 30 分 |
+| ベンダー統合を本番デプロイ | [デプロイガイド](deployment-guide.md) | 30 分 |
 | ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
 | 複数バックエンドにリダクション付きルーティング | [OTel Collector](../../integrations/otel-collector/) | 45 分 |
 | ブラウザ GUI で FSx for ONTAP を管理 | [Management Console](../../management-console/) · [Decision Tree](decision-tree-management-monitoring.md) | 30 分 |
@@ -59,6 +59,39 @@
 | [自動インシデント対応](automated-response-guide.md) | ✅ E2E 検証済み | ストレージ層 block/snapshot |
 | [Mackerel](../../integrations/mackerel/) | ✅ E2E 検証済み（オープンβ） | OTLP/HTTP ログ |
 
+### テレメトリ経路のカバレッジ
+
+FSx for ONTAP は 3 種類のテレメトリを出力し、それぞれ専用のハンドラが必要です。
+監査ログは全ベンダーで対応済み、EMS と FPolicy は一部ベンダーで実装済みです。
+
+| ベンダー | 監査ログ | EMS イベント | FPolicy ファイル操作 |
+|----------|:--------:|:------------:|:--------------------:|
+| [Datadog](../../integrations/datadog/) | ✅ | ✅ | ✅ |
+| [Splunk (Serverless)](../../integrations/splunk-serverless/) | ✅ | ✅ | ✅ |
+| [OTel Collector](../../integrations/otel-collector/) | ✅ | ✅ | ✅ |
+| [Grafana Cloud](../../integrations/grafana/) | ✅ | ✅ | ✅ |
+| [New Relic](../../integrations/new-relic/) | ✅ | ✅ | ✅ |
+| [Elastic](../../integrations/elastic/) | ✅ | ✅ | ✅ |
+| [Dynatrace](../../integrations/dynatrace/) | ✅ | ✅ | ✅ |
+| [Sumo Logic](../../integrations/sumo-logic/) | ✅ | ✅ | ✅ |
+| [Honeycomb](../../integrations/honeycomb/) | ✅ | ✅ | ✅ |
+| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/) | ✅ | — | — |
+
+`—` はその経路のハンドラが未実装であることを示します。`scripts/deploy.sh` は該当
+スタックをスキップして理由を出力します。プレースホルダ Lambda をデプロイすると
+イベントを受け取ったうえで全件破棄することになるためです。
+
+CrowdStrike は `template-ems.yaml` / `template-fpolicy.yaml` 自体を持たないため、
+スキップ対象もありません。現時点で EMS / FPolicy イベントを送る場合は、
+[OTel Collector](../../integrations/otel-collector/) 統合を取り込み口として使い、
+LogScale を OTLP エクスポータのバックエンドとして設定してください。
+
+全経路対応の 9 ベンダーは共通の実装を共有しています。`shared/python/ems_event.py`
+が API Gateway からの抽出とパーサ委譲、`shared/python/fpolicy_event.py` が SQS の
+バッチ管理と `batchItemFailures`、`shared/python/vendor_shipper.py` がリトライ方針・
+資格情報キャッシュ・バッチ分割を担当し、各ベンダーはペイロード形式とエンドポイント
+だけを提供します。
+
 </details>
 
 <details><summary>⚠️ 制約・注意事項</summary>
@@ -71,7 +104,7 @@
 | VPC Lambda + Gateway Endpoint は Internet-origin AP でタイムアウトの可能性 | デプロイが無言で失敗 | VPC 外 Lambda または NAT 使用 |
 | S3 AP の PutObject 上限 5 GB | 大容量書き込み不可 | 5 GB 以内のマルチパート |
 
-詳細: [S3 AP 仕様](s3ap-fsxn-specification.md) · [デプロイガイド — VPC Endpoint マトリクス](../../docs/en/deployment-guide.md)
+詳細: [S3 AP 仕様](s3ap-fsxn-specification.md) · [デプロイガイド — VPC Endpoint マトリクス](deployment-guide.md)
 
 </details>
 
@@ -81,7 +114,7 @@
 
 | カテゴリ | 主要ドキュメント |
 |----------|--------------|
-| はじめに | [前提条件](prerequisites.md) · [デプロイガイド](../../docs/en/deployment-guide.md) · [ONTAP 監査設定](ontap-audit-setup.md) |
+| はじめに | [前提条件](prerequisites.md) · [ベンダー統合のデプロイ](vendor-deployment-common.md) · [デプロイガイド](deployment-guide.md) · [ONTAP 監査設定](ontap-audit-setup.md) |
 | アーキテクチャ | [アーキテクチャ](architecture.md) · [イベントソース](event-sources.md) · [S3 AP 仕様](s3ap-fsxn-specification.md) |
 | 運用 | [パイプライン SLO](../en/pipeline-slo.md) · [運用ガイド](operational-guide.md) · [Runbooks](../en/runbooks/) |
 | セキュリティ | [サイバーレジリエンスマップ](cyber-resilience-capability-map.md) · [自動インシデント対応](automated-response-guide.md) · [データ分類](../en/data-classification.md) |

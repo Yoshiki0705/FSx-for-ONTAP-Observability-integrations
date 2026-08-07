@@ -94,11 +94,74 @@ Parameters:
     MaxValue: 900
     Description: Lambda function timeout in seconds
 
+  SqsBatchSize:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 10000
+    Description: >-
+      Number of FPolicy SQS messages delivered to the Lambda per invocation.
+      Partial failures are reported per message (ReportBatchItemFailures), so a
+      larger batch does not risk re-delivering successfully shipped events.
+
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when an error or DLQ alarm fires.
+      Leave empty to create the alarms without notification actions — they will
+      be visible in the CloudWatch console but will not page anyone.
+
 Conditions:
   HasEmsParserLayer: !Not [!Equals [!Ref EmsParserLayerArn, '']]
   HasFPolicySqsQueue: !Not [!Equals [!Ref FPolicySqsQueueArn, '']]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
+  # ============================================================
+  # Dead Letter Queue — asynchronous FPolicy invocations
+  #
+  # Scope note: this DLQ only captures the EventBridge (asynchronous) path.
+  #   - SQS path      : failures are reported per message via
+  #                     ReportBatchItemFailures and redriven by the ingestion
+  #                     queue's own RedrivePolicy (see fpolicy-apigw.yaml).
+  #   - EventBridge   : after 2 automatic retries the invocation lands here.
+  #   - EMS webhook   : invoked synchronously by API Gateway, so Lambda
+  #                     DeadLetterConfig never applies — an EMS failure surfaces
+  #                     as a 5xx to ONTAP and is caught by EmsErrorAlarm instead.
+  # ============================================================
+  FPolicyDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-fpolicy-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days (maximum)
+      KmsMasterKeyId: alias/aws/sqs
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  # Allows the EventBridge rule to write undeliverable events to the DLQ.
+  # Without this policy EventBridge silently drops them.
+  FPolicyDeadLetterQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref FPolicyDeadLetterQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowEventBridgeDeadLetterDelivery
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt FPolicyDeadLetterQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt FPolicyEventBridgeRule.Arn
+
   # ============================================================
   # CloudWatch Log Groups
   # ============================================================
@@ -211,6 +274,15 @@ Resources:
                   Resource:
                     - !Ref FPolicySqsQueueArn
           - !Ref AWS::NoValue
+        - PolicyName: SQSDeadLetterWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !GetAtt FPolicyDeadLetterQueue.Arn
       Tags:
         - Key: Project
           Value: fsxn-observability
@@ -246,14 +318,17 @@ Resources:
           ENABLE_GZIP: !Ref EnableGzip
       LoggingConfig:
         LogGroup: !Ref EmsLogGroup
+      # Placeholder only. CloudFormation cannot inline the full handler, so the
+      # real lambda/ems_handler.py must be uploaded after the stack is created.
+      # `scripts/deploy.sh` does this automatically as its final step.
       Code:
         ZipFile: |
-          # Placeholder - deploy actual code via CI/CD or:
-          #   aws lambda update-function-code \
-          #     --function-name <function-name> \
-          #     --zip-file fileb://lambda-package.zip
           def lambda_handler(event, context):
-              raise NotImplementedError("Deploy actual ems_handler code")
+              raise NotImplementedError(
+                  "Placeholder code is still deployed. Upload the real "
+                  "ems_handler: bash integrations/datadog/scripts/deploy.sh "
+                  "(or see docs/en/ems-fpolicy-setup.md)"
+              )
       Tags:
         - Key: Project
           Value: fsxn-observability
@@ -274,6 +349,9 @@ Resources:
       MemorySize: !Ref LambdaMemorySize
       Timeout: !Ref LambdaTimeout
       Role: !GetAtt FPolicyLambdaRole.Arn
+      # Applies to the asynchronous EventBridge path only (see DLQ scope note).
+      DeadLetterConfig:
+        TargetArn: !GetAtt FPolicyDeadLetterQueue.Arn
       Environment:
         Variables:
           DATADOG_SITE: !Ref DatadogSite
@@ -285,14 +363,17 @@ Resources:
           ENABLE_GZIP: !Ref EnableGzip
       LoggingConfig:
         LogGroup: !Ref FPolicyLogGroup
+      # Placeholder only. CloudFormation cannot inline the full handler, so the
+      # real lambda/fpolicy_handler.py must be uploaded after the stack is created.
+      # `scripts/deploy.sh` does this automatically as its final step.
       Code:
         ZipFile: |
-          # Placeholder - deploy actual code via CI/CD or:
-          #   aws lambda update-function-code \
-          #     --function-name <function-name> \
-          #     --zip-file fileb://lambda-package.zip
           def lambda_handler(event, context):
-              raise NotImplementedError("Deploy actual fpolicy_handler code")
+              raise NotImplementedError(
+                  "Placeholder code is still deployed. Upload the real "
+                  "fpolicy_handler: bash integrations/datadog/scripts/deploy.sh "
+                  "(or see docs/en/ems-fpolicy-setup.md)"
+              )
       Tags:
         - Key: Project
           Value: fsxn-observability
@@ -315,6 +396,14 @@ Resources:
       Targets:
         - Id: FPolicyDatadogLambda
           Arn: !GetAtt FPolicyLambdaFunction.Arn
+          # Captures events EventBridge could not deliver to Lambda at all
+          # (e.g. throttling, permission errors) — complements the Lambda DLQ,
+          # which captures failures that happen inside the function.
+          DeadLetterConfig:
+            Arn: !GetAtt FPolicyDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 3
+            MaximumEventAgeInSeconds: 3600
 
   FPolicyLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -334,8 +423,112 @@ Resources:
     Properties:
       EventSourceArn: !Ref FPolicySqsQueueArn
       FunctionName: !GetAtt FPolicyLambdaFunction.Arn
-      BatchSize: 10
+      BatchSize: !Ref SqsBatchSize
       Enabled: true
+      # Required for fpolicy_handler's per-message failure reporting. Without
+      # this, the handler's batchItemFailures response is ignored and a single
+      # failed message causes the entire batch to be re-delivered.
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+
+  # ============================================================
+  # CloudWatch Alarms
+  # ============================================================
+  # EMS is invoked synchronously by API Gateway, so there is no DLQ to watch —
+  # this alarm is the only signal that ONTAP EMS events are being rejected.
+  EmsErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-ems-errors'
+      AlarmDescription: >-
+        EMS webhook Lambda is failing; ONTAP is receiving 5xx from API Gateway
+        and EMS events are being lost. Runbook: docs/en/runbooks/lambda-errors.md
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref EmsLambdaFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  FPolicyErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-fpolicy-errors'
+      AlarmDescription: >-
+        FPolicy Lambda error rate exceeded threshold. On the SQS path this means
+        messages are being retried and will reach the ingestion DLQ.
+        Runbook: docs/en/runbooks/lambda-errors.md
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FPolicyLambdaFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  FPolicyThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-fpolicy-throttles'
+      AlarmDescription: >-
+        FPolicy Lambda is being throttled. FPolicy events arrive at file-operation
+        rate, so sustained throttling causes SQS backlog growth and eventual
+        message expiry.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref FPolicyLambdaFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  FPolicyDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-fpolicy-dlq-messages'
+      AlarmDescription: >-
+        Messages in the FPolicy Dead Letter Queue — these file operation events
+        never reached Datadog. Runbook: docs/en/runbooks/dlq-replay.md
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FPolicyDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
 Outputs:
   EmsLambdaFunctionArn:
@@ -351,3 +544,13 @@ Outputs:
   FPolicyEventBridgeRuleArn:
     Description: ARN of the EventBridge rule routing FPolicy events to Lambda
     Value: !GetAtt FPolicyEventBridgeRule.Arn
+
+  FPolicyDeadLetterQueueUrl:
+    Description: >-
+      URL of the FPolicy Dead Letter Queue (asynchronous EventBridge path).
+      Replay procedure: docs/en/runbooks/dlq-replay.md
+    Value: !Ref FPolicyDeadLetterQueue
+
+  FPolicyDeadLetterQueueArn:
+    Description: ARN of the FPolicy Dead Letter Queue
+    Value: !GetAtt FPolicyDeadLetterQueue.Arn

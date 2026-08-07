@@ -152,6 +152,24 @@ Lambda は実行コンテキストごとに API キーをキャッシュしま�
 
 ## アップグレード戦略
 
+デプロイスクリプトは両方のステップを実行し、新しいコードが有効になるまで待機します。
+アップグレードではこの挙動が望ましいです。
+
+```bash
+# スタック + コード、ゼロダウンタイム
+export DATADOG_API_KEY_SECRET_ARN=<secret-arn>
+export FSX_S3_ACCESS_POINT_ARN=<ap-arn>
+bash integrations/datadog/scripts/deploy.sh
+
+# ハンドラのみ変更する場合（スタックには触れない）
+bash integrations/datadog/scripts/deploy.sh --code-only
+
+# アップグレードが反映されたことを確認
+bash integrations/datadog/scripts/verify.sh
+```
+
+手動で行う場合の等価な手順:
+
 ```bash
 # CloudFormation スタックを更新（ゼロダウンタイム）
 aws cloudformation deploy \
@@ -166,7 +184,14 @@ zip function.zip handler.py
 aws lambda update-function-code \
   --function-name fsxn-datadog-integration-shipper \
   --zip-file fileb://function.zip
+aws lambda wait function-updated \
+  --function-name fsxn-datadog-integration-shipper
 ```
+
+> **チェックポイントはアップグレードで維持されます。** Lambda の外側の SSM Parameter Store に
+> 保存されるため、プレフィックス全体を再送するのではなく最後に処理したキーから再開します。
+> パース挙動を変更するアップグレードで既配送ファイルを再処理したい場合は、意図的に
+> チェックポイントを `__INIT__` にリセットしてください。既に届いている分は重複します。
 
 ## セキュリティレビューチェックリスト
 
@@ -218,18 +243,3 @@ aws lambda update-function-code \
 
 > 注: EMS イベントが存在しないことは多くの場合正常です（ARP アラートなし = 良好）。パイプラインが稼働していることを積極的に確認する必要がある場合は、合成ハートビートイベントまたは定期的なテスト呼び出しを使用してください。
 
-
-## EMS パイプラインヘルスチェック
-
-イベント駆動型 EMS webhook パス（Part 3）の監視:
-
-| チェック項目 | 方法 | 異常指標 |
-|-------|-----|-------------------|
-| API Gateway 4xx/5xx | CloudWatch API Gateway メトリクス | エラーレスポンスのスパイク |
-| Lambda エラー | CloudWatch Lambda Errors メトリクス | > 0 |
-| EMS イベント配信数 | Lambda ログ (shipped count) | イベント期待時に 0 |
-| Datadog API 失敗 | Lambda ログ (batch failures) | RuntimeError 発生 |
-| DLQ 深度 | SQS ApproximateNumberOfMessagesVisible | > 0 |
-| 最終 webhook 受信 | API Gateway アクセスログ | 想定期間内にリクエストなし |
-
-> 注: EMS イベントがないことは通常正常です（ARP アラートなし = 良好）。パイプラインの生存確認が必要な場合は、合成ハートビートイベントまたは定期テスト呼び出しを使用してください。

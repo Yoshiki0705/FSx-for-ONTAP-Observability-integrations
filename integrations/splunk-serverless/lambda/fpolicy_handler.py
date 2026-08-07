@@ -320,12 +320,153 @@ def _send_to_hec(payload: str, hec_token: str) -> bool:
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Handle FPolicy events from SQS or EventBridge and ship to Splunk HEC.
+    """Handle FPolicy events from SQS (primary) or EventBridge (secondary).
+
+    Two trigger paths exist:
+
+    1. **SQS event source mapping** (primary): ONTAP → Fargate → SQS → Lambda.
+       Returns a ``batchItemFailures`` response so only the failing messages
+       are retried and eventually redriven to the DLQ. This requires
+       ``FunctionResponseTypes: [ReportBatchItemFailures]`` on the event source
+       mapping — without it, returning a success dict makes SQS delete every
+       message in the batch even when delivery to Splunk failed.
+    2. **EventBridge rule** (secondary): a single event with source
+       ``fpolicy.fsxn`` carrying the FPolicy data in ``detail``.
 
     Args:
         event: SQS batch event dict (primary path) or EventBridge event
             dict (secondary path) containing FPolicy file operation data.
         context: Lambda execution context.
+
+    Returns:
+        For SQS: ``{"batchItemFailures": [...]}``.
+        For EventBridge: dict with statusCode (200 all shipped, 207 partial
+        failure, 400 invalid event, 502 HEC credential retrieval failure) and
+        a body summarizing the processing result.
+    """
+    if _is_sqs_event(event):
+        return _handle_sqs_event(event)
+
+    return _handle_eventbridge_event(event)
+
+
+def _is_sqs_event(event: dict[str, Any]) -> bool:
+    """Return True if the payload is an SQS event source mapping batch.
+
+    Args:
+        event: The raw Lambda event payload.
+
+    Returns:
+        True when at least one record carries ``eventSource == "aws:sqs"``.
+    """
+    records = event.get("Records")
+    if not isinstance(records, list) or not records:
+        return False
+    return any(r.get("eventSource") == "aws:sqs" for r in records)
+
+
+def _handle_sqs_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Process an SQS batch with per-message failure reporting.
+
+    Messages that cannot be parsed are reported as individual failures, so a
+    single malformed message is redriven to the DLQ after ``maxReceiveCount``
+    attempts instead of being silently discarded with the rest of the batch.
+
+    Delivery to Splunk HEC is still done as one batched shipment for
+    efficiency. If that shipment fails, every parsed message is reported as
+    failed so SQS re-delivers all of them — at-least-once, never silently
+    dropped.
+
+    Args:
+        event: SQS batch event dict.
+
+    Returns:
+        ``{"batchItemFailures": [{"itemIdentifier": "<messageId>"}, ...]}``.
+        An empty list means the whole batch succeeded.
+
+    Raises:
+        ClientError: If the HEC token cannot be retrieved. This is transient
+            and applies to the whole batch, so failing the invocation makes
+            SQS re-deliver every message rather than deleting them.
+    """
+    records = event["Records"]
+    logger.info("FPolicy handler invoked: SQS batch of %d record(s)", len(records))
+
+    # A Secrets Manager failure is transient and applies to the whole batch:
+    # let it propagate so SQS re-delivers everything instead of deleting it.
+    hec_token = _get_hec_token()
+
+    batch_item_failures: list[dict[str, str]] = []
+    fpolicy_events: list[dict[str, Any]] = []
+    shippable_message_ids: list[str] = []
+
+    for record in records:
+        message_id = record.get("messageId", "")
+        try:
+            parsed = json.loads(record.get("body", ""))
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    f"SQS message body is not a JSON object "
+                    f"(got {type(parsed).__name__})"
+                )
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            # Poison pill: retrying will never succeed, but reporting it as a
+            # failure is still correct — the queue's redrive policy moves it to
+            # the DLQ, which is visible, instead of dropping it silently.
+            logger.error(
+                "Unparseable SQS message %s: %s — reporting as failure for DLQ redrive",
+                message_id,
+                str(e),
+            )
+            batch_item_failures.append({"itemIdentifier": message_id})
+            continue
+
+        fpolicy_events.append(parsed)
+        shippable_message_ids.append(message_id)
+
+    if fpolicy_events:
+        hec_events = _format_for_splunk(fpolicy_events)
+        try:
+            shipped = _ship_to_splunk(hec_events, hec_token)
+            if shipped != len(hec_events):
+                raise RuntimeError(
+                    f"Shipped {shipped}/{len(hec_events)} FPolicy event(s) to Splunk HEC"
+                )
+            logger.info(
+                "Shipped %d/%d FPolicy event(s) from %d SQS message(s)",
+                shipped,
+                len(hec_events),
+                len(shippable_message_ids),
+            )
+        except Exception as e:
+            # Delivery failure is not attributable to a single message, so
+            # retry all messages that were successfully parsed.
+            logger.error(
+                "Splunk HEC delivery failed for %d message(s): %s — reporting all for retry",
+                len(shippable_message_ids),
+                str(e),
+            )
+            batch_item_failures.extend(
+                {"itemIdentifier": mid} for mid in shippable_message_ids
+            )
+
+    if batch_item_failures:
+        logger.warning(
+            "Reporting %d/%d SQS message(s) as failed",
+            len(batch_item_failures),
+            len(records),
+        )
+
+    # Response shape required by ReportBatchItemFailures. An empty list means
+    # the whole batch succeeded and every message is deleted.
+    return {"batchItemFailures": batch_item_failures}
+
+
+def _handle_eventbridge_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Process a single FPolicy event delivered by an EventBridge rule.
+
+    Args:
+        event: EventBridge event dict with FPolicy data in ``detail``.
 
     Returns:
         Dict with statusCode (200 all shipped, 207 partial failure, 400

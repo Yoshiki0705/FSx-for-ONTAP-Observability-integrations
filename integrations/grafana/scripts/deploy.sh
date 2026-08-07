@@ -48,6 +48,11 @@ while [[ $# -gt 0 ]]; do
       echo "  S3_ACCESS_POINT_ARN   FSx for ONTAP S3 Access Point ARN"
       echo "  LOKI_ENDPOINT         Grafana Cloud OTLP Gateway URL"
       echo "  S3_BUCKET_NAME        S3 bucket name for audit logs"
+      echo ""
+      echo "Optional env vars:"
+      echo "  ALARM_TOPIC_ARN       SNS topic ARN notified when this stack's"
+      echo "                        CloudWatch alarms fire. Unset means the alarms"
+      echo "                        are created without notification actions."
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -73,9 +78,17 @@ LAMBDA_TIMEOUT="${LAMBDA_TIMEOUT:-300}"
 EMS_PARSER_LAYER_ARN="${EMS_PARSER_LAYER_ARN:-}"
 FPOLICY_EVENT_BUS="${FPOLICY_EVENT_BUS:-fsxn-fpolicy-events}"
 
+ALARM_TOPIC_ARN="${ALARM_TOPIC_ARN:-}"
+
+# Appended to every stack's --parameter-overrides only when set, so the
+# templates fall back to their empty default (alarms created without actions).
+ALARM_PARAMS=()
+[ -n "${ALARM_TOPIC_ARN}" ] && ALARM_PARAMS+=("AlarmNotificationTopicArn=${ALARM_TOPIC_ARN}")
+
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTEGRATION_DIR="$(dirname "$SCRIPT_DIR")"
+SHARED_PYTHON_DIR="$(cd "$(dirname "${INTEGRATION_DIR}")/../shared/python" && pwd)"
 
 # --- Validation -------------------------------------------------------------
 
@@ -130,6 +143,7 @@ aws cloudformation deploy \
     LogLevel="${LOG_LEVEL}" \
     LambdaMemorySize="${LAMBDA_MEMORY}" \
     LambdaTimeout="${LAMBDA_TIMEOUT}" \
+    "${ALARM_PARAMS[@]+"${ALARM_PARAMS[@]}"}" \
   --no-fail-on-empty-changeset
 
 echo "  ✅ Main stack deployed: ${STACK_PREFIX}-integration"
@@ -156,6 +170,7 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --region "${AWS_REGION}" \
   --parameter-overrides "${EMS_PARAMS[@]}" \
+  "${ALARM_PARAMS[@]+"${ALARM_PARAMS[@]}"}" \
   --no-fail-on-empty-changeset
 
 echo "  ✅ EMS stack deployed: ${STACK_PREFIX}-ems"
@@ -174,6 +189,7 @@ aws cloudformation deploy \
     LokiEndpoint="${LOKI_ENDPOINT}" \
     EventBusName="${FPOLICY_EVENT_BUS}" \
     LogLevel="${LOG_LEVEL}" \
+    "${ALARM_PARAMS[@]+"${ALARM_PARAMS[@]}"}" \
   --no-fail-on-empty-changeset
 
 echo "  ✅ FPolicy stack deployed: ${STACK_PREFIX}-fpolicy"
@@ -188,7 +204,10 @@ cd "${INTEGRATION_DIR}/lambda"
 
 # Main handler
 echo "  Updating main handler..."
-zip -q /tmp/grafana-handler.zip handler.py
+# Bundle the shared ONTAP audit parser alongside the handler. Without it the
+# handler falls back to JSON-only parsing and XML/EVTX audit logs are not
+# parsed into fields. -j flattens paths so the import resolves at runtime.
+zip -q -j /tmp/grafana-handler.zip handler.py "${SHARED_PYTHON_DIR}/ontap_audit_parser.py"
 aws lambda update-function-code \
   --function-name "${STACK_PREFIX}-integration-shipper" \
   --zip-file fileb:///tmp/grafana-handler.zip \

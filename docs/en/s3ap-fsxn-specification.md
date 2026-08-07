@@ -215,10 +215,32 @@ Key constraints relevant to this project:
 | No conditional writes (If-None-Match) | Delta Lake/Iceberg/Hudi transactional writes blocked | Read-only analytics or DataSync → S3 for write workloads |
 | No S3 Event Notifications | Snowpipe auto-ingest, Auto Loader file notification mode unavailable | FPolicy → Lambda, scheduled polling, or Snowpipe REST API |
 | No SnapMirror S3 | Cannot replicate ONTAP S3 bucket to AWS S3 | Use DataSync (NFS → S3) as validated sync mechanism |
-| ListObjectsV2 higher latency | 30-80x slower than native S3 for small directories | Pre-generate file lists, use larger file sizes, or cache results |
+| ListObjectsV2 latency | 1.3-1.4x native S3 at 10-5,000 objects (measured 2026-08-05); untested beyond 5,000 | No mitigation needed at this scale. For large directories, consolidate files and partition the keyspace — see the note below |
 | SSE-FSX encryption only | SSE-S3, SSE-KMS, SSE-C not supported | Use default SSE-FSX (transparent, AWS KMS managed) |
 | No Object Versioning | S3 versioning not available | Use ONTAP Snapshot for point-in-time recovery |
 | Presigned URLs: Not officially supported | Works in practice but not guaranteed | Use for non-critical paths only; prefer IAM-based access |
 | ONTAP 9.17.1+ required | Minimum version for S3 Access Points | Verify FSx file system ONTAP version before deployment |
 
 For the full matrix including platform-specific compatibility (Athena, Glue, EMR, Databricks, Snowflake, Bedrock), see the [complete document](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md).
+
+### ListObjectsV2 Latency — the "30-80x" Figure Is Retracted
+
+A re-measurement on 2026-08-05 did not reproduce the previously documented "30-80x slower than native S3 for small directories" penalty. Measured medians:
+
+| Objects | FSx for ONTAP S3 AP | Native S3 | Ratio |
+|--------:|--------------------:|----------:|------:|
+| 10 | 38 ms | 27 ms | 1.4x |
+| 100 | 52 ms | 39 ms | 1.3x |
+| 1,000 | 162 ms | 128 ms | 1.3x |
+| 5,000 | 665 ms | 704 ms | 0.9x |
+
+**Measurement conditions**: ap-northeast-1; SINGLE_AZ_1 file system, SSD 1024 GB, 128 MBps throughput; UNIX security style volume; Internet-origin access point. Medians over 5 recorded trials per data point, with one warm-up call discarded beforehand. The timed region covers only the paginated `ListObjectsV2` loop — client construction, credential resolution, and object seeding are excluded. Retries were disabled (`max_attempts=1`) so that a slow call is measured rather than silently retried. Flat and nested layouts (two directory levels, 10 objects per leaf) produced the same ratios.
+
+- Evidence record: [`verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml)
+- Reproduction script: [`shared/scripts/benchmark_list_objects.py`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/shared/scripts/benchmark_list_objects.py)
+
+**Scope limit — larger directories are untested.** Measurement stopped at 5,000 objects. Behaviour at hundreds of thousands to millions of keys under a single prefix has not been measured. ONTAP sorts directory entries in memory to produce the lexicographic ordering `ListObjectsV2` requires, so listing cost grows with directory size. File consolidation and keyspace partitioning therefore remain the recommended design for large datasets — but base that decision on directory size and the in-memory sort, not on a small-scale latency penalty that did not reproduce.
+
+**Origin of the original figure: unexplained.** The number entered this documentation from the May 2026 AWS Support discussion referenced at the top of this section, where it was described as a product-level characteristic. No measurement record or set of conditions was retained alongside it, so there is nothing to compare the new run against and the discrepancy cannot be attributed to a specific cause. Possible contributors, listed as possibilities only: measurement through a CLI wrapper where process startup time dominates short calls; a file system in a degraded state at the time of the original observation; or platform-side changes landing between then and this run.
+
+**Secondary finding — keys returned per page differ.** With `MaxKeys=1000` requested, native S3 returned 1,000 keys in a single API call while the access point needed 2. At 5,000 objects the counts were 6 calls versus 5. Total wall time stayed comparable, so this is not a throughput bottleneck, but do not assume identical API call counts when estimating request costs or when a client caps pagination depth.

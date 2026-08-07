@@ -55,9 +55,29 @@ aws cloudformation deploy \
     SubnetIds=<your-private-subnet> \
     FsxnSvmSecurityGroupId=<fsx-svm-security-group-id> \
     ContainerImage=${ECR_URI}:latest \
+    AlarmNotificationTopicArn=<sns-topic-arn> \
   --capabilities CAPABILITY_NAMED_IAM \
   --region <your-region>
 ```
+
+This stack creates the ingestion queue **and** its dead letter queue. A message a
+vendor Lambda cannot process is redriven to the DLQ after `MaxReceiveCount`
+receives (default 5) instead of being retried forever, and `FPolicyDLQAlarm`
+fires when anything lands there.
+
+`AlarmNotificationTopicArn` is optional but recommended — without it the DLQ and
+backlog alarms are visible in the CloudWatch console only and will not page
+anyone.
+
+| Output | Use |
+|--------|-----|
+| `FPolicyQueueArn` | Pass as `FPolicySqsQueueArn` to the vendor stack (Step 4) |
+| `FPolicyDeadLetterQueueUrl` | Inspect events that never reached the backend |
+
+> **Queue timing note**: the queue's visibility timeout is 360s — 6x the 60s
+> default timeout of the vendor FPolicy Lambdas, as AWS recommends. If you raise
+> a vendor Lambda's timeout above 360s, raise this too: Lambda rejects an event
+> source mapping whose function timeout exceeds the queue's visibility timeout.
 
 ## Step 4: Deploy Datadog Shipping Lambda
 

@@ -84,10 +84,23 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Sid: DatadogLogArchiveWrite
+          # Scoped to the archive role, NOT to the Datadog account root.
+          #
+          # Datadog does not call S3 with its own credentials — it assumes
+          # DatadogArchiveRole (below) and calls S3 as that role, which lives in
+          # this account. Same-account access via an IAM role is authorized by
+          # the role's identity policy, so this bucket policy is defense in
+          # depth: it names the only principal allowed to write.
+          #
+          # Granting the Datadog account root here with an `sts:ExternalId`
+          # condition does not work: sts:ExternalId only exists in the request
+          # context of sts:AssumeRole, never in an S3 request, so the condition
+          # can never match. The external ID belongs on the role trust policy,
+          # which is where it is actually enforced.
+          - Sid: DatadogLogArchiveRoleAccess
             Effect: Allow
             Principal:
-              AWS: !Sub 'arn:aws:iam::${DatadogAwsAccountId}:root'
+              AWS: !GetAtt DatadogArchiveRole.Arn
             Action:
               - s3:PutObject
               - s3:GetObject
@@ -96,14 +109,24 @@ Resources:
             Resource:
               - !GetAtt ArchiveBucket.Arn
               - !Sub '${ArchiveBucket.Arn}/*'
+          - Sid: DenyUnencryptedTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt ArchiveBucket.Arn
+              - !Sub '${ArchiveBucket.Arn}/*'
             Condition:
-              StringEquals:
-                'sts:ExternalId': !Ref DatadogExternalId
+              Bool:
+                'aws:SecureTransport': false
 
   DatadogArchiveRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: DatadogLogArchiveRole
+      # Stack-scoped so the template can be deployed more than once (multiple
+      # regions, or a separate archive per environment). A fixed RoleName makes
+      # the second deployment fail with AlreadyExists.
+      RoleName: !Sub '${AWS::StackName}-archive-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -145,5 +168,5 @@ Outputs:
       Bucket: ${ArchiveBucket}
       Path: /fsxn-audit-logs
       Region: ${AWS::Region}
-      Role: DatadogLogArchiveRole
+      Role: ${DatadogArchiveRole}
       Account: ${AWS::AccountId}

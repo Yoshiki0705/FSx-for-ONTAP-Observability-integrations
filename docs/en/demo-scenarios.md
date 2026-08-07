@@ -216,13 +216,31 @@ Detection that stays entirely within AWS, no vendor product required. Alert the 
 
 ## Demo Environment Checklist
 
+Work through this before the demo — a stack that deployed successfully is not the
+same as a working pipeline.
+
 - [ ] FSx for ONTAP file system running
-- [ ] Audit logging enabled
-- [ ] S3 bucket + Access Point deployed
+- [ ] Audit logging enabled, and you know which volume is the `-destination`
+- [ ] FSx for ONTAP S3 Access Point attached to that volume
+- [ ] Access point `NetworkOrigin` matches the Lambda placement
+      (`Internet` ⇒ Lambda outside VPC; `VPC` ⇒ `VpcEnabled=true` + internet egress)
 - [ ] Target vendor integration stack deployed
+- [ ] **Real Lambda code uploaded** — the template ships a placeholder that raises
+      `NotImplementedError`. `scripts/deploy.sh` does this; `scripts/verify.sh`
+      check 2 confirms it
+- [ ] `bash integrations/<vendor>/scripts/verify.sh` passes all checks
+- [ ] One real audit event has already reached the vendor
+      (ONTAP must rotate the audit log first — do not discover this mid-demo)
 - [ ] Test files/directories prepared
 - [ ] Vendor-side dashboard/alerts configured
 - [ ] Screenshot capture tools ready
+
+> **Timing note for live demos**: an audit event is not visible to the shipper
+> until ONTAP rotates the staging file, then the 5-minute schedule has to run.
+> Budget **rotation interval + schedule interval**. To force a rotation:
+> `vserver audit rotate -vserver <svm-name>`. To rehearse the pipeline without
+> waiting at all, see the Datadog Setup Guide's
+> [validation without rotation](../../integrations/datadog/docs/en/setup-guide.md#53-optional-validate-without-waiting-for-ontap-rotation).
 
 ## Screenshot Capture Points
 

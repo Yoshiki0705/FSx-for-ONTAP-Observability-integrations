@@ -721,7 +721,7 @@ This solution was E2E verified on:
 ## Related Documents
 
 - [ARP Incident Response Guide](arp-incident-response-guide.md)
-- [EMS Webhook Setup](../integrations/datadog/docs/en/ems-webhook-setup.md)
+- [EMS Webhook Setup](../../integrations/datadog/docs/en/ems-fpolicy-setup.md)
 - [FPolicy Operations](operational-notes-fpolicy.md)
 - [Pipeline SLO](pipeline-slo.md)
 - [CloudWatch Log Alarm Guide](syslog-vpce-setup-guide.md)

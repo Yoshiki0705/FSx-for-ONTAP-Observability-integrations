@@ -82,7 +82,16 @@ Conditions:
   HasWebhookSecret: !Not [!Equals [!Ref WebhookSecretArn, '']]
 
 Resources:
-  # Dead Letter Queue for async invocation failures
+  # Dead Letter Queue, provided for the operator to attach where it can help.
+  #
+  # It is intentionally NOT wired to the EMS Lambda's DeadLetterConfig: this
+  # stack invokes that Lambda synchronously through API Gateway, and Lambda's
+  # async DLQ only captures failures from asynchronous invocations. Attaching it
+  # here would look like failure capture while catching nothing.
+  #
+  # Failures on the API Gateway path surface as 5xx responses to ONTAP instead,
+  # so monitor them with the API Gateway 5XXError metric and the Lambda Errors
+  # metric. ONTAP retries EMS webhook delivery on its own.
   DeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -307,7 +316,11 @@ Outputs:
     Value: !Ref EmsWebhookApi
 
   DeadLetterQueueArn:
-    Description: ARN of the Dead Letter Queue
+    Description: >-
+      ARN of the Dead Letter Queue. Not attached to the EMS Lambda by this
+      stack — API Gateway invokes it synchronously, and Lambda's async DLQ does
+      not capture synchronous failures. Monitor the API Gateway 5XXError and
+      Lambda Errors metrics for this path instead.
     Value: !GetAtt DeadLetterQueue.Arn
 
   LambdaLogGroupName:

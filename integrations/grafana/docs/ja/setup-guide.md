@@ -110,6 +110,33 @@ https://123456.grafana.net/loki/api/v1/push
 
 ## Step 2: CloudFormation デプロイ
 
+### 推奨: デプロイスクリプトを使う
+
+このスクリプトはスタックのデプロイと実 Lambda コードのアップロードを**両方**行います。
+CloudFormation テンプレートはハンドラをインラインに持てないため、1 ステップで動作する
+統合を得られる唯一の経路です。
+
+```bash
+export GRAFANA_SECRET_ARN="..."
+export S3_ACCESS_POINT_ARN="..."
+export LOKI_ENDPOINT="..."
+export S3_BUCKET_NAME="..."
+
+bash integrations/grafana/scripts/deploy.sh
+```
+
+初回は **3〜5 分**かかり、そのほとんどは CloudFormation が IAM ロール・Lambda・
+スケジューラ・アラームを作成する時間です。変更のないスタックへの再実行は数秒で
+終わります。対応する変数の一覧は `--help` で確認できます。
+
+`--all` を付けると EMS / FPolicy スタックも対象になります。
+
+> スクリプト実行前に `ALARM_TOPIC_ARN` に SNS トピック ARN を設定すると、CloudWatch
+> アラームが通知されるようになります。未設定の場合アラームは通知アクションなしで
+> 作成され、コンソールには表示されますが誰にも通知されません。
+
+### 代替: CloudFormation を手動でデプロイする
+
 CloudFormation テンプレートを使用して Lambda 関数と関連リソースをデプロイします。
 
 ```bash
@@ -126,29 +153,54 @@ aws cloudformation deploy \
 
 > **注意**: 各パラメータの値は自分の環境に合わせて置き換えてください。
 
-### パラメータ説明
+### 実 Lambda コードのアップロード（必須）
 
-| パラメータ | 必須 | 説明 | 例 |
-|-----------|------|------|-----|
-| `S3AccessPointArn` | ✅ | FSx for ONTAP 監査ログ用 S3 Access Point の ARN | `arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap` |
-| `GrafanaCredentialsSecretArn` | ✅ | Grafana Cloud 認証情報を格納した Secrets Manager シークレットの ARN | `arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:grafana/fsxn-loki-credentials-AbCdEf` |
-| `LokiEndpoint` | ✅ | Grafana Cloud Loki エンドポイント URL | `https://logs-prod-us-central1.grafana.net` |
-| `S3BucketName` | ✅ | 監査ログが出力される S3 バケット名 | `your-fsxn-audit-log-bucket` |
-| `LokiTenantId` | ❌ | X-Scope-OrgID ヘッダー（マルチテナント Loki 用、通常は空） | `""` |
-| `S3KeyPrefix` | ❌ | 監査ログのキープレフィックス（フィルタリング用） | `audit/svm-prod-01/` |
-| `LogLevel` | ❌ | Lambda のログレベル（デフォルト: `INFO`） | `INFO` |
-| `LambdaMemorySize` | ❌ | Lambda メモリサイズ（MB、デフォルト: 256） | `256` |
-| `LambdaTimeout` | ❌ | Lambda タイムアウト（秒、デフォルト: 300） | `300` |
-
-デプロイが完了したら、スタックのステータスを確認します:
+**スタックだけでは動作しません。** CloudFormation はこの規模のハンドラをインラインに
+書けないため、`template.yaml` は `NotImplementedError` を投げるプレースホルダを
+持っています。`scripts/deploy.sh` を使った場合はこの手順は済んでいます。手動で
+デプロイした場合は、ここで実行してください:
 
 ```bash
-aws cloudformation describe-stacks \
-  --stack-name fsxn-grafana-integration \
-  --query 'Stacks[0].StackStatus' --output text
+cd integrations/grafana/lambda
+zip -j function.zip handler.py ../../../shared/python/ontap_audit_parser.py
+
+aws lambda update-function-code \
+  --function-name fsxn-grafana-integration-shipper \
+  --zip-file fileb://function.zip \
+  --region ap-northeast-1
+
+aws lambda wait function-updated \
+  --function-name fsxn-grafana-integration-shipper \
+  --region ap-northeast-1
 ```
 
-`CREATE_COMPLETE` と表示されれば成功です。
+`-j` はパスを平坦化し、実行時に `ontap_audit_parser` が解決できるようにします。この
+ファイルを同梱しないとハンドラは JSON 専用の解析に静かにフォールバックし、ONTAP の
+監査ログ（常に XML か EVTX）はフィールド解析されずに配送されます。
+
+### パラメータリファレンス
+
+<!-- generated from template.yaml; keep in sync when parameters change -->
+
+Required:
+
+| Parameter | Description |
+|-----------|-------------|
+| `S3AccessPointArn` | S3 Access Point ARN used by the Lambda for both ListObjectsV2 and GetObject. This should be an access point attached to the S3 bucket or FSx volume containing audit logs. |
+| `GrafanaCredentialsSecretArn` | Secrets Manager ARN containing JSON: {"instance_id":"`<id>`","api_key":"`<key>`"} |
+| `LokiEndpoint` | Grafana Cloud endpoint URL. Supports two modes: - OTLP Gateway (preferred): https://otlp-gateway-prod-`<region>`.grafana.net/otlp - Loki Push API (fallback): https://logs-prod-`<region>`.grafana.net The Lambda auto-detects the mode from the URL pattern. |
+
+Optional — the defaults work for most deployments:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `LokiTenantId` | `''` (empty) | X-Scope-OrgID header (optional, for multi-tenant Loki) |
+| `S3KeyPrefix` | `''` (empty) | S3 key prefix for listing audit log objects (e.g., "audit/svm-prod-01/"). Used by the scheduler-triggered polling mode to scope ListObjectsV2. |
+| `ScheduleExpression` | `rate(5 minutes)` | EventBridge Scheduler rate expression for polling new audit log files. Examples: "rate(5 minutes)", "rate(1 minute)", "rate(15 minutes)" |
+| `LogLevel` | `INFO` | Lambda log level. Use DEBUG when troubleshooting delivery |
+| `LambdaMemorySize` | `256` | Lambda memory in MB. Raise it if large EVTX files run out of memory |
+| `LambdaTimeout` | `300` | Lambda timeout in seconds. Must exceed the time needed to process one batch of files |
+| `AlarmNotificationTopicArn` | `''` (empty) | (Optional) SNS topic ARN notified when the alarms in this stack fire. Leave empty to create the alarms without notification actions — they will be visible in the CloudWatch console but will not page anyone. |
 
 ## Step 3: テストイベント送信
 
@@ -779,3 +831,40 @@ aws cloudformation deploy \
 ```
 
 > **ヒント**: メモリを増やすと CPU 割り当ても比例して増加するため、処理速度が向上します。256MB → 512MB への変更で処理時間が大幅に短縮されることがあります。
+
+## デプロイの検証
+
+```bash
+bash integrations/grafana/scripts/verify.sh
+```
+
+2 層が順に実行されます。まず共有の AWS 側チェック（スタックが正常か、デプロイ済み
+Lambda がプレースホルダではなく実ハンドラか、スタックが作成する場合はスケジュールと
+チェックポイントが揃っているか）。次にベンダーのエンドポイントへ合成ログを送り、
+資格情報とネットワーク到達性を確認します。
+
+どちらも必要です。ベンダーのエンドポイントがテストログを受理しても、パイプラインが
+動いている保証にはなりません。そのため AWS 側が失敗した場合は、エンドポイントが
+正常応答していてもスクリプトは非ゼロで終了します。
+
+終了コードは `sysexits.h` 準拠で `0` 成功、`69` チェック失敗、`78` 必要な設定が
+不足。デプロイ前にベンダー疎通だけ試す場合は `SKIP_AWS_CHECKS=1` を設定します。
+
+## クリーンアップ
+
+```bash
+bash integrations/grafana/scripts/cleanup.sh          # スタックのみ
+bash integrations/grafana/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
+bash integrations/grafana/scripts/cleanup.sh --all -y  # 非対話
+```
+
+共有リソース（S3 アクセスポイント、監査ログバケット、FPolicy Fargate スタック、
+前提スタック）は削除されません。削除順と意図的に残すものについては
+[ベンダー統合のデプロイ](../../../../docs/ja/vendor-deployment-common.md)
+を参照してください。
+
+## 関連ドキュメント
+
+- [ベンダー統合のデプロイ](../../../../docs/ja/vendor-deployment-common.md) — 全ベンダー共通の手順
+- [前提条件](../../../../docs/ja/prerequisites.md) — FSx for ONTAP、監査ログ有効化、S3 アクセスポイント
+- [デプロイガイド](../../../../docs/ja/deployment-guide.md) — スタックカタログ、VPC エンドポイント競合、コスト

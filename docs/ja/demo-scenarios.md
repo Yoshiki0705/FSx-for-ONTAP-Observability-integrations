@@ -216,13 +216,32 @@ OTel Collector を使って、同一の監査ログを Grafana Cloud と Honeyco
 
 ## デモ環境セットアップチェックリスト
 
+デモ前に一通り確認してください。スタックのデプロイ成功は、パイプラインが動作していることを
+意味しません。
+
 - [ ] FSx for ONTAP ファイルシステム稼働中
-- [ ] 監査ログ有効化済み
-- [ ] S3 バケット + Access Point デプロイ済み
+- [ ] 監査ログ有効化済み、かつ `-destination` のボリュームを把握している
+- [ ] そのボリュームに FSx for ONTAP S3 Access Point がアタッチされている
+- [ ] アクセスポイントの `NetworkOrigin` と Lambda の配置が一致している
+      （`Internet` なら Lambda は VPC 外、`VPC` なら `VpcEnabled=true` + インターネット egress）
 - [ ] 対象ベンダー統合スタックデプロイ済み
+- [ ] **実 Lambda コードをアップロード済み** — テンプレートは `NotImplementedError` を投げる
+      placeholder を配置する。`scripts/deploy.sh` が実施し、`scripts/verify.sh` の
+      チェック 2 が確認する
+- [ ] `bash integrations/<vendor>/scripts/verify.sh` が全チェック PASS
+- [ ] 実際の監査イベントが 1 件以上ベンダーに到達済み
+      （ONTAP のローテーションが先に必要。デモ中に気付く事態を避ける）
 - [ ] テスト用ファイル/ディレクトリ準備
 - [ ] ベンダー側ダッシュボード/アラート設定済み
 - [ ] スクリーンショット撮影ツール準備
+
+> **ライブデモのタイミングに関する補足**: 監査イベントは ONTAP がステージングファイルを
+> ローテーションするまでシッパーから見えず、その後 5 分スケジュールの実行を待ちます。
+> **ローテーション間隔 + スケジュール間隔**を見込んでください。強制ローテーションは
+> `vserver audit rotate -vserver <svm-name>`。待たずにパイプラインをリハーサルする方法は
+> Datadog セットアップガイドの
+> [ローテーションを待たない検証](../../integrations/datadog/docs/ja/setup-guide.md#53-任意-ontap-のローテーションを待たずに検証する)
+> を参照してください。
 
 ## スクリーンショット撮影ポイント
 

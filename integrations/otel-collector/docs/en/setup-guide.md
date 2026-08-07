@@ -133,32 +133,104 @@ This configuration automatically fans out OTLP logs from the Lambda to both Graf
 
 ## CloudFormation Deployment
 
-Deploy the Lambda function and supporting resources to AWS.
+Deploys the three shipper Lambdas (audit, EMS, FPolicy) and their supporting
+resources.
 
-### Parameters
+### Recommended: use the deploy script
 
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `S3AccessPointArn` | FSx for ONTAP S3 AP ARN | `arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit` |
-| `OtlpEndpoint` | OTel Collector endpoint | `http://collector:4318` |
-| `ApiKeySecretArn` | Auth token Secret ARN (optional) | `arn:aws:secretsmanager:...` |
-| `ServiceName` | OTLP service.name attribute | `fsxn-audit` |
-| `S3BucketName` | Audit log bucket name | `fsxn-audit-logs-bucket` |
+Unlike the other vendors, this template takes the Lambda code from S3 rather than
+an inline placeholder, so the package must exist in S3 **before** the stack is
+created. The script builds it, uploads it, then deploys — in that order.
 
-### Deploy Command
+```bash
+export OTLP_ENDPOINT="http://your-collector:4318"
+export S3_BUCKET_NAME="fsxn-audit-logs-bucket"
+export LAMBDA_CODE_S3_BUCKET="my-lambda-artifacts"
+
+bash integrations/otel-collector/scripts/deploy.sh
+```
+
+All three functions share one package; `Handler` selects the entry point. Use
+`--code-only` to rebuild and re-upload without touching the stack. Run `--help`
+for every supported variable.
+
+> Set `ALARM_TOPIC_ARN` to an SNS topic ARN before running the script to make the
+> CloudWatch alarms actionable. Left unset, the alarms are created without
+> notification actions: visible in the console, paging nobody.
+
+### Alternative: deploy CloudFormation by hand
+
+Package and upload the code first — `LambdaCodeS3Bucket` is required and the
+object must already exist:
+
+```bash
+cd integrations/otel-collector/lambda
+zip -j /tmp/lambda.zip handler.py ems_handler.py fpolicy_handler.py \
+  otlp_auth.py otlp_protobuf.py ../../../shared/python/ontap_audit_parser.py
+
+aws s3 cp /tmp/lambda.zip s3://my-lambda-artifacts/otel-collector/lambda.zip \
+  --region ap-northeast-1
+```
 
 ```bash
 aws cloudformation deploy \
   --template-file integrations/otel-collector/template.yaml \
   --stack-name fsxn-otel-integration \
   --parameter-overrides \
-    S3AccessPointArn=arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit \
     OtlpEndpoint=http://your-collector:4318 \
     S3BucketName=fsxn-audit-logs-bucket \
+    LambdaCodeS3Bucket=my-lambda-artifacts \
     ServiceName=fsxn-audit \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM \
   --region ap-northeast-1
 ```
+
+Without `ontap_audit_parser.py` in the package the handler falls back to
+JSON-only parsing, and ONTAP audit logs — which are always XML or EVTX — arrive
+with no parsed fields.
+
+CloudFormation only picks up a new S3 object when the key or version changes, so
+after re-uploading to the same key run `scripts/deploy.sh --code-only` (or
+`aws lambda update-function-code`) to make the functions load it.
+
+### Parameters
+
+This stack **creates** the S3 access point on the audit log bucket and exports it
+as the `S3AccessPointArn` output — it is not an input.
+
+<!-- generated from template.yaml; keep in sync when parameters change -->
+
+Required:
+
+| Parameter | Description |
+|-----------|-------------|
+| `S3BucketName` | Name of the S3 bucket containing FSx for ONTAP audit log files. Used for EventBridge trigger and S3 Access Point creation. |
+| `OtlpEndpoint` | OTLP/HTTP base endpoint URL, no trailing /v1/logs — the Lambda appends that path itself and POSTs to `<endpoint>`/v1/logs. See `template.yaml` for the full description. |
+| `LambdaCodeS3Bucket` | S3 bucket containing the Lambda deployment package (ZIP) |
+
+Optional — the defaults work for most deployments:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ApiKeySecretArn` | `''` (empty) | ARN of the Secrets Manager secret containing auth credentials for the OTLP endpoint. Leave empty if no authentication is required. Accepts either a plain string secret, e.g. See `template.yaml` for the full description. |
+| `AuthMode` | `none` | Authentication mode for the OTLP endpoint. none: No auth header. bearer: Authorization Bearer `<token>`. basic: Authorization Basic base64(`<secret>`). See `template.yaml` for the full description. |
+| `AuthHeaderName` | `Authorization` | Header name used when AuthMode=header (e.g. "Mackerel-Api-Key"). Ignored for other AuthMode values. |
+| `ExtraHeadersJson` | `''` (empty) | Optional static (non-secret) extra HTTP headers as a JSON object string, e.g. '{"Accept":"*/*"}'. Required by some vendors' OTLP endpoints (e.g. Mackerel) regardless of auth mode. See `template.yaml` for the full description. |
+| `OtlpContentType` | `json` | Wire format for the OTLP/HTTP request body when sending directly to a vendor's endpoint (no OTel Collector in between). json (default) sends OTLP/JSON. See `template.yaml` for the full description. |
+| `ServiceName` | `fsxn-audit` | Value for the OTLP resource attribute service.name |
+| `LambdaCodeS3Key` | `otel-collector/lambda.zip` | S3 key for the Lambda deployment package (ZIP) |
+| `LambdaCodeS3Version` | `''` (empty) | S3 object version ID for the Lambda package (optional) |
+| `S3KeyPrefix` | `audit/` | Key prefix for audit log files within the S3 bucket |
+| `EventBridgeBusName` | `default` | EventBridge bus name for FPolicy events |
+| `FPolicySqsQueueArn` | `''` (empty) | ARN of the SQS queue receiving FPolicy events from Fargate server. If provided, creates an SQS event source mapping (primary trigger). |
+| `EmsParserLayerArn` | `''` (empty) | ARN of the shared EMS Parser Lambda Layer (optional) |
+| `LogLevel` | `INFO` | Lambda function log level (applies to all functions) |
+| `LambdaMemorySize` | `256` | Lambda function memory size in MB |
+| `AuditLambdaTimeout` | `300` | Audit log shipper Lambda timeout in seconds |
+| `EmsLambdaTimeout` | `30` | EMS handler Lambda timeout in seconds |
+| `FPolicyLambdaTimeout` | `30` | FPolicy handler Lambda timeout in seconds |
+| `AlarmNotificationTopicArn` | `''` (empty) | (Optional) SNS topic ARN notified when the alarms in this stack fire. See `template.yaml` for the full description. |
+
 
 ## Test Event Invocation
 
@@ -468,3 +540,40 @@ exporters:
 ```
 
 > **Status**: Not yet verified in this project. The Snowflake OTLP ingestion path is evolving. Validate endpoint configuration, authentication, and Event Table schema with your Snowflake environment before production use. See also [Bindplane Snowflake destination](https://docs.bindplane.com/integrations/destinations/snowflake) for a managed alternative.
+
+## Verify the deployment
+
+```bash
+bash integrations/otel-collector/scripts/verify.sh
+```
+
+Runs the shared AWS checks against all three shipper functions — the stack is
+healthy and each function holds the real handler rather than a stale or missing
+package — then, if `OTLP_ENDPOINT` is set, POSTs one synthetic OTLP log to
+`$OTLP_ENDPOINT/v1/logs`.
+
+Both matter. A Collector that accepts a test log tells you nothing about whether
+the pipeline is running, so the script exits non-zero on an AWS-side failure even
+when the endpoint responded fine. Set `SKIP_AWS_CHECKS=1` to probe only the
+endpoint before deploying.
+
+Exit codes follow `sysexits.h`: `0` pass, `69` a check failed, `78` required
+configuration missing.
+
+## Cleanup
+
+```bash
+bash integrations/otel-collector/scripts/cleanup.sh          # stacks only
+bash integrations/otel-collector/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/otel-collector/scripts/cleanup.sh --all -y  # non-interactive
+```
+
+The Lambda package in `s3://$LAMBDA_CODE_S3_BUCKET/$LAMBDA_CODE_S3_KEY` is not
+deleted — that bucket is yours, not created by this stack. Remove the object
+manually if you no longer need it.
+
+## Related Documents
+
+- [Deploying a vendor integration](../../../../docs/en/vendor-deployment-common.md) — steps shared by every vendor
+- [Prerequisites](../../../../docs/en/prerequisites.md) — FSx for ONTAP, audit logging, S3 access point
+- [Deployment guide](../../../../docs/en/deployment-guide.md) — stack catalog, VPC endpoint conflicts, cost

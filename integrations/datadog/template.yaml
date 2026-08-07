@@ -46,6 +46,25 @@ Parameters:
       FSx for ONTAP S3 APs do not support event notifications,
       so Lambda is invoked on a schedule.
 
+  MaxKeysPerRun:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    MaxValue: 1000
+    Description: >-
+      Maximum audit log files processed per scheduled invocation.
+      Bounds the work per run so a large backlog drains over several runs
+      instead of timing out mid-file; the remainder is picked up on the
+      next schedule.
+
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) SNS topic ARN notified when the error, throttle, or DLQ alarm
+      fires. Leave empty to create the alarms without notification actions —
+      they will be visible in the CloudWatch console but will not page anyone.
+
   LogLevel:
     Type: String
     Default: INFO
@@ -106,6 +125,7 @@ Parameters:
 
 Conditions:
   IsVpcEnabled: !Equals [!Ref VpcEnabled, 'true']
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
   # Dead Letter Queue
@@ -120,6 +140,20 @@ Resources:
           Value: fsxn-observability
         - Key: Vendor
           Value: datadog
+
+  # Checkpoint — tracks the last processed audit log key.
+  # FSx for ONTAP S3 Access Points do not emit S3 Event Notifications, so the
+  # poller relies on this checkpoint (not event delivery) to find new files.
+  CheckpointParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/fsxn-datadog/${AWS::StackName}/last-processed-key'
+      Type: String
+      Value: '__INIT__'
+      Description: >-
+        Last processed S3 key for FSx for ONTAP audit log polling.
+        The '__INIT__' sentinel means "start from the beginning of the prefix".
+        Updated by the shipper Lambda after each successfully shipped file.
 
   # Lambda Execution Role
   LambdaExecutionRole:
@@ -177,6 +211,16 @@ Resources:
                   - sqs:SendMessage
                 Resource:
                   - !GetAtt DeadLetterQueue.Arn
+        - PolicyName: SSMCheckpoint
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/fsxn-datadog/${AWS::StackName}/*'
 
         - !If
           - IsVpcEnabled
@@ -199,11 +243,19 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-shipper'
       Runtime: python3.12
       Handler: handler.lambda_handler
+      # Placeholder only. CloudFormation cannot inline the full handler, so the
+      # real lambda/handler.py must be uploaded after the stack is created.
+      # `scripts/deploy.sh` does this automatically as its final step; if you
+      # deploy this template by hand, run the update-function-code command in
+      # docs/{en,ja}/setup-guide.md Step 3.3 or the function will only raise.
       Code:
         ZipFile: |
-          # Placeholder - deploy actual code via CI/CD or S3
           def lambda_handler(event, context):
-              raise NotImplementedError("Deploy actual handler code")
+              raise NotImplementedError(
+                  "Placeholder code is still deployed. Upload the real handler: "
+                  "bash integrations/datadog/scripts/deploy.sh "
+                  "(or see docs/en/setup-guide.md Step 3.3)"
+              )
       Role: !GetAtt LambdaExecutionRole.Arn
       MemorySize: !Ref LambdaMemorySize
       Timeout: !Ref LambdaTimeout
@@ -215,6 +267,8 @@ Resources:
           API_KEY_SECRET_ARN: !Ref DatadogApiKeySecretArn
           FSX_S3_ACCESS_POINT_ARN: !Ref FsxS3AccessPointArn
           AUDIT_LOG_PREFIX: !Ref AuditLogPrefix
+          CHECKPOINT_PARAM_NAME: !Ref CheckpointParameter
+          MAX_KEYS_PER_RUN: !Ref MaxKeysPerRun
           LOG_LEVEL: !Ref LogLevel
           DD_SOURCE: fsxn
           DD_SERVICE: ontap-audit
@@ -292,6 +346,10 @@ Resources:
       Threshold: 5
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   # CloudWatch Alarm - Throttles
   ThrottleAlarm:
@@ -310,13 +368,19 @@ Resources:
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   # CloudWatch Alarm - DLQ Messages
   DLQAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: !Sub '${AWS::StackName}-dlq-messages'
-      AlarmDescription: Messages appearing in Dead Letter Queue
+      AlarmDescription: >-
+        Messages appearing in Dead Letter Queue.
+        Runbook: docs/en/runbooks/dlq-replay.md
       Namespace: AWS/SQS
       MetricName: ApproximateNumberOfMessagesVisible
       Dimensions:
@@ -328,6 +392,10 @@ Resources:
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   # ============================================================
   # CloudWatch Dashboard — Operational Health
@@ -394,8 +462,17 @@ Outputs:
     Value: !GetAtt LogShipperFunction.Arn
 
   LambdaFunctionName:
-    Description: Name of the log shipper Lambda function
+    Description: >-
+      Name of the log shipper Lambda function. Use this with
+      `aws lambda update-function-code` to upload the real handler.py.
     Value: !Ref LogShipperFunction
+
+  CheckpointParameterName:
+    Description: >-
+      SSM Parameter Store name holding the last processed audit log key.
+      Reset it to '__INIT__' to re-process the entire prefix from scratch
+      (this will duplicate logs already in Datadog).
+    Value: !Ref CheckpointParameter
 
   DeadLetterQueueUrl:
     Description: URL of the Dead Letter Queue

@@ -14,7 +14,10 @@
 #   export DD_API_KEY="your-api-key"
 #   export DD_APP_KEY="your-app-key"
 #   export DD_SITE="ap1.datadoghq.com"
-#   bash integrations/datadog/scripts/create-monitors.sh
+#   bash integrations/datadog/scripts/create-alerts.sh
+#
+# Named create-alerts.sh to match the other vendor integrations. Datadog's own
+# term for these objects is "monitor", which is what the API creates.
 #
 # Reference:
 #   https://docs.datadoghq.com/api/latest/monitors/

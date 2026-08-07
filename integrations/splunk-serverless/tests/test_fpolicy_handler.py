@@ -165,18 +165,16 @@ def mock_http_failure() -> MagicMock:
 class TestSqsEventShipping:
     """Tests for the primary SQS -> Lambda -> Splunk HEC path."""
 
-    def test_single_sqs_record_returns_200(
+    def test_single_sqs_record_reports_no_failures(
         self,
         sqs_event: dict[str, Any],
         mock_secrets: MagicMock,
         mock_http_success: MagicMock,
     ) -> None:
-        """A single SQS record ships successfully and returns HTTP 200."""
+        """A single SQS record ships and reports an empty batchItemFailures list."""
         result = fpolicy_handler.lambda_handler(sqs_event, None)
 
-        assert result["statusCode"] == 200
-        assert result["body"]["total_events"] == 1
-        assert result["body"]["shipped"] == 1
+        assert result == {"batchItemFailures": []}
 
     def test_sqs_batch_ships_all_events(
         self,
@@ -184,12 +182,10 @@ class TestSqsEventShipping:
         mock_secrets: MagicMock,
         mock_http_success: MagicMock,
     ) -> None:
-        """A batch of SQS records ships all events and returns HTTP 200."""
+        """A batch of SQS records ships all events with no reported failures."""
         result = fpolicy_handler.lambda_handler(sqs_event_batch, None)
 
-        assert result["statusCode"] == 200
-        assert result["body"]["total_events"] == 2
-        assert result["body"]["shipped"] == 2
+        assert result["batchItemFailures"] == []
 
     def test_sqs_event_sends_to_hec(
         self,
@@ -222,13 +218,17 @@ class TestSqsEventShipping:
         assert sent_event["event"]["operation_type"] == "CREATE"
         assert sent_event["event"]["svm"] == "fsxsvm01"
 
-    def test_malformed_sqs_body_is_skipped_valid_ones_ship(
+    def test_malformed_sqs_body_reported_valid_ones_ship(
         self,
         fpolicy_event_detail: dict[str, Any],
         mock_secrets: MagicMock,
         mock_http_success: MagicMock,
     ) -> None:
-        """A malformed SQS message body is skipped; valid records still ship."""
+        """A malformed body is reported for DLQ redrive; valid records still ship.
+
+        The malformed message must not be silently deleted — reporting it lets
+        the queue's redrive policy move it to the DLQ where it is visible.
+        """
         event = {
             "Records": [
                 {
@@ -246,9 +246,118 @@ class TestSqsEventShipping:
 
         result = fpolicy_handler.lambda_handler(event, None)
 
+        assert result["batchItemFailures"] == [{"itemIdentifier": "bad-msg"}]
+        # The valid record was still delivered.
+        mock_http_success.request.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests: SQS partial batch failure contract (ReportBatchItemFailures)
+# ---------------------------------------------------------------------------
+
+
+class TestSqsPartialBatchFailure:
+    """Tests that SQS failures are reported per message instead of swallowed.
+
+    The event source mapping declares
+    ``FunctionResponseTypes: [ReportBatchItemFailures]``, so returning an
+    empty ``batchItemFailures`` list tells SQS to delete every message. Any
+    message that was not successfully delivered must appear in the list or it
+    is lost.
+    """
+
+    def test_hec_failure_reports_every_parsed_message(
+        self,
+        sqs_event_batch: dict[str, Any],
+        mock_secrets: MagicMock,
+        mock_http_failure: MagicMock,
+    ) -> None:
+        """When HEC delivery fails, all parsed messages are reported for retry."""
+        result = fpolicy_handler.lambda_handler(sqs_event_batch, None)
+
+        assert {f["itemIdentifier"] for f in result["batchItemFailures"]} == {
+            "msg-1",
+            "msg-2",
+        }
+
+    def test_partial_hec_shipment_reports_all_parsed_messages(
+        self,
+        sqs_event_batch: dict[str, Any],
+        mock_secrets: MagicMock,
+        mock_http_success: MagicMock,
+    ) -> None:
+        """A short shipped count is treated as failure, not as success.
+
+        ``_ship_to_splunk`` returns the number shipped rather than raising, so
+        the handler must compare it against the number of events. Otherwise a
+        partially delivered batch would be reported as fully successful and the
+        undelivered messages deleted.
+        """
+        with patch.object(fpolicy_handler, "_ship_to_splunk", return_value=0):
+            result = fpolicy_handler.lambda_handler(sqs_event_batch, None)
+
+        assert {f["itemIdentifier"] for f in result["batchItemFailures"]} == {
+            "msg-1",
+            "msg-2",
+        }
+
+    def test_secrets_failure_raises_so_sqs_redelivers(
+        self,
+        sqs_event: dict[str, Any],
+    ) -> None:
+        """A credential failure applies to the whole batch, so it must raise.
+
+        Returning a response would delete the messages. Raising fails the
+        invocation and SQS re-delivers every message in the batch.
+        """
+        from botocore.exceptions import ClientError
+
+        error = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "GetSecretValue",
+        )
+        with patch.object(fpolicy_handler, "_get_hec_token", side_effect=error):
+            with pytest.raises(ClientError):
+                fpolicy_handler.lambda_handler(sqs_event, None)
+
+    def test_all_records_malformed_reports_all(
+        self,
+        mock_secrets: MagicMock,
+    ) -> None:
+        """A batch of only malformed messages reports every one of them."""
+        event = {
+            "Records": [
+                {
+                    "messageId": "bad-1",
+                    "eventSource": "aws:sqs",
+                    "body": "not valid json {{",
+                },
+                {
+                    "messageId": "bad-2",
+                    "eventSource": "aws:sqs",
+                    "body": "[]",
+                },
+            ]
+        }
+
+        result = fpolicy_handler.lambda_handler(event, None)
+
+        assert {f["itemIdentifier"] for f in result["batchItemFailures"]} == {
+            "bad-1",
+            "bad-2",
+        }
+
+    def test_non_sqs_records_use_eventbridge_path(
+        self,
+        eventbridge_event: dict[str, Any],
+        mock_secrets: MagicMock,
+        mock_http_success: MagicMock,
+    ) -> None:
+        """EventBridge events keep the statusCode contract, not batchItemFailures."""
+        result = fpolicy_handler.lambda_handler(eventbridge_event, None)
+
+        assert "batchItemFailures" not in result
         assert result["statusCode"] == 200
-        assert result["body"]["total_events"] == 1
-        assert result["body"]["shipped"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -315,11 +424,15 @@ class TestInvalidEvent:
 
         assert result["statusCode"] == 400
 
-    def test_sqs_all_records_malformed_returns_400(
+    def test_sqs_all_records_malformed_reports_failures(
         self,
         mock_secrets: MagicMock,
     ) -> None:
-        """SQS batch where every record body is malformed returns HTTP 400."""
+        """An all-malformed SQS batch reports failures instead of returning 400.
+
+        A 400 response would tell SQS the batch was handled and delete the
+        messages. Reporting them routes them to the DLQ instead.
+        """
         event = {
             "Records": [
                 {
@@ -332,7 +445,7 @@ class TestInvalidEvent:
 
         result = fpolicy_handler.lambda_handler(event, None)
 
-        assert result["statusCode"] == 400
+        assert result["batchItemFailures"] == [{"itemIdentifier": "bad-msg"}]
 
     def test_invalid_event_does_not_call_secrets_manager(
         self,
@@ -355,15 +468,28 @@ class TestHecFailureAfterRetries:
     """Tests for HEC failure after retry exhaustion."""
 
     @patch("fpolicy_handler.time.sleep")
-    def test_hec_503_after_retries_returns_207(
+    def test_hec_503_after_retries_reports_failure(
         self,
         mock_sleep: MagicMock,
         sqs_event: dict[str, Any],
         mock_secrets: MagicMock,
         mock_http_failure: MagicMock,
     ) -> None:
-        """HEC returning 503 on all retries results in HTTP 207 (partial) with shipped=0."""
+        """HEC returning 503 on all retries reports the message for SQS retry."""
         result = fpolicy_handler.lambda_handler(sqs_event, None)
+
+        assert result["batchItemFailures"] == [{"itemIdentifier": "msg-1"}]
+
+    @patch("fpolicy_handler.time.sleep")
+    def test_hec_503_on_eventbridge_path_returns_207(
+        self,
+        mock_sleep: MagicMock,
+        eventbridge_event: dict[str, Any],
+        mock_secrets: MagicMock,
+        mock_http_failure: MagicMock,
+    ) -> None:
+        """The EventBridge path still signals partial delivery with HTTP 207."""
+        result = fpolicy_handler.lambda_handler(eventbridge_event, None)
 
         assert result["statusCode"] == 207
         assert result["body"]["shipped"] == 0
@@ -407,12 +533,12 @@ class TestHecFailureAfterRetries:
 class TestHecTokenRetrievalFailure:
     """Tests for Secrets Manager failures when fetching the HEC token."""
 
-    def test_secrets_manager_error_returns_502(
+    def test_secrets_manager_error_returns_502_on_eventbridge_path(
         self,
-        sqs_event: dict[str, Any],
+        eventbridge_event: dict[str, Any],
         mock_http_success: MagicMock,
     ) -> None:
-        """Secrets Manager failure when fetching the HEC token returns HTTP 502."""
+        """Secrets Manager failure on the EventBridge path returns HTTP 502."""
         from botocore.exceptions import ClientError
 
         with patch("fpolicy_handler.secrets_client") as mock_client:
@@ -426,7 +552,7 @@ class TestHecTokenRetrievalFailure:
                 operation_name="GetSecretValue",
             )
 
-            result = fpolicy_handler.lambda_handler(sqs_event, None)
+            result = fpolicy_handler.lambda_handler(eventbridge_event, None)
 
         assert result["statusCode"] == 502
         assert "error" in result["body"]
@@ -450,7 +576,9 @@ class TestHecTokenRetrievalFailure:
                 operation_name="GetSecretValue",
             )
 
-            fpolicy_handler.lambda_handler(sqs_event, None)
+            # The SQS path lets the error propagate so SQS re-delivers the batch.
+            with pytest.raises(ClientError):
+                fpolicy_handler.lambda_handler(sqs_event, None)
 
         mock_http_success.request.assert_not_called()
 
