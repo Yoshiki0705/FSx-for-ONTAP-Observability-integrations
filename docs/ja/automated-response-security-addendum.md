@@ -138,6 +138,26 @@ NFS と SMB の両方でアクセスされるボリュームの場合、両方�
   - 追加要件: IAM ゲート（承認ワークフロー付き別 SNS トピック）
 ```
 
+### SNS トピックのアクセスポリシー（アンブロックを制限）
+
+```json
+{
+  "Statement": [{
+    "Effect": "Deny",
+    "Principal": "*",
+    "Action": "SNS:Publish",
+    "Resource": "<trigger-topic-arn>",
+    "Condition": {
+      "StringLike": {"aws:PrincipalArn": "arn:aws:iam::*:role/non-security-*"},
+      "ForAnyValue:StringEquals": {"sns:MessageBody": ["unblock_smb_user", "unblock_nfs_ip"]}
+    }
+  }]
+}
+```
+
+> 注意: メッセージ本文に対する SNS の条件指定は独自の検証が必要です。厳格に制御する
+> 場合は、アンブロック操作用に別の SNS トピックを用意してください。
+
 ---
 
 ## 5. DR & レプリケーションの考慮事項

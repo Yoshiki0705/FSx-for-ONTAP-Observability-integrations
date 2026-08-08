@@ -51,6 +51,17 @@ Resources:
         - Protocol: email
           Endpoint: !Ref AlertEmail
 
+  # CollectorSchedule invokes the collector asynchronously, so a failing
+  # invocation is retried twice by Lambda and then dropped. The three alarms
+  # below all use TreatMissingData notBreaching, so a collector that stops
+  # publishing looks exactly like a healthy pipeline.
+  CollectorDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+
   MonitorLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -87,6 +98,49 @@ Resources:
                 Action:
                   - ce:GetCostAndUsage
                 Resource: '*'
+              - Sid: DeadLetterQueue
+                Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt CollectorDeadLetterQueue.Arn
+
+  # DataSyncTaskArn is handed to the collector as DATASYNC_TASK_ARN and the
+  # dashboard carries a DataSyncLagSeconds widget, but MonitorLambdaRole granted no
+  # datasync:* permission at all — a collector reading that env var would get
+  # AccessDenied. Attached only when a task ARN is supplied, which is also what
+  # makes HasDataSyncTask a live condition instead of a dead one.
+  #
+  # This is a separate AWS::IAM::Policy rather than an Fn::If-wrapped statement
+  # inside MonitorLambdaRole because a conditional statement becomes a struct whose
+  # only key is Fn::If, and cfn-guard then reports the statement as missing its
+  # Action key (critical-security.guard/no_wildcard_actions fails with
+  # RequiredPropertyError). A resource-level Condition keeps each statement in its
+  # literal shape for both cfn-guard and readers.
+  #
+  # Two statements because the resource types differ: DescribeTask and
+  # ListTaskExecutions act on the task ARN, while DescribeTaskExecution acts on a
+  # task *execution* ARN of the form <taskArn>/execution/exec-<17 hex chars>.
+  # https://docs.aws.amazon.com/datasync/latest/apireference/API_DescribeTaskExecution.html
+  MonitorLambdaDataSyncPolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasDataSyncTask
+    Properties:
+      PolicyName: LakehouseMonitorDataSyncPolicy
+      Roles:
+        - !Ref MonitorLambdaRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DataSyncTaskRead
+            Effect: Allow
+            Action:
+              - datasync:DescribeTask
+              - datasync:ListTaskExecutions
+            Resource: !Ref DataSyncTaskArn
+          - Sid: DataSyncTaskExecutionRead
+            Effect: Allow
+            Action:
+              - datasync:DescribeTaskExecution
+            Resource: !Sub '${DataSyncTaskArn}/execution/*'
 
   MetricsCollectorFunction:
     Type: AWS::Lambda::Function
@@ -97,6 +151,8 @@ Resources:
       Role: !GetAtt MonitorLambdaRole.Arn
       Timeout: 120
       MemorySize: 256
+      DeadLetterConfig:
+        TargetArn: !GetAtt CollectorDeadLetterQueue.Arn
       Environment:
         Variables:
           ONTAP_MGMT_ENDPOINT: !Ref OntapMgmtEndpoint
@@ -111,10 +167,47 @@ Resources:
             - !Ref SecurityGroupId
         - !Ref 'AWS::NoValue'
       Code:
+        # This stack does not ship a collector. Unlike the vendor integrations and
+        # the management console Lambdas, whose source lives in this repository and
+        # is inlined by shared/scripts/sync-inline-lambda.py, the metrics this
+        # template alarms on are specific to your lakehouse layout -- which
+        # SnapMirror relationships, which FlexCache volumes, which DataSync task.
+        #
+        # So the placeholder raises rather than returning a status string. The
+        # previous version returned {"status": "deploy monitoring code via
+        # scripts/deploy.sh"} and exited 200, which meant: no metrics were ever
+        # published, the three alarms below sat in INSUFFICIENT_DATA, the dashboard
+        # rendered empty, and nothing anywhere said why. The referenced
+        # scripts/deploy.sh does not exist.
+        #
+        # Raising instead sends the invocation to CollectorDeadLetterQueue after
+        # Lambda's retries, which trips CollectorDlqDepthAlarm on the first
+        # schedule tick and emails AlertSNSTopic. The failure is reported within
+        # one ScheduleRate interval instead of never.
+        #
+        # Replace it with:
+        #   aws lambda update-function-code \
+        #     --function-name <stack-name>-collector \
+        #     --zip-file fileb://collector.zip
+        #
+        # The function must publish to the FSxONTAP/Lakehouse namespace the
+        # metrics the alarms below read: SnapMirrorLagSeconds, FlexCacheHitRate
+        # and AccessAnomalyCount. See docs/en/lakehouse-monitoring-patterns.md.
         ZipFile: |
-          # Placeholder - deploy actual code via update-function-code
+          """Collector placeholder -- fails loudly until real code is uploaded.
+
+          A stub that returned success here produced a stack that looked healthy
+          and monitored nothing.
+          """
           def lambda_handler(event, context):
-              return {"status": "deploy monitoring code via scripts/deploy.sh"}
+              raise NotImplementedError(
+                  "No collector code deployed. This stack ships a placeholder on "
+                  "purpose: the metrics depend on your lakehouse layout. Upload a "
+                  "collector that publishes SnapMirrorLagSeconds, FlexCacheHitRate "
+                  "and AccessAnomalyCount to the FSxONTAP/Lakehouse namespace, "
+                  "then this alarm clears. See "
+                  "docs/en/lakehouse-monitoring-patterns.md."
+              )
 
   CollectorSchedule:
     Type: AWS::Scheduler::Schedule
@@ -213,6 +306,33 @@ Resources:
       AlarmActions:
         - !Ref AlertSNSTopic
 
+  # A message here means the collector failed every retry, so every metric in
+  # the FSxONTAP/Lakehouse namespace is stale and the three alarms above are
+  # evaluating old data rather than reporting a problem.
+  CollectorDlqDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-depth'
+      AlarmDescription: >-
+        The lakehouse metrics collector failed all retries. SnapMirror lag,
+        FlexCache hit rate and access anomaly alarms are now evaluating stale
+        data. Check the collector log group, then confirm the function still has
+        the real collector code rather than the placeholder shipped in the
+        template.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt CollectorDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertSNSTopic
+
   # --- Dashboard ---
   LakehouseDashboard:
     Type: AWS::CloudWatch::Dashboard
@@ -282,3 +402,8 @@ Outputs:
     Value: !Ref AlertSNSTopic
   CollectorFunctionArn:
     Value: !GetAtt MetricsCollectorFunction.Arn
+  DeadLetterQueueUrl:
+    Description: >-
+      DLQ for failed collector invocations. Messages here mean the lakehouse
+      metrics are stale.
+    Value: !Ref CollectorDeadLetterQueue

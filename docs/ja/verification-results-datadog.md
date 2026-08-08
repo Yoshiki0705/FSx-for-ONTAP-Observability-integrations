@@ -77,11 +77,13 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス** — ```json
+- **レスポンス**:
+```json
 {"statusCode": 200, "body": {"total_logs": 5, "total_shipped": 5, "errors": []}}
 ```
 
-- **確認項目** — - [x] statusCode: 200
+- **確認項目**:
+  - [x] statusCode: 200
   - [x] total_logs: 5
   - [x] total_shipped: 5
   - [x] errors: [] (空)
@@ -96,7 +98,8 @@ aws lambda invoke \
 - **到着ログ数** — 5件（Lambda 送信分）+ 2件（直接 API テスト分）
 - **到着までの時間** — 約30-45秒
 
-- **確認項目** — - [x] `source:fsxn` で1件以上のログが表示される
+- **確認項目**:
+  - [x] `source:fsxn` で1件以上のログが表示される
   - [x] 各ログに `attributes.svm` = `svm-prod-01`
   - [x] 各ログに `attributes.user` = `admin@corp.local` 等
   - [x] 各ログに `attributes.operation` = `ReadData` 等
@@ -127,7 +130,8 @@ aws lambda invoke \
 - **ダッシュボード名** — FSx for ONTAP Audit Log Overview
 - **ダッシュボード ID** — ggx-7ad-6e4
 - **作成方法** — Datadog Dashboard API (`POST /api/v1/dashboard`)
-- **ウィジェット** — - ログ量推移 (Timeseries)
+- **ウィジェット**:
+  - ログ量推移 (Timeseries)
   - 操作別内訳 (Top List)
   - ユーザー別アクティビティ (Top List)
   - エラー率 (Query Value)
@@ -141,13 +145,15 @@ aws lambda invoke \
 - **結果** — ✅ 成功
 
 - **検索クエリ** — `source:fsxn @attributes.result:Failure`
-- **検出されたイベント** — - ユーザー: `unknown@external.com`
+- **検出されたイベント**:
+  - ユーザー: `unknown@external.com`
   - 操作: `Open`
   - パス: `/vol/data/confidential/secret.pdf`
   - クライアントIP: `192.168.1.100`
   - 結果: `Failure`
 
-- **確認項目** — - [x] `@attributes.result:Failure` で1件以上表示
+- **確認項目**:
+  - [x] `@attributes.result:Failure` で1件以上表示
   - [x] `@attributes.user` が空でない（`unknown@external.com`）
   - [x] `@attributes.path` が空でない（`/vol/data/confidential/secret.pdf`）
   - [x] `@attributes.client_ip` が空でない（`192.168.1.100`）
@@ -340,7 +346,8 @@ aws lambda invoke \
 
 - **結果** — ✅ 成功
 - **注意点** — ECR イメージは `linux/amd64` でビルドが必須（Apple Silicon でビルドすると arm64 のみになり Fargate で起動失敗）
-- **コマンド** — ```bash
+- **コマンド**:
+```bash
 docker buildx build --platform linux/amd64 \
   -t 123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/fsxn-fpolicy-server:v2-timeout-fix \
   --push shared/fpolicy-server/

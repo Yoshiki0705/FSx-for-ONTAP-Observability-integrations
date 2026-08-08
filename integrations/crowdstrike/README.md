@@ -30,6 +30,29 @@ FSx for ONTAP → S3 Access Point → EventBridge Scheduler → Lambda → LogSc
 - LogScale Ingest Token (リポジトリに紐付け)
 - AWS アカウント + FSx for ONTAP (監査ログ有効化済み)
 
+### スクリプト
+
+| スクリプト | 用途 |
+|-----------|------|
+| `scripts/deploy.sh` | スタックをデプロイしハンドラコードをアップロード |
+| `scripts/create-alerts.sh` | LogScale アラート 3 件を作成（機密パスへのアクセス / 大量削除 / 認証失敗の急増） |
+| `scripts/setup-full-observability.sh` | デプロイ → アラート作成 → 検証をワンコマンドで実行 |
+| `scripts/verify.sh` | デプロイ後の E2E 検証 |
+| `scripts/cleanup.sh` | スタックと任意リソースの削除 |
+
+LogScale のトークンは 2 種類あり、互換性はありません。
+
+| トークン | 使用箇所 | 権限 |
+|---------|---------|------|
+| Ingest Token | Lambda（`INGEST_TOKEN_SECRET_ARN`） | イベントの書き込みのみ |
+| 管理 API トークン | `create-alerts.sh`（`LOGSCALE_API_TOKEN`） | GraphQL でアラートとアクションを管理 |
+
+`create-alerts.sh` に Ingest Token を渡すと認可エラーになります。[LogScale API tokens](https://library.humio.com/falcon-logscale-cloud/security-apitokens.html) を参照してください。
+
+> **検知範囲に関する補足**
+>
+> この統合は `template.yaml` のみを提供し、EMS Webhook と FPolicy ハンドラはありません。ランサムウェア（ARP）検知は EMS イベントに依存するため、ここで作成するアラートはすべてファイルアクセス監査ログから導出したものです。どの検知がどのイベントソースを必要とするかは [detection-use-cases.md](../../docs/ja/detection-use-cases.md) を参照してください。
+
 ---
 
 ## Overview
@@ -89,7 +112,28 @@ aws lambda update-function-code \
   --region ap-northeast-1
 ```
 
-> **Note**: The CloudFormation template deploys a placeholder Lambda. After stack creation, upload the actual handler code using step 4 above or via `scripts/deploy.sh`.
+> **Note**: The CloudFormation template deploys a placeholder Lambda that raises `NotImplementedError`. After stack creation, upload the actual handler code using step 4 above or via `scripts/deploy.sh`.
+
+### Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/deploy.sh` | Deploy the stack and upload the handler code |
+| `scripts/create-alerts.sh` | Create 3 LogScale alerts (sensitive path access, mass deletion, failed access spike) |
+| `scripts/setup-full-observability.sh` | Deploy → create alerts → verify, in one command |
+| `scripts/verify.sh` | Post-deployment E2E verification |
+| `scripts/cleanup.sh` | Remove the stack and optional resources |
+
+Two different LogScale tokens are involved, and they are not interchangeable:
+
+| Token | Used by | Capability |
+|-------|---------|-----------|
+| Ingest token | Lambda (`INGEST_TOKEN_SECRET_ARN`) | Write events only |
+| Management API token | `create-alerts.sh` (`LOGSCALE_API_TOKEN`) | Manage alerts and actions via GraphQL |
+
+Passing the ingest token to `create-alerts.sh` returns an authorization error. See [LogScale API tokens](https://library.humio.com/falcon-logscale-cloud/security-apitokens.html).
+
+> **Detection scope note**: this integration ships `template.yaml` only — no EMS webhook and no FPolicy handler. Ransomware (ARP) detection depends on EMS events, so the alerts created here are all derived from file access audit logs. See [detection-use-cases.md](../../docs/en/detection-use-cases.md) for which detections need which event source.
 
 ### Roadmap
 

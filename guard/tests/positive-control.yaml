@@ -1,0 +1,153 @@
+# Deliberately compliant template. No rule in guard/rules/*.guard may report a
+# finding against this file.
+#
+# This is the other half of the pair. negative-control.yaml catches rules that
+# never fire; this one catches rules that fire on everything. An over-broad rule
+# is not harmless -- it produces findings that are always dismissed, and once
+# reviewers learn to dismiss a rule's output the rule has stopped working just as
+# thoroughly as if it never ran.
+#
+# The cases below are the ones that actually tripped over-broad versions of these
+# rules in this repository: ARN-shaped parameter names, intrinsic functions where
+# a string was expected, and Lambda functions whose invocation model has no async
+# DLQ.
+Parameters:
+  # Holds an ARN, not secret material. Must not be flagged for missing NoEcho.
+  OntapCredentialsSecretArn:
+    Type: String
+    Default: 'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:example-XXXXXX'
+
+  # Holds a secret name, not the value. Must not be flagged.
+  VendorCredentialSecretName:
+    Type: String
+    Default: example-secret
+
+  # A toggle that merely contains the word "Secrets". Must not be flagged.
+  CreateSecretsManagerEndpoint:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+
+  # Carries secret material and declares NoEcho. Must not be flagged.
+  VendorApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+
+Resources:
+  ScopedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: scoped
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref OntapCredentialsSecretArn
+              # Wildcard resource on actions AWS does not allow scoping. Must
+              # not be flagged.
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+
+  CompliantDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+
+  # Async invocation model, so it carries a real DLQ.
+  CompliantAsyncFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt ScopedRole.Arn
+      Timeout: 300
+      MemorySize: 256
+      DeadLetterConfig:
+        TargetArn: !GetAtt CompliantDeadLetterQueue.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {"statusCode": 200}
+      Environment:
+        Variables:
+          # Ends in 'Key' but references a secret ARN. Must not be flagged.
+          VendorApiKey: 'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:example-XXXXXX'
+
+  # Synchronous invocation model, so it declares an exemption instead.
+  CompliantSyncFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Synchronous API Gateway integration; the async DLQ never fires. This
+          resource exists to prove the exemption mechanism is honoured.
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt ScopedRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {"statusCode": 200}
+
+  # Credential env vars supplied by intrinsic functions. Comparing a struct
+  # against a regex raises a ComparisonError that Guard counts as a violation, so
+  # these must be filtered out by the rules rather than reported.
+  CompliantTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: app
+          Image: public.ecr.aws/nginx/nginx:latest
+          Environment:
+            - Name: ONTAP_CREDENTIALS_SECRET_ARN
+              Value: !Ref OntapCredentialsSecretArn
+            - Name: VENDOR_SECRET_NAME
+              Value: !Sub '${VendorCredentialSecretName}-suffix'
+            - Name: DB_PASSWORD
+              Value: 'arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:db-XXXXXX'
+
+  # SecretString omitted; the value is written out of band.
+  CompliantSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: guard-selftest-good-secret
+      Description: Populated out of band with put-secret-value
+
+  # SecretString supplied by a dynamic reference.
+  CompliantResolveSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: guard-selftest-good-resolve-secret
+      Description: Value comes from a dynamic reference
+      SecretString: '{{resolve:ssm-secure:/example/key}}'
+
+  # SecretString supplied by a NoEcho parameter.
+  CompliantRefSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: guard-selftest-good-ref-secret
+      Description: Value comes from a NoEcho parameter
+      SecretString: !Ref VendorApiKey

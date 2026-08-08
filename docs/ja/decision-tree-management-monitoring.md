@@ -64,6 +64,7 @@
 | **パフォーマンス影響** | FSA 初期スキャン時にレイテンシが上昇する可能性あり | [NetApp KB: High or fluctuating latency after turning on FSA](https://kb.netapp.com/Advice_and_Troubleshooting/Data_Storage_Software/ONTAP_OS/High_or_fluctuating_latency_after_turning_on_NetApp_ONTAP_File_System_Analytics) |
 | **`-atime-update` 前提条件** | 無効の場合、Explorer の accessed_time が更新されず非アクティブファイル分析が機能しない | [View Activity](https://docs.netapp.com/us-en/ontap/task_nas_file_system_analytics_view.html) |
 | **初期スキャン時間** | ボリューム内のファイル数に比例。大量ファイルがある場合は数時間かかる可能性 | [FSA Overview](https://docs.netapp.com/us-en/ontap/concept_nas_file_system_analytics_overview.html) |
+| **Activity Tracking のデータが即座に表示されないことがある** | データは 5 秒間隔のサンプリングに基づいて現れるため、タイミング依存 | [classmethod の検証記事](https://dev.classmethod.jp/articles/amazon-fsx-for-netapp-ontap-netapp-console/) |
 | **推奨**: 本番有効化前にテストボリュームで影響を確認すること | — | — |
 
 ---
@@ -385,6 +386,17 @@ EventBridge Scheduler (60秒ごと)
 ### オプション A: Lambda + ONTAP REST API → Prometheus Remote Write
 
 FSA 固有メトリクスに特化した軽量サーバーレスアプローチ:
+
+```python
+# Lambda collects FSA metrics via ONTAP REST API
+# Endpoint: GET /api/storage/volumes/{uuid}/files?analytics=true
+# Metrics to collect:
+#   - bytes_read, bytes_written (per volume)
+#   - iops_read, iops_written (per volume)
+#   - top_clients, top_files (from Activity Tracking)
+
+# Push to Amazon Managed Prometheus (AMP) via remote_write
+```
 
 | メトリクス | ONTAP REST API エンドポイント | Grafana パネル |
 |-----------|---------------------------|---------------|

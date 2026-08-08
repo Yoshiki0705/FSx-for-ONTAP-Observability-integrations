@@ -1,8 +1,15 @@
 # Management Console security rules — BLOCKING in CI
-# Validates security policies for the FSxN Management Console stacks.
+# Validates security policies for the FSx for ONTAP Management Console stacks
+# in management-console/templates/.
 # Violations here indicate critical security issues that must be fixed before merge.
 #
 # Validates: Requirements 10.1, 10.2, 10.4
+#
+# This file claimed to be BLOCKING for a long time while no CI step referenced
+# it, so none of these rules ran. It is now wired into the cfn-guard job in
+# .github/workflows/ci.yaml against management-console/templates/*.yaml, which
+# is also the only place those templates are validated -- the other cfn-lint and
+# cfn-guard steps glob integrations/ and shared/templates/ only.
 
 let iam_roles = Resources.*[ Type == "AWS::IAM::Role" ]
 let iam_policies = Resources.*[ Type == "AWS::IAM::Policy" ]
@@ -32,7 +39,17 @@ rule no_wildcard_iam_actions_standalone when %iam_policies !empty {
 #
 # Rule 2: IAM policies must not use wildcard (*) for Resource
 # Prevents overly broad resource access.
-# Note: ecr:GetAuthorizationToken requires Resource: '*' per AWS docs — excluded from check.
+#
+# Exceptions are limited to actions that AWS itself defines as not being
+# resource-scopable:
+#   - ecr:GetAuthorizationToken operates on the account, not a repository.
+#   - The ec2:*NetworkInterface trio is what a VPC-attached Lambda needs to
+#     create and tear down its ENIs. The AWS managed policy
+#     AWSLambdaVPCAccessExecutionRole grants exactly these on Resource: '*';
+#     scoping them is not possible because the ENI does not exist yet at
+#     CreateNetworkInterface time.
+# Anything else with Resource: '*' is a finding.
+#
 # Note: cfn-guard cannot compare intrinsic functions (Fn::Sub, Ref, GetAtt) against strings;
 #       non-string Resource values are inherently not wildcards and pass this rule.
 #
@@ -42,8 +59,13 @@ rule no_wildcard_iam_resources when %iam_roles !empty {
     %statements {
       when Resource is_string
            Resource == "*" {
-        Action[*] == "ecr:GetAuthorizationToken"
-        <<BLOCKING: IAM policies must not use wildcard (*) resources. Scope to specific ARNs. (Exception: ecr:GetAuthorizationToken requires Resource: '*')>>
+        Action[*] IN [
+          "ecr:GetAuthorizationToken",
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface"
+        ]
+        <<BLOCKING: IAM policies must not use wildcard (*) resources. Scope to specific ARNs. (Exceptions: ecr:GetAuthorizationToken and the ec2:*NetworkInterface actions a VPC Lambda needs, which AWS does not allow scoping.)>>
       }
     }
   }
@@ -55,7 +77,12 @@ rule no_wildcard_iam_resources_standalone when %iam_policies !empty {
     %statements {
       when Resource is_string
            Resource == "*" {
-        Action[*] == "ecr:GetAuthorizationToken"
+        Action[*] IN [
+          "ecr:GetAuthorizationToken",
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface"
+        ]
         <<BLOCKING: IAM policies must not use wildcard (*) resources. Scope to specific ARNs.>>
       }
     }
@@ -114,14 +141,19 @@ rule no_public_ip_for_ecs_tasks when %ecs_services !empty {
 # Rule 5: ECS task definitions must not have secrets hardcoded in environment variables
 # Credentials must be referenced via Secrets Manager ARN or SSM Parameter Store.
 #
+# The `Value is_string` filter is load-bearing. A Value supplied by an intrinsic
+# function parses to a struct ({"Ref": "..."}), and comparing a struct against a
+# regex raises a ComparisonError that Guard counts as non-compliant -- so without
+# the filter every !Ref'd environment variable is reported as a hardcoded secret.
 rule no_hardcoded_secrets_in_task_env when %task_definitions !empty {
   %task_definitions.Properties.ContainerDefinitions[*] {
     when Environment exists {
-      Environment[*] {
-        when Name == /.*[Pp]assword.*/ OR Name == /.*[Ss]ecret.*/ OR Name == /.*[Cc]redential.*/ OR Name == /.*[Tt]oken.*/ {
-          Value == /^(arn:aws:secretsmanager:|arn:aws:ssm:|\{\{resolve:).*/
-          <<BLOCKING: Container environment variables containing credentials must reference Secrets Manager ARNs or SSM parameters, not plaintext values.>>
-        }
+      Environment[
+        Name == /(?i)(password|secret|credential|token)/
+        Value is_string
+      ] {
+        Value == /^(arn:aws:secretsmanager:|arn:aws:ssm:|\{\{resolve:).*/
+        <<BLOCKING: Container environment variables containing credentials must reference Secrets Manager ARNs or SSM parameters, not plaintext values.>>
       }
     }
   }
@@ -157,43 +189,60 @@ rule no_secrets_in_lambda_env when %lambdas !empty {
 }
 
 #
-# Rule 7: VPC Interface Endpoints should be used for AWS service access
-# Validates that VPC endpoints exist when ECS services are deployed (minimizes NAT costs).
-# Note: In multi-stack deployments, VPC endpoints may reside in a separate network stack.
-# This rule only validates within a single template; cross-stack validation is done at deploy time.
+# Rule 7: removed.
 #
-let vpc_endpoints = Resources.*[ Type == "AWS::EC2::VPCEndpoint" ]
-
-rule vpc_endpoints_exist_for_ecs when %ecs_services !empty {
-  when %vpc_endpoints !empty {
-    %vpc_endpoints !empty
-  }
-}
+# It read:
+#
+#   rule vpc_endpoints_exist_for_ecs when %ecs_services !empty {
+#     when %vpc_endpoints !empty {
+#       %vpc_endpoints !empty
+#     }
+#   }
+#
+# which asserts that endpoints are non-empty only in the case where they are
+# already known to be non-empty. It can never fail, so it was reporting
+# compliance rather than checking anything.
+#
+# There is no correct single-template version of the check either: in this
+# repository the endpoints live in network.yaml while the ECS services live in
+# console.yaml, so a template-scoped rule would either always pass or always
+# fail. Cross-stack endpoint coverage is what shared/scripts/preflight-check.sh
+# verifies against a real VPC, which is the only place the answer is knowable.
 
 #
 # Rule 8: Dead letter configuration must exist for Lambda functions
 # Ensures failed invocations are captured for debugging and replay.
 #
+# Same exemption mechanism as guard/rules/lambda-security.guard: a function
+# whose invocation model cannot reach an async DLQ (CloudFormation custom
+# resources, API Gateway integrations, Step Functions tasks, SQS pollers)
+# declares that on the resource:
+#
+#   Metadata:
+#     guard:
+#       dlq_exempt: 'CloudFormation custom resource; CFn waits on the callback'
+#
 rule lambda_has_dead_letter_config when %lambdas !empty {
-  %lambdas.Properties {
-    DeadLetterConfig exists
-    <<BLOCKING: Lambda functions must have a DeadLetterConfig (DLQ) for capturing failed invocations.>>
-  }
+  Resources.*[
+    Type == "AWS::Lambda::Function"
+    Metadata.guard.dlq_exempt not exists
+  ].Properties.DeadLetterConfig exists
+  <<BLOCKING: Lambda functions must have a DeadLetterConfig (DLQ) for capturing failed invocations, or a Metadata.guard.dlq_exempt reason explaining why an async DLQ cannot fire for this invocation model.>>
 }
 
 #
 # Rule 9: No plaintext secret parameters without NoEcho
 # CloudFormation parameters containing sensitive values must be masked.
 #
-rule no_plaintext_secret_params_mgmt {
-  when Parameters exists {
-    Parameters.*[ keys == /.*[Ss]ecret.*/ ] {
-      NoEcho == true
-      <<BLOCKING: Parameters containing 'Secret' must have NoEcho: true to prevent console exposure.>>
-    }
-    Parameters.*[ keys == /.*[Pp]assword.*/ ] {
-      NoEcho == true
-      <<BLOCKING: Parameters containing 'Password' must have NoEcho: true to prevent console exposure.>>
-    }
+# The match is anchored to the end of the name so that references
+# (SomethingSecretArn, SomethingSecretName) are not reported. See the same rule
+# in guard/rules/lambda-security.guard for why: the unanchored form matched
+# nothing at all, because `Parameters.*[ keys == ... ]` descends into each
+# parameter's value map before `keys` is evaluated.
+#
+rule no_plaintext_secret_params_mgmt when Parameters exists {
+  Parameters[ keys == /(?i)(secret|password|token|apikey|credential)(value)?$/ ] {
+    NoEcho == true
+    <<BLOCKING: A parameter that carries secret material must have NoEcho: true to prevent console exposure.>>
   }
 }

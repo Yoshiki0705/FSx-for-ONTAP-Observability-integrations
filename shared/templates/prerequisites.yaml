@@ -31,6 +31,10 @@ Parameters:
     Description: >
       (Optional) DynamoDB table name for checkpointing processed files.
       Leave empty to create a new table.
+      NOTE: no vendor handler in this repository reads or writes this table. The
+      shipped handlers checkpoint in an SSM Parameter instead, and the Level 3
+      per-object ledger is a separate table created by object-ledger.yaml. Set this
+      to any existing table name to skip creating an unused one.
 
 Conditions:
   CreateCheckpointTable: !Equals [!Ref CheckpointTableName, '']
@@ -38,6 +42,16 @@ Conditions:
 Resources:
   # ============================================================
   # DynamoDB Table for Checkpointing (tracks processed audit files)
+  #
+  # Unused by every handler currently in this repository. It is created by default
+  # (CheckpointTableName='') and stays empty: the vendor handlers checkpoint in an
+  # SSM Parameter, and the Level 3 per-object ledger lives in its own table from
+  # object-ledger.yaml with a different key schema (s3_key, not svm_name/file_key).
+  #
+  # Kept rather than removed because CheckpointTableName is an Export and deleting
+  # an exported Output breaks `update-stack` for any stack that imports it. It is
+  # PAY_PER_REQUEST, so an empty table costs nothing beyond storage of zero items.
+  # Pass an existing table name to skip creating it.
   # ============================================================
   AuditCheckpointTable:
     Type: AWS::DynamoDB::Table

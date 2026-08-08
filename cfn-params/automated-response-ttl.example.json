@@ -1,7 +1,6 @@
 [
   {"ParameterKey": "OntapMgmtIp", "ParameterValue": "<your-fsx-management-ip>"},
   {"ParameterKey": "OntapCredentialsSecretArn", "ParameterValue": "arn:aws:secretsmanager:<region>:<account-id>:secret:<secret-name>-XXXXXX"},
-  {"ParameterKey": "VpcId", "ParameterValue": "vpc-0123456789abcdef0"},
   {"ParameterKey": "SubnetIds", "ParameterValue": "subnet-aaaaaaaaaaaaa,subnet-bbbbbbbbbbbbb"},
   {"ParameterKey": "SecurityGroupId", "ParameterValue": "sg-0123456789abcdef0"},
   {"ParameterKey": "DefaultSvmName", "ParameterValue": "svm-prod-01"},

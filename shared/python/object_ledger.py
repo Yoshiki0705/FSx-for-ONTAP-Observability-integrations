@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -37,6 +38,8 @@ import boto3
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
+
+SECONDS_PER_DAY = 86400
 
 
 class ObjectLedger:
@@ -53,6 +56,21 @@ class ObjectLedger:
             failed_at: Number -- epoch timestamp of last failure
             created_at: Number -- epoch timestamp of first seen
             worker_id: String -- Lambda request ID (for concurrency tracking)
+            expires_at: Number -- DynamoDB TTL epoch, present only while an entry
+                is eligible for expiry (see the TTL notes below)
+
+    Retention:
+        DynamoDB expires an item only if it carries the attribute named in the
+        table's TimeToLiveSpecification, so retention needs both halves: TTL
+        enabled on the table (shared/templates/object-ledger.yaml) and this class
+        writing expires_at. Configuring one without the other reads as if
+        retention were set up while the table grows without bound.
+
+        expires_at is written on successful entries and removed when an entry is
+        promoted to poison_pill. Poison pills are the permanent skip list: if one
+        expires, should_process starts returning True for a file already known to
+        be unprocessable, and the pipeline re-enters the failure loop that
+        produced the poison pill in the first place.
     """
 
     def __init__(
@@ -60,6 +78,7 @@ class ObjectLedger:
         table_name: str,
         max_failures: int = 3,
         dynamodb_client: Any | None = None,
+        ttl_days: int | None = None,
     ) -> None:
         """Initialize the object ledger.
 
@@ -67,10 +86,32 @@ class ObjectLedger:
             table_name: DynamoDB table name.
             max_failures: Number of consecutive failures before marking as poison pill.
             dynamodb_client: Optional pre-configured DynamoDB client (for testing).
+            ttl_days: Days to retain successful entries. Defaults to the
+                LEDGER_TTL_DAYS environment variable, or 0 (keep forever). Must
+                match the TTLDays parameter of the ledger stack.
         """
         self.table_name = table_name
         self.max_failures = max_failures
         self._client = dynamodb_client or boto3.client("dynamodb")
+
+        if ttl_days is None:
+            raw = os.environ.get("LEDGER_TTL_DAYS", "0")
+            try:
+                ttl_days = int(raw)
+            except ValueError:
+                logger.warning(
+                    "LEDGER_TTL_DAYS=%r is not an integer; treating as 0 "
+                    "(entries kept forever)",
+                    raw,
+                )
+                ttl_days = 0
+        self.ttl_days = max(0, ttl_days)
+
+    def _expiry(self) -> int | None:
+        """Epoch seconds at which an entry becomes eligible for expiry."""
+        if self.ttl_days <= 0:
+            return None
+        return int(time.time()) + (self.ttl_days * SECONDS_PER_DAY)
 
     def should_process(self, key: str, etag: str, worker_id: str = "") -> bool:
         """Check if an object should be processed.
@@ -118,20 +159,28 @@ class ObjectLedger:
     def mark_success(self, key: str, etag: str) -> None:
         """Mark an object as successfully processed."""
         now = int(time.time())
+        update = (
+            "SET #s = :status, etag = :etag, processed_at = :ts, "
+            "failure_count = :zero"
+        )
+        values: dict[str, Any] = {
+            ":status": {"S": "success"},
+            ":etag": {"S": etag},
+            ":ts": {"N": str(now)},
+            ":zero": {"N": "0"},
+        }
+
+        expiry = self._expiry()
+        if expiry is not None:
+            update += ", expires_at = :exp"
+            values[":exp"] = {"N": str(expiry)}
+
         self._client.update_item(
             TableName=self.table_name,
             Key={"s3_key": {"S": key}},
-            UpdateExpression=(
-                "SET #s = :status, etag = :etag, processed_at = :ts, "
-                "failure_count = :zero"
-            ),
+            UpdateExpression=update,
             ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={
-                ":status": {"S": "success"},
-                ":etag": {"S": etag},
-                ":ts": {"N": str(now)},
-                ":zero": {"N": "0"},
-            },
+            ExpressionAttributeValues=values,
         )
         logger.info("Marked success: %s", key)
 
@@ -170,11 +219,17 @@ class ObjectLedger:
             logger.error("Failed to update ledger for %s: %s", key, str(e))
 
     def _mark_poison_pill(self, key: str) -> None:
-        """Mark an object as a poison pill (will be skipped permanently)."""
+        """Mark an object as a poison pill (will be skipped permanently).
+
+        Removes expires_at so the entry outlives the retention window. A poison
+        pill that expires stops suppressing the file, and the pipeline resumes
+        the failure loop that created the poison pill -- indefinitely, since each
+        new cycle re-creates and re-expires the entry.
+        """
         self._client.update_item(
             TableName=self.table_name,
             Key={"s3_key": {"S": key}},
-            UpdateExpression="SET #s = :status",
+            UpdateExpression="SET #s = :status REMOVE expires_at",
             ExpressionAttributeNames={"#s": "status"},
             ExpressionAttributeValues={":status": {"S": "poison_pill"}},
         )

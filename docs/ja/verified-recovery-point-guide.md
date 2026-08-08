@@ -442,9 +442,17 @@ aws cloudformation wait stack-delete-complete --stack-name fsxn-restore-verifica
 
 ### ワンスタックデプロイ
 
+> **このテンプレートには `--s3-bucket` が必須です。** サイズが 56,946 バイトあり、
+> CloudFormation がインラインのテンプレート本文として受け付けるのは 51,200 バイトまで
+> です。これを超えるテンプレートは S3 に置く必要があります（上限 1 MB）。`--s3-bucket`
+> を付けない場合、サイズ上限ではなくテンプレート冒頭を引用した `ValidationError` が
+> 返るため、構文エラーのように見えます。同一リージョンで書き込めるバケットであれば
+> どれでも構いません。CLI がテンプレートをアップロードし URL で渡します。
+
 ```bash
 aws cloudformation deploy \
   --template-file shared/templates/restore-verification.yaml \
+  --s3-bucket <your-cfn-staging-bucket> \
   --stack-name fsxn-restore-verification \
   --parameter-overrides \
     OntapMgmtIp=<management-ip> \

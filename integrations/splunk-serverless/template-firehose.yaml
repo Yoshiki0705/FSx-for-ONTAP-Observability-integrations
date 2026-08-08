@@ -110,6 +110,11 @@ Resources:
 
   TransformFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Synchronous Kinesis Data Firehose transform; failed records go to the
+          Firehose backup bucket, not a Lambda DLQ
     Properties:
       FunctionName: !Sub '${AWS::StackName}-transform'
       Runtime: python3.12

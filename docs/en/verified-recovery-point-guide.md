@@ -391,9 +391,18 @@ aws cloudformation wait stack-delete-complete --stack-name fsxn-restore-verifica
 
 ### One Stack Deploy
 
+> **`--s3-bucket` is required for this template.** It is 56,946 bytes, and
+> CloudFormation accepts an inline template body only up to 51,200 bytes — larger
+> templates have to be staged in S3 (up to 1 MB). Without `--s3-bucket` the deploy
+> fails on a `ValidationError` that quotes the start of the template rather than
+> naming the size limit, which reads like a syntax problem. Any bucket you can
+> write to in the same region works; the CLI uploads the template and passes it by
+> URL.
+
 ```bash
 aws cloudformation deploy \
   --template-file shared/templates/restore-verification.yaml \
+  --s3-bucket <your-cfn-staging-bucket> \
   --stack-name fsxn-restore-verification \
   --parameter-overrides \
     OntapMgmtIp=<management-ip> \

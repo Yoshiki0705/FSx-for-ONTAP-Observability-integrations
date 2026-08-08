@@ -67,6 +67,52 @@ vserver ems destination create -name grafana-webhook \
 >
 > ONTAP EMS Webhook のカスタムヘッダー設定は ONTAP バージョンによって異なります。`Authorization: Bearer <token>` ヘッダーを Webhook リクエストに追加する正しい構文については、ONTAP ドキュメントを参照してください。
 
+4. **Authorizer が正しく許可・拒否することを検証**:
+
+```bash
+API_URL="https://<api-id>.execute-api.<region>.amazonaws.com/prod/ems"
+
+# Valid token — expect 200 (or the EMS handler's own status code)
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$API_URL" \
+  -H "Authorization: Bearer <token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"records":[]}'
+
+# Wrong token — expect 403
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$API_URL" \
+  -H "Authorization: Bearer <an-incorrect-token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"records":[]}'
+
+# No header — expect 401
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$API_URL" \
+  -H 'Content-Type: application/json' \
+  -d '{"records":[]}'
+```
+
+3 つすべてを実行してください。スタックが正常にデプロイできたことは Authorizer が
+機能していることを何も保証しません。しかも 2 つの失敗モードは外から見ると似ています。
+
+| 正しいトークンへの応答 | 意味 |
+|---|---|
+| 正しいリクエストも含め全て `403` | Authorizer は動いているがトークンが一致していない。シークレットの JSON キーが `webhook_secret` であること、ONTAP が保存した値を送っていることを確認 |
+| 全て `500` | Authorizer が動いていない。`-authorizer` ロググループで import エラーを確認し、`Handler` が `index.lambda_handler` であることを確認 |
+
+> **Authorizer コードの配置について**
+>
+> Authorizer はテンプレートの `Code.ZipFile` にインラインで同梱されているため、
+> `aws cloudformation deploy` だけで動作する Authorizer が作成され、追加の
+> アップロード手順は不要です。正となるソースは
+> `shared/lambda/authorizers/shared_secret_authorizer.py` です。このファイルを
+> 編集し、`python3 shared/scripts/sync-inline-lambda.py` でインラインのコピーを
+> 再生成してください。両者が乖離すると
+> `shared/python/tests/test_inline_lambda_sync.py` が失敗します。
+>
+> CloudFormation はインラインコードを `index` という名前のファイルに書き出すため、
+> リソースは `Handler: index.lambda_handler` を宣言しています。これ以外のモジュール
+> 名にすると呼び出し時に import エラーとなり、API Gateway はクリーンな 401 ではなく
+> HTTP 500 を返します。
+
 ### シークレットローテーション
 
 Lambda Authorizer はシークレットを 5 分間キャッシュします（Authorizer コードの `_SECRET_TTL` で設定可能）。Secrets Manager でシークレットをローテーションした後:
@@ -150,6 +196,8 @@ EMS イベントボリュームに基づいて調整してください。
 
 | ファイル | 用途 |
 |------|---------|
-| `shared/templates/ems-webhook-apigw.yaml` | API Gateway CloudFormation テンプレート |
-| `shared/lambda/authorizers/shared_secret_authorizer.py` | Lambda Authorizer コード |
+| `shared/templates/ems-webhook-apigw.yaml` | API Gateway CloudFormation テンプレート。Authorizer を `Code.ZipFile` にインラインで保持し、下記ファイルから生成される |
+| `shared/lambda/authorizers/shared_secret_authorizer.py` | Lambda Authorizer コード — 正となるソース。編集はこちら |
+| `shared/scripts/sync-inline-lambda.py` | ソースからテンプレートのインラインコピーを再生成。`--check` は乖離時に exit 1 |
+| `shared/python/tests/test_inline_lambda_sync.py` | インラインコピーの乖離、`index.*` でないハンドラー、残存プレースホルダーを検出して失敗する |
 | `shared/python/auth_cache.py` | 再利用可能な認証情報キャッシュ（ハンドラー側認証用） |

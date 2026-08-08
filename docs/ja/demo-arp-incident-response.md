@@ -143,7 +143,16 @@ source:fsxn-ems @attributes.event_name:arw.volume.state
 ssh admin@<management-ip> "security anti-ransomware volume show -vserver <svm-name> -volume <volume-name>"
 ```
 
-**確認ポイント**: ボリュームの ARP 状態がシミュレートされた攻撃を反映していること（例: `attack-detected` または `attack-suspected`）。ガイド自身の「必要なスクリーンショット一覧」表はこれを `ontap-arp-status.png` として要求していますが、そのスクリーンショットはまだ存在しません。
+**確認ポイント**: ボリュームの ARP 状態が検知された攻撃を反映していること（例: `Attack Probability: moderate`、`Attack Detected By: file_analysis`）。ONTAP 9.17.1P7D1 で検証した出力:
+```
+Vserver Name: <svm-name>
+ Volume Name: <volume-name>
+       State: enabled
+Attack Probability: moderate
+   Attack Timeline: 7/12/2026 00:26:12
+ Number of Attacks: 1
+Attack Detected By: file_analysis
+```
 
 ---
 

@@ -100,6 +100,21 @@ Resources:
       Endpoint: !Ref NotificationEmail
 
   # ================================================================
+  # Dead Letter Queue
+  # QuotaPollSchedule invokes the poller asynchronously, so a failing
+  # invocation is retried twice by Lambda and then discarded. Without this
+  # queue the quota metric simply stops updating and the qtree alarm keeps
+  # evaluating the last value it saw, which looks identical to "quotas are
+  # fine".
+  # ================================================================
+  QuotaMonitorDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+
+  # ================================================================
   # IAM Role
   # ================================================================
   QuotaMonitorRole:
@@ -139,6 +154,10 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*'
+              - Sid: DeadLetterQueue
+                Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt QuotaMonitorDeadLetterQueue.Arn
 
   # ================================================================
   # Lambda — Qtree Quota Poller
@@ -158,6 +177,8 @@ Resources:
       MemorySize: 256
       Timeout: 60
       Role: !GetAtt QuotaMonitorRole.Arn
+      DeadLetterConfig:
+        TargetArn: !GetAtt QuotaMonitorDeadLetterQueue.Arn
       VpcConfig:
         SubnetIds: !Ref SubnetIds
         SecurityGroupIds:
@@ -336,10 +357,45 @@ Resources:
         - - !Ref QuotaAlarmTopic
         - !Ref 'AWS::NoValue'
 
+  # A message here means the poller failed every retry, so the quota metric is
+  # stale. QtreeQuotaAlarm cannot tell you that: it uses TreatMissingData
+  # missing, so a poller that stops reporting looks the same as a poller
+  # reporting healthy usage.
+  QuotaMonitorDlqDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-depth'
+      AlarmDescription: >-
+        The qtree quota poller failed all retries and the invocation landed in
+        the DLQ. Quota metrics are no longer being published, so the quota
+        threshold alarm is evaluating stale data. Check the poller log group for
+        the underlying error (usually ONTAP API reachability or credentials).
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt QuotaMonitorDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasNotificationEmail
+        - - !Ref QuotaAlarmTopic
+        - !Ref 'AWS::NoValue'
+
 Outputs:
   MonitorFunctionArn:
     Description: Lambda function ARN for the quota poller
     Value: !GetAtt QuotaMonitorFunction.Arn
+
+  DeadLetterQueueUrl:
+    Description: >-
+      DLQ for failed poller invocations. Messages here mean quota metrics are
+      stale.
+    Value: !Ref QuotaMonitorDeadLetterQueue
 
   MetricNamespace:
     Description: CloudWatch namespace for qtree quota metrics

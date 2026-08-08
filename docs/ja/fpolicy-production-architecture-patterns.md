@@ -30,6 +30,18 @@ ONTAP FPolicy
 - **利点** — ONTAP による自動フェイルオーバー、単一タスク再起動時のイベントロスなし
 - **欠点** — 2つの Fargate タスク稼働（~$28/月）、両方の IP 更新が必要
 
+### ONTAP の設定
+
+```
+vserver fpolicy policy external-engine create -vserver <svm-name> \
+  -engine-name fpolicy_aws_engine \
+  -primary-servers <task-a-ip> \
+  -secondary-servers <task-b-ip> \
+  -port 9898 \
+  -extern-engine-type asynchronous \
+  -ssl-option no-auth
+```
+
 ## パターン 3: 状態照合による自動更新
 
 手動 IP 更新の代わりに、EventBridge トリガーの Lambda で期待状態（ONTAP engine IP = 現在の健全なタスク IP）を照合します。
@@ -61,6 +73,13 @@ ECS Task State Change (RUNNING)
 | AZ 障害（Multi-AZ FSx） | 障害 AZ のタスクのみ停止 | ONTAP が Secondary にフェイルオーバー |
 | Lambda スロットリング | SQS にバッファ | 自動スケール、データロスなし |
 | Datadog API 障害 | SQS にバッファ | Lambda がバックオフでリトライ |
+
+## 計画メンテナンスの Runbook
+
+1. **メンテナンス前**: SQS キューが空であることを確認し、KeepAlive が健全であることを確認
+2. **メンテナンス中**: Fargate が影響を受ける場合、イベントは SQS にバッファされる
+3. **メンテナンス後**: ONTAP が再接続することを確認（ECS ログの KeepAlive を確認）
+4. **IP が変わった場合**: `fpolicy-update-engine-ip.sh --auto` を実行、または自動照合を待つ
 
 ## 参考資料
 

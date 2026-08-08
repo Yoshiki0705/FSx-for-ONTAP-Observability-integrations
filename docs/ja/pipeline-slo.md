@@ -136,9 +136,59 @@ LambdaDurationAlarm:
 | Poison-pill 処理テスト済み | 不正ファイルの処理をシミュレーション | Yes |
 | DR/フェイルオーバーテスト済み | クロスリージョンまたはバックアップパス | Yes |
 
+## テレメトリコストの SLO
+
+Observability パイプラインは、テレメトリ量を制御しないとコストが無制限に増えます。
+コストの上限を運用 SLO として定義してください。
+
+### コスト目標
+
+| コンポーネント | 月次予算 | アラーム閾値 | 超過時のアクション |
+|---------------|---------|-------------|-----------------|
+| AWS インフラ（Lambda, EventBridge, S3, SQS） | < $50 | > $40（予算の 80%） | スケジュール間隔の見直し、不要イベントのフィルタ |
+| ベンダー取り込み（Datadog, Grafana など） | ユーザー定義 | 予算の 80% 超 | ログ詳細度の削減、サンプリング増加、送信元でのフィルタ |
+| NAT Gateway（VPC Lambda の場合） | < $50 | > $40 | VPC 外への Lambda 配置を検討 |
+| パイプライン総コスト | < $150 | > $120 | FinOps レビューへエスカレーション |
+
+### コスト制御の手段
+
+| 手段 | 実装 | 効果 |
+|------|------|------|
+| 監査ポリシーのフィルタ | ONTAP `vserver audit` のイベント選択 | 送信元でログ量を削減 |
+| スケジュール間隔の調整 | 低活動 SVM は EventBridge Scheduler を `rate(15 minutes)` に | Lambda 呼び出し回数を削減 |
+| バッチサイズの最適化 | Lambda のバッチ処理（API 呼び出し回数を削減） | ベンダー API コストを削減 |
+| OTel Collector のサンプリング | `probabilistic_sampler` プロセッサ | 大量に出る FPolicy イベントを削減 |
+| アダプティブテレメトリ | Grafana Cloud Adaptive Metrics / Logs | ノイズを自動削減 |
+| VPC 外 Lambda | Lambda から VPC 設定を外す | NAT Gateway コストを排除 |
+
+### 測定
+
+```bash
+# Monthly cost check (AWS infrastructure)
+aws ce get-cost-and-usage \
+  --time-period Start=$(date -v-30d +%Y-%m-%d),End=$(date +%Y-%m-%d) \
+  --granularity MONTHLY \
+  --metrics UnblendedCost \
+  --filter '{"Tags":{"Key":"Project","Values":["fsxn-observability"]}}'
+```
+
+### コスト異常検知
+
+パイプラインに対して AWS Cost Anomaly Detection を設定します。
+
+- タグで監視: `Project=fsxn-observability`
+- アラート閾値: 想定日次支出の 20% 超
+- 通知: SNS → Slack/Email
+
+> **アンチパターン**: フィルタせずに全監査イベント（読み取り操作を含む）を収集すること。
+> 読み取りイベントは通常、書き込みイベントの 10〜100 倍の量になります。コンプライアンス上
+> 読み取り監査が明示的に必要な場合を除き、ONTAP の監査ポリシーレベルでフィルタしてください。
+
 ## 関連ドキュメント
 
 - [配信保証パターン](delivery-guarantees.md)
 - [運用ガイド](operational-guide.md)
 - [PoC 成功基準](poc-success-criteria.md)
 - [セキュリティレビューチェックリスト](security-review-checklist.md)
+- [コスト検証テンプレート](cost-validation.md)
+- [管理・監視 Decision Tree](decision-tree-management-monitoring.md)

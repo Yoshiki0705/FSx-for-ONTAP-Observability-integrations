@@ -35,10 +35,25 @@ rule no_secrets_in_env when %lambdas !empty {
 # recommended for IaC clarity but not strictly required for security.
 # Moved to advisory rules (lambda-security.guard) — removed from blocking.
 
-# No plaintext secret parameters without NoEcho
+# No plaintext secret parameters without NoEcho.
+#
+# Two things about the filter matter, and getting either wrong makes this
+# blocking rule pass on every template:
+#
+#   Parameters.*[ keys == ... ]  descends into each parameter's value map first,
+#                               so `keys` matches Type/Default/NoEcho and never
+#                               a parameter name. Nothing is ever selected.
+#   /[Ss]ecret/ unanchored       selects all 18 ...SecretArn reference
+#                               parameters in this repository, which hold ARNs
+#                               rather than secret material.
+#
+# So: filter Parameters directly, and anchor to the end of the name so
+# SomethingSecretArn and SomethingSecretName are excluded while HecToken and
+# AdminPassword are caught. guard/tests/run-guard-selftest.sh asserts this rule
+# actually fires.
 rule no_plaintext_secret_params when Parameters exists {
-  Parameters.*[ keys == /.*[Ss]ecret.*/ ] {
+  Parameters[ keys == /(?i)(secret|password|token|apikey|credential)(value)?$/ ] {
     NoEcho == true
-    <<Parameters containing 'Secret' must have NoEcho: true to prevent console exposure.>>
+    <<A parameter that carries secret material must have NoEcho: true to prevent console exposure.>>
   }
 }

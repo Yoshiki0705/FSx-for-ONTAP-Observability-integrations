@@ -36,8 +36,13 @@ Parameters:
   MaxConcurrency:
     Type: Number
     Default: 5
-    Description: Maximum concurrent shipper Lambda invocations
-    MinValue: 1
+    Description: >
+      Maximum concurrent shipper Lambda invocations. Minimum is 2, not 1: this maps
+      to ScalingConfig.MaximumConcurrency on the SQS event source mapping, whose
+      documented range is 2-1000. MinValue was 1, so MaxConcurrency=1 passed
+      parameter validation and then failed at event source mapping creation.
+      https://docs.aws.amazon.com/lambda/latest/api/API_ScalingConfig.html
+    MinValue: 2
     MaxValue: 100
   DlqMaxReceiveCount:
     Type: Number

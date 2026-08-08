@@ -92,6 +92,20 @@ curl -sk -u fsxadmin:<password> \
   -d '{"address":"<VPCE_ENI_IP>","port":1514,"protocol":"tcp_unencrypted","facility":"local7"}'
 ```
 
+**プロトコルの選択肢**:
+
+| プロトコル | ポート | ONTAP パラメータ | 使う場面 |
+|----------|------|-----------------|---------|
+| TCP+TLS | 6514 | `tcp_encrypted` | 本番（暗号化） |
+| TCP 平文 | 1514 | `tcp_unencrypted` | 初期検証、PrivateLink のみのネットワーク |
+
+### ベンダーへのファンアウト（オプション）
+
+```
+CloudWatch Logs → Subscription Filter → Lambda → Datadog/Splunk/SIEM
+CloudWatch Logs → Subscription Filter → Firehose → Splunk/S3
+```
+
 ### セットアップガイド
 
 詳細は [Syslog VPCE セットアップガイド](syslog-vpce-setup-guide.md) を参照。

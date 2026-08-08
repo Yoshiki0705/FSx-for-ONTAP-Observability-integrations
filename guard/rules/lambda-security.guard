@@ -1,5 +1,14 @@
 # CloudFormation Guard rules for Lambda security best practices
 # These rules validate that Lambda functions follow security and operational standards.
+#
+# Advisory rules: violations are reported but do not fail CI. See
+# guard/rules/critical-security.guard for the blocking rule set.
+#
+# Custom message placement: in cfn-guard 3.x a `<<message>>` binds to the clause
+# immediately above it. It cannot follow a `{ ... }` block. Getting this wrong
+# makes the whole file unparseable, and `cfn-guard validate` still exits 0, so
+# the rules silently stop running. CI greps stderr for "Parsing error" to catch
+# that -- see .github/workflows/ci.yaml.
 
 let lambdas = Resources.*[ Type == "AWS::Lambda::Function" ]
 
@@ -9,28 +18,71 @@ rule lambda_has_timeout when %lambdas !empty {
   <<Lambda functions must have an explicit Timeout to prevent runaway executions>>
 }
 
-# Lambda functions must have reserved concurrency or be explicitly unlimited
+# Lambda functions must have an explicit memory size
 rule lambda_has_memory when %lambdas !empty {
   %lambdas.Properties.MemorySize exists
   <<Lambda functions must have an explicit MemorySize configuration>>
 }
 
-# No plaintext secrets in parameters
-rule no_plaintext_secret_parameters {
-  when Parameters exists {
-    Parameters.*[ keys == /.*[Ss]ecret.*/ ] {
-      NoEcho == true
-      <<Parameters containing 'Secret' in the name must have NoEcho: true>>
-    }
+# No plaintext secrets in parameters.
+#
+# The filter has to be `Parameters[ keys == ... ]`, not
+# `Parameters.*[ keys == ... ]`. The `.*` descends into each parameter's value
+# map first, so by the time `keys` is evaluated it is matching against Type,
+# Default and NoEcho rather than the parameter names -- nothing ever matches and
+# the rule passes on every template. That formulation parses cleanly and reports
+# nothing, which is indistinguishable from compliance.
+# The match is anchored to the end of the parameter name, which is what
+# separates a parameter that carries secret material from one that only points
+# at it:
+#
+#   DatadogApiKeySecretArn        -> ends in "Arn", a reference, not flagged
+#   VendorCredentialSecretName    -> ends in "Name", a reference, not flagged
+#   CreateSecretsManagerEndpoint  -> ends in "Endpoint", a toggle, not flagged
+#   HecToken / LeakedPassword     -> carries the value, flagged
+#
+# An unanchored /[Ss]ecret/ match instead reports all 18 secret-reference
+# parameters in this repository. ARNs are not sensitive, so those findings would
+# all be dismissed, and a rule whose output is always dismissed is a rule nobody
+# reads.
+#
+# Guard does not combine two `keys` conditions in one filter -- `[ keys == /a/
+# keys != /b/ ]` parses but matches nothing -- so the include and exclude have
+# to be expressed as this single anchored pattern.
+rule no_plaintext_secret_parameters when Parameters exists {
+  Parameters[ keys == /(?i)(secret|password|token|apikey|credential)(value)?$/ ] {
+    NoEcho == true
+    <<A parameter that carries secret material must set NoEcho: true, or the value is echoed in stack events, the console, and describe-stacks output>>
   }
 }
 
-# DLQ should be configured for async Lambda functions
-rule lambda_has_dlq when %lambdas !empty {
-  %lambdas.Properties {
-    DeadLetterConfig exists
-    OR
-    this is_struct
-  }
-  <<Lambda functions should have a DeadLetterConfig for error handling>>
+# Asynchronously invoked Lambda functions must capture failed invocations.
+#
+# A blanket "every function needs a DeadLetterConfig" rule would be wrong here:
+# synchronously invoked functions (API Gateway integrations and authorizers,
+# Kinesis Data Firehose transforms, Step Functions tasks) never fire an
+# asynchronous DLQ, and SQS pollers put their DLQ on the queue via
+# RedrivePolicy rather than on the function. Flagging those produces findings
+# that are always dismissed, which trains reviewers to ignore the rule.
+#
+# So the rule requires either a DeadLetterConfig or an explicit, reviewable
+# exemption on the resource:
+#
+#   MyFunction:
+#     Type: AWS::Lambda::Function
+#     Metadata:
+#       guard:
+#         dlq_exempt: 'Synchronous API Gateway integration; async DLQ never fires'
+#
+# The reason string is for humans -- Guard only checks that the key exists.
+# Adding it is a deliberate act that shows up in review, whereas a missing
+# DeadLetterConfig looks like every other omission.
+let dlq_required_lambdas = Resources.*[
+  Type == "AWS::Lambda::Function"
+  Metadata.guard.dlq_exempt not exists
+]
+
+rule lambda_has_dlq when %dlq_required_lambdas !empty {
+  %dlq_required_lambdas.Properties.DeadLetterConfig exists
+  <<Asynchronously invoked Lambda functions need a DeadLetterConfig, or a Metadata.guard.dlq_exempt reason explaining why the async DLQ cannot fire for this invocation model>>
 }

@@ -74,6 +74,9 @@ Resources:
 
   EmsHandlerFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: 'Synchronous API Gateway integration; the async DLQ never fires'
     Properties:
       FunctionName: !Sub '${AWS::StackName}-ems-handler'
       Runtime: python3.12

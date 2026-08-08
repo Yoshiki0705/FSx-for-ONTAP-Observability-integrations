@@ -1,0 +1,154 @@
+# Deliberately non-compliant template. Every rule in guard/rules/*.guard must
+# report a finding against this file.
+#
+# This is the fixture that catches silent no-ops. A rule can parse cleanly,
+# evaluate against every template in the repository, report nothing, and be
+# completely broken -- that is what happened to no_plaintext_secret_params
+# (blocking), no_plaintext_secret_parameters, no_plaintext_secret_params_mgmt,
+# no_hardcoded_secrets_in_task_env and vpc_endpoints_exist_for_ecs. "No findings"
+# and "not working" look identical from the outside, so the only way to tell them
+# apart is to keep a template around that a working rule must reject.
+#
+# When adding a rule to guard/rules/, add the matching violation here.
+# run-guard-selftest.sh fails if any declared rule does not fire.
+Parameters:
+  # no_plaintext_secret_params / no_plaintext_secret_parameters /
+  # no_plaintext_secret_params_mgmt: carries secret material, no NoEcho.
+  AdminPassword:
+    Type: String
+
+Resources:
+  # no_wildcard_actions / no_wildcard_iam_actions: Action '*' on an inline policy.
+  WildcardActionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: wildcard-action
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: 'arn:aws:s3:::example-bucket'
+
+  # no_wildcard_iam_resources: Resource '*' with an action that can be scoped.
+  WildcardResourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: wildcard-resource
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: '*'
+
+  # no_wildcard_iam_actions_standalone: Action '*' on a standalone IAM policy.
+  WildcardActionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: standalone-wildcard-action
+      Roles:
+        - !Ref WildcardActionRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: '*'
+            Resource: 'arn:aws:s3:::example-bucket'
+
+  # no_wildcard_iam_resources_standalone: Resource '*' on a standalone policy.
+  WildcardResourcePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: standalone-wildcard-resource
+      Roles:
+        - !Ref WildcardResourceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource: '*'
+
+  # no_public_ingress_on_task_security_groups: 0.0.0.0/0 inbound on a task SG.
+  PublicTaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Harvest task security group
+      VpcId: vpc-0123456789abcdef0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  # no_public_ip_for_ecs_tasks: AssignPublicIp ENABLED.
+  PublicIpEcsService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: example-cluster
+      TaskDefinition: example-task
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - subnet-0123456789abcdef0
+
+  # no_hardcoded_secrets_in_task_env: plaintext credential in container env.
+  PlaintextTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: app
+          Image: public.ecr.aws/nginx/nginx:latest
+          Environment:
+            - Name: DB_PASSWORD
+              Value: plaintext-not-a-secret-store-reference
+
+  # lambda_has_timeout / lambda_has_memory / lambda_has_dlq /
+  # lambda_has_dead_letter_config: no Timeout, no MemorySize, no DeadLetterConfig
+  # and no Metadata.guard.dlq_exempt.
+  # no_secrets_in_env: env var ending in 'Key' holding a plaintext value.
+  # no_secrets_in_lambda_env: env vars ending in Password / Secret / Token.
+  UnderConfiguredFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: 'arn:aws:iam::123456789012:role/example'
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {"statusCode": 200}
+      Environment:
+        Variables:
+          VendorApiKey: plaintext-api-key
+          AdminPassword: plaintext-password
+          SessionSecret: plaintext-secret
+          IngestToken: plaintext-token
+
+  # secrets_have_description: no Description.
+  # no_hardcoded_secrets: literal SecretString.
+  UndocumentedSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: guard-selftest-bad-secret
+      SecretString: plaintext-value-committed-to-the-repository

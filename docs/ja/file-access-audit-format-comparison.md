@@ -31,6 +31,39 @@ FSx for ONTAP も FSx for Windows も、ファイルアクセス監査ログを 
 
 ---
 
+## FSx for Windows File Server の CloudWatch Logs 配信の仕組み
+
+FSx for Windows は監査イベントを XML テキストとして CloudWatch Logs へ送信します。
+クエリは構造化 JSON ではなく文字列マッチになります。
+
+```
+# CloudWatch Logs Insights query (text matching on XML)
+fields @message
+| filter @message like /4660/           # Delete events
+| filter @message like /event.txt/      # Specific filename
+```
+
+イベントは `@message` に XML として届きます。
+
+```xml
+<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'>
+  <System>
+    <EventID>4663</EventID>
+    <TimeCreated SystemTime='2021-06-03T19:10:13.887Z'/>
+    <Computer>amznfsxgyzohmw8.example.com</Computer>
+  </System>
+  <EventData>
+    <Data Name='SubjectUserName'>Admin</Data>
+    <Data Name='ObjectName'>\Device\HarddiskVolume8\share\event.txt</Data>
+    <Data Name='AccessMask'>0x1</Data>
+  </EventData>
+</Event>
+```
+
+参照: [AWS Docs — FSx for Windows File Access Auditing](https://docs.aws.amazon.com/fsx/latest/WindowsGuide/file-access-auditing.html)
+
+---
+
 ## FSx for ONTAP で CloudWatch Logs に対応しているもの
 
 | ログ種別 | CloudWatch Logs パス | CW Logs 上のフォーマット |
@@ -125,6 +158,23 @@ ONTAP volume (EVTX)
 
 ---
 
+## ONTAP の監査フォーマット設定
+
+```bash
+# Check current format
+ssh fsxadmin@<management-ip>
+vserver audit show -vserver <svm-name> -fields format
+
+# Change to XML (if choosing Option 2)
+vserver audit modify -vserver <svm-name> -format xml
+
+# Note: Only affects NEWLY generated log files.
+# Existing EVTX files are not converted.
+# Cannot run EVTX + XML simultaneously on the same SVM.
+```
+
+---
+
 ## FAQ
 
 **Q: FSx for ONTAP はファイルアクセス監査ログを直接 CloudWatch Logs に送れますか？**
@@ -143,7 +193,7 @@ A: Step Functions Distributed Map + Lambda（案 1）。ファイルを並列処
 
 ## 関連ドキュメント
 
-- [イベントソースガイド](../en/event-sources.md)
+- [イベントソースガイド](event-sources.md)
 - [EMS 検知機能リファレンス](ems-detection-capabilities.md) — 管理監査 + EMS の Push 配信
 - [アーキテクチャ進化: Syslog VPCE](architecture-evolution-syslog-vpce.md)
 - [AWS Docs: FSx for ONTAP ファイルアクセス監査](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-access-auditing.html)

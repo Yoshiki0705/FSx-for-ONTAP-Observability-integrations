@@ -2,6 +2,15 @@
 
 🌐 **日本語**（このページ） | [English](../en/verification-results-splunk.md)
 
+> **このドキュメントは記入前のテンプレートです。** 以下の判定欄はすべて
+> `<PASS/FAIL>` のままで、環境情報もプレースホルダです。まだ検証結果が書き込まれて
+> いません。監査ログ経路自体は実行済みで、FSx for ONTAP の監査イベントが Splunk 検索
+> に表示されている様子は
+> `integrations/splunk-serverless/screenshots/splunk-e2e-search-fsxn-audit-xml.png`
+> にあります。EMS と FPolicy はハンドラとスタックはありますが E2E の実行記録が無いため、
+> [テレメトリ経路のカバレッジ](README.md#テレメトリ経路のカバレッジ)の表では ✅ ではなく
+> 🔧 としています。
+
 - **検証日時** — <検証日>
 - **検証者** — <検証者名> / <役職>
 
@@ -83,11 +92,13 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス** — ```json
+- **レスポンス**:
+```json
 {"statusCode": <ステータスコード>, "body": {"total_logs": <件数>, "total_shipped": <件数>, "errors": []}}
 ```
 
-- **確認項目** — - [ ] statusCode: 200
+- **確認項目**:
+  - [ ] statusCode: 200
   - [ ] total_logs > 0
   - [ ] total_shipped == total_logs
   - [ ] errors: [] (空)
@@ -106,7 +117,8 @@ aws logs filter-log-events \
   --region ap-northeast-1
 ```
 
-- **確認項目** — - [ ] "Successfully shipped" を含むログ行が存在
+- **確認項目**:
+  - [ ] "Successfully shipped" を含むログ行が存在
   - [ ] タイムスタンプがテストイベント送信後
 
 ---
@@ -124,7 +136,8 @@ index=fsxn_audit sourcetype=fsxn:ontap:audit earliest=-15m
 - **返却イベント数** — <件数>
 - **到着までの時間** — <秒数>
 
-- **確認項目** — - [ ] 1件以上のイベントが返却される
+- **確認項目**:
+  - [ ] 1件以上のイベントが返却される
   - [ ] sourcetype が `fsxn:ontap:audit` である
   - [ ] index が `fsxn_audit` である
 

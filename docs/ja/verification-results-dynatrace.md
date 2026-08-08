@@ -91,7 +91,8 @@ aws cloudformation deploy \
 ```
 
 - **スタックステータス** — CREATE_COMPLETE
-- **作成されたリソース** — - [x] Lambda 関数
+- **作成されたリソース**:
+  - [x] Lambda 関数
   - [x] IAM ロール
   - [x] EventBridge Rule
   - [x] Dead Letter Queue（KMS 暗号化）
@@ -113,7 +114,8 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス** — ```json
+- **レスポンス**:
+```json
 {
   "statusCode": 200,
   "body": {
@@ -124,7 +126,8 @@ aws lambda invoke \
 }
 ```
 
-- **確認項目** — - [x] statusCode: 200
+- **確認項目**:
+  - [x] statusCode: 200
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (空)
@@ -151,11 +154,13 @@ curl -s -w "\nHTTP:%{http_code}" \
 - **到着レコード数** — 1件（取り込みラグ後に表示）
 - **到着までの時間** — 約1-2分（トライアル環境の取り込みラグ）
 
-- **表示されたログエントリ** — - timestamp: May 24, 12:32:13.000
+- **表示されたログエントリ**:
+  - timestamp: May 24, 12:32:13.000
   - status: INFO
   - Log message: "Direct curl test from fsxn pipeline"
 
-- **Logs Viewer アクセス方法** — - Dynatrace Platform → 左メニュー「Logs」→「View logs」→「Run query」
+- **Logs Viewer アクセス方法**:
+  - Dynatrace Platform → 左メニュー「Logs」→「View logs」→「Run query」
   - 時間範囲: Last 30 minutes（ログ送信後1-2分待機が必要）
 
 ![Dynatrace Logs Viewer — ログ到着確認（1 record）](../screenshots/dynatrace/dynatrace-logs-1record.png)

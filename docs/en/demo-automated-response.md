@@ -326,7 +326,6 @@ aws cloudformation deploy \
   --parameter-overrides \
     OntapMgmtIp=<management-ip> \
     OntapCredentialsSecretArn=<secret-arn> \
-    VpcId=<vpc-id> \
     SubnetIds=<subnet-1>,<subnet-2> \
     SecurityGroupId=<sg-id> \
     DefaultSvmName=$DEFAULT_SVM \

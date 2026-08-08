@@ -68,7 +68,6 @@ jobs:
       - name: "Check: Naming standards (changed .md only)"
         if: steps.changed.outputs.md_count != '0'
         run: |
-          FILES=$(cat /tmp/changed_md.txt | tr '\n' '\0' | xargs -0 -I{} echo "{}")
           ERRORS=0
           while IFS= read -r f; do
             [ -z "$f" ] && continue
@@ -138,13 +137,19 @@ jobs:
       - name: "Warning: JA/EN parity (changed ja docs)"
         if: steps.changed.outputs.md_count != '0'
         run: |
+          # Path segments for the ja <-> en swap. Kept in variables because the
+          # replacement side of ${var/pat/rep} treats an escaped "\/" literally
+          # (it would emit "docs\/en\/foo.md"), so the slashes must arrive
+          # already-unescaped via expansion.
+          JA_SEG='/ja/'
+          EN_SEG='/en/'
           WARNINGS=0
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             [ ! -f "$f" ] && continue
             # Only check docs in ja/ directories
             if echo "$f" | grep -qE '/ja/'; then
-              EN_FILE=$(echo "$f" | sed 's|/ja/|/en/|')
+              EN_FILE="${f/$JA_SEG/$EN_SEG}"
               if [ -f "$EN_FILE" ]; then
                 JA_SECTIONS=$(grep -c '^## ' "$f" || true)
                 EN_SECTIONS=$(grep -c '^## ' "$EN_FILE" || true)
@@ -156,7 +161,7 @@ jobs:
             fi
             # Also check en/ → ja/ direction
             if echo "$f" | grep -qE '/en/'; then
-              JA_FILE=$(echo "$f" | sed 's|/en/|/ja/|')
+              JA_FILE="${f/$EN_SEG/$JA_SEG}"
               if [ -f "$JA_FILE" ]; then
                 EN_SECTIONS=$(grep -c '^## ' "$f" || true)
                 JA_SECTIONS=$(grep -c '^## ' "$JA_FILE" || true)

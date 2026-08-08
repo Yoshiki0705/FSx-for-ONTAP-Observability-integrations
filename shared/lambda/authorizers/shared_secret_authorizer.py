@@ -17,6 +17,7 @@ Reference:
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -136,9 +137,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     method_arn = event.get("methodArn", "*")
 
-    if token == expected_secret:
+    # compare_digest rather than ==. A plain string comparison returns as soon as
+    # it hits a differing byte, so the time it takes leaks how many leading bytes
+    # of the submitted token were correct. Against an endpoint a caller can hit
+    # repeatedly that is enough to recover the secret one byte at a time.
+    if hmac.compare_digest(token, expected_secret):
         logger.info("Authorization successful")
         return _generate_policy("ontap-ems-webhook", "Allow", method_arn)
-    else:
-        logger.warning("Token mismatch — denying request")
-        return _generate_policy("ontap-ems-webhook", "Deny", method_arn)
+
+    logger.warning("Token mismatch — denying request")
+    return _generate_policy("ontap-ems-webhook", "Deny", method_arn)

@@ -1,313 +1,311 @@
 # FSx for ONTAP Observability Integrations
 
-🌐 [日本語](../ja/README.md) | **English** (this page)
+[![CI](https://github.com/Yoshiki0705/fsxn-observability-integrations/actions/workflows/ci.yaml/badge.svg)](https://github.com/Yoshiki0705/fsxn-observability-integrations/actions/workflows/ci.yaml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Yoshiki0705/fsxn-observability-integrations/badge)](https://scorecard.dev/viewer/?uri=github.com/Yoshiki0705/fsxn-observability-integrations)
 
-> This is a community reference implementation and not an official AWS service feature or compliance attestation. Validate all configurations, costs, and compliance requirements in your own environment.
+🌐 [日本語](../ja/README.md) | **English**
 
----
+> Ship Amazon FSx for NetApp ONTAP audit logs to 9 observability vendors — plus EMS events and FPolicy file operations on 9 of them (3 of those paths E2E verified so far) — EC2-free, serverless, via FSx for ONTAP S3 Access Points. Community reference implementation for AWS + storage operations teams. See the [telemetry path coverage](#telemetry-path-coverage) matrix for the per-vendor breakdown.
 
-## Overview
+## Get Started
 
-EC2-free observability integrations for Amazon FSx for NetApp ONTAP via FSx for ONTAP S3 Access Points. Ship audit logs, EMS events, and FPolicy file operations to 9 observability vendors — all serverless.
-
-## Choose Your Path
-
-| Goal | Recommended Path | Why |
+| I want to... | Guide | Time |
 |---|---|---|
-| First validation | Audit poller only | Fastest way to prove read path, delivery, checkpoint, and DLQ |
-| GUI-based management (NetApp SaaS) | NetApp Console<!-- allow:naming --> + System Manager | No CLI required; audit, quota, FSA all in browser |
-| GUI-based management (AWS-native, VPC-internal) | [Self-hosted Management Console](../../management-console/) | No external SaaS dependency; Cognito/IAM auth |
-| Ransomware / storage-layer incident response | [Automated Incident Response Guide](automated-response-guide.md) | Storage-layer user/IP blocking, triggerable from any detection source, not tied to one vendor |
-| Single observability backend | Direct vendor integration | Fewer moving parts |
-| Grafana Cloud quickstart | Direct OTLP Gateway | Native OTLP path to Loki |
-| Multi-backend / redaction / routing | OTel Collector or Grafana Alloy | Move cross-cutting pipeline concerns out of Lambda |
-| Higher reliability | SQS + DynamoDB ledger + Collector/Alloy | Backpressure, replay, batching, durable state |
-| Partner PoC | Partner Solution Brief + PoC Checklist | Clear scope, deliverables, and responsibility boundaries |
+| Validate the pipeline end-to-end (first time) | [Minimum Test Path](quick-start-minimum.md) | 15 min |
+| Deploy a vendor integration to production | [Deployment Guide](deployment-guide.md) | 30 min |
+| Respond to ransomware at the storage layer | [Automated Incident Response](automated-response-guide.md) | 20 min |
+| Route logs to multiple backends with redaction | [OTel Collector](../../integrations/otel-collector/) | 45 min |
+| Manage FSx for ONTAP via browser GUI | [Management Console](../../management-console/) · [Decision Tree](decision-tree-management-monitoring.md) | 30 min |
+| Run a partner PoC with success criteria | [PoC Success Criteria](poc-success-criteria.md) · [Solution Brief](partner-solution-brief.md) | — |
 
-## Recommended First 30 Minutes
+> **One-command setup** per vendor: `bash integrations/<vendor>/scripts/setup-full-observability.sh`
 
-1. Read "Choose Your Path" above to identify your target integration
-2. Run unit tests with sample payloads: `python -m pytest integrations/datadog/tests/ -v`
-3. Review the [PoC Success Criteria](poc-success-criteria.md) for your target integration
-4. Deploy audit-only path in a sandbox account (see Quick Start below)
-5. Confirm: one log record arrives, checkpoint advances, DLQ remains empty
-
-## Architecture Pattern
+## Architecture
 
 ```
-FSx for ONTAP → Enable audit logging → Output to audit volume
-audit volume → FSx for ONTAP S3 Access Point for S3 API access
-EventBridge Scheduler → Lambda → Vendor API endpoint
-
-EMS: ONTAP → Webhook → API Gateway → Lambda → Vendor API
-FPolicy: ONTAP → TCP:9898 → ECS Fargate → SQS → Lambda → Vendor API
+               ┌─────────────────────────────────────────────────┐
+               │              FSx for ONTAP                      │
+               │  audit volume ──► S3 Access Point (S3 API)      │
+               └────────┬──────────────┬──────────────┬──────────┘
+                        │              │              │
+            Audit Logs (poll)    EMS (webhook)   FPolicy (TCP)
+                        │              │              │
+                        ▼              ▼              ▼
+              EventBridge       API Gateway      ECS Fargate
+              Scheduler              │           → SQS
+                   │                 │              │
+                   ▼                 ▼              ▼
+               Lambda ──────────► Vendor API / OTel Collector
 ```
 
-### Trigger Model Note
+**Trigger model**: FSx for ONTAP S3 Access Points do not support S3 Event Notifications. This project uses EventBridge Scheduler polling with SSM checkpoint. See [Architecture](architecture.md) for details.
 
-FSx for ONTAP S3 Access Points do **NOT** support S3 Event Notifications or EventBridge object-level events. This project uses:
+<details><summary>📂 Supported Integrations (14 vendors)</summary>
 
-- **EventBridge Scheduler polling**: Periodically invokes Lambda with SSM Parameter Store checkpointing to track processed files
-- **CloudTrail data events**: Documented alternative for near-real-time triggering
-- **Regular S3 bucket + S3 Event Notifications**: For test data validation
-
-## Supported Integrations
-
-| Vendor | Status | Description |
-|--------|--------|-------------|
+| Vendor | Status | Path |
+|--------|--------|------|
 | [Datadog](../../integrations/datadog/) | ✅ E2E verified | Logs API v2 via Lambda |
 | [New Relic](../../integrations/new-relic/) | ✅ E2E verified | Log API v1 via Lambda |
-| [Splunk (Serverless)](../../integrations/splunk-serverless/) | ✅ E2E verified | HEC via Lambda (replaces EC2 pattern) |
-| [OTel Collector](../../integrations/otel-collector/) | ✅ E2E verified | Vendor-neutral OTLP/HTTP (Datadog + Grafana + Honeycomb) |
-| [Grafana Cloud](../../integrations/grafana/) | ✅ E2E verified | OTLP Gateway via Lambda (Loki Push API fallback) |
-| [Elastic](../../integrations/elastic/) | ✅ E2E verified | Elasticsearch Bulk API |
+| [Splunk (Serverless)](../../integrations/splunk-serverless/) | ✅ E2E verified | HEC via Lambda |
+| [OTel Collector](../../integrations/otel-collector/) | ✅ E2E verified | Vendor-neutral OTLP/HTTP (multi-backend) |
+| [Grafana Cloud](../../integrations/grafana/) | ✅ E2E verified | OTLP Gateway (Loki fallback) |
+| [Elastic](../../integrations/elastic/) | ✅ E2E verified | Bulk API |
 | [Dynatrace](../../integrations/dynatrace/) | ✅ E2E verified | Log Ingest API v2 |
 | [Sumo Logic](../../integrations/sumo-logic/) | ✅ E2E verified | HTTP Source |
 | [Honeycomb](../../integrations/honeycomb/) | ✅ E2E verified | Events Batch API |
-| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/) | ✅ HEC verified (via Splunk) | HEC via Lambda (Splunk HEC compatible) |
-| [NetApp Console<!-- allow:naming --> / System Manager](../../integrations/netapp-console/) | ✅ Verified | GUI management + FSA (File System Analytics), NetApp SaaS |
-| [Self-hosted Management Console](../../management-console/) | ✅ Validated (Stacks 1-3) | AWS-native GUI management + monitoring, no external SaaS |
-| [Automated Incident Response](automated-response-guide.md) | ✅ E2E verified (36 unit tests) | Storage-layer user/IP blocking, snapshot, session disconnect — AWS-native alternative to DII<!-- allow:naming --> Storage Workload Security containment |
+| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/) | ✅ HEC verified | Splunk HEC compatible |
+| [NetApp Console<!-- allow:naming -->](../../integrations/netapp-console/) | ✅ Verified | GUI management (SaaS) |
+| [Self-hosted Management Console](../../management-console/) | ✅ Validated | AWS-native GUI (Cognito/IAM) |
+| [Automated Incident Response](automated-response-guide.md) | ✅ E2E verified | Storage-layer block/snapshot |
+| [Mackerel](../../integrations/mackerel/) | ✅ E2E verified (open beta) | OTLP/HTTP logs |
 
-Status:
-- ✅ **E2E verified** — Deployed and validated with real FSx for ONTAP audit logs
+### Telemetry path coverage
 
-## Background
+FSx for ONTAP emits three kinds of telemetry and each needs its own handler.
+Audit logs are covered and verified everywhere. EMS and FPolicy handlers ship for
+nine vendors, but only three of those paths have been observed end-to-end against
+a live vendor account — so this matrix separates "implemented" from "verified"
+rather than marking both with the same tick.
 
-The existing Splunk integration blog ([AWS Blog](https://aws.amazon.com/blogs/storage/auditing-user-and-administrative-actions-on-amazon-fsx-for-netapp-ontap-using-splunk/)) uses an EC2-based approach (syslog-ng + Universal Forwarder).
+| Vendor | Audit logs | EMS events | FPolicy file ops |
+|--------|:----------:|:----------:|:----------------:|
+| [Datadog](../../integrations/datadog/) | ✅ | ✅ | ✅ |
+| [OTel Collector](../../integrations/otel-collector/) | ✅ | ✅ | ✅ |
+| [Grafana Cloud](../../integrations/grafana/) | ✅ | ✅ | ✅ |
+| [Splunk (Serverless)](../../integrations/splunk-serverless/) | ✅ | 🔧 | 🔧 |
+| [New Relic](../../integrations/new-relic/) | ✅ | 🔧 | 🔧 |
+| [Elastic](../../integrations/elastic/) | ✅ | 🔧 | 🔧 |
+| [Dynatrace](../../integrations/dynatrace/) | ✅ | 🔧 | 🔧 |
+| [Sumo Logic](../../integrations/sumo-logic/) | ✅ | 🔧 | 🔧 |
+| [Honeycomb](../../integrations/honeycomb/) | ✅ | 🔧 | 🔧 |
+| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/) | ✅ | — | — |
 
-This project provides an **EC2-free** alternative using Lambda + ECS Fargate.
+| Mark | Meaning |
+|:----:|---------|
+| ✅ | **E2E verified.** Telemetry was observed arriving in the vendor UI, with a screenshot or a filled-in record under `verification-results-*.md` in this directory. |
+| 🔧 | **Implemented, not yet E2E verified.** The handler and its CloudFormation stack ship and unit tests pass, but no run against a live vendor account has been recorded for that path. Treat it as untested, not as broken. |
+| — | **Not implemented.** No handler exists for that path. |
 
-## Business Outcomes
+Evidence behind the ✅ marks in the EMS and FPolicy columns: Datadog (verification
+record, steps E1–E4 against a live ONTAP file system), Grafana Cloud
+(`grafana-ems-events.png`, `grafana-fpolicy-events.png`), OTel Collector
+(verification record — note its EMS step was exercised with a sample OTLP payload
+against a local collector rather than a live ONTAP webhook).
 
-**Before → After**:
-- 🔴 2x EC2 always-on (patching, agent updates, ~$66/month) → 🟢 Zero-ops serverless pipeline (~$6/month, pay-per-use)
-- 🔴 Audit logs locked inside FSx volume → 🟢 Instantly searchable and alertable in existing SIEM/Observability
-- 🔴 Hours from ransomware detection to response → 🟢 Alert fired within 30 seconds via EMS/FPolicy, with an optional automated storage-layer block (see [Automated Incident Response Guide](automated-response-guide.md))
+For a `—` path, `scripts/deploy.sh` skips the corresponding stack and prints why,
+rather than deploying a placeholder Lambda that would accept events and discard
+every one of them.
 
-**Measurable outcomes**:
-- Eliminate EC2 collector operations (no patching, no agent management)
-- Standardize audit log delivery across observability vendors
-- Improve file access behavior visibility
-- Enable faster security response using ONTAP-native telemetry
+CrowdStrike has no `template-ems.yaml` or `template-fpolicy.yaml` at all, so
+there is nothing to skip. To route EMS or FPolicy events there today, use the
+[OTel Collector](../../integrations/otel-collector/) integration as the ingestion
+point and configure LogScale as an OTLP exporter backend.
 
-## Partner Positioning
+The nine vendors that ship EMS and FPolicy handlers share one implementation of the plumbing:
+`shared/python/ems_event.py` handles API Gateway extraction and parser
+delegation, `shared/python/fpolicy_event.py` handles SQS batch bookkeeping and
+`batchItemFailures`, and `shared/python/vendor_shipper.py` owns the retry policy,
+credential caching and batching. Each vendor supplies only its payload format and
+endpoint.
 
-This project helps partners modernize EC2-based FSx for ONTAP audit log collectors into an EC2-free, vendor-neutral observability pipeline.
+</details>
 
-Common usage scenarios:
-- Replacing Splunk Universal Forwarder on EC2
-- Modernizing audit visibility for enterprise file shares
-- Integrating FSx for ONTAP with existing SIEM / observability platforms
-- Preparing for ransomware detection workflows using ONTAP telemetry, with automated storage-layer containment as a next step (see [Automated Incident Response Guide](automated-response-guide.md))
+<details><summary>⚠️ Constraints & Caveats</summary>
 
-## Try with Sample Data
+| Constraint | Impact | Workaround |
+|---|---|---|
+| S3 AP does not support Event Notifications | No push-based trigger | EventBridge Scheduler polling |
+| S3 AP does not support presigned URLs | Cannot share direct links | Copy to standard S3 bucket |
+| AD-joined SVM requires AD DC reachability for S3 AP data ops | `AccessDenied` if AD is down | Pre-flight AD connectivity check |
+| VPC Lambda + Gateway Endpoint may timeout on Internet-origin AP | Deploy fails silently | Use VPC-external Lambda or NAT |
+| PutObject limit 5 GB on S3 AP | Large file writes rejected | Multipart within 5 GB |
 
-If you do not have FSx for ONTAP audit logs yet, use the sample payloads under `examples/`:
+Full details: [S3 AP Specification](s3ap-fsxn-specification.md) · [Deployment Guide — VPC Endpoint Matrix](deployment-guide.md)
 
-```bash
-bash scripts/generate-splunk-hec-payload.sh --count 5
-bash scripts/generate-otlp-payload.sh --count 5
-```
+</details>
 
-See [`examples/`](../../examples/) for pre-built sample audit, EMS, and FPolicy event payloads.
+<details><summary>📚 Documentation & Related Resources</summary>
 
-## Quick Start
+### Documentation
 
-```bash
-# 1. Clone repository
-git clone https://github.com/Yoshiki0705/fsxn-observability-integrations.git
-cd fsxn-observability-integrations
+| Category | Key Documents |
+|----------|--------------|
+| Getting Started | [Prerequisites](prerequisites.md) · [Deploying a Vendor Integration](vendor-deployment-common.md) · [Deployment Guide](deployment-guide.md) · [ONTAP Audit Setup](ontap-audit-setup.md) |
+| Architecture | [Architecture](architecture.md) · [Event Sources](event-sources.md) · [S3 AP Spec](s3ap-fsxn-specification.md) |
+| Operations | [Pipeline SLO](pipeline-slo.md) · [Operational Guide](operational-guide.md) · [Runbooks](runbooks/) |
+| Security | [Cyber Resilience Map](cyber-resilience-capability-map.md) · [Automated Response](automated-response-guide.md) · [Data Classification](data-classification.md) |
+| Enterprise | [Multi-Account](multi-account-deployment.md) · [Cross-Region DR](cross-region-replication.md) · [PII Redaction](../../integrations/otel-collector/docs/en/pii-redaction-cookbook.md) |
+| Monitoring | [CloudWatch Log Alarm](cloudwatch-log-alarm.md) · [EMS Detection](ems-detection-capabilities.md) · [Detection Use Cases](detection-use-cases.md) |
 
-# 2. Install dependencies
-npm install
+<!-- docs-index:start -->
 
-# 3. Deploy prerequisites (EventBridge Scheduler + checkpoint)
-aws cloudformation deploy \
-  --template-file shared/templates/prerequisites.yaml \
-  --stack-name fsxn-observability-prerequisites \
-  --parameter-overrides \
-    FsxS3AccessPointArn=arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap \
-  --capabilities CAPABILITY_IAM
+### All documents
 
-# 4. Enable FSx for ONTAP audit logging (dry run)
-bash shared/scripts/ontap-audit-setup.sh \
-  --endpoint <management-ip> --svm <svm-name> --dry-run
+Every document in this directory, by category. Generated by `shared/scripts/generate-docs-index.py` from a single category map, so the
+English and Japanese indexes always list the same set.
 
-# 5. Deploy vendor integration (example: Datadog)
-aws cloudformation deploy \
-  --template-file integrations/datadog/template.yaml \
-  --stack-name fsxn-datadog-integration \
-  --parameter-overrides \
-    FsxS3AccessPointArn=arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap \
-    DatadogApiKeySecretArn=arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:datadog-api-key \
-    DatadogSite=datadoghq.com \
-  --capabilities CAPABILITY_NAMED_IAM
-```
+**Getting Started**
 
-> 📝 See the [Prerequisites Guide](prerequisites.md) for detailed instructions.
-
-## Quick Validation
-
-After deploying a vendor integration stack:
-
-```bash
-# 1. Confirm Scheduler is invoking Lambda
-aws logs filter-log-events \
-  --log-group-name /aws/lambda/fsxn-datadog-integration-shipper \
-  --start-time $(python3 -c "import time; print(int((time.time()-300)*1000))") \
-  --region ap-northeast-1
-
-# 2. Confirm DLQ is empty (no failed events)
-aws sqs get-queue-attributes \
-  --queue-url <dlq-url> \
-  --attribute-names All \
-  --query 'Attributes.ApproximateNumberOfMessages'
-
-# 3. Search in your observability platform
-#    Datadog: source:fsxn
-#    Splunk:  index=fsxn_audit
-#    Grafana: {source="fsxn"}
-```
-
-## Production Readiness Levels
-
-### Level 0: Local Validation
-- Sample payload parsing and unit tests
-- OTLP / HEC payload snapshot tests
-
-### Level 1: Quickstart
-- Single audit poller with SSM checkpoint
-- EventBridge Scheduler + DLQ
-- Direct vendor delivery
-
-### Level 2: Operational PoC
-- Dashboard and alerts configured
-- Replay runbook documented
-- Cost estimate produced
-- Webhook security enabled
-
-### Level 3: Production Baseline
-- DynamoDB object ledger
-- SQS buffering
-- Poison-pill handling
-- Pipeline SLO monitoring
-- Security review completed
-
-### Level 4: Enterprise Pipeline
-- OTel Collector or Grafana Alloy
-- Redaction and routing rules
-- Multi-backend export
-- Compliance evidence pack
-
-## Teardown
-
-```bash
-aws cloudformation delete-stack --stack-name fsxn-datadog-integration --region ap-northeast-1
-aws cloudformation delete-stack --stack-name fsxn-observability-prerequisites --region ap-northeast-1
-# ONTAP audit logging remains active — disable separately if needed:
-# vserver audit disable -vserver <svm-name>
-```
-
-> **Note**: Deleting the stack does not affect ONTAP audit logging or existing data on the FSx volume.
-
-## GUI Management
-
-Two browser-based options exist for GUI-driven management (audit config, quota, volume/share management, FSA):
-
-| Option | Data residency | Cost | Setup |
-|--------|----------------|------|-------|
-| **[Self-hosted Management Console](../../management-console/)** (AWS-native) | VPC-internal, no external SaaS | ~$250/month (24/7) | ~30 min (CloudFormation) |
-| NetApp Console<!-- allow:naming --> + System Manager (NetApp SaaS) | External SaaS portal | Link (Lambda) ~$0.008/month; System Manager itself free | NSS account + Link setup |
-
-**How to choose**: If a data residency requirement prevents sending metrics/state outside the VPC, or you want AWS-native authentication (Cognito/IAM), use the self-hosted Management Console. If you already have (or don't mind) a NetApp SaaS relationship and want the built-in System Manager UI with no AWS resources to run, use NetApp Console<!-- allow:naming -->. Both provide overlapping but not identical capabilities — see the comparison table in [management-console/README.md](../../management-console/README.md#when-to-choose-this-approach).
-
-> **NetApp Console<!-- allow:naming --> access path**: [NetApp Console](https://console.netapp.com/) → Systems → SERVICES → "Open" (System Manager)
-
-📖 [Management & Monitoring Decision Tree](decision-tree-management-monitoring.md)
-
-📖 [System Manager GUI Guide](system-manager-gui-guide.md)
-
-📖 [NetApp Console<!-- allow:naming --> Integration](../../integrations/netapp-console/) (SaaS path) · [Self-hosted Management Console](../../management-console/) (AWS-native path)
-
-> 🔍 **Beyond day-to-day GUI management** — if you're evaluating NetApp Console<!-- allow:naming --> or DII<!-- allow:naming --> Storage Workload Security for ransomware containment, see the [Automated Incident Response Guide](automated-response-guide.md) for an AWS-native alternative (or complement) that triggers the same storage-layer blocking actions from any detection source in your existing stack.
-
-## Documentation
-
-### Getting Started
-- [Prerequisites & Deployment Guide](prerequisites.md)
+- [Getting Started](getting-started.md)
+- [Prerequisites and Resource Deployment Guide](prerequisites.md)
 - [Minimum Test Path](quick-start-minimum.md)
+- [Deploying a vendor integration](vendor-deployment-common.md)
+- [Deployment Guide — Integrating with Existing FSx for ONTAP Environments](deployment-guide.md)
 - [ONTAP Audit Setup Guide](ontap-audit-setup.md)
 
-### Architecture & Design
+**Architecture & Reference**
+
 - [Architecture](architecture.md)
+- [Architecture Evolution: Admin Audit Log Delivery via CloudWatch Logs Syslog VPCE](architecture-evolution-syslog-vpce.md)
 - [Event Sources Guide](event-sources.md)
-- [S3 AP Specification & Troubleshooting](s3ap-fsxn-specification.md)
 - [Normalized Event Schema](normalized-event-schema.md)
-- [Delivery Guarantee Patterns](delivery-guarantees.md)
-- [Management & Monitoring Decision Tree](decision-tree-management-monitoring.md)
-- [System Manager GUI Guide](system-manager-gui-guide.md)
+- [FSx for ONTAP S3 Access Points Specification](s3ap-fsxn-specification.md)
+- [S3 Access Points for FSx for ONTAP — Knowledge Base](s3-access-points-knowledge.md)
+- [ONTAP REST API Quick Reference for FSx for ONTAP](ontap-rest-api-reference.md)
 
-### Operations & Production
-- [Pipeline SLO Definitions](pipeline-slo.md)
+**Operations**
+
 - [Operational Guide](operational-guide.md)
-- [CloudWatch Log Alarm](cloudwatch-log-alarm.md)
-- [Log Alarm Triggered Runbook](runbooks/log-alarm-triggered.md)
-- [DLQ Replay Runbook](runbooks/dlq-replay.md)
-- [Lambda Errors Runbook](runbooks/lambda-errors.md)
-- [Checkpoint Staleness Runbook](runbooks/checkpoint-stale.md)
-- [S3 AP Throughput Benchmark](s3ap-throughput-benchmark.md)
-- [Cost Validation Template](cost-validation.md)
-
-### Security & Compliance
-- [Cyber Resilience Capability Map](cyber-resilience-capability-map.md) — NIST CSF 2.0 function mapping (Govern/Identify/Protect/Detect/Respond/Recover) for this repo's FSx for ONTAP implementation, with alternative AWS-native/SaaS implementation paths per function, including per-vendor forensic investigation dashboards (user/IP/file-path/action)
-- [Automated Incident Response Guide](automated-response-guide.md) — user/IP blocking, snapshot, session disconnect (ONTAP REST API)
-  > 🔍 Looking for AD-integrated user/IP-level storage-layer access blocking, similar to what dedicated storage security products (e.g., DII Storage Workload Security) provide? See the comparison table and FAQ in this guide. Scope: storage-layer blocking and evidence preservation only — host isolation, malware removal, and credential rotation are out of scope.
-- [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md) — FlexClone + isolated S3 Access Point scan to verify a snapshot is clean before restoring (CSF 2.0 RC.RP)
-- [Content-Level PII Classification Scanner](content-classification-scanner.md) — Amazon Comprehend-based PII discovery for file contents (CSF 2.0 Identify), complementing the Data Classification Guide's schema-level classification
-- [EMS Detection Capabilities](ems-detection-capabilities.md) — 30+ events, push delivery, latency comparison
-- [Security Monitoring Index](security-monitoring-index.md) — role-based and feature-based documentation index
-- [Data Classification Guide](data-classification.md)
+- [Pipeline SLO Definitions](pipeline-slo.md)
+- [Delivery Guarantee Patterns](delivery-guarantees.md)
 - [Retention Policy Matrix](retention-policy-matrix.md)
-- [Compliance Evidence Pack](compliance-evidence-pack.md)
+- [PagerDuty Escalation Integration Guide](pagerduty-escalation-guide.md)
+- [Syslog VPC Endpoint Setup Guide — FSx for ONTAP Admin Audit Logs → CloudWatch Logs](syslog-vpce-setup-guide.md)
+- [CloudWatch Log Alarm — Direct Alarms from FSx for ONTAP Audit Logs](cloudwatch-log-alarm.md)
+
+**Runbooks**
+
+- [Runbook: DLQ Replay](runbooks/dlq-replay.md)
+- [Runbook: Lambda Errors Alarm](runbooks/lambda-errors.md)
+- [Runbook: Checkpoint Staleness](runbooks/checkpoint-stale.md)
+- [Runbook: CloudWatch Log Alarm Triggered](runbooks/log-alarm-triggered.md)
+
+**Security & Detection**
+
+- [Security Best Practices for FSx for ONTAP Observability Integrations](security-best-practices.md)
 - [Security Review Checklist](security-review-checklist.md)
-- [Webhook Security Guide](webhook-security.md)
-- [Data Residency Matrix](data-residency.md)
-- [Governance & Compliance](governance-and-compliance.md)
-
-### Enterprise & Scale
-- [Multi-Account Deployment (StackSets)](multi-account-deployment.md)
-- [Cross-Region Replication (DR)](cross-region-replication.md)
-- [OTel Collector PII Redaction Cookbook](../../integrations/otel-collector/docs/en/pii-redaction-cookbook.md)
-
-### Partner & Workshop
-- [Vendor Comparison](vendor-comparison.md)
-- [Partner FAQ](partner-faq.md)
-- [Partner Solution Brief](partner-solution-brief.md)
-- [PoC Proposal Template](poc-proposal-template.md)
-- [PoC Success Criteria](poc-success-criteria.md)
-- [Workshop Hands-On Guide (Half Day)](workshop-hands-on-half-day.md)
-- [Workshop Agenda](workshop-agenda.md)
-- [Demo Scenarios](demo-scenarios.md)
+- [Security Monitoring & Incident Response — Document Navigation Index](security-monitoring-index.md)
 - [Detection Use Cases](detection-use-cases.md)
+- [EMS Event Detection Capabilities — Reference Guide](ems-detection-capabilities.md)
+- [Cyber Resilience Capability Map — NIST CSF 2.0 Function Mapping](cyber-resilience-capability-map.md)
+- [EMS Webhook Security Guide](webhook-security.md)
 
-## Tech Stack
+**Automated Response**
 
-- **Infrastructure**: CloudFormation (YAML) + CDK (TypeScript)
-- **Lambda**: Python 3.12 (log processing) + TypeScript (API integration)
-- **Test**: Jest + pytest
-- **CI/CD**: GitHub Actions
-- **Docs**: Markdown (bilingual EN/JA)
+- [Automated Incident Response Guide — User/IP Blocking via ONTAP REST API](automated-response-guide.md)
+- [Automated Response — Security & Incident Response Addendum](automated-response-security-addendum.md)
+- [ARP (Autonomous Ransomware Protection) Incident Response Guide](arp-incident-response-guide.md)
+- [Verified-Clean Recovery Point Guide — Closing the CSF 2.0 RC.RP Gap](verified-recovery-point-guide.md)
+- [Content-Level PII Classification Scanner — Closing the CSF 2.0 Identify Gap](content-classification-scanner.md)
 
-## Related Projects
+**FPolicy**
+
+- [FPolicy Pipeline — Quick Deploy Guide](fpolicy-quick-deploy.md)
+- [FPolicy Pipeline Operational Guide](fpolicy-operational-guide.md)
+- [FPolicy Production Architecture Patterns](fpolicy-production-architecture-patterns.md)
+- [FPolicy PoC Checklist](fpolicy-poc-checklist.md)
+- [FPolicy Operational Notes](operational-notes-fpolicy.md)
+- [AI Agent Access Log × ONTAP FPolicy Audit Log Correlation Pattern](agent-fpolicy-correlation-pattern.md)
+
+**Governance & Compliance**
+
+- [Governance and Compliance Considerations](governance-and-compliance.md)
+- [Compliance Evidence Pack Template](compliance-evidence-pack.md)
+- [Data Classification Guide for FSx for ONTAP Audit Logs](data-classification.md)
+- [Data Residency Matrix](data-residency.md)
+
+**Enterprise & Scale**
+
+- [Multi-Account Deployment with AWS Organizations](multi-account-deployment.md)
+- [Cross-Region Replication for Audit Log DR](cross-region-replication.md)
+- [Lakehouse Long-Term Retention for FSx for ONTAP Audit Logs](lakehouse-long-term-retention.md)
+- [Lakehouse Monitoring Patterns](lakehouse-monitoring-patterns.md)
+
+**Choosing an Approach**
+
+- [FSx for ONTAP Management & Monitoring Decision Tree](decision-tree-management-monitoring.md)
+- [AWS-Native Alternative Matrix — System Manager / Workload Factory / DII](native-alternative-matrix.md)
+- [Vendor Comparison](vendor-comparison.md)
+- [Comparison: EC2-Based Pattern vs Serverless Pattern](ec2-comparison.md)
+- [Existing Audit Tool Coexistence Guide](existing-audit-tool-coexistence.md)
+- [File Access Audit Log — Format Comparison & Architecture Options](file-access-audit-format-comparison.md)
+- [ONTAP System Manager GUI Operations Guide](system-manager-gui-guide.md)
+- [Observability Integration Addendum — Advanced Patterns & Reference](observability-integration-addendum.md)
+
+**Cost**
+
+- [Cost Model — Direct Send vs Collector vs Firehose](cost-model.md)
+- [Cost Validation: Estimated vs Actual](cost-validation.md)
+- [S3 Access Point Read Throughput Benchmark](s3ap-throughput-benchmark.md)
+
+**Partner & Workshop**
+
+- [Partner Solution Brief: FSx for ONTAP Serverless Observability](partner-solution-brief.md)
+- [Partner FAQ: FSx for ONTAP Observability Integrations](partner-faq.md)
+- [PoC Success Criteria](poc-success-criteria.md)
+- [PoC Proposal Template: FSx for ONTAP Observability Integration](poc-proposal-template.md)
+- [Workshop Agenda: FSx for ONTAP Serverless Observability](workshop-agenda.md)
+- [Workshop Hands-On Guide (Half-Day, 3.5 Hours)](workshop-hands-on-half-day.md)
+
+**Demos & Screenshots**
+
+- [Demo Scenarios](demo-scenarios.md)
+- [Automated Response Demo Runbook](demo-automated-response.md)
+- [ARP Incident Response Demo Runbook](demo-arp-incident-response.md)
+- [Content Classification Scanner Demo Runbook](demo-content-classification.md)
+- [EMS/FPolicy Screenshot Capture Guide](screenshot-capture-guide-ems-fpolicy.md)
+
+**Verification Results**
+
+- [Datadog Integration Verification Results](verification-results-datadog.md)
+- [Splunk Serverless Integration Verification Results](verification-results-splunk.md)
+- [OTel Collector Integration E2E Verification Results](verification-results-otel-collector.md)
+- [New Relic Integration Verification Results](verification-results-new-relic.md)
+- [Elastic Integration Verification Results](verification-results-elastic.md)
+- [Dynatrace Integration Verification Results](verification-results-dynatrace.md)
+- [Sumo Logic Integration Verification Results](verification-results-sumo-logic.md)
+- [Honeycomb Integration Verification Results](verification-results-honeycomb.md)
+- [EMS/FPolicy E2E Verification Results](verification-results-ems-fpolicy.md)
+
+**Project**
+
+- [CI Policy and Quality Gates](ci-policy.md)
+
+<!-- docs-index:end -->
+### Related Repositories
 
 | Repository | Description |
 |-----------|-------------|
-| [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | 17 industry use cases with FPolicy event-driven pipeline |
-| [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) | Data Lake and Lakehouse platform integrations via S3 Access Points |
-| [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Access-aware Agentic RAG with Amazon Bedrock (CDK) |
-| [fsx-ontap-lifecycle-management](https://github.com/Yoshiki0705/fsx-ontap-lifecycle-management) | 3-tier lifecycle management with S3 Glacier Deep Archive |
+| [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | 17 industry use cases with FPolicy pipeline |
+| [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) | Data Lake / Lakehouse integrations via S3 AP |
+| [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Access-aware Agentic RAG with Bedrock |
+
+### Articles
+
+- [AWS Blog: Auditing FSx for ONTAP using Splunk](https://aws.amazon.com/blogs/storage/auditing-user-and-administrative-actions-on-amazon-fsx-for-netapp-ontap-using-splunk/) (EC2 approach — this project provides the EC2-free alternative)
+
+</details>
+
+<details><summary>🔧 For Developers</summary>
+
+```bash
+npm install                  # Install dependencies
+npm test                     # TypeScript tests
+python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v  # All Python tests
+cfn-lint integrations/*/template.yaml   # Validate CloudFormation
+```
+
+- **Tech stack**: CloudFormation (YAML) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
+- **Contributing**: See [CONTRIBUTING.md](../../CONTRIBUTING.md)
+- **Changelog**: See [CHANGELOG.md](../../CHANGELOG.md)
+- **Roadmap**: See [ROADMAP.md](../../ROADMAP.md)
+
+</details>
 
 ## License
 
 MIT
+
+---
+
+🌐 [日本語](../ja/README.md) | **English**

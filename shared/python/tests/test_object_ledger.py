@@ -11,6 +11,7 @@ parameter) -- none of them exercise a real DynamoDB table.
 """
 
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -275,3 +276,171 @@ class TestGetStatus:
         assert result["status"] == "unknown"
         assert result["etag"] == ""
         assert result["failure_count"] == 0
+
+
+# ==========================================================================
+# Retention (DynamoDB TTL)
+# ==========================================================================
+
+
+class TestTtlConfiguration:
+    """How ttl_days is resolved.
+
+    DynamoDB expires an item only if it carries the attribute named in the
+    table's TimeToLiveSpecification. The template enabling TTL is therefore only
+    half of retention -- this class has to write expires_at. Both halves were
+    missing while the stack exposed a TTLDays parameter, so retention read as
+    configured while the table grew without bound.
+    """
+
+    def test_defaults_to_no_expiry(self, ddb_client):
+        ledger = ObjectLedger(table_name="t", dynamodb_client=ddb_client)
+        assert ledger.ttl_days == 0
+
+    def test_explicit_ttl_days_wins_over_environment(self, ddb_client, monkeypatch):
+        monkeypatch.setenv("LEDGER_TTL_DAYS", "30")
+        ledger = ObjectLedger(
+            table_name="t", dynamodb_client=ddb_client, ttl_days=7
+        )
+        assert ledger.ttl_days == 7
+
+    def test_reads_ledger_ttl_days_environment_variable(self, ddb_client, monkeypatch):
+        monkeypatch.setenv("LEDGER_TTL_DAYS", "45")
+        ledger = ObjectLedger(table_name="t", dynamodb_client=ddb_client)
+        assert ledger.ttl_days == 45
+
+    def test_non_numeric_environment_value_disables_expiry(
+        self, ddb_client, monkeypatch
+    ):
+        """A typo must not crash the shipper on cold start."""
+        monkeypatch.setenv("LEDGER_TTL_DAYS", "ninety")
+        ledger = ObjectLedger(table_name="t", dynamodb_client=ddb_client)
+        assert ledger.ttl_days == 0
+
+    def test_negative_ttl_days_is_clamped_to_zero(self, ddb_client):
+        """A negative TTL would write an expiry in the past, deleting on write."""
+        ledger = ObjectLedger(
+            table_name="t", dynamodb_client=ddb_client, ttl_days=-5
+        )
+        assert ledger.ttl_days == 0
+
+
+class TestMarkSuccessWritesExpiry:
+    def test_no_expires_at_when_ttl_disabled(self, ledger, ddb_client):
+        ledger.mark_success("key1", "etag-abc")
+
+        call = ddb_client.update_item.call_args.kwargs
+        assert "expires_at" not in call["UpdateExpression"]
+        assert ":exp" not in call["ExpressionAttributeValues"]
+
+    def test_writes_expires_at_when_ttl_enabled(self, ddb_client):
+        ledger = ObjectLedger(
+            table_name="t", dynamodb_client=ddb_client, ttl_days=90
+        )
+        before = int(time.time())
+
+        ledger.mark_success("key1", "etag-abc")
+
+        call = ddb_client.update_item.call_args.kwargs
+        assert "expires_at = :exp" in call["UpdateExpression"]
+        expiry = int(call["ExpressionAttributeValues"][":exp"]["N"])
+        expected = before + 90 * 86400
+        assert expected <= expiry <= expected + 5
+
+    def test_still_sets_the_other_success_attributes(self, ddb_client):
+        ledger = ObjectLedger(
+            table_name="t", dynamodb_client=ddb_client, ttl_days=30
+        )
+        ledger.mark_success("key1", "etag-abc")
+
+        call = ddb_client.update_item.call_args.kwargs
+        update = call["UpdateExpression"]
+        for fragment in ("#s = :status", "etag = :etag", "processed_at = :ts",
+                         "failure_count = :zero"):
+            assert fragment in update
+
+
+class TestPoisonPillNeverExpires:
+    """Poison pills are the permanent skip list.
+
+    If one expires, should_process starts returning True for a file already known
+    to be unprocessable. The pipeline then re-enters the same failure loop, marks
+    it poison again, and the entry expires again -- so the loop repeats forever
+    rather than once.
+    """
+
+    def test_poison_pill_removes_expires_at(self, ddb_client):
+        ledger = ObjectLedger(
+            table_name="t", dynamodb_client=ddb_client, ttl_days=90
+        )
+
+        ledger._mark_poison_pill("key1")
+
+        call = ddb_client.update_item.call_args.kwargs
+        assert "REMOVE expires_at" in call["UpdateExpression"]
+
+    def test_promotion_path_removes_expires_at(self, ddb_client):
+        """Reaching max_failures must clear any expiry left by a prior success."""
+        ledger = ObjectLedger(
+            table_name="t",
+            max_failures=3,
+            dynamodb_client=ddb_client,
+            ttl_days=90,
+        )
+        ddb_client.update_item.return_value = {
+            "Attributes": {"failure_count": {"N": "3"}}
+        }
+
+        ledger.mark_failure("key1", "etag-abc", "boom")
+
+        # Last call is the poison-pill promotion.
+        assert "REMOVE expires_at" in (
+            ddb_client.update_item.call_args.kwargs["UpdateExpression"]
+        )
+
+    def test_failure_below_threshold_does_not_set_expiry(self, ddb_client):
+        """A failed entry is not a success, so it gets no retention window."""
+        ledger = ObjectLedger(
+            table_name="t",
+            max_failures=3,
+            dynamodb_client=ddb_client,
+            ttl_days=90,
+        )
+        ddb_client.update_item.return_value = {
+            "Attributes": {"failure_count": {"N": "1"}}
+        }
+
+        ledger.mark_failure("key1", "etag-abc", "boom")
+
+        call = ddb_client.update_item.call_args.kwargs
+        assert "expires_at" not in call["UpdateExpression"]
+
+
+class TestTemplateAndWriterAgree:
+    """The template's TTL attribute name must match what this module writes.
+
+    A mismatch is invisible: DynamoDB accepts the table configuration, the Lambda
+    writes its attribute, and nothing ever expires.
+    """
+
+    TEMPLATE = (
+        Path(__file__).resolve().parents[3]
+        / "shared/templates/object-ledger.yaml"
+    )
+
+    def test_template_enables_ttl_on_expires_at(self):
+        template = self.TEMPLATE.read_text(encoding="utf-8")
+        assert "TimeToLiveSpecification" in template, (
+            "object-ledger.yaml must enable TTL, or expires_at is written and "
+            "never acted on."
+        )
+        assert "AttributeName: expires_at" in template, (
+            "The template's TTL attribute must be expires_at, which is what "
+            "ObjectLedger writes."
+        )
+
+    def test_writer_uses_the_same_attribute_name(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "object_ledger.py"
+        ).read_text(encoding="utf-8")
+        assert "expires_at" in source
