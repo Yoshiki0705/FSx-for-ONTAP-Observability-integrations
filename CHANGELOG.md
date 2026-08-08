@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- GitHub Discussions enabled with an `Asking Questions` section in `CONTRIBUTING.md` pointing setup and vendor-selection questions at the Q&A category. Enabling the feature without linking it anywhere would have left it undiscoverable, so the ROADMAP item is only closed with both halves in place.
 - `.github/workflows/pr-title-check.yml`. Fails a pull request whose title lacks a Conventional Commits prefix, and warns above 70 characters. This repository squash-merges and GitHub seeds the squash commit message from the PR title, so an unprefixed title became an unprefixed commit that was only discoverable after merge. Implemented as a plain regex rather than a third-party action, to avoid another SHA-pinned dependency for a five-line comparison.
 - `shared/scripts/sync-code-blocks.py` (with `--check`) and `shared/python/tests/test_code_block_sync.py`. Keeps executable code blocks byte-identical between `docs/ja` and `docs/en`. Diagram fences (untagged, `mermaid`, `text`) stay localised on purpose — their labels are prose, and forcing English there would degrade the primary language.
 - `docs/{en,ja}/verification-results-grafana.md`. Grafana was the only integration with no verification record, while the coverage matrix cited its screenshots as evidence. Written as an evidence index rather than a reconstructed run log: it lists each screenshot with the query that produces it and states explicitly what was never recorded (date, account, log counts).
@@ -38,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Dead condition `HasWebhookSecret` from `ems-webhook-apigw.yaml`, replaced by a `Rules` assertion that actually enforces it.
 
 ### Fixed
+- `ROADMAP.md` listed blog Part 17 twice with contradicting states (`Published` and `Ready for publication`) under two different titles, out of sequence after Part 18. Only one Part 17 draft exists, so the second row was a leftover; removed.
 - `docs/ja/syslog-vpce-setup-guide.md` configured plaintext syslog (`port 1514`, `tcp_unencrypted`) in its worked example while its own table and security note recommended TLS on 6514, and while the English guide used 6514. Japanese readers were being walked through an unencrypted configuration. Now 6514 / `tcp-encrypted` in both languages.
 - `docs/ja/automated-response-guide.md` used the EMS event name `callhome.arw.activity.seen` where the event catalog and the English guide use `arw.volume.state` as the containment trigger.
 - `docs/ja/deployment-guide.md` listed 6 of the 8 files that exist in `cfn-params/`, omitting `monitoring-dashboard.example.json` and `qtree-quota-monitor.example.json`.
