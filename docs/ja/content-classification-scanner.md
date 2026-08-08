@@ -99,8 +99,8 @@
 [`DetectPiiEntities`](https://docs.aws.amazon.com/comprehend/latest/dg/how-pii.html) は 1 回の呼び出しあたり UTF-8 で 100 KB のサイズ上限を設けています。本スキャナーはファイル内容をその上限未満のチャンクに分割し、可能な限り行境界で分割します。これにより、エンティティ（例: メールアドレス）が不必要にチャンク境界で分断されることを避けます:
 
 ```python
-# 簡略版 — 行境界を考慮した完全な実装は content_classifier.py の
-# _chunk_text を参照
+# Simplified — see content_classifier.py's _chunk_text for the full
+# line-boundary-aware implementation
 for chunk in _chunk_text(file_text, target_bytes=98_000):
     entities = comprehend.detect_pii_entities(Text=chunk, LanguageCode="en")
 ```
@@ -302,8 +302,8 @@ aws lambda invoke \
 本スキャナーを実データに向ける前に、合成ファイルを使ってエンドツーエンドで動作するか確認してください — 以下の手順は、本プロジェクト自身の E2E 検証で実際に使用したものと同一です（デプロイモード1: スタンドアロン、`VpcId` 未指定に対して実施）:
 
 ```bash
-# 1. 合成 PII ファイルを作成する — 実在の個人情報は含まない。
-#    一時的な場所に置き、テスト後は即座に削除する
+# 1. Create a synthetic PII file — no real personal data, safe to commit
+#    to a scratch location or delete immediately after the test
 cat > /tmp/pii-test-sample.txt <<'EOF'
 Support Ticket #48213
 Name: John Sample Doe
@@ -313,17 +313,17 @@ SSN: 078-05-1120
 Address: 123 Example Street, Springfield, IL 62704
 EOF
 
-# 2. FSx for ONTAP ボリュームへの書き込み権限を持つ S3 Access Point 経由で
-#    アップロードする（読み取り専用の Access Point しかない場合、
-#    PutObject は拒否されます — 読み取り専用/読み書き可能な Access Point
-#    の違いは上記の前提条件を参照）
+# 2. Upload it through an S3 Access Point that has write access to your
+#    FSx for ONTAP volume (a read-only access point, if that's what you
+#    have, will reject the PutObject — see Prerequisites above for the
+#    read-only-vs-read-write access point distinction)
 aws s3api put-object \
   --bucket <your-access-point-arn> \
   --key validation/pii-test-sample.txt \
   --body /tmp/pii-test-sample.txt
 
-# 3. スキャナーを直接 invoke する（後で構成する EventBridge/Step Functions
-#    のトリガーを経由せず、Lambda + Comprehend のパスだけを単体で確認できる）
+# 3. Invoke the scanner directly (bypasses any EventBridge/Step Functions
+#    trigger you may wire up later, isolating the Lambda + Comprehend path)
 aws lambda invoke \
   --function-name fsxn-content-classification-scanner \
   --payload '{"access_point_arn":"<your-access-point-arn>","max_files":50}' \
@@ -331,12 +331,12 @@ aws lambda invoke \
   /tmp/scan-response.json
 cat /tmp/scan-response.json
 
-# 4. Lambda のレスポンスだけでなく、台帳にも記録されたことを確認する
+# 4. Confirm the finding landed in the ledger, not just the Lambda response
 aws dynamodb get-item \
   --table-name fsxn-content-classification-reports \
-  --key '{"access_point_arn":{"S":"<your-access-point-arn>"},"started_at":{"S":"<手順3のレスポンスのstarted_at>"}}'
+  --key '{"access_point_arn":{"S":"<your-access-point-arn>"},"started_at":{"S":"<started_at from step 3 response>"}}'
 
-# 5. 合成ファイルを削除し、本番ストレージに残さないようにする
+# 5. Clean up the synthetic file so it doesn't linger in production storage
 aws s3api delete-object --bucket <your-access-point-arn> --key validation/pii-test-sample.txt
 rm -f /tmp/pii-test-sample.txt /tmp/scan-response.json
 ```

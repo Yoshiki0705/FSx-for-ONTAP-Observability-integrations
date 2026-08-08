@@ -120,10 +120,10 @@ FSx for ONTAP の監査ログ機能を有効化し、SVM 内の audit volume に
 **サーバーレスパイプライン向け推奨**: **XML フォーマット**（`-format xml`）を使用してください。サードパーティ依存なしで Lambda で全フィールドを抽出できます。
 
 ```bash
-# XML 形式で監査設定を作成（パイプライン配信向け推奨）
+# Create audit config with XML format (recommended for pipeline delivery)
 vserver audit create -vserver <svm-name> -destination /audit_log -format xml -rotate-size 200MB
 
-# EVTX 形式で監査設定を作成（デフォルト、Windows Event Viewer 向け）
+# Create audit config with EVTX format (default, for Windows Event Viewer)
 vserver audit create -vserver <svm-name> -destination /audit_log -rotate-size 200MB
 ```
 
@@ -220,11 +220,11 @@ FSx for ONTAP S3 AP → Lambda (変換) → Kinesis Data Firehose → ベンダ�
 ### IAM 最小権限
 
 ```yaml
-# Lambda 実行ロール
-- s3:GetObject (FSx for ONTAP S3 Access Point ARN のみ)
-- s3:ListBucket (FSx for ONTAP S3 Access Point ARN のみ)
-- secretsmanager:GetSecretValue (API Key Secret のみ)
-- dynamodb:GetItem, dynamodb:PutItem (チェックポイントテーブルのみ)
+# Lambda execution role
+- s3:GetObject (FSx for ONTAP S3 Access Point ARN only)
+- s3:ListBucket (FSx for ONTAP S3 Access Point ARN only)
+- secretsmanager:GetSecretValue (API Key Secret only)
+- dynamodb:GetItem, dynamodb:PutItem (checkpoint table only)
 - logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents
 ```
 

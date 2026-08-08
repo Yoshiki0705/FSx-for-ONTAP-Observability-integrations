@@ -202,10 +202,10 @@ cloudwatch.put_metric_data(
 ## 自環境でのベンチマーク実行
 
 ```bash
-# 1. ベンチマーク Lambda をデプロイ（テンプレートは未提供）
-# 上記テストスクリプトを Lambda 関数で使用
+# 1. Deploy the benchmark Lambda (template not yet available)
+# Use the test script above in a Lambda function
 
-# 2. 異なるオブジェクトサイズで呼び出し
+# 2. Invoke with different object sizes
 aws lambda invoke \
   --function-name fsxn-s3ap-benchmark \
   --payload '{"test": "list", "iterations": 20}' \
@@ -216,7 +216,7 @@ aws lambda invoke \
   --payload '{"test": "get", "prefix": "audit/svm-prod-01/2026/05/", "max_keys": 10}' \
   response.json
 
-# 3. 環境コンテキストとともに結果を記録
+# 3. Record results with environment context
 cat response.json | jq '.body'
 ```
 

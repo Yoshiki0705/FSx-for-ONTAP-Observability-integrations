@@ -23,26 +23,26 @@
 ## 手順
 
 ```bash
-# 1. デプロイ（1コマンド。スタックと Lambda コードの両方を配置）
+# 1. Deploy (single command — deploys the stack AND uploads the Lambda code)
 export DATADOG_API_KEY_SECRET_ARN=<your-secret-arn>
 export FSX_S3_ACCESS_POINT_ARN=<your-fsx-s3-ap-arn>
 export DATADOG_SITE=<your-site>
 
-bash integrations/datadog/scripts/deploy.sh    # 初回は 3〜5 分
+bash integrations/datadog/scripts/deploy.sh    # 3-5 minutes on first run
 
-# 2. パイプラインが通っていることを確認
+# 2. Confirm the pipeline is wired end to end
 export DD_API_KEY_SECRET_ID=fsxn-datadog-api-key
 export DD_SITE=<your-site>
 
-bash integrations/datadog/scripts/verify.sh    # 4/4 チェック PASS が期待値
+bash integrations/datadog/scripts/verify.sh    # expect 4/4 checks passed
 
-# 3. 監査対象共有でテストファイル操作を実行
-#    （SMB または NFS でファイルを作成/削除）
+# 3. Perform a test file operation on the audited share
+#    (create/delete a file via SMB or NFS)
 
-# 4. ONTAP の監査ログローテーションを待ち、次の 5 分スケジュールを待つ
+# 4. Wait for ONTAP to rotate the audit log, then for the next 5-minute schedule
 
-# 5. Datadog で確認
-#    検索: source:fsxn
+# 5. Verify in Datadog
+#    Search: source:fsxn
 ```
 
 > **`template.yaml` を単体でデプロイしないでください。** CloudFormation はハンドラを

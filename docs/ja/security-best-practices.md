@@ -63,7 +63,7 @@ Lambda が VPC 内にある場合:
 ### Lambda 実行ロールパターン
 
 ```yaml
-# 監査ログシッパーの最小権限
+# Minimum permissions for audit log shipper
 Policies:
   - PolicyName: S3Read
     PolicyDocument:

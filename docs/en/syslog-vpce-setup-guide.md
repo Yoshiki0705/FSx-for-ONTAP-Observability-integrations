@@ -205,15 +205,21 @@ aws fsx update-file-system \
 ## Cleanup
 
 ```bash
-# 1. Remove ONTAP forwarding destination
+# 1. Remove the ONTAP forwarding destination
 curl -sk -u fsxadmin:<PASSWORD> \
-  -X DELETE "https://<FSx-Management-IP>/api/security/audit/destinations/<VPCE_IP>/6514"
+  -X DELETE "https://<FSx-Management-IP>/api/security/audit/destinations/<VPCE_IP>/6514" \
+  --max-time 10
 
-# 2. Delete CloudFormation stack
-aws cloudformation delete-stack --stack-name fsxn-syslog-vpce-admin-audit --region ap-northeast-1
+# 2. Delete the CloudFormation stack
+aws cloudformation delete-stack \
+  --stack-name fsxn-syslog-vpce-admin-audit \
+  --region ap-northeast-1
 
-# 3. Delete retained log group (optional)
-aws logs delete-log-group --log-group-name /syslog/fsxn-admin-audit --region ap-northeast-1
+# 3. Delete the log group by hand. The stack sets DeletionPolicy: Retain on it,
+#    so deleting the stack deliberately leaves the audit history in place.
+aws logs delete-log-group \
+  --log-group-name /syslog/fsxn-admin-audit \
+  --region ap-northeast-1
 ```
 
 ---

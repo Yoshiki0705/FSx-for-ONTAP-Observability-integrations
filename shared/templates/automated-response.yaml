@@ -239,11 +239,24 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-handler:*'
+              # Split by resource type. The mutating actions are scoped to the
+              # network-acl type; the NACL's own ARN is not knowable here because
+              # network_block.py discovers it at runtime from the subnet ID
+              # (describe_network_acls filtered on association.subnet-id).
               - Sid: NetworkAclBlock
                 Effect: Allow
                 Action:
                   - ec2:CreateNetworkAclEntry
                   - ec2:DeleteNetworkAclEntry
+                Resource: !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-acl/*'
+                Condition:
+                  StringEquals:
+                    'aws:RequestedRegion': !Ref 'AWS::Region'
+              # Kept on '*': EC2 Describe* actions have no resource types to
+              # scope to, so this cannot be narrowed further.
+              - Sid: NetworkAclDescribe
+                Effect: Allow
+                Action:
                   - ec2:DescribeNetworkAcls
                 Resource: '*'
                 Condition:

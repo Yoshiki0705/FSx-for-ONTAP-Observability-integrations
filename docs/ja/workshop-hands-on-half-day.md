@@ -104,7 +104,7 @@ aws cloudformation deploy \
 ### Step 2: サンプルデータのアップロード（サンプルモードの場合）
 
 ```bash
-# サンプル監査ログを生成してアップロード
+# Generate and upload sample audit log
 python3 shared/scripts/generate-sample-audit.py --count 10 --output /tmp/sample-audit.json
 aws s3 cp /tmp/sample-audit.json s3://<your-bucket>/audit/svm-prod-01/2026/05/24/sample-001.json
 ```
@@ -126,7 +126,7 @@ aws cloudformation deploy \
 ### Step 4: 初回実行のトリガー
 
 ```bash
-# 手動実行でテスト（Scheduler を待たない）
+# Manual invoke to test immediately (don't wait for scheduler)
 aws lambda invoke \
   --function-name fsxn-<vendor>-integration-shipper \
   --payload '{"source": "scheduler", "s3_access_point_arn": "<arn>", "prefix": "audit/"}' \
@@ -162,10 +162,10 @@ README のベンダー固有クエリを使用：
 ### Step 2: パイプライン健全性の確認
 
 ```bash
-# Checkpoint が前進しているか？
+# Checkpoint advanced?
 aws ssm get-parameter --name "/fsxn/<vendor>/audit-checkpoint" --region ap-northeast-1
 
-# DLQ は空か？
+# DLQ empty?
 aws sqs get-queue-attributes \
   --queue-url <dlq-url> \
   --attribute-names ApproximateNumberOfMessagesVisible
@@ -194,13 +194,13 @@ aws cloudformation deploy \
 ### Step 2: サンプル EMS イベントでテスト
 
 ```bash
-# スタック出力から API Gateway URL を取得
+# Get API Gateway URL from stack outputs
 API_URL=$(aws cloudformation describe-stacks \
   --stack-name fsxn-<vendor>-ems \
   --query 'Stacks[0].Outputs[?OutputKey==`WebhookUrl`].OutputValue' \
   --output text)
 
-# テスト EMS イベントを送信（ランサムウェアシミュレーション）
+# Send test EMS event (ransomware simulation)
 curl -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -d '{"messageName":"arw.volume.state","severity":"alert","parameters":[{"name":"volumeName","value":"vol_data"}]}'

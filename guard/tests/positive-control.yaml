@@ -29,10 +29,22 @@ Parameters:
     AllowedValues: ['true', 'false']
 
   # Carries secret material and declares NoEcho. Must not be flagged.
+  VpcCidrForSelfTest:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: Ingress CIDR supplied by parameter (struct at template scan time)
+  AssignPublicIpForSelfTest:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: AssignPublicIp supplied by parameter (struct at template scan time)
   VendorApiKey:
     Type: String
     NoEcho: true
     Default: ''
+
+Conditions:
+  ShouldCreateEndpoint: !Equals [!Ref CreateSecretsManagerEndpoint, 'true']
 
 Resources:
   ScopedRole:
@@ -151,3 +163,94 @@ Resources:
       Name: guard-selftest-good-ref-secret
       Description: Value comes from a NoEcho parameter
       SecretString: !Ref VendorApiKey
+
+  # ---------------------------------------------------------------------------
+  # Shapes that are compliant but that the rules used to report as violations.
+  #
+  # Applying management-console-security.guard beyond management-console/templates/
+  # produced 19 findings, and all but a handful were these four shapes rather than
+  # real problems. Each one now has a filter in the rule file. They live here so
+  # that removing a filter fails the self-test's "no rule fires on
+  # positive-control.yaml" check, instead of quietly resurrecting the noise that
+  # made the rule set unusable repo-wide.
+  # ---------------------------------------------------------------------------
+
+  # 1. A role with only ManagedPolicyArns and no inline Policies key.
+  #    `Properties.Policies` cannot be traversed, and Guard reports the resulting
+  #    RequiredPropertyError as non-compliance.
+  CompliantManagedPolicyOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # 2. A conditionally included inline policy. The list entry is a struct whose
+  #    only key is Fn::If, so it has no PolicyDocument to inspect.
+  CompliantConditionalPolicyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AlwaysPresent
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: arn:aws:s3:::guard-selftest-bucket/*
+        - !If
+          - ShouldCreateEndpoint
+          - PolicyName: OnlyWhenConditionTrue
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - sqs:SendMessage
+                  Resource: arn:aws:sqs:us-east-1:123456789012:guard-selftest-queue
+          - !Ref 'AWS::NoValue'
+
+  # 3. A task security group whose ingress CIDR arrives by parameter. The value is
+  #    a struct, and comparing a struct against "0.0.0.0/0" raises a
+  #    ComparisonError that Guard counts as non-compliance.
+  CompliantTaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Task security group for the ONTAP poller
+      VpcId: vpc-0123456789abcdef0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidrForSelfTest
+          Description: HTTPS from within the VPC only
+
+  # 4. An ECS service whose AssignPublicIp arrives by parameter — same struct
+  #    comparison problem. Note this one needs a `when` rather than a filter: a
+  #    filter applied to the AwsvpcConfiguration struct selects nothing, and the
+  #    rule then reports SKIP, which is indistinguishable from a clean pass.
+  CompliantEcsService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: guard-selftest-cluster
+      TaskDefinition: !Ref CompliantTaskDefinition
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: !Ref AssignPublicIpForSelfTest
+          Subnets:
+            - subnet-0123456789abcdef0

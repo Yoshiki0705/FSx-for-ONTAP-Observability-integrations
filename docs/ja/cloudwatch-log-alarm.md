@@ -160,13 +160,13 @@ Logs Insights でクエリを実行すると、監査ログが実データとし
 ### デプロイスクリプト（推奨）
 
 ```bash
-# 機密ファイルアクセス検知
+# Sensitive file access detection
 DETECTION_TYPE=sensitive-file-access \
 TARGET_PATTERN="/vol/data/confidential" \
 SNS_TOPIC_ARN=arn:aws:sns:ap-northeast-1:123456789012:fsxn-alerts \
   bash shared/scripts/deploy-log-alarm.sh
 
-# SNS トピックも自動作成する場合
+# Auto-create SNS topic
 DETECTION_TYPE=sensitive-file-access \
 TARGET_PATTERN="/vol/data/confidential" \
 CREATE_SNS_TOPIC=true \
@@ -543,7 +543,7 @@ Log Alarm は約 2 倍のコストですが、以下で回収可能:
 マッチしたログ行が SNS → メール / Slack / PagerDuty に入った時点で、そのデータ（ユーザー名・ファイルパス・クライアント IP、医療では **PHI** の可能性）は **CloudWatch の境界を離れ**、コンプライアンス対象範囲外のシステムに到達します。規制データでは安全側のデフォルトを以下とします。
 
 ```yaml
-ActionLogLineCount: 0   # マッチしたことだけ通知し、ログ行は CloudWatch 内に留める
+ActionLogLineCount: 0   # notify that something matched; keep the log lines in CloudWatch
 ```
 
 対応者は Logs Insights（監査対象境界の内側）に入って詳細を確認します。通知経路がコンプライアンス境界を越える場合、`ActionLogLineCount > 0` はデフォルトではなく、明示的にレビューされた判断として扱ってください。
@@ -879,14 +879,14 @@ ALARM (SNS 通知発火)
 ### クリーンアップ
 
 ```bash
-# 個別スタック削除
+# Delete specific stack
 STACK_NAME=fsxn-log-alarm-sensitive-file-access \
   bash shared/scripts/cleanup-log-alarm.sh
 
-# 全 Log Alarm スタック削除
+# Delete all Log Alarm stacks
 bash shared/scripts/cleanup-log-alarm.sh --all
 
-# SNS トピックも含めて削除
+# Include SNS topic deletion
 STACK_NAME=fsxn-log-alarm-e2e-test \
 SNS_TOPIC_ARN=arn:aws:sns:ap-northeast-1:123456789012:fsxn-log-alarm-test \
   bash shared/scripts/cleanup-log-alarm.sh --delete-sns

@@ -31,15 +31,15 @@ aws cloudformation describe-stacks --stack-name fsxn-fpolicy-prerequisites \
 ## Step 2: FPolicy サーバーイメージのビルド＆プッシュ
 
 ```bash
-# Step 1 の出力から ECR URI を取得
+# Get ECR URI from Step 1 output
 ECR_URI=$(aws cloudformation describe-stacks --stack-name fsxn-fpolicy-prerequisites \
   --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" --output text)
 
-# ECR 認証
+# Authenticate to ECR
 aws ecr get-login-password | docker login --username AWS --password-stdin \
   $(echo $ECR_URI | cut -d/ -f1)
 
-# ビルド＆プッシュ（Fargate 用に linux/amd64 必須）
+# Build and push (MUST be linux/amd64 for Fargate)
 docker buildx build --platform linux/amd64 \
   -t ${ECR_URI}:latest --push shared/fpolicy-server/
 ```
@@ -81,7 +81,7 @@ aws cloudformation deploy \
 ## Step 4: Datadog シッピング Lambda デプロイ
 
 ```bash
-# 前のスタックから SQS ARN と Secret ARN を取得
+# Get SQS ARN and Secret ARN from previous stacks
 SQS_ARN=$(aws cloudformation describe-stacks --stack-name fsxn-fpolicy-server \
   --query "Stacks[0].Outputs[?OutputKey=='FPolicyQueueArn'].OutputValue" --output text)
 
@@ -150,7 +150,7 @@ aws logs tail /ecs/fsxn-fpolicy-server --follow
 ## クリーンアップ
 
 ```bash
-# まず ONTAP で FPolicy を無効化してから:
+# Disable FPolicy on ONTAP first, then:
 aws cloudformation delete-stack --stack-name fsxn-datadog-ems-fpolicy
 aws cloudformation delete-stack --stack-name fsxn-fpolicy-server
 aws cloudformation delete-stack --stack-name fsxn-fpolicy-prerequisites

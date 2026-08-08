@@ -62,7 +62,7 @@
 - **Token 形式** — `dt0c01.<ID>.<SECRET>`
 
 ```bash
-# Token を Secrets Manager に登録
+# Register Token in Secrets Manager
 aws secretsmanager create-secret \
   --name "dynatrace/fsxn-api-token" \
   --secret-string '{"api_token":"dt0c01.<TOKEN_ID>.<TOKEN_SECRET>"}' \

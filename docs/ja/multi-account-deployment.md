@@ -45,11 +45,11 @@ CloudFormation StackSets を使用して、複数の AWS アカウントに FSx 
 ### 1. AWS Organizations のセットアップ
 
 ```bash
-# Organizations が有効であることを確認
+# Verify Organizations is enabled
 aws organizations describe-organization \
   --query 'Organization.{Id:Id, MasterAccountId:MasterAccountId}'
 
-# StackSets の信頼されたアクセスを有効化
+# Enable StackSets trusted access
 aws organizations enable-aws-service-access \
   --service-principal member.org.stacksets.cloudformation.amazonaws.com
 ```
@@ -100,7 +100,7 @@ aws cloudformation deploy \
 ## 監視
 
 ```bash
-# アカウント別のインスタンスステータスを確認
+# Check per-account instance status
 aws cloudformation list-stack-instances \
   --stack-set-name fsxn-<vendor>-observability-pipeline \
   --call-as SELF \

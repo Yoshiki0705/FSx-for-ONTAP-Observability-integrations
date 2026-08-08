@@ -60,7 +60,7 @@
 ### 追加推奨アラーム
 
 ```yaml
-# Checkpoint 滞留アラーム（template.yaml に追加）
+# Checkpoint staleness alarm (add to template.yaml)
 CheckpointStalenessAlarm:
   Type: AWS::CloudWatch::Alarm
   Properties:
@@ -75,7 +75,7 @@ CheckpointStalenessAlarm:
     AlarmActions:
       - !Ref AlarmTopic
 
-# Lambda Duration P99 アラーム
+# Lambda duration P99 alarm
 LambdaDurationAlarm:
   Type: AWS::CloudWatch::Alarm
   Properties:

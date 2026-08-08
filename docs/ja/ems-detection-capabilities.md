@@ -163,12 +163,12 @@ EventBridge Scheduler (5 分) → Lambda
 ### パターン 1: EMS Webhook → Observability プラットフォーム（直接配信）
 
 ```bash
-# ONTAP CLI: Webhook 宛先を設定
+# ONTAP CLI: Configure webhook destination
 event notification destination create \
   -name datadog-webhook \
   -rest-api-url https://xxxxx.execute-api.ap-northeast-1.amazonaws.com/prod/ems
 
-# 重大イベント用フィルターを作成
+# Create filter for critical events
 event filter create -filter-name critical-events
 event filter rule add -filter-name critical-events \
   -type include -message-name arw.volume.state
@@ -177,7 +177,7 @@ event filter rule add -filter-name critical-events \
 event filter rule add -filter-name critical-events \
   -type include -message-name cf.takeover.general
 
-# フィルターを宛先にバインド
+# Bind filter to destination
 event notification create \
   -filter-name critical-events \
   -destinations datadog-webhook
@@ -189,15 +189,15 @@ event notification create \
 ### パターン 2: Syslog VPCE → CloudWatch Logs → Log Alarm
 
 ```bash
-# ONTAP CLI: syslog 転送を設定
+# ONTAP CLI: Configure syslog forwarding
 cluster log-forwarding create \
   -destination <syslog-vpce-eni-ip> \
   -port 6514 \
   -protocol tcp-encrypted \
   -facility local7
 
-# AWS: CloudWatch Log Alarm でパターンを検知
-# (CloudFormation で設定、shared/templates/cloudwatch-log-alarm.yaml 参照)
+# AWS: CloudWatch Log Alarm detects patterns
+# (configured via CloudFormation, see shared/templates/cloudwatch-log-alarm.yaml)
 ```
 
 **レイテンシ**: 数秒 (syslog) + 1 分 (Log Alarm 評価)
@@ -206,10 +206,10 @@ cluster log-forwarding create \
 ### パターン 3: EMS Webhook → 自動応答（本プロジェクト）
 
 ```bash
-# 検知: EMS → Webhook → Datadog Monitor → SNS
-# 応答: SNS → Lambda → ONTAP REST API (ユーザーブロック / snapshot)
+# Detection: EMS → Webhook → Datadog Monitor → SNS
+# Response: SNS → Lambda → ONTAP REST API (block user / snapshot)
 
-# または: EMS → Webhook → CloudWatch Log Alarm → SNS → Lambda
+# Or: EMS → Webhook → CloudWatch Log Alarm → SNS → Lambda
 ```
 
 **レイテンシ**: ~30 秒（検知）+ ~5 秒（応答）= ~35 秒 合計
@@ -233,25 +233,25 @@ cluster log-forwarding create \
 ### 利用可能なイベントの確認
 
 ```bash
-# FSx for ONTAP に SSH
+# SSH to FSx for ONTAP
 ssh fsxadmin@<management-ip>
 
-# 全 EMS イベントカテゴリを表示
+# List all EMS event categories
 event catalog show
 
-# 特定イベントを検索
+# Search for specific events
 event catalog show -message-name *arw*
 event catalog show -message-name *quota*
 event catalog show -message-name *snapmirror*
 
-# イベント詳細を表示
+# View event details
 event catalog show -message-name arw.volume.state -instance
 ```
 
 ### カスタムフィルターの作成
 
 ```bash
-# セキュリティイベント用フィルター
+# Create filter for security events
 event filter create -filter-name security-events
 event filter rule add -filter-name security-events \
   -type include -message-name arw.*
@@ -260,7 +260,7 @@ event filter rule add -filter-name security-events \
 event filter rule add -filter-name security-events \
   -type include -message-name fpolicy.*
 
-# 容量アラート用フィルター
+# Create filter for capacity alerts
 event filter create -filter-name capacity-events
 event filter rule add -filter-name capacity-events \
   -type include -message-name wafl.quota.*
@@ -273,13 +273,13 @@ event filter rule add -filter-name capacity-events \
 ### 設定の確認
 
 ```bash
-# 通知宛先の表示
+# Show notification destinations
 event notification destination show
 
-# アクティブな通知の表示
+# Show active notifications
 event notification show
 
-# 直近の EMS イベントを表示
+# Show recent EMS events
 event log show -time >1h
 ```
 

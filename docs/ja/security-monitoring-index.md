@@ -102,32 +102,32 @@ architecture-evolution-syslog-vpce.md
 
 ### EMS 監視
 ```bash
-# EMS webhook 配信の確認
+# Check EMS webhook delivery
 aws logs filter-log-events --log-group-name /aws/lambda/fsxn-*-ems-* --filter-pattern "arw"
 
-# syslog 配信の確認
+# Check syslog delivery
 aws logs filter-log-events --log-group-name /syslog/fsxn-admin-audit --limit 5
 ```
 
 ### 自動応答
 ```bash
-# ユーザーブロック
-./shared/scripts/automated-response-cli.sh contain-smb --domain CORP --user jdoe --volume vol1 --reason "理由"
+# Block user
+./shared/scripts/automated-response-cli.sh contain-smb --domain CORP --user jdoe --volume vol1 --reason "reason"
 
-# アクティブブロックの確認
+# Check active blocks
 ssh fsxadmin@<mgmt-ip> "vserver name-mapping show -direction win-unix -replacement \" \""
 ssh fsxadmin@<mgmt-ip> "export-policy rule show -clientmatch *fsxn_auto_response*"
 
-# ブロック解除
+# Unblock
 ./shared/scripts/automated-response-cli.sh unblock-smb --domain CORP --user jdoe
 ```
 
 ### CloudWatch Log Alarm
 ```bash
-# 検知アラームのデプロイ
+# Deploy detection alarm
 DETECTION_TYPE=sensitive-file-access bash shared/scripts/deploy-log-alarm.sh
 
-# アラーム状態の確認
+# Check alarm state
 aws cloudwatch describe-alarms --alarm-name-prefix "fsxn-" --query 'MetricAlarms[].{Name:AlarmName,State:StateValue}'
 ```
 

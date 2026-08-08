@@ -16,12 +16,12 @@
 ## 認証
 
 ```bash
-# 認証情報を設定（Secrets Manager から取得 — ハードコード厳禁）
+# Set credentials (retrieve from Secrets Manager — never hardcode)
 export ONTAP_USER="fsxadmin"
 export ONTAP_PASS=$(aws secretsmanager get-secret-value \
   --secret-id <secret-arn> --query 'SecretString' --output text | jq -r .password)
 
-# Basic Auth（全エンドポイント共通）
+# Basic Auth (all endpoints)
 curl -sk -u "${ONTAP_USER}:${ONTAP_PASS}" https://<management-ip>/api/cluster
 ```
 
@@ -57,11 +57,11 @@ aws fsx describe-file-systems --file-system-ids <fs-id> \
 **解決策**: URL パスが SVM を指定している場合、ボディから `svm` フィールドを削除:
 
 ```python
-# 間違い — 262188 エラーを起こす
+# WRONG — causes 262188
 url = f"https://{mgmt_ip}/api/protocols/fpolicy/{svm_uuid}/engines"
 body = {"svm": {"uuid": svm_uuid}, "name": "my_engine", ...}
 
-# 正しい
+# CORRECT
 url = f"https://{mgmt_ip}/api/protocols/fpolicy/{svm_uuid}/engines"
 body = {"name": "my_engine", "port": 9898, "primary_servers": ["10.0.12.74"], ...}
 ```
@@ -75,10 +75,10 @@ body = {"name": "my_engine", "port": 9898, "primary_servers": ["10.0.12.74"], ..
 **解決策**: リクエストボディから `allow_privileged_access` を削除:
 
 ```python
-# 間違い
+# WRONG
 body = {"name": "my_policy", "allow_privileged_access": False, ...}
 
-# 正しい
+# CORRECT
 body = {"name": "my_policy", "engine": {"name": "my_engine"}, "events": [...], ...}
 ```
 
@@ -115,7 +115,7 @@ requests.post(f"https://{mgmt_ip}/api/protocols/fpolicy/{svm_uuid}/policies", js
 response = requests.patch(url, json=body)
 if response.status_code == 202:
     job_uuid = response.json()["job"]["uuid"]
-    # 完了までポーリング
+    # Poll until complete
     while True:
         job = requests.get(f"https://{mgmt_ip}/api/cluster/jobs/{job_uuid}").json()
         if job["state"] in ("success", "failure"):
@@ -253,7 +253,7 @@ curl -sk -u "${ONTAP_USER}:${ONTAP_PASS}" -X PATCH \
 自動応答 Lambda は ONTAP の name-mapping を使って SMB ユーザーをブロックします:
 
 ```bash
-# 拒否マッピングを作成（認証時にブロック）
+# Create deny mapping (blocks user at authentication time)
 curl -sk -u "${ONTAP_USER}:${ONTAP_PASS}" -X POST \
   -H "Content-Type: application/json" \
   -d '{

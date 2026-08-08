@@ -50,23 +50,23 @@ arn:aws:s3:{region}:{account-id}:accesspoint/{access-point-name}
 ### IAM ポリシーのリソース指定
 
 ```yaml
-# オブジェクト操作 (GetObject, PutObject)
+# Object operations (GetObject, PutObject)
 Resource: !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AccessPointName}/object/*'
 
-# バケットレベル操作 (ListBucket)
+# Bucket-level operations (ListBucket)
 Resource: !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AccessPointName}'
 ```
 
 ### よくある間違い
 
 ```yaml
-# ❌ 間違い: 通常の S3 バケット ARN 形式
+# ❌ Wrong: standard S3 bucket ARN
 Resource: arn:aws:s3:::my-bucket/*
 
-# ❌ 間違い: /object/* サフィックスなし
+# ❌ Wrong: missing /object/* suffix
 Resource: arn:aws:s3:ap-northeast-1:123456789012:accesspoint/my-ap/*
 
-# ✅ 正しい: /object/* サフィックス付き
+# ✅ Correct: with /object/* suffix
 Resource: arn:aws:s3:ap-northeast-1:123456789012:accesspoint/my-ap/object/*
 ```
 
@@ -104,13 +104,13 @@ import boto3
 
 s3_client = boto3.client("s3")
 
-# S3 AP ARN を Bucket パラメータとして使用
+# Use S3 AP ARN as the Bucket parameter
 response = s3_client.get_object(
     Bucket="arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap",
     Key="audit/svm-prod-01/2026/01/15/audit_log.json"
 )
 
-# ListObjectsV2 も同様
+# ListObjectsV2 works the same way
 response = s3_client.list_objects_v2(
     Bucket="arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap",
     Prefix="audit/svm-prod-01/"
@@ -145,12 +145,12 @@ response = s3_client.list_objects_v2(
 
 **確認コマンド**:
 ```bash
-# Lambda の VPC 設定確認
+# Check Lambda VPC configuration
 aws lambda get-function-configuration \
   --function-name fsxn-datadog-integration-shipper \
   --query 'VpcConfig'
 
-# VPC Endpoint 確認
+# Check VPC Endpoints
 aws ec2 describe-vpc-endpoints \
   --filters "Name=vpc-id,Values=vpc-xxx" \
   --query 'VpcEndpoints[*].{Service:ServiceName,Type:VpcEndpointType}'
@@ -164,10 +164,10 @@ aws ec2 describe-vpc-endpoints \
 3. **FSx ファイルシステム権限**: S3 AP に関連付けられたユーザーの UNIX/NTFS 権限
 
 ```bash
-# IAM ポリシー確認
+# Check IAM policy
 aws iam get-role-policy --role-name <lambda-role> --policy-name S3AccessPointRead
 
-# S3 AP ポリシー確認
+# Check S3 AP policy
 aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 ```
 

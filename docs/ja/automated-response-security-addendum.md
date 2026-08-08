@@ -41,10 +41,10 @@ Kerberos NFS 環境では、IP ブロックに加えて以下を併用:
 NFS と SMB の両方でアクセスされるボリュームの場合、両方の封じ込めアクションを実行:
 
 ```json
-// メッセージ 1: SMB ブロック
+// Message 1: Block SMB
 {"action": "contain_smb_threat", "svm_name": "svm-prod", "domain": "CORP", "username": "jdoe", "volume_name": "vol_data"}
 
-// メッセージ 2: NFS ブロック（同一ユーザーのワークステーション IP）
+// Message 2: Block NFS (same user's workstation IP)
 {"action": "contain_nfs_threat", "svm_name": "svm-prod", "client_ip": "10.0.5.99", "volume_name": "vol_data"}
 ```
 

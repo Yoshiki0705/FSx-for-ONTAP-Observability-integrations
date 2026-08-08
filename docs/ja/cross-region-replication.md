@@ -50,7 +50,7 @@ S3 Cross-Region Replication で監査ログをセカンダリリージョンに�
 
 ```bash
 #!/bin/bash
-# プライマリからセカンダリに Checkpoint をレプリケート（5 分ごとに実行）
+# Replicate checkpoint from primary to secondary (run every 5 min)
 PRIMARY_REGION="ap-northeast-1"
 SECONDARY_REGION="ap-southeast-1"
 PARAM_NAME="/fsxn/<vendor>/audit-checkpoint"

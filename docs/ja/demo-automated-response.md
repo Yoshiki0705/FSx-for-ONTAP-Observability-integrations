@@ -82,7 +82,7 @@ echo "Topic: $RESPONSE_TOPIC_ARN"
 SMB クライアントから正常アクセスを確認:
 
 ```bash
-# SMB クライアント上（テストユーザーとして）
+# On SMB client (as the test user)
 ls //fsxn-share/test-data/
 cat //fsxn-share/test-data/sample-file.txt
 echo "write test" > //fsxn-share/test-data/write-test.txt
@@ -93,9 +93,21 @@ echo "write test" > //fsxn-share/test-data/write-test.txt
 ### ステップ 2.2: SMB ユーザーブロックのトリガー
 
 ```bash
+# Using CLI helper
 ./shared/scripts/automated-response-cli.sh block-smb \
   --domain <DOMAIN> --user <test-user> \
-  --reason "デモ: 内部脅威シミュレーション"
+  --reason "Demo: simulated insider threat"
+
+# Or directly via SNS
+aws sns publish \
+  --topic-arn "$RESPONSE_TOPIC_ARN" \
+  --message '{
+    "action": "block_smb_user",
+    "svm_name": "'$DEFAULT_SVM'",
+    "domain": "<DOMAIN>",
+    "username": "<test-user>",
+    "reason": "Demo: simulated insider threat"
+  }'
 ```
 
 **確認ポイント**: CLI ヘルパーまたは `aws sns publish` が成功し、`MessageId` フィールドに空でない値（UUID 形式の文字列）が返ること。
@@ -103,8 +115,10 @@ echo "write test" > //fsxn-share/test-data/write-test.txt
 ### ステップ 2.3: Lambda 実行の確認
 
 ```bash
+# Wait 10-15 seconds for Lambda to execute
 sleep 15
 
+# Check Lambda logs
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-automated-response-handler \
   --start-time $(date -v-2M +%s000 2>/dev/null || date -d '2 minutes ago' +%s000) \
@@ -126,9 +140,12 @@ ssh fsxadmin@<management-ip> "vserver name-mapping show -direction win-unix -rep
 ### ステップ 2.5: アクセス拒否の確認（ブロック後）
 
 ```bash
-# SMB クライアント上（ブロックされたテストユーザーとして）
+# On SMB client (as the blocked test user)
 ls //fsxn-share/test-data/
-# → 期待: Permission denied / Access denied
+# → Expected: Permission denied / Access denied
+
+cat //fsxn-share/test-data/sample-file.txt
+# → Expected: Permission denied
 ```
 
 **確認ポイント**: ステップ 2.1 では成功していたコマンドが、権限拒否系のエラーで失敗すること（正確な文言は SMB クライアントの OS により異なります）。
@@ -143,9 +160,11 @@ ls //fsxn-share/test-data/
 ### ステップ 2.7: アクセス復元の確認
 
 ```bash
-# SMB クライアント上（再接続が必要な場合あり）
+# On SMB client (may need to reconnect)
+net use \\\\fsxn-share /delete 2>/dev/null
+net use \\\\fsxn-share /user:<DOMAIN>\\<test-user> <password>
 ls //fsxn-share/test-data/
-# → 期待: 成功
+# → Expected: Success
 ```
 
 **確認ポイント**: `ls` が再度成功し、ブロック解除によってアクセスが復元されたことを確認できること。
@@ -157,6 +176,7 @@ ls //fsxn-share/test-data/
 ### ステップ 3.1: 現在の NFS アクセス確認
 
 ```bash
+# On NFS client
 ls /mnt/fsxn/test-data/
 touch /mnt/fsxn/test-data/nfs-write-test.txt
 ```
@@ -166,12 +186,13 @@ touch /mnt/fsxn/test-data/nfs-write-test.txt
 ### ステップ 3.2: NFS IP ブロックのトリガー
 
 ```bash
+# Get the NFS client IP
 CLIENT_IP=$(hostname -I | awk '{print $1}')
 echo "Blocking IP: $CLIENT_IP"
 
 ./shared/scripts/automated-response-cli.sh block-nfs \
   --ip "$CLIENT_IP" \
-  --reason "デモ: 不審 IP からの大量削除シミュレーション"
+  --reason "Demo: simulated mass deletion from suspicious IP"
 ```
 
 **確認ポイント**: ステップ 2.2 と同様に、publish が `MessageId` を返して成功すること。
@@ -187,10 +208,10 @@ ssh fsxadmin@<management-ip> "export-policy rule show -clientmatch *fsxn_auto_re
 ### ステップ 3.4: NFS アクセス拒否の確認
 
 ```bash
-# NFS クライアント上（再マウントが必要な場合あり）
+# On NFS client (may require remount or cache expiry)
 umount /mnt/fsxn && mount -t nfs <svm-nfs-lif>:/vol_data /mnt/fsxn
 ls /mnt/fsxn/test-data/
-# → 期待: Permission denied またはマウント失敗
+# → Expected: Permission denied or mount failure
 ```
 
 > **NFS キャッシュに関する注記**
@@ -222,7 +243,7 @@ ssh fsxadmin@<management-ip> "security anti-ransomware volume show -vserver $DEF
 EMS Webhook が Datadog/SIEM に配信されていること、および SIEM モニターがレスポンス用 SNS トピックに publish できることを確認します。CloudWatch Log Alarm パスを使用している場合:
 
 ```bash
-# syslog 配信がアクティブであることを確認
+# Verify syslog delivery is active
 aws logs filter-log-events \
   --log-group-name /syslog/fsxn-admin-audit \
   --start-time $(date -v-5M +%s000 2>/dev/null || date -d '5 minutes ago' +%s000) \
@@ -233,7 +254,7 @@ aws logs filter-log-events \
 ### ステップ 4.3: ランサムウェアシミュレーション（テスト環境のみ）
 
 ```bash
-# 注意: テスト環境の廃棄可能データでのみ実行
+# CAUTION: Only in test environment with disposable data
 ssh fsxadmin@<management-ip> \
   "security anti-ransomware volume attack simulate -vserver $DEFAULT_SVM -volume <test-vol>"
 ```
@@ -245,6 +266,7 @@ ssh fsxadmin@<management-ip> \
 EMS イベント配信まで ~30 秒待機:
 
 ```bash
+# Check EMS webhook arrival in CloudWatch (Lambda logs)
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-datadog-ems-fpolicy-handler \
   --start-time $(date -v-2M +%s000 2>/dev/null || date -d '2 minutes ago' +%s000) \
@@ -260,12 +282,13 @@ aws logs filter-log-events \
 ./shared/scripts/automated-response-cli.sh contain-smb \
   --domain <DOMAIN> --user <suspect-user> \
   --volume <test-vol> \
-  --reason "ARP 検知 - arw.volume.state alert"
+  --reason "ARP detection - arw.volume.state alert"
 ```
 
 ### ステップ 4.6: 封じ込め結果の確認
 
 ```bash
+# Check Lambda execution
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-automated-response-handler \
   --start-time $(date -v-2M +%s000 2>/dev/null || date -d '2 minutes ago' +%s000) \
@@ -317,19 +340,19 @@ aws cloudformation deploy \
 ```bash
 ./shared/scripts/automated-response-cli.sh block-smb \
   --domain <DOMAIN> --user <test-user> \
-  --reason "TTL デモ - 5 分後に自動解除"
+  --reason "TTL demo - will auto-expire in 5 minutes"
 ```
 
 ### ステップ 5.3: TTL 失効待ち
 
 ```bash
-echo "ブロック作成完了。TTL クリーンアップ Lambda は 1 分ごとに実行。"
-echo "ブロックは約 5 分以内に自動解除されます。"
-echo "CloudWatch Logs を監視（7 分でタイムアウト）..."
+echo "Block created. TTL cleanup Lambda runs every 1 minute."
+echo "Block will be removed within ~5 minutes."
+echo "Watch CloudWatch Logs (timeout after 7 minutes)..."
 
-# クリーンアップ Lambda を監視（無限に待たないようタイムアウト付き）
+# Monitor cleanup Lambda (with timeout to avoid waiting forever)
 timeout 420 aws logs tail /aws/lambda/fsxn-automated-response-ttl-cleanup --follow
-# タイムアウトしても削除メッセージが見えない場合、Lambda エラーを確認:
+# If timeout reached without seeing removal, check Lambda errors:
 # aws logs filter-log-events --log-group-name /aws/lambda/fsxn-automated-response-ttl-cleanup --filter-pattern "ERROR"
 ```
 
@@ -343,7 +366,7 @@ timeout 420 aws logs tail /aws/lambda/fsxn-automated-response-ttl-cleanup --foll
 
 ```bash
 ssh fsxadmin@<management-ip> "vserver name-mapping show -direction win-unix -replacement \" \""
-# → 期待: エントリなし（ブロックが TTL により自動削除）
+# → Expected: no entries (block auto-removed)
 ```
 
 **確認ポイント**: ステップ 2.4 で作成した name-mapping エントリが消えており、TTL クリーンアップが自動的に削除したことを確認できること。
@@ -353,6 +376,7 @@ ssh fsxadmin@<management-ip> "vserver name-mapping show -direction win-unix -rep
 ## Phase 6: アクティブブロック一覧（運用可視化）
 
 ```bash
+# Direct ONTAP CLI check
 ssh fsxadmin@<management-ip> "vserver name-mapping show -direction win-unix -replacement \" \""
 ssh fsxadmin@<management-ip> "export-policy rule show -clientmatch *fsxn_auto_response*"
 ```
@@ -380,14 +404,14 @@ ssh fsxadmin@<management-ip> "export-policy rule show -clientmatch *fsxn_auto_re
 ## クリーンアップ
 
 ```bash
-# テストブロックの全削除
+# Remove all test blocks
 ssh fsxadmin@<management-ip> "vserver name-mapping show -direction win-unix -replacement \" \""
-# 残っているエントリを手動削除
+# Delete any remaining entries manually
 
-# テスト Snapshot の削除
+# Delete test snapshots
 ssh fsxadmin@<management-ip> "volume snapshot delete -vserver $DEFAULT_SVM -volume <test-vol> -snapshot incident_response_*"
 
-# CloudFormation スタック削除（オプション）
+# Delete CloudFormation stacks (optional)
 aws cloudformation delete-stack --stack-name fsxn-automated-response-ttl
 aws cloudformation delete-stack --stack-name fsxn-automated-response
 ```

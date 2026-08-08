@@ -291,6 +291,8 @@ cfn-params/
 ├── automated-response.example.json
 ├── automated-response-ttl.example.json
 ├── restore-verification.example.json
+├── monitoring-dashboard.example.json
+├── qtree-quota-monitor.example.json
 ├── content-classification.example.json
 └── vendor-datadog.example.json
 ```
@@ -423,9 +425,9 @@ SVM が AD 参加済み（CIFS 有効）の場合、**S3 AP データ操作に�
 
 **事前確認**: AD 参加 SVM で `restore-verification` をデプロイする前に AD 健全性を確認してください:
 ```bash
-# 同じ VPC/サブネットの EC2 から:
-nslookup <ADドメインFQDN> <AD-DNS-IP>
-# タイムアウト → AD DC が停止 → S3 AP データ操作は失敗する
+# From an EC2 in the same VPC/subnet:
+nslookup <AD-domain-FQDN> <AD-DNS-IP>
+# If timeout → AD DCs are down → S3 AP data operations will fail
 ```
 
 **設計上の推奨**: `restore-verification` には可能な限り非 AD SVM を使用してください。AD 参加 SVM を使う場合は、AD インフラの監視と高可用性を確保してください。
@@ -463,11 +465,11 @@ nslookup <ADドメインFQDN> <AD-DNS-IP>
 `demo-ad-environment.yaml` をデプロイする前に、以下の VPC Endpoint が存在することを確認してください（プライベートサブネットの EC2 に SSM でアクセスするために必要）:
 
 ```bash
-# 既存の SSM エンドポイントを確認
+# Check existing SSM endpoints
 aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=<vpc-id>" \
   --query 'VpcEndpoints[?contains(ServiceName,`ssm`)].ServiceName'
 
-# 不足している場合は作成（サービスごとに1コマンド）:
+# If missing, create (one command per service):
 for svc in ssm ssmmessages ec2messages; do
   aws ec2 create-vpc-endpoint --vpc-id <vpc-id> --vpc-endpoint-type Interface \
     --service-name com.amazonaws.<region>.$svc \
@@ -564,7 +566,7 @@ UNIX/MIXEDスタイルのボリュームでは、アクセスは**マッピン�
 
 **ボリューム側の必要なアクション**（`nobody`回避策使用時）:
 ```bash
-# ボリュームルートのパーミッションを'other'アクセス拒否に設定:
+# Set volume root permissions to deny 'other' access:
 curl -sk -u fsxadmin:<pass> -X PATCH \
   "https://<mgmt-ip>/api/storage/volumes/<uuid>" \
   -H "Content-Type: application/json" \
@@ -620,22 +622,22 @@ Route 53 レコードを作成するスタックはありません。VPC Endpoin
 
 **CIFS 強制削除と新 AD への再参加**（ONTAP REST API 経由）:
 ```bash
-# 1. secure DNS 動的更新を無効化
+# 1. Disable secure DNS updates
 curl -sk -X PATCH -u fsxadmin:$PW -H 'Content-Type: application/json' \
   -d '{"dynamic_dns":{"use_secure":false}}' \
   "https://<mgmt-ip>/api/name-services/dns/<svm-uuid>"
 
-# 2. CIFS サービスを強制削除
+# 2. Force-delete CIFS service
 curl -sk -X DELETE -u fsxadmin:$PW -H 'Content-Type: application/json' \
   -d '{"force":true,"ad_domain":{"fqdn":"<domain>","user":"Admin","password":"<pw>"}}' \
   "https://<mgmt-ip>/api/protocols/cifs/services/<svm-uuid>"
 
-# 3. stale records をクリーンアップ
+# 3. Clean stale records
 curl -sk -X POST -u fsxadmin:$PW -H 'Content-Type: application/json' \
   -d '{"vserver":"<svm-name>"}' \
   "https://<mgmt-ip>/api/private/cli/vserver/cifs/users-and-groups/remove-stale-records"
 
-# 4. 新しい AD で CIFS を再作成（新しい NetBIOS 名を使用 — 旧名は AD に残る）
+# 4. Re-create CIFS with new AD (use a NEW NetBIOS name — old one is taken in AD)
 curl -sk -X POST -u fsxadmin:$PW -H 'Content-Type: application/json' \
   -d '{"svm":{"uuid":"<svm-uuid>"},"name":"<NEW-NETBIOS>","ad_domain":{"fqdn":"<domain>","organizational_unit":"<ou>","user":"Admin","password":"<pw>"}}' \
   "https://<mgmt-ip>/api/protocols/cifs/services"
@@ -724,16 +726,16 @@ aws cloudformation delete-stack --stack-name fsxn-automated-response
 
 **IAM クリーンアップ手順**（順序重要）:
 ```bash
-# 1. インスタンスプロファイルからロールを削除
+# 1. Remove role from instance profile
 aws iam remove-role-from-instance-profile \
   --instance-profile-name <name> --role-name <name>
-# 2. インスタンスプロファイル削除
+# 2. Delete instance profile
 aws iam delete-instance-profile --instance-profile-name <name>
-# 3. マネージドポリシーをデタッチ
+# 3. Detach managed policies
 aws iam detach-role-policy --role-name <name> --policy-arn <arn>
-# 4. インラインポリシーを削除
+# 4. Delete inline policies
 aws iam delete-role-policy --role-name <name> --policy-name <name>
-# 5. ロール削除
+# 5. Delete role
 aws iam delete-role --role-name <name>
 ```
 

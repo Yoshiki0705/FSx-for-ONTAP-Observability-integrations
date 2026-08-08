@@ -93,13 +93,13 @@ ssh admin@<management-ip> "security anti-ransomware volume show -vserver <svm-na
 マウント済みの NFS/SMB クライアントから実際のファイル操作で検知をトリガー:
 
 ```bash
-# 対象ボリュームを NFS または SMB でマウントしたクライアントで:
-# 1. 通常のファイルを作成
+# From a client with NFS or SMB mount on the target volume:
+# 1. Create normal files
 for i in $(seq 1 15); do
   dd if=/dev/urandom of=/mnt/target-vol/doc_${i}.dat bs=256K count=1 status=none
 done
 
-# 2. 暗号化する（ランサムウェア挙動のシミュレーション — パスワード付き zip + 新拡張子）
+# 2. Encrypt them (simulating ransomware behavior — zip with password + new extension)
 cd /mnt/target-vol
 for f in doc_*.dat; do
   zip -q -e -P TestPass123 "${f}.ktkt" "$f" && rm -f "$f"
@@ -167,11 +167,11 @@ Attack Detected By: file_analysis
 > `show-suspect-files` サブコマンドは ONTAP 9.17.1 には存在しません。REST API で疑わしいファイルを照会するか、ARP 攻撃レポートを確認してください:
 
 ```bash
-# ARP 攻撃レポートの生成と閲覧
+# Generate and view the ARP attack report
 ssh admin@<management-ip> \
   "security anti-ransomware volume attack generate-report -vserver <svm-name> -volume <volume-name> -dest-path <svm-name>:/<volume-name>/"
 
-# または REST API で確認:
+# Alternatively, check via REST API:
 # GET /api/storage/volumes/<vol-uuid>?fields=anti_ransomware
 ```
 
@@ -198,13 +198,13 @@ ssh admin@<management-ip> "security anti-ransomware volume attack clear-suspect 
 ## クリーンアップ
 
 ```bash
-# Phase 3 の誤検知分岐で既にクリアしていない場合、Phase 2 で作成した
-# ARP Snapshot を削除
+# Remove the ARP snapshot created during Phase 2, if you did not already
+# clear it via the false-positive branch in Phase 3
 ssh admin@<management-ip> "volume snapshot delete -vserver <svm-name> -volume <volume-name> -snapshot Anti_ransomware_backup.<timestamp>"
 
-# 本デモのためだけに EMS/FPolicy スタックをデプロイした場合、これは他の
-# 検知フローと共有される基盤である可能性があります — 他の統合がこれに
-# 依存していないことを確認せずに削除しないでください。
+# If you deployed the EMS/FPolicy stack solely for this demo, it is shared
+# infrastructure with other detection flows — do not delete it without
+# confirming no other integration depends on it.
 ```
 
 ---

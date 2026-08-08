@@ -216,10 +216,22 @@ jobs:
       # public task ingress, no public IPs on ECS tasks) and the console stacks
       # are written to meet them. Applying them repo-wide would report the
       # integrations and shared stacks too, which is a separate decision.
-      - name: Run management console rules (blocking)
+      # Applies to every template, not just management-console/templates/.
+      #
+      # This rule set was scoped to management-console/ because running it wider
+      # produced 19 findings. On inspection all but a handful were shapes the
+      # rules could not evaluate rather than real problems: roles with only
+      # ManagedPolicyArns, Fn::If-wrapped policy entries, and CidrIp /
+      # AssignPublicIp values arriving by parameter. Guard reports each of those
+      # as non-compliant rather than as "nothing to check", so the rule set would
+      # have been dismissed on first contact. The rules now filter those shapes
+      # (guard/tests/positive-control.yaml carries one of each so the filters
+      # cannot be removed silently), which is what makes repo-wide application
+      # meaningful instead of noisy.
+      - name: Run management console rules (blocking, all templates)
         run: |
           echo "Running management console cfn-guard rules..."
-          for template in management-console/templates/*.yaml; do
+          for template in integrations/*/template*.yaml shared/templates/*.yaml management-console/templates/*.yaml; do
             if [ -f "$template" ]; then
               echo "Validating: $template"
               cfn-guard validate -d "$template" -r guard/rules/management-console-security.guard --show-summary fail
@@ -336,3 +348,10 @@ jobs:
       - name: Check bilingual documentation sync
         run: bash shared/scripts/check-bilingual-sync.sh
         continue-on-error: true
+
+      # Blocking, unlike the heading-structure check above. A translated comment
+      # inside a ```bash fence means the Japanese guide documents a different
+      # command from the verified English one, and that is a defect rather than a
+      # style drift. Diagram fences are excluded by the script.
+      - name: Check executable code blocks are identical across languages
+        run: python3 shared/scripts/sync-code-blocks.py --check

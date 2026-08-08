@@ -204,10 +204,10 @@ curl -s -X POST "http://localhost:4318/v1/logs" \
 
 以下は実際の E2E 検証時のスクリーンショットです（メールアドレス等の個人情報はマスキング済み）。
 
-![Mackerel ログ検索結果](../../../docs/screenshots/mackerel/mackerel-logs-search-results.png)
+![Mackerel ログ検索結果](../../../../docs/screenshots/mackerel/mackerel-logs-search-results.png)
 *ログ検索結果: fsxn-audit サービスに送信された FSx for ONTAP 監査ログが表示されている。スクリーンショット中の IP アドレス（203.0.113.x）は RFC 5737 TEST-NET-3 のドキュメント用アドレスであり、実在する環境のアドレスではない*
 
-![Mackerel ログ詳細](../../../docs/screenshots/mackerel/mackerel-logs-detail.png)
+![Mackerel ログ詳細](../../../../docs/screenshots/mackerel/mackerel-logs-detail.png)
 *ログ詳細: 操作種別、結果、SVM名、ファイルパス、ユーザー情報、クライアントIP、タイムスタンプなどの属性が検索可能な状態で保持されている*
 
 > **ヒント**: 数分待っても表示されない場合は、まず Step 3.3 のトラブルシューティング表を再確認してください。多くの失敗は Mackerel 自体ではなく、Collector → Mackerel 間のホップで発生します。

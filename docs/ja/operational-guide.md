@@ -33,19 +33,19 @@ FSx for ONTAP Observability パイプラインの日常運用（監視、トラ�
 このスタックは Lambda 非同期呼び出しの DLQ として SQS キューを使用します。DLQ は Lambda にアタッチされているため（SQS ソースキューではない）、`sqs start-message-move-task` による自動リドライブはできません。
 
 ```bash
-# 1. DLQ メッセージ数を確認
+# 1. Check DLQ message count
 aws sqs get-queue-attributes \
   --queue-url <dlq-url> \
   --attribute-names ApproximateNumberOfMessages
 
-# 2. サンプルメッセージを確認
+# 2. Inspect a sample message
 aws sqs receive-message \
   --queue-url <dlq-url> \
   --max-number-of-messages 1 \
   --attribute-names All \
   --message-attribute-names All
 
-# 3. 根本原因を修正後、Lambda を手動で再実行
+# 3. After fixing the root cause, re-invoke Lambda manually
 aws lambda invoke \
   --function-name <lambda-function-name> \
   --cli-binary-format raw-in-base64-out \
@@ -53,10 +53,10 @@ aws lambda invoke \
   --region ap-northeast-1 \
   replay-output.json
 
-# 4. 処理済み DLQ メッセージを削除
+# 4. Delete processed DLQ messages
 aws sqs delete-message \
   --queue-url <dlq-url> \
-  --receipt-handle <ステップ2のreceipt-handle>
+  --receipt-handle <receipt-handle-from-step-2>
 ```
 
 ## チェックポイント管理
@@ -66,7 +66,7 @@ aws sqs delete-message \
 ### チェックポイントリセット（全ファイル再処理）
 
 ```bash
-# 特定 SVM のチェックポイントエントリを削除
+# Delete checkpoint entries for a specific SVM
 aws dynamodb delete-item \
   --table-name fsxn-observability-audit-checkpoint \
   --key '{"svm_name": {"S": "svm-prod-01"}, "file_key": {"S": "LATEST"}}'
@@ -75,7 +75,7 @@ aws dynamodb delete-item \
 ### 特定ファイルのリプレイ
 
 ```bash
-# 特定のファイルキーで Lambda を起動
+# Invoke Lambda with a specific file key
 aws lambda invoke \
   --function-name fsxn-datadog-integration-shipper \
   --payload '{"Records":[{"s3":{"bucket":{"name":"<fsx-s3-ap-arn>"},"object":{"key":"audit/svm-prod-01/audit_2026.evtx"}}}]}' \
@@ -92,7 +92,7 @@ FSx for ONTAP S3 Access Points は以下の場合に `MISCONFIGURED` 状態に�
 FSx は根本的な問題が修正されると自動的にアクセスポイントを復元します。アクセスポイントの状態を定期的に監視してください:
 
 ```bash
-# S3 Access Point の状態確認
+# Check S3 Access Point state
 aws fsx describe-data-repository-associations \
   --region ap-northeast-1 \
   --query 'Associations[*].[ResourceARN,Lifecycle]' \
@@ -109,7 +109,7 @@ aws fsx describe-data-repository-associations \
 API キーは定期的にローテーションすべきです:
 
 ```bash
-# シークレット値を更新
+# Update the secret value
 aws secretsmanager put-secret-value \
   --secret-id <secret-arn> \
   --secret-string '{"api_key": "<new-key>"}'
@@ -156,29 +156,29 @@ Lambda は実行コンテキストごとに API キーをキャッシュしま�
 アップグレードではこの挙動が望ましいです。
 
 ```bash
-# スタック + コード、ゼロダウンタイム
+# Stack + code, zero-downtime
 export DATADOG_API_KEY_SECRET_ARN=<secret-arn>
 export FSX_S3_ACCESS_POINT_ARN=<ap-arn>
 bash integrations/datadog/scripts/deploy.sh
 
-# ハンドラのみ変更する場合（スタックには触れない）
+# Handler change only — leaves the stack untouched
 bash integrations/datadog/scripts/deploy.sh --code-only
 
-# アップグレードが反映されたことを確認
+# Confirm the upgrade landed
 bash integrations/datadog/scripts/verify.sh
 ```
 
 手動で行う場合の等価な手順:
 
 ```bash
-# CloudFormation スタックを更新（ゼロダウンタイム）
+# Update the CloudFormation stack (zero-downtime)
 aws cloudformation deploy \
   --template-file integrations/datadog/template.yaml \
   --stack-name fsxn-datadog-integration \
-  --parameter-overrides <同じパラメータ> \
+  --parameter-overrides <same-params> \
   --capabilities CAPABILITY_NAMED_IAM
 
-# Lambda コードを個別に更新
+# Update Lambda code separately
 cd integrations/datadog/lambda
 zip function.zip handler.py
 aws lambda update-function-code \

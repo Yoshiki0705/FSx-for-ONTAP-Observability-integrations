@@ -164,19 +164,19 @@ SMB（セッション切断で再認証を強制可能）と異なり、NFS に�
 2. NACL deny rule（即時、ネットワークレベル、クライアントキャッシュ回避不可）
 
 ```bash
-# ネットワーク層ブロックを有効にしてデプロイ:
+# Deploy with network-layer blocking enabled:
 aws cloudformation deploy \
   --template-file shared/templates/automated-response.yaml \
   --stack-name fsxn-automated-response \
   --parameter-overrides \
     ... \
-    FsxSubnetId=<FSx-ENI-が配置されているサブネット> \
+    FsxSubnetId=<subnet-where-fsx-enis-reside> \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
 **スタンドアロンのネットワークブロック**（ONTAP 層なし）:
 ```json
-{"action": "block_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "10.0.5.99", "reason": "大量削除検知"}
+{"action": "block_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "10.0.5.99", "reason": "Mass deletion"}
 ```
 
 **解除**:
@@ -309,23 +309,27 @@ ONTAP 認証情報を JSON として保存:
 > **自動化された事前検証**: `bash shared/scripts/preflight-check.sh --vpc-id <vpc-id> --profile automated-response` を実行すると、既存の VPC Endpoint を自動検出し、セキュリティグループのエグレスを確認し、推奨パラメータ値を生成します。詳細は[デプロイメントガイド](deployment-guide.md)を参照してください。
 
 ```bash
-# 1. FSx for ONTAP 管理 IP
+# 1. FSx for ONTAP Management IP
 aws fsx describe-file-systems --file-system-ids <fs-id> \
   --query 'FileSystems[0].OntapConfiguration.Endpoints.Management.IpAddresses[0]' \
   --output text
 
-# 2. VPC とサブネット（FSx と同じ）
+# 2. VPC and Subnet (same as FSx)
 aws fsx describe-file-systems --file-system-ids <fs-id> \
   --query 'FileSystems[0].{VpcId:VpcId,SubnetIds:SubnetIds}' --output json
 
-# 3. SVM 名
+# 3. SVM name
 aws fsx describe-storage-virtual-machines \
   --filters Name=file-system-id,Values=<fs-id> \
   --query 'StorageVirtualMachines[].Name' --output text
 
-# 4. Secrets Manager ARN
+# 4. Secrets Manager ARN (for ONTAP creds)
 aws secretsmanager list-secrets --filters Key=name,Values=fsx \
   --query 'SecretList[].ARN' --output text
+
+# 5. Security Groups in the VPC
+aws ec2 describe-security-groups --filters "Name=vpc-id,Values=<vpc-id>" \
+  --query 'SecurityGroups[].{Id:GroupId,Name:GroupName}' --output table
 ```
 
 ### Security Group 設定（必須）
@@ -333,13 +337,18 @@ aws secretsmanager list-secrets --filters Key=name,Values=fsx \
 ONTAP 管理エンドポイントの ENI に紐づく Security Group に、Lambda SG からの TCP 443 イングレスルールを追加:
 
 ```bash
-# ONTAP ENI の Security Group を特定
+# Find the Security Group attached to FSx for ONTAP's ENI
+FSX_ENI_SG=$(aws ec2 describe-network-interfaces \
+  --filters "Name=vpc-id,Values=<vpc-id>" "Name=requester-id,Values=*fsx*" \
+  --query 'NetworkInterfaces[0].Groups[0].GroupId' --output text 2>/dev/null)
+
+# If the above returns empty, find manually:
 # aws fsx describe-file-systems → NetworkInterfaceIds → describe-network-interfaces
 
-# ルール追加: Lambda SG → ONTAP SG (TCP 443)
+# Add rule: allow Lambda SG → ONTAP SG on TCP 443
 aws ec2 authorize-security-group-ingress \
-  --group-id <ontap-eni-sg> \
-  --ip-permissions 'IpProtocol=tcp,FromPort=443,ToPort=443,UserIdGroupPairs=[{GroupId=<lambda-sg>,Description="Automated response Lambda"}]'
+  --group-id $FSX_ENI_SG \
+  --ip-permissions 'IpProtocol=tcp,FromPort=443,ToPort=443,UserIdGroupPairs=[{GroupId=<your-lambda-sg>,Description="Automated response Lambda to ONTAP mgmt"}]'
 ```
 
 ### CloudFormation スタックのデプロイ
@@ -374,18 +383,18 @@ aws cloudformation deploy \
 ontap_response モジュールは Lambda Layer として提供されます（インラインコードには含まれません）:
 
 ```bash
-# Layer zip をビルド
+# Build the layer zip
 bash shared/python/build-layer.sh
 
-# Lambda Layer として発行
+# Publish as Lambda Layer
 LAYER_ARN=$(aws lambda publish-layer-version \
   --layer-name fsxn-shared-python \
   --zip-file fileb://shared/python/dist/fsxn-shared-python-layer.zip \
   --compatible-runtimes python3.12 \
-  --description "FSx for ONTAP shared modules" \
+  --description "FSx for ONTAP shared modules (ontap_response, auth_cache)" \
   --query 'LayerVersionArn' --output text)
 
-# Lambda に接続
+# Attach to the response Lambda
 aws lambda update-function-configuration \
   --function-name fsxn-automated-response-handler \
   --layers $LAYER_ARN
@@ -396,7 +405,7 @@ aws lambda update-function-configuration \
 ### デプロイ検証
 
 ```bash
-# health_check を送信（5 秒以内に完了するはず）
+# Send health_check — should complete in <5 seconds with no errors
 TOPIC_ARN=$(aws cloudformation describe-stacks \
   --stack-name fsxn-automated-response \
   --query 'Stacks[0].Outputs[?OutputKey==`TriggerTopicArn`].OutputValue' \
@@ -405,7 +414,7 @@ TOPIC_ARN=$(aws cloudformation describe-stacks \
 aws sns publish --topic-arn $TOPIC_ARN \
   --message '{"action":"health_check","svm_name":"<svm-name>"}'
 
-# Lambda ログを確認（15 秒待機）
+# Wait and check Lambda log
 sleep 15
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-automated-response-handler \
@@ -423,8 +432,8 @@ aws logs filter-log-events \
 
 **CloudWatch Log Alarm → SNS:**
 ```bash
-# Log Alarm の Action が Trigger Topic を指すよう設定
-# （Log Alarm 作成時に設定）
+# The Log Alarm's action points to the trigger topic
+# (configured during Log Alarm creation)
 ```
 
 **SIEM / Observability プラットフォーム → SNS:**
@@ -442,14 +451,14 @@ aws logs filter-log-events \
 **手動テスト実行:**
 ```bash
 aws sns publish \
-  --topic-arn <スタック出力の TriggerTopicArn> \
+  --topic-arn <TriggerTopicArn from stack outputs> \
   --message '{
     "action": "contain_smb_threat",
     "svm_name": "svm-prod-01",
     "domain": "CORP",
     "username": "test-user",
     "volume_name": "vol_data",
-    "reason": "手動テスト"
+    "reason": "Manual test"
   }'
 ```
 
@@ -488,8 +497,7 @@ aws sns publish \
   "domain": "CORP",
   "username": "jdoe",
   "volume_name": "vol_data",
-  "policy_name": "default",
-  "reason": "ARP ランサムウェア検知 - callhome.arw.activity.seen alert"
+  "reason": "ARP ransomware detection - arw.volume.state alert"
 }
 ```
 
@@ -503,8 +511,8 @@ aws sns publish \
   "username": "jdoe",
   "volume_name": "vol_data",
   "policy_name": "default",
-  "reason": "ARP ランサムウェア検知 - callhome.arw.activity.seen alert",
-  "incident_id": "INC-2026-0712-001",
+  "reason": "ARP ransomware detection - arw.volume.state alert",
+  "incident_id": "INC-2026-0708-001",
   "detection_source": "datadog-monitor-fsxn-arp",
   "severity": "critical",
   "trigger_id": "msg-abc123-def456"
@@ -600,13 +608,13 @@ FPolicy → SQS → Lambda → SIEM（任意のベンダー）
 ### ブロック済みユーザー/IP の確認
 
 ```bash
-# FSx for ONTAP 管理エンドポイントに SSH
+# SSH to FSx for ONTAP management endpoint
 ssh fsxadmin@<management-ip>
 
-# ブロック済み SMB ユーザー（空の replacement を持つ name-mapping）
+# List blocked SMB users (name-mappings with empty replacement)
 vserver name-mapping show -direction win-unix -replacement " "
 
-# ブロック済み NFS IP（マーカー付きルール）
+# List blocked NFS IPs (rules with our marker)
 export-policy rule show -clientmatch *fsxn_auto_response*
 ```
 
@@ -621,10 +629,10 @@ aws sns publish \
 
 ONTAP CLI 経由（緊急時）:
 ```bash
-# SMB ユーザーのブロック解除
+# Unblock SMB user
 vserver name-mapping delete -direction win-unix -position <position>
 
-# NFS IP のブロック解除
+# Unblock NFS IP
 export-policy rule delete -vserver <svm> -policyname <policy> -ruleindex <index>
 ```
 
@@ -711,16 +719,16 @@ CloudFormation テンプレートは、クイックスタート用に Lambda コ
 ## クリーンアップ / 環境削除
 
 ```bash
-# TTL スタックを先に削除（依存関係なし）
+# Delete TTL stack first (no dependencies)
 aws cloudformation delete-stack --stack-name fsxn-automated-response-ttl
 
-# メインスタックを削除（VPC Endpoints + Lambda + SNS）
+# Delete main stack (VPC Endpoints + Lambda + SNS)
 aws cloudformation delete-stack --stack-name fsxn-automated-response
 
-# Lambda Layer を削除（オプション）
+# Remove Lambda Layer (optional)
 aws lambda delete-layer-version --layer-name fsxn-shared-python --version-number 2
 
-# テスト Snapshot の削除
+# Delete test snapshots created during verification
 # ssh fsxadmin@<management-ip> "volume snapshot delete -vserver <svm> -volume <vol> -snapshot incident_response_*"
 ```
 

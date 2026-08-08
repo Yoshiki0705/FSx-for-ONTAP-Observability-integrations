@@ -348,7 +348,7 @@ aws lambda invoke \
 - **Command**:
 ```bash
 docker buildx build --platform linux/amd64 \
-  -t <account>.dkr.ecr.<region>.amazonaws.com/fsxn-fpolicy-server:v2-timeout-fix \
+  -t 123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/fsxn-fpolicy-server:v2-timeout-fix \
   --push shared/fpolicy-server/
 ```
 

@@ -85,17 +85,17 @@ FPolicy: FSx for ONTAP → Fargate (TCP) → SQS → Lambda → ベンダー
 ### ONTAP CLI 設定
 
 ```bash
-# FSx for ONTAP 管理エンドポイントに SSH
+# SSH to FSx for ONTAP management endpoint
 ssh fsxadmin@<management-ip>
 
-# ログ転送先を作成
+# Create log forwarding destination
 cluster log-forwarding create \
   -destination syslog-logs.ap-northeast-1.amazonaws.com \
   -port 6514 \
   -protocol tcp-encrypted \
   -facility local7
 
-# 確認
+# Verify
 cluster log-forwarding show
 ```
 

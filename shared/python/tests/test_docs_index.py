@@ -61,6 +61,37 @@ def _index_links(lang: str) -> set[str]:
     return set(re.findall(r"\]\(([^)#]+\.md)\)", readme))
 
 
+def test_every_indexed_document_is_tracked_by_git():
+    """Present on disk is not the same as committed.
+
+    `.gitignore` blanket-ignores `docs/**/verification-results*.md`, so a new
+    record is skipped by `git add -A` without a word. Every other test here reads
+    the filesystem, so they all pass locally while CI — which only has what was
+    committed — fails on the generator with "does not exist". Comparing against
+    git's index is the only way to catch that before pushing.
+    """
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files", "docs/en", "docs/ja"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=True,
+        ).stdout.split()
+    )
+    on_disk_but_untracked = sorted(
+        f"docs/{lang}/{name}"
+        for lang in ("en", "ja")
+        for name in _docs(lang)
+        if f"docs/{lang}/{name}" not in tracked
+    )
+    assert not on_disk_but_untracked, (
+        "these documents are indexed but not tracked by git, so CI will not see "
+        f"them: {on_disk_but_untracked}. Force-add them: "
+        f"git add -f {' '.join(on_disk_but_untracked)}"
+    )
+
+
 @pytest.mark.parametrize("lang", LANGS)
 class TestIndexCompleteness:
     def test_every_document_is_indexed(self, lang):

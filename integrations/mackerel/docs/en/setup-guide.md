@@ -204,10 +204,10 @@ A successful send returns an empty `{}` body with HTTP 200 from the local Collec
 
 The following screenshots show actual E2E verification results (personal information such as email addresses has been masked).
 
-![Mackerel log search results](../../../docs/screenshots/mackerel/mackerel-logs-search-results.png)
+![Mackerel log search results](../../../../docs/screenshots/mackerel/mackerel-logs-search-results.png)
 *Log search results: FSx for ONTAP audit logs delivered to the fsxn-audit service. IP addresses shown (203.0.113.x) are from RFC 5737 TEST-NET-3 documentation address blocks, not real environments.*
 
-![Mackerel log detail](../../../docs/screenshots/mackerel/mackerel-logs-detail.png)
+![Mackerel log detail](../../../../docs/screenshots/mackerel/mackerel-logs-detail.png)
 *Log detail: operation type, result, SVM name, file path, user information, client IP, and timestamp attributes are retained in searchable form.*
 
 > **Hint**: If nothing appears after a few minutes, re-check Step 3.3's troubleshooting table first — most failures happen at the Collector → Mackerel hop, not within Mackerel itself.

@@ -11,8 +11,24 @@
 # is also the only place those templates are validated -- the other cfn-lint and
 # cfn-guard steps glob integrations/ and shared/templates/ only.
 
-let iam_roles = Resources.*[ Type == "AWS::IAM::Role" ]
-let iam_policies = Resources.*[ Type == "AWS::IAM::Policy" ]
+# Filtering to roles that actually declare inline Policies is required, not
+# cosmetic. `Properties.Policies` on a role that has only ManagedPolicyArns
+# cannot be traversed, and Guard reports that RequiredPropertyError as a
+# violation -- so an unfiltered binding reports every managed-policy-only role as
+# though it used a wildcard action. Filtering the list entries alone is not
+# enough; the role itself has to be excluded before the traversal.
+#
+# Roles that carry only ManagedPolicyArns are therefore unchecked by these rules.
+# That is the correct scope: the contents of an AWS managed policy are not this
+# repository's to audit, and an inline wildcard is what these rules exist to find.
+let iam_roles = Resources.*[
+  Type == "AWS::IAM::Role"
+  Properties.Policies exists
+]
+let iam_policies = Resources.*[
+  Type == "AWS::IAM::Policy"
+  Properties.PolicyDocument exists
+]
 let security_groups = Resources.*[ Type == "AWS::EC2::SecurityGroup" ]
 let ecs_services = Resources.*[ Type == "AWS::ECS::Service" ]
 let lambdas = Resources.*[ Type == "AWS::Lambda::Function" ]
@@ -22,8 +38,28 @@ let task_definitions = Resources.*[ Type == "AWS::ECS::TaskDefinition" ]
 # Rule 1: IAM policies must not use wildcard (*) for Action
 # Ensures least-privilege IAM — no blanket permissions.
 #
+# The `Policies[ PolicyDocument exists ]` filter is load-bearing, and its absence
+# is what kept this file from being usable outside management-console/templates/.
+# Two shapes break the unfiltered query, and both report as violations rather
+# than as "nothing to check":
+#
+#   1. A role with only ManagedPolicyArns and no inline Policies at all. Guard
+#      raises RequiredPropertyError for the missing Policies[*].PolicyDocument
+#      and counts the resource non-compliant -- so every managed-policy-only role
+#      is reported as using a wildcard action it does not have.
+#   2. A conditionally included policy: `- !If [Cond, {PolicyName..}, !Ref
+#      AWS::NoValue]`. That list entry is a struct whose only key is Fn::If, so
+#      it has no PolicyDocument either.
+#
+# Filtering to entries that have a PolicyDocument makes both cases inert.
+#
+# KNOWN BLIND SPOT: statements inside an Fn::If-wrapped policy are therefore not
+# checked. Guard cannot see through intrinsic functions, so the choice is between
+# not checking them and reporting every one of them as a violation. Prefer a
+# resource-level `Condition:` on a separate AWS::IAM::Policy over an Fn::If
+# inside Policies, which keeps the statements visible to these rules.
 rule no_wildcard_iam_actions when %iam_roles !empty {
-  %iam_roles.Properties.Policies[*].PolicyDocument.Statement[*] {
+  %iam_roles.Properties.Policies[ PolicyDocument exists ].PolicyDocument.Statement[*] {
     Action != "*"
     <<BLOCKING: IAM policies must not use wildcard (*) actions. Use specific service actions (e.g., s3:GetObject, aps:RemoteWrite).>>
   }
@@ -54,16 +90,61 @@ rule no_wildcard_iam_actions_standalone when %iam_policies !empty {
 #       non-string Resource values are inherently not wildcards and pass this rule.
 #
 rule no_wildcard_iam_resources when %iam_roles !empty {
-  let statements = %iam_roles.Properties.Policies[*].PolicyDocument.Statement[*]
+  let statements = %iam_roles.Properties.Policies[ PolicyDocument exists ].PolicyDocument.Statement[*]
   when %statements !empty {
     %statements {
       when Resource is_string
            Resource == "*" {
         Action[*] IN [
+          # Account-scoped, not repository-scoped.
           "ecr:GetAuthorizationToken",
+          # A VPC-attached Lambda's own ENI lifecycle. The AWS managed policy
+          # AWSLambdaVPCAccessExecutionRole grants exactly these on Resource '*';
+          # the ENI does not exist yet at CreateNetworkInterface time.
           "ec2:CreateNetworkInterface",
           "ec2:DescribeNetworkInterfaces",
-          "ec2:DeleteNetworkInterface"
+          "ec2:DeleteNetworkInterface",
+          # EC2 Describe* actions have no resource types to scope to.
+          "ec2:DescribeNetworkAcls",
+          # FSx Describe* actions have no resource types to scope to.
+          "fsx:DescribeFileSystems",
+          "fsx:DescribeStorageVirtualMachines",
+          # Scoped by the cloudwatch:namespace condition key instead of by ARN;
+          # this is the pattern AWS's own managed policies use.
+          # https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/iam-cw-condition-keys-namespace.html
+          "cloudwatch:PutMetricData",
+          # Comprehend PII detection has no resource-level permissions.
+          "comprehend:DetectPiiEntities",
+          # Cost Explorer has no resource-level permissions.
+          "ce:GetCostAndUsage",
+          # Step Functions logging. AWS documents Resource '*' as required:
+          # "CloudWatch API actions, such as CreateLogDelivery and
+          # DescribeLogGroups, do not support Resource types defined by Amazon
+          # CloudWatch Logs."
+          # https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
+          "logs:CreateLogDelivery",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups",
+          # FSx S3 Access Point lifecycle actions have no resource-level
+          # permissions and no condition keys to scope with.
+          "fsx:CreateAndAttachS3AccessPoint",
+          "fsx:DetachAndDeleteS3AccessPoint",
+          "fsx:DescribeS3AccessPointAttachments",
+          "fsx:DescribeVolumes",
+          # ECS task ARNs are generated by the service at run time, so there is
+          # nothing to name in the template.
+          "ecs:DescribeTasks",
+          # ECR image pull. These two do support a repository ARN, so scope them
+          # when the repository is fixed at deploy time. They are allowed here
+          # because ContainerImage arrives as a full image URI parameter, which
+          # CloudFormation cannot convert into a repository ARN.
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
         ]
         <<BLOCKING: IAM policies must not use wildcard (*) resources. Scope to specific ARNs. (Exceptions: ecr:GetAuthorizationToken and the ec2:*NetworkInterface actions a VPC Lambda needs, which AWS does not allow scoping.)>>
       }
@@ -78,10 +159,55 @@ rule no_wildcard_iam_resources_standalone when %iam_policies !empty {
       when Resource is_string
            Resource == "*" {
         Action[*] IN [
+          # Account-scoped, not repository-scoped.
           "ecr:GetAuthorizationToken",
+          # A VPC-attached Lambda's own ENI lifecycle. The AWS managed policy
+          # AWSLambdaVPCAccessExecutionRole grants exactly these on Resource '*';
+          # the ENI does not exist yet at CreateNetworkInterface time.
           "ec2:CreateNetworkInterface",
           "ec2:DescribeNetworkInterfaces",
-          "ec2:DeleteNetworkInterface"
+          "ec2:DeleteNetworkInterface",
+          # EC2 Describe* actions have no resource types to scope to.
+          "ec2:DescribeNetworkAcls",
+          # FSx Describe* actions have no resource types to scope to.
+          "fsx:DescribeFileSystems",
+          "fsx:DescribeStorageVirtualMachines",
+          # Scoped by the cloudwatch:namespace condition key instead of by ARN;
+          # this is the pattern AWS's own managed policies use.
+          # https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/iam-cw-condition-keys-namespace.html
+          "cloudwatch:PutMetricData",
+          # Comprehend PII detection has no resource-level permissions.
+          "comprehend:DetectPiiEntities",
+          # Cost Explorer has no resource-level permissions.
+          "ce:GetCostAndUsage",
+          # Step Functions logging. AWS documents Resource '*' as required:
+          # "CloudWatch API actions, such as CreateLogDelivery and
+          # DescribeLogGroups, do not support Resource types defined by Amazon
+          # CloudWatch Logs."
+          # https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
+          "logs:CreateLogDelivery",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups",
+          # FSx S3 Access Point lifecycle actions have no resource-level
+          # permissions and no condition keys to scope with.
+          "fsx:CreateAndAttachS3AccessPoint",
+          "fsx:DetachAndDeleteS3AccessPoint",
+          "fsx:DescribeS3AccessPointAttachments",
+          "fsx:DescribeVolumes",
+          # ECS task ARNs are generated by the service at run time, so there is
+          # nothing to name in the template.
+          "ecs:DescribeTasks",
+          # ECR image pull. These two do support a repository ARN, so scope them
+          # when the repository is fixed at deploy time. They are allowed here
+          # because ContainerImage arrives as a full image URI parameter, which
+          # CloudFormation cannot convert into a repository ARN.
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
         ]
         <<BLOCKING: IAM policies must not use wildcard (*) resources. Scope to specific ARNs.>>
       }
@@ -113,9 +239,18 @@ rule no_public_ingress_on_task_security_groups when %security_groups !empty {
   when %task_sgs !empty {
     %task_sgs.Properties {
       when SecurityGroupIngress exists {
-        SecurityGroupIngress[*] {
-          CidrIp not exists
-          OR
+        # `CidrIp is_string` is load-bearing for the same reason it is on the
+        # container Environment rule below. A CidrIp supplied by an intrinsic
+        # function (`CidrIp: !Ref VpcCidr`) parses to a struct, and comparing a
+        # struct against a string raises a ComparisonError that Guard counts as
+        # non-compliant -- so without the filter every parameterised CIDR is
+        # reported as though it were 0.0.0.0/0.
+        #
+        # KNOWN BLIND SPOT: a parameter whose default is 0.0.0.0/0 is not caught
+        # here. Guard evaluates the template, not the deployed values. Ranges that
+        # arrive by parameter are the deployer's responsibility; the AllowedPattern
+        # on the parameter is the place to constrain them.
+        SecurityGroupIngress[ CidrIp exists CidrIp is_string ] {
           CidrIp != "0.0.0.0/0"
           <<BLOCKING: Task security groups must not allow inbound from 0.0.0.0/0. Only the ALB SG should accept public traffic. Restrict inbound to specific security group sources.>>
         }
@@ -128,12 +263,21 @@ rule no_public_ingress_on_task_security_groups when %security_groups !empty {
 # Rule 4: ECS tasks must not have assignPublicIp ENABLED
 # ECS Fargate tasks must run in private subnets without public IP assignment.
 #
+# The inner `when AssignPublicIp is_string` is required, and a filter would not
+# work here. `AwsvpcConfiguration` is a single struct, and a `[ ... ]` filter
+# applied to a struct selects nothing -- Guard then reports the rule as SKIP,
+# which is indistinguishable from a clean pass. Filters belong on collections
+# (SecurityGroupIngress, Policies); struct-valued properties need a `when`.
+#
+# The guard itself is needed because `AssignPublicIp: !Ref SomeParam` parses to a
+# struct, and comparing it against "DISABLED" raises a ComparisonError that counts
+# as non-compliant.
 rule no_public_ip_for_ecs_tasks when %ecs_services !empty {
   %ecs_services.Properties.NetworkConfiguration.AwsvpcConfiguration {
-    AssignPublicIp not exists
-    OR
-    AssignPublicIp == "DISABLED"
-    <<BLOCKING: ECS tasks must not have AssignPublicIp: ENABLED. Deploy tasks in private subnets behind NAT Gateway.>>
+    when AssignPublicIp is_string {
+      AssignPublicIp == "DISABLED"
+      <<BLOCKING: ECS tasks must not have AssignPublicIp: ENABLED. Deploy tasks in private subnets behind NAT Gateway.>>
+    }
   }
 }
 

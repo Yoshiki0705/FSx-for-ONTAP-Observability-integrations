@@ -289,7 +289,11 @@ S3 オブジェクト作成時刻と Splunk の `_indextime` の差分を記録�
 - Splunk Search 結果（SPL クエリ、結果件数、展開されたイベント）
 - Splunk ダッシュボード（FSx for ONTAP 監査ログデータを表示するパネル）
 
-![Splunk Search 結果](../../../../docs/screenshots/splunk/splunk-search-results-20260101.png)
+![FSx for ONTAP の監査イベントが表示された Splunk 検索](../../screenshots/splunk-e2e-search-fsxn-audit-xml.png)
+
+> Docker 上の Splunk Enterprise に対して取得したものです。この実行の適用範囲は
+> [Splunk 動作確認結果](../../../../docs/ja/verification-results-splunk.md)
+> を参照してください。
 
 ## トラブルシューティング
 

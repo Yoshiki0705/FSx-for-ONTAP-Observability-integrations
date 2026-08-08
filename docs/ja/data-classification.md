@@ -144,14 +144,14 @@ OTel Collector パス（Part 5）では、秘匿プロセッサを追加しま�
 
 ```yaml
 processors:
-  # ユーザーフィールドの仮名化
+  # Pseudonymize user fields
   transform:
     log_statements:
       - context: log
         statements:
           - set(attributes["user.name.hash"], SHA256(attributes["user.name"]))
 
-  # ハッシュ化後に生の PII を削除
+  # Remove raw PII after hashing
   attributes/redact:
     actions:
       - key: user.name
@@ -159,7 +159,7 @@ processors:
       - key: source.ip
         action: delete
 
-  # ファイルパスの汎化
+  # Generalize file paths
   transform/paths:
     log_statements:
       - context: log

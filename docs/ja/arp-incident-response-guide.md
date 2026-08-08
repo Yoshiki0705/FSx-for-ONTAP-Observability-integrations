@@ -75,7 +75,7 @@ source:fsxn-ems @attributes.event_name:arw.volume.state
 3. **ARP スナップショットの確認** — 自動作成されたスナップショットが存在することを確認
 
 ```bash
-# ONTAP CLI: ARP スナップショットの確認
+# ONTAP CLI: Verify ARP snapshots
 ssh admin@<management-ip> "volume snapshot show -vserver <svm-name> -volume <volume-name> -snapshot Anti_ransomware*"
 ```
 
@@ -86,11 +86,12 @@ ssh admin@<management-ip> "volume snapshot show -vserver <svm-name> -volume <vol
 ### ONTAP CLI での調査
 
 ```bash
-# ARP ステータスの確認
+# Check ARP status
 ssh admin@<management-ip> "security anti-ransomware volume show -vserver <svm-name> -volume <volume-name>"
 
-# 疑わしいファイルの確認（攻撃レポート生成）
-# 注: `show-suspect-files` は ONTAP 9.17.1+ には存在しません
+# List suspect files (generate attack report)
+# Note: `show-suspect-files` does NOT exist in ONTAP 9.17.1+.
+# Use `generate-report` instead:
 ssh admin@<management-ip> "security anti-ransomware volume attack generate-report -vserver <svm-name> -volume <volume-name> -dest-path <svm-name>:/<volume-name>/"
 ```
 
@@ -144,7 +145,7 @@ source:fsxn-fpolicy @attributes.user:<suspect-user>
 ## Step 4a: 誤検知の場合
 
 ```bash
-# ONTAP CLI: 誤検知としてマーク（ARP スナップショットが自動削除される）
+# ONTAP CLI: Mark as false positive (ARP snapshot auto-deleted)
 ssh admin@<management-ip> "security anti-ransomware volume attack clear-suspect -vserver <svm-name> -volume <volume-name>"
 ```
 
@@ -161,7 +162,7 @@ ssh admin@<management-ip> "security anti-ransomware volume attack clear-suspect 
 1. **感染クライアントのネットワーク隔離**
 
 ```bash
-# AWS Security Group で感染クライアントの通信を遮断
+# Revoke infected client access via AWS Security Group
 aws ec2 revoke-security-group-ingress \
   --group-id <sg-id> \
   --protocol tcp \
@@ -172,17 +173,17 @@ aws ec2 revoke-security-group-ingress \
 2. **影響ボリュームへのアクセス制限**
 
 ```bash
-# ONTAP CLI: CIFS 共有の一時停止
+# ONTAP CLI: Temporarily restrict CIFS share
 ssh admin@<management-ip> "vserver cifs share modify -vserver <svm-name> -share-name <share-name> -access-based-enumeration false"
 
-# または: エクスポートポリシーの制限
+# Or: Restrict export policy
 ssh admin@<management-ip> "export-policy rule modify -vserver <svm-name> -policyname <policy> -ruleindex <index> -clientmatch <safe-clients-only>"
 ```
 
 3. **追加の ARP スナップショット作成**（手動）
 
 ```bash
-# 現時点のスナップショットを追加作成
+# Create point-in-time snapshot
 ssh admin@<management-ip> "volume snapshot create -vserver <svm-name> -volume <volume-name> -snapshot incident_response_$(date +%Y%m%d_%H%M%S)"
 ```
 
@@ -193,10 +194,10 @@ ssh admin@<management-ip> "volume snapshot create -vserver <svm-name> -volume <v
 ### ARP スナップショットからの復旧
 
 ```bash
-# 1. ARP スナップショットの一覧確認
+# 1. List ARP snapshots
 ssh admin@<management-ip> "volume snapshot show -vserver <svm-name> -volume <volume-name> -snapshot Anti_ransomware*"
 
-# 2. スナップショットからボリュームを復元
+# 2. Restore volume from snapshot
 ssh admin@<management-ip> "volume snapshot restore -vserver <svm-name> -volume <volume-name> -snapshot Anti_ransomware_backup.<timestamp>"
 ```
 
@@ -217,10 +218,10 @@ ssh admin@<management-ip> "volume snapshot restore -vserver <svm-name> -volume <
 本番ボリュームを復元する前に、FlexClone で検証:
 
 ```bash
-# FlexClone 作成（スナップショットベース）
+# Create FlexClone (snapshot-based)
 ssh admin@<management-ip> "volume clone create -vserver <svm-name> -flexclone <clone-name> -parent-volume <volume-name> -parent-snapshot Anti_ransomware_backup.<timestamp>"
 
-# クローンをマウントして内容を検証
+# Mount clone for verification
 ssh admin@<management-ip> "volume mount -vserver <svm-name> -volume <clone-name> -junction-path /verify_recovery"
 ```
 
@@ -263,7 +264,7 @@ ssh admin@<management-ip> "volume mount -vserver <svm-name> -volume <clone-name>
   "name": "FSx-ONTAP ARP Ransomware Detection Alert",
   "type": "log alert",
   "query": "source:fsxn-ems @attributes.event_name:arw.volume.state @attributes.severity:alert",
-  "message": "🚨 ONTAP ARP が不審なアクティビティを検知しました\n\nVolume: {{@attributes.parameters.volume_name}}\nState: {{@attributes.parameters.state}}\nSeverity: {{@attributes.severity}}\n\nアラートを確認し、インシデント対応ガイドに従ってください。\n対応ガイド: docs/ja/arp-incident-response-guide.md",
+  "message": "🚨 ONTAP ARP detected suspicious activity\n\nVolume: {{@attributes.parameters.volume_name}}\nState: {{@attributes.parameters.state}}\nSeverity: {{@attributes.severity}}\n\nVerify the alert and follow the incident response guide.\nResponse guide: docs/en/arp-incident-response-guide.md",
   "options": {
     "thresholds": {"critical": 0},
     "notify_no_data": false
