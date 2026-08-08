@@ -54,7 +54,7 @@ Target: 2027 H1
 - [ ] Terraform module equivalents
 - [ ] CDK construct library
 - [x] Community contribution guidelines (CONTRIBUTING.md)
-- [ ] GitHub Discussions for Q&A
+- [x] [GitHub Discussions](https://github.com/Yoshiki0705/fsxn-observability-integrations/discussions) for Q&A
 - [ ] Integration test suite with LocalStack
 - [x] CrowdStrike Falcon LogScale integration (handler + template + tests + docs)
 - [x] Parser v1.1.0 (FIELD_MAPPING, Strategy pattern, defusedxml, 178K events/sec)
@@ -77,7 +77,6 @@ Target: 2027 H1
 | 16 | Datadog Paid Plan: Pipeline, Monitors, and Detection Workflows | Planned |
 | 17 | CloudWatch Log Alarms: No Metric Filter Required | Published |
 | 18 | Automated Incident Response: Block Users/IPs via ONTAP REST API | Ready for publication |
-| 17 | Alerting on Audit Logs with CloudWatch Log Alarms (no metric filter) | Ready for publication |
 
 ## Contributing
 

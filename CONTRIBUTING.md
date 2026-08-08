@@ -4,6 +4,11 @@ Thank you for your interest in contributing to FSx for ONTAP Observability Integ
 
 ## How to Contribute
 
+### Asking Questions
+
+- Use [GitHub Discussions](https://github.com/Yoshiki0705/fsxn-observability-integrations/discussions/categories/q-a) (Q&A category) for setup questions, "which vendor should I use", and deployment troubleshooting
+- Discussions keep Issues focused on actionable defects, and answered threads stay searchable for the next person with the same question
+
 ### Reporting Issues
 
 - Use [GitHub Issues](https://github.com/Yoshiki0705/fsxn-observability-integrations/issues) for bug reports and feature requests
