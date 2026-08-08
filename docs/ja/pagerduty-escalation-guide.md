@@ -54,18 +54,16 @@ aws cloudformation deploy \
 デプロイ後の Output `PagerDutyTopicArn` を既存のアラームに追加します。
 
 ```bash
-# Output からTopic ARN を取得
 TOPIC_ARN=$(aws cloudformation describe-stacks \
   --stack-name fsxn-pagerduty-escalation \
   --query 'Stacks[0].Outputs[?OutputKey==`PagerDutyTopicArn`].OutputValue' \
   --output text)
 
-# 例: ARP 検知アラームに追加
 aws cloudwatch put-metric-alarm \
   --alarm-name fsxn-arp-ransomware-detected \
   --alarm-actions "$TOPIC_ARN" \
   --ok-actions "$TOPIC_ARN" \
-  # ... (既存パラメータをそのまま維持)
+  # ... (keep existing parameters)
 ```
 
 ## 接続推奨アラーム
@@ -136,7 +134,7 @@ CloudWatch Alarm → SNS → PagerDuty Events API v2 の標準連携では、以
 ## テスト方法
 
 ```bash
-# テストメッセージを SNS に publish → PagerDuty にインシデント作成されることを確認
+# Publish a test message to SNS and confirm an incident is raised in PagerDuty
 aws sns publish \
   --topic-arn "$TOPIC_ARN" \
   --subject "ALARM: fsxn-test-pagerduty" \

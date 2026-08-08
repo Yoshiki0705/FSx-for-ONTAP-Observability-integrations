@@ -63,17 +63,17 @@ Body: {"primary_servers": ["<new-task-ip>"]}
 IP Auto-Updater が失敗した場合の手動手順:
 
 ```bash
-# 1. 現在の Fargate タスク IP を確認
+# 1. Get the current Fargate task IP
 aws ecs list-tasks --cluster fsxn-fpolicy --service-name fsxn-fpolicy-server
 aws ecs describe-tasks --cluster fsxn-fpolicy --tasks <task-arn> \
   --query 'tasks[0].attachments[?type==`ElasticNetworkInterface`].details[?name==`privateIPv4Address`].value'
 
-# 2. ONTAP CLI で外部エンジンの IP を更新
+# 2. Update the external engine IP via ONTAP CLI
 vserver fpolicy policy external-engine modify -vserver FPolicySMB \
   -engine-name fpolicy_lambda_engine \
   -primary-servers <new-ip>
 
-# 3. 接続状態を確認
+# 3. Verify connection status
 vserver fpolicy show-engine -vserver FPolicySMB -engine-name fpolicy_lambda_engine
 ```
 
@@ -87,7 +87,7 @@ ONTAP は FPolicy サーバーに対して約 6 秒間隔で KeepAlive メッセ
 ### 確認方法
 
 ```bash
-# ECS ログで KeepAlive を確認
+# Check KeepAlive in ECS logs
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server \
   --filter-pattern "KeepAlive" \
@@ -166,17 +166,17 @@ ECS タスクロールに以下のポリシーを追加:
 
 ### イメージ更新手順
 ```bash
-# 1. ECR 認証
+# 1. ECR authentication
 aws ecr get-login-password --region ap-northeast-1 | \
   docker login --username AWS --password-stdin \
   123456789012.dkr.ecr.ap-northeast-1.amazonaws.com
 
-# 2. ビルド & プッシュ (ARM64)
+# 2. Build & push (ARM64)
 docker buildx build --platform linux/arm64 \
   -t 123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/fsxn-fpolicy-server:<new-tag> \
   --push .
 
-# 3. ECS サービスを更新（新イメージでタスク再起動）
+# 3. Update ECS service (restart task with new image)
 aws ecs update-service --cluster fsxn-fpolicy \
   --service fsxn-fpolicy-server \
   --force-new-deployment
@@ -197,7 +197,7 @@ NFSv3 の write 操作は、ONTAP が write-complete を確認するまでデフ
 
 ### 調整
 ```yaml
-# CloudFormation パラメータ
+# CloudFormation parameter
 WriteCompleteDelaySec:
   Type: Number
   Default: 5
@@ -222,26 +222,26 @@ WriteCompleteDelaySec:
 ### CloudWatch Logs クエリ
 
 ```bash
-# FPolicy イベントの確認（ECS ログ）
+# Check FPolicy events (ECS logs)
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server \
   --filter-pattern "[SQS] Sent:" \
   --start-time $(date -d '5 minutes ago' +%s000)
 
-# KeepAlive 確認
+# Check KeepAlive
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server \
   --filter-pattern "KeepAlive" \
   --start-time $(date -d '30 seconds ago' +%s000) \
   --limit 5
 
-# Bridge Lambda エラー確認
+# Check Bridge Lambda errors
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-fpolicy-bridge \
   --filter-pattern "ERROR" \
   --start-time $(date -d '10 minutes ago' +%s000)
 
-# IP Updater Lambda 実行確認
+# Check IP Updater Lambda execution
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-fpolicy-ip-updater \
   --filter-pattern "updated to" \
@@ -251,7 +251,7 @@ aws logs filter-log-events \
 ### SQS キュー確認
 
 ```bash
-# キューの状態確認
+# Check queue status
 aws sqs get-queue-attributes \
   --queue-url https://sqs.ap-northeast-1.amazonaws.com/123456789012/FPolicy_Q \
   --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible

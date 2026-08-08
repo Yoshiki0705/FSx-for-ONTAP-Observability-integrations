@@ -59,9 +59,9 @@ FSx for ONTAP を含む全リソースを新規作成します。
 ### AWS CLI で作成
 
 ```bash
-# VPC とサブネットが既にある前提
-# Preferred subnet: プライマリ
-# Standby subnet: セカンダリ（Multi-AZ の場合）
+# Assumes VPC and subnets already exist
+# Preferred subnet: primary
+# Standby subnet: secondary (for Multi-AZ)
 
 aws fsx create-file-system \
   --file-system-type ONTAP \
@@ -82,12 +82,12 @@ aws fsx create-file-system \
 ### SVM の作成
 
 ```bash
-# ファイルシステム ID を取得
+# Get file system ID
 FS_ID=$(aws fsx describe-file-systems \
   --query "FileSystems[?Tags[?Key=='Project' && Value=='fsxn-observability']].FileSystemId" \
   --output text --region ap-northeast-1)
 
-# SVM 作成
+# Create SVM
 aws fsx create-storage-virtual-machine \
   --file-system-id $FS_ID \
   --name svm-audit-demo \
@@ -163,14 +163,14 @@ aws cloudformation describe-stacks \
 ### 方法 A: スクリプトを使用（推奨）
 
 ```bash
-# ドライラン（コマンド確認のみ）
+# Dry run (preview commands only)
 bash shared/scripts/ontap-audit-setup.sh \
   --endpoint 10.0.1.100 \
   --svm svm-prod-01 \
   --format evtx \
   --dry-run
 
-# 実行
+# Execute
 bash shared/scripts/ontap-audit-setup.sh \
   --endpoint 10.0.1.100 \
   --svm svm-prod-01 \
@@ -190,10 +190,10 @@ bash shared/scripts/ontap-audit-setup.sh \
 ### 方法 C: SSH で手動実行
 
 ```bash
-# FSx for ONTAP 管理エンドポイントに SSH 接続
+# SSH to FSx for ONTAP management endpoint
 ssh admin@<management-endpoint-ip>
 
-# ONTAP CLI で実行
+# Execute in ONTAP CLI
 vserver audit create -vserver svm-prod-01 \
   -destination /vol/audit_logs \
   -format evtx \
@@ -201,7 +201,7 @@ vserver audit create -vserver svm-prod-01 \
 
 vserver audit enable -vserver svm-prod-01
 
-# 確認
+# Verify
 vserver audit show -vserver svm-prod-01
 ```
 
@@ -217,7 +217,7 @@ FSx の自動バックアップ機能を使い、バックアップから S3 に
 #### オプション 2: DataSync による定期同期
 
 ```bash
-# DataSync タスクを作成して定期的に S3 に同期
+# Create a DataSync task for periodic S3 sync
 aws datasync create-task \
   --source-location-arn arn:aws:datasync:ap-northeast-1:123456789012:location/loc-xxxxx \
   --destination-location-arn arn:aws:datasync:ap-northeast-1:123456789012:location/loc-yyyyy \
@@ -268,10 +268,10 @@ aws fsx describe-s3-access-point-attachments \
 ### S3 バケットにログが到着しているか確認
 
 ```bash
-# バケット内のオブジェクト一覧
+# List objects in bucket
 aws s3 ls s3://my-company-fsxn-audit-logs-ap-northeast-1/audit/ --recursive
 
-# 最新のログファイルを確認
+# Check latest log files
 aws s3 ls s3://my-company-fsxn-audit-logs-ap-northeast-1/audit/ \
   --recursive --human-readable | tail -5
 ```
@@ -279,7 +279,7 @@ aws s3 ls s3://my-company-fsxn-audit-logs-ap-northeast-1/audit/ \
 ### EventBridge でイベントが発生しているか確認
 
 ```bash
-# CloudTrail でS3イベントを確認
+# Check S3 events via CloudTrail
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=EventName,AttributeValue=PutObject \
   --max-results 5 \
@@ -289,7 +289,7 @@ aws cloudtrail lookup-events \
 ### テストファイルで動作確認
 
 ```bash
-# テスト用の監査ログファイルをアップロード
+# Upload a test audit log file
 aws s3 cp integrations/datadog/tests/test_data/sample_audit_logs.json \
   s3://my-company-fsxn-audit-logs-ap-northeast-1/audit/svm-prod-01/2026/01/15/test_audit.json
 ```
@@ -301,7 +301,7 @@ aws s3 cp integrations/datadog/tests/test_data/sample_audit_logs.json \
 前提リソースが準備できたら、ベンダー統合スタックをデプロイします。
 
 ```bash
-# 前提スタックの出力値を取得
+# Get prerequisite stack outputs
 AP_ARN=$(aws cloudformation describe-stacks \
   --stack-name fsxn-observability-prerequisites \
   --query "Stacks[0].Outputs[?OutputKey=='AccessPointArn'].OutputValue" \
@@ -312,7 +312,7 @@ BUCKET_NAME=$(aws cloudformation describe-stacks \
   --query "Stacks[0].Outputs[?OutputKey=='AuditLogBucketName'].OutputValue" \
   --output text --region ap-northeast-1)
 
-# Datadog 統合をデプロイ
+# Deploy Datadog integration
 aws cloudformation deploy \
   --template-file integrations/datadog/template.yaml \
   --stack-name fsxn-datadog-integration \
@@ -429,7 +429,7 @@ aws cloudformation deploy \
 1. FPolicy サーバーの Security Group が、FSx SVM の Security Group からのインバウンド TCP 9898 を許可しているか確認
 2. Fargate タスクが再起動した場合、IP が変更されている — ONTAP の FPolicy エンジン `primary_servers` が現在のタスク IP と一致しているか確認:
    ```bash
-   # 現在のタスク IP を取得
+   # Get current task IP
    TASK_ARN=$(aws ecs list-tasks --cluster <cluster> --service <service> --query 'taskArns[0]' --output text)
    aws ecs describe-tasks --cluster <cluster> --tasks $TASK_ARN \
      --query 'tasks[0].attachments[0].details[?name==`privateIPv4Address`].value' --output text
@@ -444,7 +444,7 @@ aws cloudformation deploy \
 
 **解決策**: スタックデプロイ時に `SharedPythonLayerArn` パラメータを指定するか、手動でアタッチ:
 ```bash
-# Layer をビルドして発行
+# Build and publish layer
 bash shared/python/build-layer.sh
 LAYER_ARN=$(aws lambda publish-layer-version \
   --layer-name fsxn-shared-python \
@@ -452,7 +452,7 @@ LAYER_ARN=$(aws lambda publish-layer-version \
   --compatible-runtimes python3.12 \
   --query 'LayerVersionArn' --output text)
 
-# 関数にアタッチ
+# Attach to function
 aws lambda update-function-configuration \
   --function-name <stack-name>-handler \
   --layers $LAYER_ARN

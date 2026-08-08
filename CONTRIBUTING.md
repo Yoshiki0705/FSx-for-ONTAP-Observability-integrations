@@ -78,8 +78,32 @@ python -m pytest integrations/datadog/tests/ -v
 
 # Validate CloudFormation
 pip install cfn-lint
-cfn-lint integrations/*/template.yaml
+cfn-lint --ignore-checks W -- integrations/*/template*.yaml shared/templates/*.yaml
 ```
+
+## Documentation and policy checks
+
+The first two fail the build. Run them before opening a PR if you touched docs or
+templates.
+
+```bash
+# Executable code blocks must be identical between docs/ja and docs/en.
+# Prose is translated; the commands are not. Drop --check to fix drift.
+python3 shared/scripts/sync-code-blocks.py --check
+
+# The per-language document index is generated, not hand-edited.
+# A new document needs a category in the script, or this fails.
+python3 shared/scripts/generate-docs-index.py --check
+
+# cfn-guard rules, including a self-test that proves the rules still fire.
+bash guard/tests/run-guard-selftest.sh
+
+# Heading structure between languages (advisory, does not fail the build).
+bash shared/scripts/check-bilingual-sync.sh
+```
+
+Diagram fences (untagged, `mermaid`, `text`) stay localised on purpose and are not
+touched by the code-block check — see AGENTS.md for why.
 
 ## Commit Convention
 
@@ -92,6 +116,19 @@ chore: update cfn-lint to v1.x
 ```
 
 Conventional Commits format. English only. Keep subject under 72 characters.
+
+Allowed types: `feat` `fix` `docs` `bench` `chore` `refactor` `test` `ci` `perf` `style`.
+
+**Your PR title needs the same prefix.** CI fails the PR if it does not have one,
+because this repository squash-merges and GitHub builds the squash commit message
+from the PR title. Titles over 70 characters get a warning, not a failure. Fixing
+the title re-runs the check automatically — no new push needed.
+
+```
+feat: add S3 AP presigned URL support
+fix(shared): handle empty ONTAP response
+feat!: drop Python 3.11 support          # ! marks a breaking change
+```
 
 ## License
 

@@ -137,6 +137,7 @@ docs/
 
 .github/
   ├── workflows/ci.yaml      # Full CI: all vendors pytest + coverage + cfn-lint + cfn-guard + bilingual sync
+  ├── workflows/pr-title-check.yml  # Conventional Commits gate on PR titles (blocking)
   └── ISSUE_TEMPLATE/        # Bug report + feature request templates
 
 ROADMAP.md                   # Phase 1-4 milestones
@@ -189,9 +190,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 ## Non-Obvious Patterns
 
-### ⚠️ CRITICAL: FSx ONTAP S3 Access Points — Network Constraints
+### ⚠️ CRITICAL: FSx for ONTAP S3 Access Points — Network Constraints
 
-**VPC-internal Lambda with only a Gateway Endpoint timed out accessing Internet-origin FSx ONTAP S3 Access Points in our environment.**
+**VPC-internal Lambda with only a Gateway Endpoint timed out accessing Internet-origin FSx for ONTAP S3 Access Points in our environment.**
 
 This is the #1 source of deployment failures. The observed behavior is that Internet-origin S3 APs require an internet-routed path (NAT Gateway or VPC-external Lambda) when accessed from within a VPC.
 
@@ -209,9 +210,9 @@ This is the #1 source of deployment failures. The observed behavior is that Inte
 - Lambda functions that need BOTH S3 AP + ONTAP REST API → Deploy **in VPC with NAT Gateway**
 - Lambda functions that ONLY call ONTAP REST API → Deploy **in VPC** (no NAT needed if using Interface VPC Endpoints for FSx)
 
-### S3 Access Points for FSx ONTAP — ARN and IAM
+### S3 Access Points for FSx for ONTAP — ARN and IAM
 
-FSx ONTAP S3 Access Points provide dual-protocol (NFS/SMB + S3) access to the same data without copying.
+FSx for ONTAP S3 Access Points provide dual-protocol (NFS/SMB + S3) access to the same data without copying.
 
 **Correct ARN format**:
 ```
@@ -263,9 +264,9 @@ if cifs_data.get("records"):
 
 **Impact on Step Functions workflows**: The `restore-verification.yaml` template includes this check in `CreateFlexClone` Lambda, failing immediately with `AD CONNECTIVITY FAILURE` instead of waiting 30+ min for FSx discovery + AP creation only to hit AccessDenied at scan time.
 
-### FSx ONTAP S3 AP — Unsupported S3 Features
+### FSx for ONTAP S3 AP — Unsupported S3 Features
 
-The following S3 features are NOT supported on FSx ONTAP S3 Access Points:
+The following S3 features are NOT supported on FSx for ONTAP S3 Access Points:
 
 | Feature | Status | Workaround |
 |---------|--------|-----------|
@@ -277,7 +278,7 @@ The following S3 features are NOT supported on FSx ONTAP S3 Access Points:
 | SSE-KMS (custom keys) | ❌ SSE-FSX only | Use FSx volume-level KMS encryption |
 | PutObject > 5GB | ❌ 5GB limit | Multipart upload within 5GB |
 
-**Key implication for this project**: We use a **standard S3 bucket** as the audit log destination (which supports EventBridge notifications), NOT the FSx ONTAP S3 Access Point directly. The S3 AP is used for Lambda to read the logs from the bucket.
+**Key implication for this project**: We use a **standard S3 bucket** as the audit log destination (which supports EventBridge notifications), NOT the FSx for ONTAP S3 Access Point directly. The S3 AP is used for Lambda to read the logs from the bucket.
 
 Reference: [AWS Docs — S3 AP API Support](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/access-points-for-fsxn-object-api-support.html) | [AWS Blog — S3 Access Points for FSx](https://aws.amazon.com/blogs/storage/bridge-legacy-and-modern-applications-with-amazon-s3-access-points-for-amazon-fsx/)
 
@@ -318,7 +319,7 @@ if response["records"] and response["records"][0]["enabled"]:
 
 ### Audit log formats
 
-FSx ONTAP outputs audit logs in EVTX (Windows Event Log binary) or XML format depending on SVM audit configuration (`vserver audit create -format {evtx|xml}`). The `shared/lambda-layers/log-parser/` handles both. EVTX files start with magic bytes `ElfFile\x00`. XML logs contain `<Event>` elements with system and event data.
+FSx for ONTAP outputs audit logs in EVTX (Windows Event Log binary) or XML format depending on SVM audit configuration (`vserver audit create -format {evtx|xml}`). The `shared/lambda-layers/log-parser/` handles both. EVTX files start with magic bytes `ElfFile\x00`. XML logs contain `<Event>` elements with system and event data.
 
 > **ONTAP CLI note**: ONTAP 9.11+ deprecates the `vserver` prefix on FPolicy commands (e.g., `vserver fpolicy` → `fpolicy`). Both forms work for backward compatibility. This project uses the deprecated form for compatibility with older ONTAP versions on FSx.
 
@@ -330,11 +331,24 @@ API keys are fetched from Secrets Manager once per Lambda execution context (col
 
 ### Bilingual documentation sync
 
-Japanese (`docs/ja/`) is the primary language. English (`docs/en/`) must mirror the same heading structure and content. When modifying docs, always update both languages. Code examples are identical across languages.
+Japanese (`docs/ja/`) is the primary language. English (`docs/en/`) must mirror the same heading structure and content. When modifying docs, always update both languages.
 
-Run `bash shared/scripts/check-bilingual-sync.sh` to verify sync status. This is also checked in CI (non-blocking).
+#### What "code examples are identical" covers
 
-Current state: 50 English files, 56 Japanese files (fully synced + 6 verification-results files in ja/ only).
+| Fence | Treatment | Why |
+|-------|-----------|-----|
+| ```bash ```yaml ```json ```python ```sql ```hcl ... | **Byte-identical across languages**, English is the source | These are commands a reader executes. If the Japanese guide's comment says something the English one doesn't, the two guides describe different runs, and only one of them was verified. |
+| Untagged, ```mermaid, ```text | **Localised on purpose** | ASCII architecture diagrams, flow sketches and captured output. Their labels are prose — a Japanese reader is better served by `AI エージェント層` than by an English label. Forcing English here would degrade the primary language for no benefit. |
+
+Enforced by `python3 shared/scripts/sync-code-blocks.py --check` and
+`shared/python/tests/test_code_block_sync.py`. To fix drift, run the script
+without `--check`; it rewrites the Japanese side from the English one.
+
+The script refuses to act when the two files disagree on fence count or on a
+block's language tag, because block indices would no longer describe the same
+content and it would copy the wrong text. Those cases are reported for a human.
+
+Run `bash shared/scripts/check-bilingual-sync.sh` to verify heading-structure sync. This is also checked in CI.
 
 ### AgentCore MCP Gateway — Integration Knowledge (verified 2026-07)
 
@@ -627,7 +641,7 @@ aws cloudformation deploy \
   --parameter-overrides AuditLogBucketName=<unique-name> \
   --capabilities CAPABILITY_IAM
 
-# 2. Enable FSx ONTAP audit logging
+# 2. Enable FSx for ONTAP audit logging
 bash shared/scripts/ontap-audit-setup.sh --endpoint <ip> --svm <name> --dry-run
 
 # 3. Deploy vendor stack using outputs from step 1
@@ -673,8 +687,8 @@ never notify anyone. Pass the `IngestionQueueArn` output to the vendor stack as
 - Fargate task IP changes on restart — ONTAP External Engine must be updated
 
 Two patterns exist:
-- **Pattern A (existing FSx ONTAP)**: Deploy prerequisites.yaml → enable audit → deploy vendor stack
-- **Pattern B (from scratch)**: Create FSx ONTAP → then Pattern A
+- **Pattern A (existing FSx for ONTAP)**: Deploy prerequisites.yaml → enable audit → deploy vendor stack
+- **Pattern B (from scratch)**: Create FSx for ONTAP → then Pattern A
 
 Full guide: `docs/ja/prerequisites.md` / `docs/en/prerequisites.md`
 
@@ -747,6 +761,24 @@ chore: update cfn-lint to v1.x
 ```
 
 Conventional Commits format. English only. Keep subject under 72 characters.
+
+Allowed types: `feat` `fix` `docs` `bench` `chore` `refactor` `test` `ci` `perf` `style`.
+
+### PR titles are enforced
+
+`.github/workflows/pr-title-check.yml` fails a PR whose title lacks a valid
+Conventional Commits prefix, and warns (without failing) above 70 characters.
+This matters because the repository squash-merges and GitHub seeds the squash
+commit message from the PR title — an unprefixed title becomes an unprefixed
+commit, discoverable only after merge.
+
+```
+<type>(<optional-scope>)<optional-!>: <description>
+
+feat: add S3 AP presigned URL support
+fix(shared): handle empty ONTAP response
+feat!: drop Python 3.11 support          # ! marks a breaking change
+```
 
 ## Supply-Chain Security
 

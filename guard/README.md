@@ -131,6 +131,77 @@ violation. Without the filter, every `!Ref`'d value is reported.
 example `when %x !empty { %x !empty }` reports compliance without checking
 anything.
 
+**A missing property is reported as a violation, not skipped.** If a rule
+traverses `Properties.Policies[*].PolicyDocument` and a role has only
+`ManagedPolicyArns`, Guard raises `RequiredPropertyError` and counts the resource
+non-compliant. The rule then accuses every managed-policy-only role of the thing
+it was written to catch. Filter the resource out before traversing:
+
+```
+# Reports every role that has no inline Policies
+let iam_roles = Resources.*[ Type == "AWS::IAM::Role" ]
+%iam_roles.Properties.Policies[*].PolicyDocument.Statement[*] { Action != "*" }
+
+# Only inspects roles that actually declare inline policies
+let iam_roles = Resources.*[
+  Type == "AWS::IAM::Role"
+  Properties.Policies exists
+]
+%iam_roles.Properties.Policies[ PolicyDocument exists ].PolicyDocument.Statement[*] { Action != "*" }
+```
+
+The inner `[ PolicyDocument exists ]` is a second, separate guard: it drops
+conditionally included entries written as `- !If [Cond, {...}, !Ref
+AWS::NoValue]`, whose only key is `Fn::If`. Statements inside such an entry are
+consequently unchecked — prefer a resource-level `Condition:` on a separate
+`AWS::IAM::Policy`, which keeps the statements visible.
+
+**A `[ ... ]` filter on a struct selects nothing, and the rule reports SKIP.**
+Filters work on collections. Applied to a single struct they match nothing, and a
+skipped rule looks exactly like a passing one in the summary. Use `when` for
+struct-valued properties:
+
+```
+# SKIP — silently checks nothing
+%services.Properties.NetworkConfiguration.AwsvpcConfiguration[ AssignPublicIp is_string ] {
+  AssignPublicIp == "DISABLED"
+}
+
+# Evaluates
+%services.Properties.NetworkConfiguration.AwsvpcConfiguration {
+  when AssignPublicIp is_string {
+    AssignPublicIp == "DISABLED"
+  }
+}
+```
+
+## Scope: every rule file runs against every template
+
+`management-console-security.guard` was once limited to
+`management-console/templates/`. Widening it produced 19 findings, of which all
+but a handful were the shapes described above rather than real problems — roles
+with only `ManagedPolicyArns`, `Fn::If`-wrapped policy entries, and `CidrIp` /
+`AssignPublicIp` values arriving by parameter. A rule set that is mostly wrong on
+first contact gets switched off, so the scoping was hiding a rule-quality problem
+rather than a template-quality one.
+
+The rules now filter those shapes and `guard/tests/positive-control.yaml` carries
+one instance of each, so removing a filter fails the self-test instead of
+returning the noise. Of the genuine findings that remained:
+
+- `ec2:CreateNetworkAclEntry` / `DeleteNetworkAclEntry` in
+  `automated-response.yaml` were narrowed from `Resource: '*'` to the
+  `network-acl` resource type. The specific NACL cannot be named because
+  `network_block.py` discovers it at run time from the subnet ID.
+- Actions that AWS defines as not resource-scopable were added to the allowlist
+  in Rule 2, each with the reason and a documentation link — `cloudwatch:PutMetricData`
+  (scoped by the `cloudwatch:namespace` condition key instead), the Step Functions
+  `logs:*LogDelivery` group, `comprehend:DetectPiiEntities`, `ce:GetCostAndUsage`,
+  and the `fsx:*S3AccessPoint*` lifecycle actions.
+
+When adding an allowlist entry, cite why the action cannot be scoped. An
+allowlist that grows without reasons is the same failure as no rule at all.
+
 ## The DLQ exemption
 
 `lambda_has_dlq` and `lambda_has_dead_letter_config` require either a

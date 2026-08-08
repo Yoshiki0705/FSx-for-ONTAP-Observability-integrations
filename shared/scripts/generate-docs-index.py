@@ -180,6 +180,7 @@ CATEGORIES: list[tuple[str, str, list[str]]] = [
             "verification-results-datadog",
             "verification-results-splunk",
             "verification-results-otel-collector",
+            "verification-results-grafana",
             "verification-results-new-relic",
             "verification-results-elastic",
             "verification-results-dynatrace",

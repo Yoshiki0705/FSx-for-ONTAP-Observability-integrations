@@ -86,9 +86,13 @@ FSx for ONTAP は 3 種類のテレメトリを出力し、それぞれ専用の
 | — | **未実装**。その経路のハンドラが存在しません。 |
 
 EMS / FPolicy 列の ✅ の根拠: Datadog（実 ONTAP ファイルシステムに対する検証記録、ステップ
-E1〜E4）、Grafana Cloud（`grafana-ems-events.png` / `grafana-fpolicy-events.png`）、
+E1〜E4）、Grafana Cloud（スクリーンショット証跡。[検証記録](verification-results-grafana.md)に索引化）、
 OTel Collector（検証記録。ただし EMS のステップはローカル Collector に対するサンプル OTLP
 ペイロードで実施しており、実 ONTAP の Webhook ではありません）。
+
+🔧 の経路については、各ベンダーの記録が沈黙せず明示しています。例として
+[Splunk の記録](verification-results-splunk.md)は、検証済みの監査ログ経路と未記録の
+EMS / FPolicy / Firehose 経路を分けて記載しています。
 
 `—` の経路については `scripts/deploy.sh` が該当スタックをスキップして理由を出力します。
 プレースホルダ Lambda をデプロイするとイベントを受け取ったうえで全件破棄することになる
@@ -257,6 +261,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [Datadog 統合 動作確認結果](verification-results-datadog.md)
 - [Splunk Serverless 統合 動作確認結果](verification-results-splunk.md)
 - [OTel Collector 統合 E2E 検証結果](verification-results-otel-collector.md)
+- [Grafana Cloud 統合 動作確認結果](verification-results-grafana.md)
 - [New Relic 統合 動作確認結果](verification-results-new-relic.md)
 - [Elastic 統合 動作確認結果](verification-results-elastic.md)
 - [Dynatrace 統合 動作確認結果](verification-results-dynatrace.md)
@@ -286,10 +291,10 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 <details><summary>🔧 開発者向け</summary>
 
 ```bash
-npm install                  # 依存関係インストール
-npm test                     # TypeScript テスト
-python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v  # 全 Python テスト
-cfn-lint integrations/*/template.yaml   # CloudFormation バリデーション
+npm install                  # Install dependencies
+npm test                     # TypeScript tests
+python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v  # All Python tests
+cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
 - **技術スタック**: CloudFormation (YAML) · Python 3.12 Lambda · TypeScript · GitHub Actions CI

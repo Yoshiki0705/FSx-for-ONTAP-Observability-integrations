@@ -87,10 +87,15 @@ rather than marking both with the same tick.
 | — | **Not implemented.** No handler exists for that path. |
 
 Evidence behind the ✅ marks in the EMS and FPolicy columns: Datadog (verification
-record, steps E1–E4 against a live ONTAP file system), Grafana Cloud
-(`grafana-ems-events.png`, `grafana-fpolicy-events.png`), OTel Collector
-(verification record — note its EMS step was exercised with a sample OTLP payload
-against a local collector rather than a live ONTAP webhook).
+record, steps E1–E4 against a live ONTAP file system), Grafana Cloud (screenshot
+evidence, indexed in its [verification record](docs/en/verification-results-grafana.md)),
+OTel Collector (verification record — note its EMS step was exercised with a sample
+OTLP payload against a local collector rather than a live ONTAP webhook).
+
+Where a path is marked 🔧, the vendor's own record says so explicitly rather than
+staying silent — see for example the
+[Splunk record](docs/en/verification-results-splunk.md), which separates the verified
+audit path from the unrecorded EMS, FPolicy and Firehose paths.
 
 For a `—` path, `scripts/deploy.sh` skips the corresponding stack and prints why,
 rather than deploying a placeholder Lambda that would accept events and discard

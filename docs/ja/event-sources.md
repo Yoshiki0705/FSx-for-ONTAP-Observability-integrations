@@ -140,20 +140,20 @@ ONTAP EMS → Webhook (HTTPS) → API Gateway → Lambda → Vendor API
 
 **ONTAP CLI 設定:**
 ```bash
-# 1. Webhook 通知先を作成
+# 1. Create Webhook notification destination
 event notification destination create -name aws-apigw \
   -syslog-transport https \
   -syslog-port 443 \
   -url https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems
 
-# 2. イベントフィルタを作成
+# 2. Create event filter
 event filter create -filter-name arp-and-quota
 event filter rule add -filter-name arp-and-quota -type include \
   -message-name arw.volume.state
 event filter rule add -filter-name arp-and-quota -type include \
   -message-name wafl.quota.*
 
-# 3. 通知を設定
+# 3. Create notification
 event notification create -filter-name arp-and-quota \
   -destinations aws-apigw
 ```
@@ -252,27 +252,27 @@ FPolicy は独自バイナリプロトコル (TCP) を使用するため、HTTP/
 ### FPolicy 設定
 
 ```bash
-# 1. FPolicy 外部エンジンを作成（ポート 9898、非同期モード）
+# 1. Create FPolicy External Engine (port 9898, asynchronous mode)
 vserver fpolicy policy external-engine create -vserver FPolicySMB \
   -engine-name fpolicy_lambda_engine \
   -primary-servers <fargate-task-ip> \
   -port 9898 \
   -extern-engine-type asynchronous
 
-# 2. FPolicy イベントを作成
+# 2. Create FPolicy Event
 vserver fpolicy policy event create -vserver FPolicySMB \
   -event-name file-ops-event \
   -protocol cifs \
   -file-operations create,write,rename,delete
 
-# 3. FPolicy ポリシーを作成
+# 3. Create FPolicy Policy
 vserver fpolicy policy create -vserver FPolicySMB \
   -policy-name file-screening \
   -events file-ops-event \
   -engine fpolicy_lambda_engine \
   -is-mandatory false
 
-# 4. FPolicy を有効化
+# 4. Enable FPolicy
 vserver fpolicy enable -vserver FPolicySMB \
   -policy-name file-screening \
   -sequence-number 1

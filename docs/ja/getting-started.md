@@ -17,7 +17,7 @@
 FSx for ONTAP コンソールまたは CLI で監査ログを有効化し、S3 バケットへの出力を設定します。
 
 ```bash
-# ONTAP CLI で監査ログ有効化
+# Enable audit logging via ONTAP CLI
 vserver audit create -vserver <svm-name> \
   -destination /vol/audit_logs \
   -format evtx \
@@ -55,7 +55,7 @@ VPC-origin の場合は
 スクリプトはスタックのデプロイ**と**実コードのアップロードの両方を行います。
 
 ```bash
-# 例: Datadog 統合
+# Example: Datadog integration
 export DATADOG_API_KEY_SECRET_ARN="arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:fsxn-datadog-api-key-XXXXXX"
 export FSX_S3_ACCESS_POINT_ARN="arn:aws:s3:ap-northeast-1:123456789012:accesspoint/fsxn-audit-ap"
 export DATADOG_SITE="ap1.datadoghq.com"
@@ -78,7 +78,7 @@ aws cloudformation deploy \
     DatadogSite=ap1.datadoghq.com \
   --capabilities CAPABILITY_NAMED_IAM
 
-# 必須: placeholder を実ハンドラに置き換える
+# Required: replace the placeholder with the real handler
 cd integrations/datadog/lambda && zip function.zip handler.py
 aws lambda update-function-code \
   --function-name fsxn-datadog-integration-shipper \

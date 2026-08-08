@@ -438,6 +438,7 @@ Grafana Alloy (ECS Fargate)
 ### Grafana Alerting ルール例
 
 ```yaml
+# Example: Alert when volume IOPS exceeds threshold
 groups:
   - name: fsxn-fsa-alerts
     rules:
@@ -447,7 +448,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "ボリューム {{ $labels.volume }} で高 IOPS 検知"
+          summary: "High IOPS on volume {{ $labels.volume }}"
 
       - alert: InactiveDataRatioHigh
         expr: ontap_volume_inactive_data_bytes / ontap_volume_used_bytes > 0.7
@@ -455,7 +456,7 @@ groups:
         labels:
           severity: info
         annotations:
-          summary: "{{ $labels.volume }} で 70%+ の非アクティブデータ — ティアリング検討"
+          summary: "70%+ inactive data on {{ $labels.volume }} — consider tiering"
 ```
 
 ### コスト比較

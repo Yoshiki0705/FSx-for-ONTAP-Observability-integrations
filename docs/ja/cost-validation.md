@@ -66,7 +66,7 @@
 ## 測定コマンド
 
 ```bash
-# 過去 30 日間の Lambda コストを取得
+# Get Lambda cost for the last 30 days
 aws ce get-cost-and-usage \
   --time-period Start=2026-05-01,End=2026-06-01 \
   --granularity MONTHLY \
@@ -79,7 +79,7 @@ aws ce get-cost-and-usage \
   }' \
   --region ap-northeast-1
 
-# fsxn スタックにタグ付けされた全コストを取得
+# Get all costs tagged with fsxn stacks
 aws ce get-cost-and-usage \
   --time-period Start=2026-05-01,End=2026-06-01 \
   --granularity MONTHLY \

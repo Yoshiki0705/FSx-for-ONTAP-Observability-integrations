@@ -2,261 +2,104 @@
 
 🌐 [日本語](../ja/verification-results-splunk.md) | **English** (this page)
 
-> **This record is an unfilled template.** Every judgment cell below still reads
-> `<PASS/FAIL>` and the environment fields are placeholders — no verification run
-> has been written up here yet. The audit log path itself was exercised: see
-> `integrations/splunk-serverless/screenshots/splunk-e2e-search-fsxn-audit-xml.png`
-> for the Splunk search showing FSx for ONTAP audit events. The EMS and FPolicy
-> paths have handlers and stacks but no recorded end-to-end run, which is why the
-> [telemetry path coverage](README.md#telemetry-path-coverage) matrix marks them
-> 🔧 rather than ✅.
-
-- **Verification Date**: <verification-date>
-- **Verifier**: <verifier-name> / <role>
-
-### Verification Environment
-
-- **AWS Region**: ap-northeast-1
-- **CloudFormation Stack Name**: <stack-name>
-- **Lambda Function Name**: fsxn-splunk-log-shipper
-- **Splunk HEC Endpoint**: <HEC endpoint URL>
-- **Splunk Index**: fsxn_audit
-- **FSx for ONTAP File System**: <file-system-id>
-- **S3 Access Point**: <S3 Access Point ARN>
-- **HEC Token Secret ARN**: <Secrets Manager ARN>
+> **This file used to be an unfilled template** — every judgment cell read
+> `<PASS/FAIL>` and the environment fields were placeholders, which looked like a
+> verification record while asserting nothing. It has been replaced with the
+> evidence that does exist, recorded in
+> [the integration README](../../integrations/splunk-serverless/README.md#e2e-verification-evidence).
+> The blank form it used to be is redundant with
+> [`shared/scripts/vendor-verification-checklist.md`](../../shared/scripts/vendor-verification-checklist.md),
+> which is the checklist to work through for a new run.
 
 ---
 
-## Verification Steps
+## Audit log path — verified
 
-| Step # | Step Name | Command | Expected Result | Actual Result | Judgment |
-|:---:|---|---|---|---|:---:|
-| 1 | CloudFormation Stack Deployment | `aws cloudformation deploy --template-file integrations/splunk-serverless/template.yaml --stack-name <stack-name> ...` | CREATE_COMPLETE | <actual-result> | <PASS/FAIL> |
-| 2 | HEC Token Validation | `python3 scripts/verification/splunk_token_validator.py --secret-arn <ARN>` | UUID format match | <actual-result> | <PASS/FAIL> |
-| 3 | Lambda Test Event Invocation | `aws lambda invoke --function-name fsxn-splunk-log-shipper --payload file://integrations/splunk-serverless/tests/test_data/sample_s3_event.json response.json` | statusCode: 200, total_shipped > 0 | <actual-result> | <PASS/FAIL> |
-| 4 | CloudWatch Logs Verification | `aws logs filter-log-events --log-group-name /aws/lambda/fsxn-splunk-log-shipper --filter-pattern "Successfully shipped"` | "Successfully shipped" log output | <actual-result> | <PASS/FAIL> |
-| 5 | Splunk Search Log Arrival Confirmation | SPL query execution (see below) | At least 1 event returned | <actual-result> | <PASS/FAIL> |
-| 6 | Field Validation | Expand event in Splunk Search | All required fields non-empty | <actual-result> | <PASS/FAIL> |
-| 7 | Screenshot Verification | `python3 scripts/verification/splunk_screenshot_validator.py docs/screenshots/splunk/` | 3 files, naming convention compliant, ≤500KB | <actual-result> | <PASS/FAIL> |
-| 8 | Setup Guide Bilingual Verification | `python3 scripts/verification/bilingual_comparator.py --ja integrations/splunk-serverless/docs/ja/setup-guide.md --en integrations/splunk-serverless/docs/en/setup-guide.md` | Heading structure match | <actual-result> | <PASS/FAIL> |
+**Environment**: Splunk Enterprise 10.4.0 running locally in Docker
+(`splunk/splunk:latest`, `--platform linux/amd64`), HEC token supplied through the
+`SPLUNK_HEC_TOKEN` environment variable.
+
+**Method**: `python3 shared/scripts/test-xml-e2e.py --vendor splunk`
+
+| Item | Result |
+|------|--------|
+| XML audit log parsing | ✅ 5 events parsed (EventID 4663 / 4656 / 4660) |
+| HEC delivery | ✅ HTTP 200, body `{"text":"Success","code":0}` |
+| Splunk indexing | ✅ 5 events confirmed in the `fsxn_audit` index |
+| Field extraction | ✅ `user`, `path`, `client_ip`, `event_type`, `result`, `svm`, `timestamp` |
+| Splunk Search UI | ✅ All events searchable and field-parsed |
+
+**Screenshot**: [`integrations/splunk-serverless/screenshots/splunk-e2e-search-fsxn-audit-xml.png`](../../integrations/splunk-serverless/screenshots/splunk-e2e-search-fsxn-audit-xml.png)
+
+### Scope of that result
+
+Splunk Enterprise in Docker is a legitimate target — it is the same HTTP Event
+Collector API and the same `/services/collector/event` contract that Splunk Cloud
+exposes, so a HEC payload accepted here is accepted there. What it does not
+exercise is Splunk Cloud's own ingress: DNS, TLS termination and the token issued
+by a Cloud stack.
+
+That substitution was not a shortcut. Splunk Cloud **free trial** accounts do not
+reliably provision the HEC DNS record (`http-inputs-<stack>.splunkcloud.com`), so
+a trial cannot be used for this test at all. Use Splunk Enterprise for local
+validation, or a paid Splunk Cloud tier for a production-representative run.
 
 ---
 
-## Detailed Verification Steps
+## EMS and FPolicy paths — not recorded
 
-### Step 1: CloudFormation Stack Deployment
+`integrations/splunk-serverless/template-fpolicy.yaml` ships, and the EMS handler
+is covered by unit tests, but **no end-to-end run has been recorded for either
+path**. This is why the
+[telemetry path coverage](README.md#telemetry-path-coverage) matrix marks both
+🔧 (implemented, not yet E2E verified) rather than ✅.
 
-- **Result**: <PASS/FAIL>
+Treat them as untested rather than broken: the shared EMS and FPolicy
+infrastructure itself is verified in
+[EMS/FPolicy E2E Verification Results](verification-results-ems-fpolicy.md), and
+the Splunk handlers reuse the same `shared/python/ems_event.py` and
+`shared/python/fpolicy_event.py` plumbing that the verified vendors use. What is
+unverified is the Splunk-specific delivery of those two event types.
+
+---
+
+## Firehose path — not recorded
+
+`template-firehose.yaml` provides the high-volume alternative (Splunk has a
+built-in Firehose destination, so this path needs no Lambda per record). It has no
+recorded end-to-end run either.
+
+---
+
+## What is not recorded
+
+| Item | Status |
+|------|--------|
+| Verification date and verifier | Not recorded |
+| AWS account, CloudFormation stack name | Not recorded |
+| Splunk Cloud endpoint run | Not performed — see scope note above |
+| EMS path E2E | Not recorded |
+| FPolicy path E2E | Not recorded |
+| Firehose path E2E | Not recorded |
+
+---
+
+## Automated coverage
 
 ```bash
-aws cloudformation deploy \
-  --template-file integrations/splunk-serverless/template.yaml \
-  --stack-name <stack-name> \
-  --parameter-overrides \
-    S3AccessPointArn=<S3 Access Point ARN> \
-    HecTokenSecretArn=<Secrets Manager ARN> \
-    SplunkHecEndpoint=<HEC endpoint URL> \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
+python -m pytest integrations/splunk-serverless/tests/ -v
 ```
 
-- **Stack Status**: <CREATE_COMPLETE / FAILED>
-- **Created Resources**: Lambda Function, IAM Role, DLQ, CloudWatch Alarms, EventBridge Rule
+119 tests, covering HEC payload construction, batch splitting, the Firehose
+transform function, EMS and FPolicy event parsing, and checkpoint handling. These
+verify payload shape, not delivery.
 
 ---
 
-### Step 2: HEC Token Validation
+## Related Documents
 
-- **Result**: <PASS/FAIL>
-
-```bash
-python3 scripts/verification/splunk_token_validator.py \
-  --secret-arn <Secrets Manager ARN>
-```
-
-- **Token Format**: <UUID format match / mismatch>
-- **Validation Output**: <output>
-
----
-
-### Step 3: Lambda Test Event Invocation
-
-- **Result**: <PASS/FAIL>
-
-```bash
-aws lambda invoke \
-  --function-name fsxn-splunk-log-shipper \
-  --payload file://integrations/splunk-serverless/tests/test_data/sample_s3_event.json \
-  --cli-binary-format raw-in-base64-out \
-  --region ap-northeast-1 \
-  response.json
-```
-
-- **Response**:
-```json
-{"statusCode": <status-code>, "body": {"total_logs": <count>, "total_shipped": <count>, "errors": []}}
-```
-
-- **Checklist**:
-  - [ ] statusCode: 200
-  - [ ] total_logs > 0
-  - [ ] total_shipped == total_logs
-  - [ ] errors: [] (empty)
-
----
-
-### Step 4: CloudWatch Logs Verification
-
-- **Result**: <PASS/FAIL>
-
-```bash
-aws logs filter-log-events \
-  --log-group-name /aws/lambda/fsxn-splunk-log-shipper \
-  --filter-pattern "Successfully shipped" \
-  --start-time $(date -d '15 minutes ago' +%s000) \
-  --region ap-northeast-1
-```
-
-- **Checklist**:
-  - [ ] Log line containing "Successfully shipped" exists
-  - [ ] Timestamp is after the test event invocation
-
----
-
-### Step 5: Splunk Search Log Arrival Confirmation
-
-- **Result**: <PASS/FAIL>
-
-Execute the following SPL query in Splunk Search:
-
-```spl
-index=fsxn_audit sourcetype=fsxn:ontap:audit earliest=-15m
-```
-
-- **Returned Events**: <count>
-- **Time to Arrival**: <seconds>
-
-- **Checklist**:
-  - [ ] At least 1 event returned
-  - [ ] sourcetype is `fsxn:ontap:audit`
-  - [ ] index is `fsxn_audit`
-
----
-
-### Step 6: Field Validation
-
-- **Result**: <PASS/FAIL>
-
-Expand an event in Splunk Search and verify the following fields:
-
-| Field Name | Expected Value | Actual Value | Required Non-empty | Result |
-|---|---|---|:---:|:---:|
-| host | SVM name | <actual-value> | ✅ | <PASS/FAIL> |
-| source | fsxn-observability | <actual-value> | ✅ | <PASS/FAIL> |
-| sourcetype | fsxn:ontap:audit | <actual-value> | ✅ | <PASS/FAIL> |
-| index | fsxn_audit | <actual-value> | ✅ | <PASS/FAIL> |
-| event_type | Event type | <actual-value> | ✅ | <PASS/FAIL> |
-| user | Username | <actual-value> | ✅ | <PASS/FAIL> |
-| operation | Operation type | <actual-value> | ✅ | <PASS/FAIL> |
-| path | File path | <actual-value> | ✅ | <PASS/FAIL> |
-| result | Success/Failure | <actual-value> | ✅ | <PASS/FAIL> |
-| svm | SVM name | <actual-value> | ✅ | <PASS/FAIL> |
-
----
-
-## Screenshot Evidence
-
-Save the following screenshots to `docs/screenshots/splunk/`:
-
-| # | Filename | Content | Checklist |
-|---|---|---|---|
-| 1 | `splunk-cloudwatch-logs-<YYYYMMDD>.png` | Lambda CloudWatch Logs showing "Successfully shipped" log line with timestamp | [ ] ≤500KB, PNG format |
-| 2 | `splunk-search-results-<YYYYMMDD>.png` | Splunk Search results showing `index`, `sourcetype`, `host`, `source` fields | [ ] ≤500KB, PNG format |
-| 3 | `splunk-dashboard-<YYYYMMDD>.png` | Splunk dashboard with at least one panel containing FSx for ONTAP audit log data | [ ] ≤500KB, PNG format |
-
-![Lambda CloudWatch Logs](../screenshots/splunk/splunk-cloudwatch-logs-<YYYYMMDD>.png)
-
-![Splunk Search Results](../screenshots/splunk/splunk-search-results-<YYYYMMDD>.png)
-
-![Splunk Dashboard](../screenshots/splunk/splunk-dashboard-<YYYYMMDD>.png)
-
----
-
-## Setup Guide Bilingual Verification
-
-- **Result**: <PASS/FAIL>
-
-```bash
-python3 scripts/verification/bilingual_comparator.py \
-  --ja integrations/splunk-serverless/docs/ja/setup-guide.md \
-  --en integrations/splunk-serverless/docs/en/setup-guide.md
-```
-
-- **Heading Count**: <count> (match / mismatch)
-- **Code Block Count**: <count> (match / mismatch)
-- **Table Count**: <count> (match / mismatch)
-- **Differences**: <count>
-
-| # | Section | Diff Type | Details |
-|---|---------|-----------|---------|
-| - | - | - | - |
-
----
-
-## E2E Latency Measurement
-
-| Measurement | Value |
-|---|---|
-| S3 Object Creation Timestamp | <timestamp> |
-| Lambda Invocation Timestamp | <timestamp> |
-| Splunk `_indextime` | <timestamp> |
-| **E2E Latency (S3 creation → Splunk searchable)** | **<latency> seconds** |
-
-### Latency Breakdown
-
-| Segment | Duration |
-|---|---|
-| S3 Object Creation → EventBridge Trigger | <seconds> s |
-| EventBridge → Lambda Invocation | <seconds> s |
-| Lambda Processing (S3 read + HEC submission) | <seconds> s |
-| HEC Receipt → Splunk Index Complete | <seconds> s |
-| **Total** | **<latency> seconds** |
-
----
-
-## Detected Issues and Resolutions
-
-| # | Issue | Severity | Resolution | Status |
-|---|-------|----------|------------|--------|
-| 1 | <issue> | <High/Medium/Low> | <resolution> | <✅ Resolved / 📝 Documented / 🔄 In Progress> |
-
----
-
-## Troubleshooting Log
-
-Items to check if no events are returned by SPL query within 15 minutes:
-
-| # | Check Item | Command/Procedure | Result |
-|---|-----------|-------------------|--------|
-| 1 | Lambda invocation confirmation | Check log streams in CloudWatch Logs | <result> |
-| 2 | HEC endpoint connectivity | `curl -k https://<HEC_ENDPOINT>:8088/services/collector/health` | <result> |
-| 3 | HEC token validity | `curl -k -H "Authorization: Splunk <TOKEN>" https://<HEC_ENDPOINT>:8088/services/collector/event -d '{"event":"test"}'` | <result> |
-| 4 | Lambda IAM permissions | Check for access denied errors in CloudWatch Logs | <result> |
-| 5 | S3 Access Point connectivity | `aws s3api list-objects-v2 --bucket <AP_ARN> --max-items 1` | <result> |
-
----
-
-## Verification Summary
-
-| Step | Name | Result |
-|------|------|--------|
-| 1 | CloudFormation Stack Deployment | <PASS/FAIL> |
-| 2 | HEC Token Validation | <PASS/FAIL> |
-| 3 | Lambda Test Event Invocation | <PASS/FAIL> |
-| 4 | CloudWatch Logs Verification | <PASS/FAIL> |
-| 5 | Splunk Search Log Arrival Confirmation | <PASS/FAIL> |
-| 6 | Field Validation | <PASS/FAIL> |
-| 7 | Screenshot Verification | <PASS/FAIL> |
-| 8 | Setup Guide Bilingual Verification | <PASS/FAIL> |
-
-**Overall Judgment**: <✅ PASS / ❌ FAIL> (E2E verification <complete / incomplete>)
+- [Splunk Serverless Integration README](../../integrations/splunk-serverless/README.md)
+- [Migration from EC2](../../integrations/splunk-serverless/docs/en/migration-from-ec2.md)
+- [EMS/FPolicy E2E Verification Results](verification-results-ems-fpolicy.md)
+- [Vendor Verification Checklist](../../shared/scripts/vendor-verification-checklist.md)
+- [Vendor Comparison](vendor-comparison.md)

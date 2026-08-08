@@ -1,0 +1,91 @@
+name: PR Title Check
+
+# Enforces Conventional Commits prefixes on pull request titles.
+#
+# The title matters beyond tidiness: this repository squash-merges, and GitHub
+# seeds the squash commit message from the PR title. A title without a valid
+# prefix becomes a commit without one, which is only discoverable after the fact.
+#
+# Deliberately implemented as a plain regex rather than a third-party action.
+# The repository's zizmor policy requires every third-party action to be
+# SHA-pinned, and a five-line comparison is not worth an extra dependency to pin
+# and refresh.
+
+on:
+  pull_request:
+    # `edited` matters as much as `opened`: without it, a title fixed after a
+    # failing run keeps the stale failure, and a valid title edited into an
+    # invalid one is never re-checked.
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        # The title is attacker-controlled text. Passing it through `env` keeps it
+        # out of the script that GitHub Actions renders, so a title containing
+        # shell metacharacters or `${{ }}` cannot alter the command. Interpolating
+        # it directly into `run:` would be a template-injection vector.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          # Keep this list in sync with AGENTS.md § Commit Convention.
+          TYPES='feat|fix|docs|bench|chore|refactor|test|ci|perf|style'
+          # <type>(<optional scope>)<optional !>: <description>
+          #   scope  — lowercase word characters, dots, slashes and dashes
+          #   !      — Conventional Commits breaking-change marker
+          PATTERN="^(${TYPES})(\([a-z0-9._/-]+\))?!?: .+"
+
+          echo "PR title: ${PR_TITLE}"
+          echo ""
+
+          if ! printf '%s' "${PR_TITLE}" | grep -qE "${PATTERN}"; then
+            {
+              echo "## ❌ PR title does not follow Conventional Commits"
+              echo ""
+              echo '```'
+              echo "${PR_TITLE}"
+              echo '```'
+              echo ""
+              echo "Expected \`<type>(<optional-scope>): <description>\` where type is one of:"
+              echo ""
+              echo "\`feat\` \`fix\` \`docs\` \`bench\` \`chore\` \`refactor\` \`test\` \`ci\` \`perf\` \`style\`"
+              echo ""
+              echo "Examples:"
+              echo ""
+              echo "- \`feat: add S3 AP presigned URL support\`"
+              echo "- \`fix(shared): handle empty ONTAP response\`"
+              echo "- \`docs: update deployment guide JA/EN\`"
+              echo "- \`feat!: drop Python 3.11 support\` (breaking change)"
+              echo ""
+              echo "Edit the PR title and this check will re-run automatically."
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "::error title=Invalid PR title::Expected a Conventional Commits prefix (${TYPES//|/, }). See the job summary."
+            exit 1
+          fi
+
+          echo "✅ Prefix is valid."
+
+          # Length is a convention, not a gate. Long titles are worth flagging —
+          # GitHub truncates them in lists and the squash subject inherits them —
+          # but blocking a merge over one character would be disproportionate.
+          LENGTH=${#PR_TITLE}
+          LIMIT=70
+          if [ "${LENGTH}" -gt "${LIMIT}" ]; then
+            echo "::warning title=Long PR title::${LENGTH} characters (guideline is ${LIMIT} or fewer). Move detail into the PR description."
+            {
+              echo "## ⚠️ PR title is ${LENGTH} characters"
+              echo ""
+              echo "The guideline is ${LIMIT} or fewer, so it stays readable in PR lists and"
+              echo "as a squash commit subject. This is a warning, not a failure."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ Length is ${LENGTH} characters (limit ${LIMIT})."
+          fi

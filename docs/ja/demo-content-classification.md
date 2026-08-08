@@ -149,7 +149,7 @@ cat /tmp/scan-response.json
 ### ステップ 2.5: 検出結果が台帳に記録されたことを確認
 
 ```bash
-export STARTED_AT="<前のステップのレスポンスの started_at 値>"
+export STARTED_AT="<started_at value from the previous step's response>"
 
 aws dynamodb get-item \
   --table-name "$REPORT_TABLE" \
@@ -203,13 +203,13 @@ print('files_with_pii:', r.get('files_with_pii'))
 ## クリーンアップ
 
 ```bash
-# Access Point から合成テストファイルを削除
+# Delete the synthetic test file from the access point
 aws s3api delete-object --bucket "$ACCESS_POINT_ARN" --key validation/pii-test-sample.txt
 
-# ローカルの一時ファイルを削除
+# Remove local temp files
 rm -f /tmp/pii-test-sample.txt /tmp/scan-response.json /tmp/scan-response-clean.json
 
-# CloudFormation スタックの削除（オプション）
+# Delete the CloudFormation stack (optional)
 aws cloudformation delete-stack --stack-name fsxn-content-classification
 ```
 

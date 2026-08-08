@@ -41,9 +41,9 @@ CloudFormation が IAM ロール・Lambda・スケジューラ・アラームを
 ```bash
 cd integrations/<vendor>/lambda
 
-# 共有 ONTAP 監査ログパーサをハンドラと同梱します。同梱しないとハンドラは JSON 専用の
-# 解析にフォールバックし、XML/EVTX の監査ログ（= 実際の ONTAP 監査ログはすべてこれ）が
-# フィールド解析されずに配送されます。
+# Bundle the shared ONTAP audit parser alongside the handler. Without it the
+# handler falls back to JSON-only parsing and every XML/EVTX audit log — which
+# is every real ONTAP audit log — arrives without parsed fields.
 zip -j function.zip handler.py ../../../shared/python/ontap_audit_parser.py
 
 aws lambda update-function-code \
@@ -129,9 +129,9 @@ bash integrations/<vendor>/scripts/verify.sh
 ## クリーンアップ
 
 ```bash
-bash integrations/<vendor>/scripts/cleanup.sh          # スタックのみ
-bash integrations/<vendor>/scripts/cleanup.sh --all    # + シークレット・レイヤー・S3 テストデータ
-bash integrations/<vendor>/scripts/cleanup.sh --all -y  # 非対話
+bash integrations/<vendor>/scripts/cleanup.sh          # stacks only
+bash integrations/<vendor>/scripts/cleanup.sh --all    # + secret, layer, S3 test data
+bash integrations/<vendor>/scripts/cleanup.sh --all -y  # non-interactive
 ```
 
 スタックは依存関係を壊さない順序で削除されます。ベンダーが申告した追加スタックが最初、

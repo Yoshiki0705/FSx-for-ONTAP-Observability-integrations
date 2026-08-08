@@ -49,12 +49,12 @@
 
 **確認場所**：
 ```bash
-# デプロイ済みスタックから IAM ポリシーをエクスポート
+# Export IAM policies from deployed stack
 aws cloudformation describe-stack-resources \
   --stack-name fsxn-<vendor>-integration \
   --query 'StackResources[?ResourceType==`AWS::IAM::Role`].PhysicalResourceId'
 
-# ロールポリシーを取得
+# Get role policy
 aws iam get-role-policy \
   --role-name <role-name> \
   --policy-name <policy-name>
@@ -72,12 +72,12 @@ aws iam get-role-policy \
 
 **確認場所**：
 ```bash
-# CloudWatch Log Group の保持期間
+# CloudWatch Log Group retention
 aws logs describe-log-groups \
   --log-group-name-prefix /aws/lambda/fsxn- \
   --query 'logGroups[].{Name:logGroupName, Retention:retentionInDays}'
 
-# SSM パラメータ履歴
+# SSM Parameter history
 aws ssm get-parameter-history \
   --name "/fsxn/<vendor>/audit-checkpoint" \
   --query 'Parameters[-5:].[Version, LastModifiedDate, Value]'
@@ -94,7 +94,7 @@ aws ssm get-parameter-history \
 
 **確認場所**：
 ```bash
-# パイプラインのアラーム一覧
+# List alarms for the pipeline
 aws cloudwatch describe-alarms \
   --alarm-name-prefix fsxn- \
   --query 'MetricAlarms[].{Name:AlarmName, State:StateValue, Actions:AlarmActions}'
@@ -176,7 +176,7 @@ aws cloudwatch describe-alarms \
 
 ```bash
 #!/bin/bash
-# 特定のベンダー統合のコンプライアンスエビデンスを収集
+# Collect compliance evidence for a specific vendor integration
 VENDOR="${1:-datadog}"
 STACK_NAME="fsxn-${VENDOR}-integration"
 OUTPUT_DIR="evidence/${VENDOR}/$(date +%Y-%m-%d)"
@@ -184,11 +184,11 @@ mkdir -p "$OUTPUT_DIR"
 
 echo "Collecting evidence for: $STACK_NAME"
 
-# 1. スタックリソースとポリシー
+# 1. Stack resources and policies
 aws cloudformation describe-stack-resources \
   --stack-name "$STACK_NAME" > "$OUTPUT_DIR/stack-resources.json"
 
-# 2. IAM ポリシー
+# 2. IAM policies
 for role in $(aws cloudformation describe-stack-resources \
   --stack-name "$STACK_NAME" \
   --query 'StackResources[?ResourceType==`AWS::IAM::Role`].PhysicalResourceId' \
@@ -200,11 +200,11 @@ done
 aws cloudwatch describe-alarms \
   --alarm-name-prefix "fsxn-${VENDOR}" > "$OUTPUT_DIR/alarms.json"
 
-# 4. Log Group の保持期間
+# 4. Log group retention
 aws logs describe-log-groups \
   --log-group-name-prefix "/aws/lambda/fsxn-${VENDOR}" > "$OUTPUT_DIR/log-groups.json"
 
-# 5. Lambda 設定
+# 5. Lambda configuration
 aws lambda get-function-configuration \
   --function-name "fsxn-${VENDOR}-integration-shipper" > "$OUTPUT_DIR/lambda-config.json" 2>/dev/null
 

@@ -78,10 +78,10 @@ aws cloudformation deploy \
   --template-file integrations/lakehouse-retention/template.yaml \
   --stack-name fsxn-lakehouse-retention \
   --parameter-overrides \
-    RetentionBucketName=<グローバルに一意なバケット名> \
-    AthenaResultsBucketName=<グローバルに一意な結果バケット名> \
+    RetentionBucketName=<globally-unique-bucket-name> \
+    AthenaResultsBucketName=<globally-unique-results-bucket-name> \
   --capabilities CAPABILITY_NAMED_IAM \
-  --region <対象リージョン>
+  --region <your-region>
 ```
 
 ### 準備が必要なもの
@@ -144,19 +144,19 @@ Lake Formation permission(s): Required Describe on audit_logs
 ## Athena でのクエリ
 
 ```sql
--- 特定日の総レコード数
+-- Total record count for a specific day
 SELECT COUNT(*) AS total_records
 FROM fsxn_audit_lakehouse.audit_logs
 WHERE year = '2026' AND month = '07' AND day = '19';
 
--- Operation/Result の分布（year/month/day によるパーティションプルーニング）
+-- Operation/result distribution (partition pruning via year/month/day)
 SELECT operation, result, COUNT(*) AS cnt
 FROM fsxn_audit_lakehouse.audit_logs
 WHERE year = '2026' AND month = '07' AND day = '19'
 GROUP BY operation, result
 ORDER BY cnt DESC;
 
--- 日付範囲を横断した、SVM別の失敗・拒否操作
+-- Failed/denied operations by SVM, across a date range
 SELECT svmname, operation, COUNT(*) AS cnt
 FROM fsxn_audit_lakehouse.audit_logs
 WHERE year = '2026' AND month = '07'
@@ -172,33 +172,33 @@ ORDER BY cnt DESC;
 Snowflake 対応は、[fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) の Snowflake 統合で既に確立済みの2段階 Storage Integration トラストパターンを再利用しています — FSx for ONTAP S3 Access Point 向けではなく、通常のS3バケット向けに適応しています。
 
 ```bash
-# Phase 1: プレースホルダー（自アカウント）トラストポリシーでIAMロールをデプロイ
+# Phase 1: deploy the IAM role with a placeholder (own-account) trust policy
 aws cloudformation deploy \
   --template-file integrations/lakehouse-retention/snowflake-role.yaml \
   --stack-name fsxn-lakehouse-retention-snowflake \
-  --parameter-overrides RetentionBucketName=<保管用バケット名> \
+  --parameter-overrides RetentionBucketName=<your-retention-bucket> \
   --capabilities CAPABILITY_NAMED_IAM \
-  --region <対象リージョン>
+  --region <your-region>
 ```
 
 ```sql
--- Snowflake 内（完全なスクリプトは
--- integrations/lakehouse-retention/sql/01_storage_integration_and_stage.sql 参照）
+-- In Snowflake (see integrations/lakehouse-retention/sql/01_storage_integration_and_stage.sql
+-- for the full script)
 CREATE OR REPLACE STORAGE INTEGRATION fsxn_lakehouse_retention_integration
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
   ENABLED = TRUE
-  STORAGE_AWS_ROLE_ARN = '<snowflake-role.yaml の IAMRoleArn 出力値>'
-  STORAGE_ALLOWED_LOCATIONS = ('s3://<保管用バケット名>/audit-logs/');
+  STORAGE_AWS_ROLE_ARN = '<IAMRoleArn output from snowflake-role.yaml>'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://<your-retention-bucket>/audit-logs/');
 
 DESCRIBE INTEGRATION fsxn_lakehouse_retention_integration;
--- STORAGE_AWS_IAM_USER_ARN と STORAGE_AWS_EXTERNAL_ID をコピーし、
--- SnowflakeAccountId/SnowflakeExternalId にこれらの値を設定して
--- snowflake-role.yaml を再デプロイ（Phase 2 トラスト）。
+-- Copy STORAGE_AWS_IAM_USER_ARN and STORAGE_AWS_EXTERNAL_ID, then redeploy
+-- snowflake-role.yaml with SnowflakeAccountId/SnowflakeExternalId set to
+-- those values (Phase 2 trust).
 
 CREATE OR REPLACE STAGE audit_logs_stage
   STORAGE_INTEGRATION = fsxn_lakehouse_retention_integration
-  URL = 's3://<保管用バケット名>/audit-logs/'
+  URL = 's3://<your-retention-bucket>/audit-logs/'
   FILE_FORMAT = (TYPE = 'PARQUET');
 
 LIST @audit_logs_stage;
@@ -224,9 +224,9 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 
 > **本セクションの検証状況: E2E検証済み**（2026年7月20日）。上記Firehoseパイプラインが生成した同じ500件のParquetデータセットを使い、Storage Integrationの2段階トラスト設定が成功し、`LIST @audit_logs_stage` が実際のParquetファイルをS3から返し、`SELECT COUNT(*) FROM audit_logs_ext` は正確に500件を返しました — Athenaの結果と完全に一致します。同じExternal Tableに対する `GROUP BY operation, result` クエリも、上記Athena検証と同じOperation×Result分布に一致する15行を返しました。
 
-### FSx S3 AP 版 Snowflake パスとの構成上の違い
+### FSx for ONTAP S3 AP 版 Snowflake パスとの構成上の違い
 
-本パイプラインのデータは FSx for ONTAP S3 Access Point ではなく**通常のS3バケット**に着地するため、S3イベント通知によってトリガーされる実際の Snowpipe 自動取り込みが直接動作すると予想されます。`fsxn-lakehouse-integrations` プロジェクトの Snowflake 統合は、まさにこの理由（FSx for ONTAP S3 AP は S3イベント通知非対応）で FSx for ONTAP S3 AP に対して自動取り込みを使えず、FPolicy + Lambda + SNS + Snowpipe REST API、またはスケジュール実行の `COPY INTO` にフォールバックする必要がありました。本ガイドのアーキテクチャは、保管先の標準S3バケットがS3イベント通知をネイティブにサポートするため、この制約を取り除いています（本検証では Snowpipe 自動取り込み自体は実施しておらず、上記External Tableパスを検証しました。ただし自動取り込みが依存するS3イベント通知機能自体は、FSx S3 APとは異なり通常のS3バケットの標準機能です）。
+本パイプラインのデータは FSx for ONTAP S3 Access Point ではなく**通常のS3バケット**に着地するため、S3イベント通知によってトリガーされる実際の Snowpipe 自動取り込みが直接動作すると予想されます。`fsxn-lakehouse-integrations` プロジェクトの Snowflake 統合は、まさにこの理由（FSx for ONTAP S3 AP は S3イベント通知非対応）で FSx for ONTAP S3 AP に対して自動取り込みを使えず、FPolicy + Lambda + SNS + Snowpipe REST API、またはスケジュール実行の `COPY INTO` にフォールバックする必要がありました。本ガイドのアーキテクチャは、保管先の標準S3バケットがS3イベント通知をネイティブにサポートするため、この制約を取り除いています（本検証では Snowpipe 自動取り込み自体は実施しておらず、上記External Tableパスを検証しました。ただし自動取り込みが依存するS3イベント通知機能自体は、FSx for ONTAP S3 AP とは異なり通常のS3バケットの標準機能です）。
 
 ## 検証済みデプロイパス
 
@@ -252,7 +252,7 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 - **Firehose配信の健全性を監視**: `FirehoseLogGroup`（`/aws/kinesisfirehose/<スタック名>`）で `DataFormatConversionConfiguration` の失敗を確認してください — Glueテーブルのカラム定義と一致しない不正な形式のソースJSONレコードは、サイレントに失敗するのではなく `errors/` S3プレフィックス（`ErrorOutputPrefix`）に配置されます。このプレフィックスを定期的に確認してください。エラー件数の増加は通常、上流の監査ログ形式のスキーマドリフトを示します。
 - **Athenaスキャン上限を定期的に見直す**: データセットが数年分に増えるにつれ、正当なクエリが `AthenaScanLimitGB` の `BytesScannedCutoffPerQuery` 制限に達し始めた場合（Athenaのスキャン上限エラーでクエリが失敗）、`AthenaScanLimitGB` を次に許可された値に上げて再デプロイしてください — これは想定される運用上の調整であり、計画不足を示すものではありません。
 - **ライフサイクル移行が実際に発生しているか確認**: 保管バケットのライフサイクルポリシーは、90日でS3標準低頻度アクセスへ、365日でS3 Glacier Instant Retrievalへオブジェクトを移行します。`aws s3api list-objects-v2 --bucket <RetentionBucketName> --query "Contents[].StorageClass"` を定期的に（例: 四半期ごとに）確認し、古いパーティションが実際に移行しているかを確認してください。ライフサイクルポリシーの設定ミスは、そうしないと予想外に高いストレージ料金としてしか表面化しません。
-- **Snowflake External Tableの鮮度**（利用する場合）: 本ガイドの例では `AUTO_REFRESH = FALSE` のため、新しく到着したParquetファイルを取り込むには External Table のメタデータを手動で更新（`ALTER EXTERNAL TABLE audit_logs_ext REFRESH;`）するか、スケジュール実行する（Snowflake Task、または同じステートメントを呼ぶ外部スケジューラー）必要があります。これは、本ガイドの最初の段階でSnowpipe自動取り込みのインフラに依存しないための意図的な選択です。自動取り込みの選択肢については [FSx S3 AP 版 Snowflake パスとの構成上の違い](#fsx-s3-ap-版-snowflake-パスとの構成上の違い) を参照してください。
+- **Snowflake External Tableの鮮度**（利用する場合）: 本ガイドの例では `AUTO_REFRESH = FALSE` のため、新しく到着したParquetファイルを取り込むには External Table のメタデータを手動で更新（`ALTER EXTERNAL TABLE audit_logs_ext REFRESH;`）するか、スケジュール実行する（Snowflake Task、または同じステートメントを呼ぶ外部スケジューラー）必要があります。これは、本ガイドの最初の段階でSnowpipe自動取り込みのインフラに依存しないための意図的な選択です。自動取り込みの選択肢については [FSx for ONTAP S3 AP 版 Snowflake パスとの構成上の違い](#fsx-for-ontap-s3-ap-版-snowflake-パスとの構成上の違い) を参照してください。
 - **定期的なアクセスレビュー**: このパイプラインは機密性を持ちうるフィールド（`username`・`clientip`・`objectname`）をこのテーブルへのAthena/Snowflakeクエリアクセス権を持つ全員に公開するため、そのアクセス権を持つ人を組織のデータ分類ポリシーに照らして定期的にレビューしてください（[データ分類ガイド](data-classification.md) 参照）。
 
 ## ロールバックとクリーンアップ
@@ -260,19 +260,20 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 クリーンアップの順序は重要です — 順序を誤ると、回避可能なCloudFormationの `DELETE_FAILED` 状態が発生します。
 
 ```bash
-# 1. クエリを一度でも実行したことがある場合、Athenaワークグループを最初に削除する。
-#    CloudFormation経由の AWS::Athena::WorkGroup 削除は、クエリ履歴が残っていると失敗する。
-#    --recursive-delete-option はCLI専用のフラグであり、CloudFormationスタックレベルの
-#    設定としては利用できないため、スタック削除前に手動で実行する必要がある。
+# 1. Delete the Athena workgroup FIRST if any queries were ever run against it.
+#    AWS::Athena::WorkGroup deletion through CloudFormation fails with query
+#    history still attached; --recursive-delete-option is a CLI-only flag,
+#    not available as a CloudFormation stack-level setting, so this step
+#    must be run manually before stack deletion.
 aws athena delete-work-group \
   --work-group <AthenaWorkgroupName> \
   --recursive-delete-option \
-  --region <対象リージョン>
+  --region <your-region>
 
-# 2. 両方のS3バケットを空にする。RetentionBucketはバージョニングが有効なため、
-#    単純な `aws s3 rm --recursive` では現行オブジェクトは削除されるが、
-#    古いバージョンと削除マーカーが残る -- 論理的に空でもバージョン管理された
-#    バケットが空でないと、CloudFormationのスタック削除は失敗する。
+# 2. Empty both S3 buckets. RetentionBucket has versioning enabled, so a
+#    plain `aws s3 rm --recursive` deletes current objects but leaves old
+#    versions and delete markers behind — CloudFormation stack deletion of a
+#    non-empty (even if "logically empty") versioned bucket fails.
 aws s3api list-object-versions --bucket <RetentionBucketName> --output json | \
   python3 -c "
 import json, sys
@@ -284,20 +285,20 @@ print(json.dumps({'Objects': objs}))
 aws s3api delete-objects --bucket <RetentionBucketName> --delete file:///tmp/lakehouse-versions.json
 rm -f /tmp/lakehouse-versions.json
 
-aws s3 rm s3://<AthenaResultsBucketName> --recursive --region <対象リージョン>
+aws s3 rm s3://<AthenaResultsBucketName> --recursive --region <your-region>
 
-# 3. Snowflakeロールスタック（デプロイした場合）とメインスタックを削除する。
-#    両者の削除順序は関係ない -- snowflake-role.yaml は template.yaml に対する
-#    CloudFormationレベルの依存関係を持たない（バケット名をパラメーター文字列として
-#    参照するのみで、クロススタックの !ImportValue ではない）ため、
-#    どちらを先に、あるいは独立して削除しても構わない。
-aws cloudformation delete-stack --stack-name fsxn-lakehouse-retention-snowflake --region <対象リージョン>
-aws cloudformation delete-stack --stack-name fsxn-lakehouse-retention --region <対象リージョン>
+# 3. Delete the Snowflake role stack (if deployed) and the main stack. Order
+#    between these two does not matter -- snowflake-role.yaml has no
+#    CloudFormation-level dependency on template.yaml (it only references
+#    the bucket NAME as a parameter string, not a cross-stack !ImportValue),
+#    so either can be deleted first or independently of the other.
+aws cloudformation delete-stack --stack-name fsxn-lakehouse-retention-snowflake --region <your-region>
+aws cloudformation delete-stack --stack-name fsxn-lakehouse-retention --region <your-region>
 
-# 4. （Snowflake側、利用した場合）Snowflake側のオブジェクトは個別にドロップする
-#    -- これらはCloudFormationで管理されておらず、上記AWSスタック削除では
-#    クリーンアップされない。
-#    Snowflakeで: DROP EXTERNAL TABLE audit_logs_ext; DROP STAGE audit_logs_stage;
+# 4. (Snowflake side, if used) Drop the Snowflake-side objects independently
+#    -- they are not managed by CloudFormation and will not be cleaned up by
+#    deleting the AWS stacks above.
+#    In Snowflake: DROP EXTERNAL TABLE audit_logs_ext; DROP STAGE audit_logs_stage;
 #    DROP STORAGE INTEGRATION fsxn_lakehouse_retention_integration;
 ```
 

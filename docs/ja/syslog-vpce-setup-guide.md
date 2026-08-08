@@ -18,7 +18,7 @@ FSx for ONTAP の管理アクティビティ監査ログ（ONTAP CLI/API 操作�
 
 ```
 FSx for ONTAP (ONTAP log-forwarding)
-    │ Syslog (TCP port 1514 or 6514)
+    │ Syslog (TCP port 6514 or 1514)
     ▼
 VPC Endpoint (com.amazonaws.{region}.syslog-logs)
     │ AWS PrivateLink
@@ -73,13 +73,11 @@ aws cloudformation deploy \
 デプロイ後、VPC Endpoint の ENI プライベート IP を取得します:
 
 ```bash
-# スタック出力から VPC Endpoint ID を取得
 VPCE_ID=$(aws cloudformation describe-stacks \
   --stack-name fsxn-syslog-vpce-admin-audit \
   --query "Stacks[0].Outputs[?OutputKey=='VpcEndpointId'].OutputValue" \
   --output text --region ap-northeast-1)
 
-# ENI の Private IP を取得（ONTAP の転送先に使用）
 ENI_ID=$(aws ec2 describe-vpc-endpoints --vpc-endpoint-ids $VPCE_ID \
   --query 'VpcEndpoints[0].NetworkInterfaceIds[0]' \
   --output text --region ap-northeast-1)
@@ -121,14 +119,13 @@ FSx for ONTAP の管理エンドポイントに SSH（または REST API）で�
 ### Option A: REST API 経由（推奨 — 自動化向き）
 
 ```bash
-# REST API で転送先を作成
 curl -sk -u fsxadmin:<PASSWORD> \
   -X POST "https://<FSx-Management-IP>/api/security/audit/destinations?force=true" \
   -H "Content-Type: application/json" \
   -d '{
     "address": "'$VPCE_IP'",
-    "port": 1514,
-    "protocol": "tcp_unencrypted",
+    "port": 6514,
+    "protocol": "tcp_encrypted",
     "facility": "local7"
   }'
 ```
@@ -142,14 +139,12 @@ curl -sk -u fsxadmin:<PASSWORD> \
 ```bash
 ssh fsxadmin@<FSx-Management-IP>
 
-# ONTAP CLI
 FsxId*> security audit log-forwarding create \
   -destination <VPCE_IP> \
-  -port 1514 \
-  -protocol tcp-unencrypted \
+  -port 6514 \
+  -protocol tcp-encrypted \
   -facility local7
 
-# 確認
 FsxId*> security audit log-forwarding show
 ```
 
@@ -176,7 +171,7 @@ FsxId*> security audit log-forwarding show
 ### ログ生成（管理操作の実行）
 
 ```bash
-# REST API で何らかの操作を行うと監査ログが生成される
+# Any REST API operation produces an audit log entry
 curl -sk -u fsxadmin:<PASSWORD> \
   https://<FSx-Management-IP>/api/storage/volumes?fields=name \
   --max-time 10 > /dev/null
@@ -187,12 +182,12 @@ curl -sk -u fsxadmin:<PASSWORD> \
 ![CloudWatch Logs — ログイベント一覧](../screenshots/syslog-vpce/02-cloudwatch-log-events-ontap-audit.png)
 
 ```bash
-# ログストリームの確認（数秒〜1 分以内に出現）
+# Check the log stream (appears within seconds to a minute)
 aws logs describe-log-streams \
   --log-group-name /syslog/fsxn-admin-audit \
   --region ap-northeast-1
 
-# 最新イベントの確認
+# Check the latest events
 aws logs get-log-events \
   --log-group-name /syslog/fsxn-admin-audit \
   --log-stream-name "<VPCE_ID>_Syslog_<region>" \
@@ -245,17 +240,18 @@ aws fsx update-file-system \
 ## クリーンアップ
 
 ```bash
-# 1. ONTAP 転送先を削除
+# 1. Remove the ONTAP forwarding destination
 curl -sk -u fsxadmin:<PASSWORD> \
-  -X DELETE "https://<FSx-Management-IP>/api/security/audit/destinations/<VPCE_IP>/1514" \
+  -X DELETE "https://<FSx-Management-IP>/api/security/audit/destinations/<VPCE_IP>/6514" \
   --max-time 10
 
-# 2. CloudFormation スタック削除
+# 2. Delete the CloudFormation stack
 aws cloudformation delete-stack \
   --stack-name fsxn-syslog-vpce-admin-audit \
   --region ap-northeast-1
 
-# 注: Log Group は DeletionPolicy: Retain のため手動削除が必要
+# 3. Delete the log group by hand. The stack sets DeletionPolicy: Retain on it,
+#    so deleting the stack deliberately leaves the audit history in place.
 aws logs delete-log-group \
   --log-group-name /syslog/fsxn-admin-audit \
   --region ap-northeast-1
@@ -270,7 +266,7 @@ aws logs delete-log-group \
 Syslog パイプライン自体の健全性を監視するため、以下の CloudWatch メトリクスとアラームを設定してください:
 
 ```bash
-# SyslogMessagesDropped メトリクスを監視するアラーム
+# Alarm on the SyslogMessagesDropped metric
 aws cloudwatch put-metric-alarm \
   --alarm-name "FSx-ONTAP-SyslogDropped" \
   --metric-name SyslogMessagesDropped \
@@ -304,13 +300,13 @@ aws cloudwatch put-metric-alarm \
 ### CloudWatch Logs Insights クエリ例
 
 ```sql
--- 権限昇格操作の検出
+-- Detect privilege escalation operations
 fields @timestamp, @message
 | filter @message like /set -privilege/
 | sort @timestamp desc
 | limit 20
 
--- REST API 操作の成功/失敗一覧
+-- Success/failure breakdown of REST API operations
 fields @timestamp, @message
 | filter @message like /POST|GET|PATCH|DELETE/
 | parse @message "* :: *" as operation, result

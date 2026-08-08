@@ -39,7 +39,7 @@ FPolicy ファイルアクティビティパイプラインの E2E 検証: ONTAP
 ### Step 1: インフラストラクチャのデプロイ
 
 ```bash
-# Fargate スタックのデプロイ
+# Deploy Fargate stack
 aws cloudformation deploy \
   --template-file shared/templates/fpolicy-server-fargate.yaml \
   --stack-name fsxn-fpolicy-server \
@@ -49,7 +49,7 @@ aws cloudformation deploy \
     ContainerImage=<ecr-uri>:latest \
   --capabilities CAPABILITY_NAMED_IAM
 
-# Datadog Lambda のデプロイ
+# Deploy Datadog Lambda
 SQS_ARN=$(aws cloudformation describe-stacks --stack-name fsxn-fpolicy-server \
   --query "Stacks[0].Outputs[?OutputKey=='FPolicyQueueArn'].OutputValue" --output text)
 
@@ -65,14 +65,14 @@ aws cloudformation deploy \
 ### Step 2: ONTAP FPolicy の設定
 
 ```bash
-# Fargate タスク IP の取得
+# Get Fargate task IP
 TASK_IP=$(aws ecs describe-tasks --cluster fsxn-fpolicy-server-cluster \
   --tasks $(aws ecs list-tasks --cluster fsxn-fpolicy-server-cluster \
     --query "taskArns[0]" --output text) \
   --query "tasks[0].containers[0].networkInterfaces[0].privateIpv4Address" --output text)
 
-# ONTAP の設定（CLI または REST API 経由）
-# 参照: docs/en/fpolicy-production-architecture-patterns.md
+# Configure ONTAP (via CLI or REST API)
+# See: docs/en/fpolicy-production-architecture-patterns.md
 ```
 
 ### Step 3: 接続の検証
@@ -116,10 +116,10 @@ TASK_IP=$(aws ecs describe-tasks --cluster fsxn-fpolicy-server-cluster \
 ## ロールバック手順
 
 ```bash
-# 1. ONTAP で FPolicy を無効化
+# 1. Disable FPolicy on ONTAP
 # vserver fpolicy disable -vserver <svm> -policy-name fpolicy_aws
 
-# 2. AWS スタック削除
+# 2. Delete AWS stacks
 aws cloudformation delete-stack --stack-name fsxn-datadog-ems-fpolicy
 aws cloudformation delete-stack --stack-name fsxn-fpolicy-server
 ```

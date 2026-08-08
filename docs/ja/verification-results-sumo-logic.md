@@ -67,7 +67,7 @@
 - **生成された URL** — `https://collectors.jp.sumologic.com/receiver/v1/http/<TOKEN>`
 
 ```bash
-# HTTP Source URL を Secrets Manager に登録
+# Register HTTP Source URL in Secrets Manager
 aws secretsmanager create-secret \
   --name "sumo-logic/fsxn-http-source" \
   --secret-string '{"url":"https://collectors.jp.sumologic.com/receiver/v1/http/<TOKEN>"}' \

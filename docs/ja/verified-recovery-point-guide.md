@@ -120,7 +120,7 @@ ONTAP REST API でクローンが作成された後、FSx API がそのボリュ
 *Step Functions コンソール: AttachAccessPoint のステート詳細。State input にはクローン名・UUID・親ボリューム・親 Snapshot が表示される。`FsxDiscoveryPending` エラーが発生し、Step Functions の Retry ブロックが再呼び出しを行っている。*
 
 ```python
-# WaitForFsxDiscovery Lambda (概略)
+# WaitForFsxDiscovery Lambda (simplified)
 paginator = fsx.get_paginator("describe_volumes")
 for page in paginator.paginate(
     Filters=[{"Name": "file-system-id", "Values": [file_system_id]}]
@@ -145,11 +145,11 @@ fsx.create_and_attach_s3_access_point(
     Name="verify-vol-data-20260710-143022",
     Type="ONTAP",
     OntapConfiguration={
-        "VolumeId": fsvol_id,  # DescribeVolumes で解決(ONTAP UUID ではない)
+        "VolumeId": fsvol_id,  # resolved via DescribeVolumes, NOT the ONTAP UUID
         "FileSystemIdentity": {"Type": "UNIX", "UnixUser": {"Name": "root"}},
     },
-    # VpcConfiguration は指定しない = Internet-origin
-    # AP リソースポリシーも設定しない — 同一アカウントでは IAM identity policy で十分
+    # No VpcConfiguration = Internet-origin AP
+    # No put_access_point_policy needed — same-account IAM identity policy is sufficient
 )
 ```
 
@@ -279,12 +279,12 @@ Cleanup Lambda は設計上べき等的に振る舞います。`access_point_nam
 **本ワークフローの対応**: `CreateFlexClone` Lambda の先頭で `protocols/cifs/services` と `protocols/cifs/domains` API を使い、AD DC の発見可能性を事前チェックします。DC が発見できない場合、30分以上のクローン作成+FSx discovery を経た後に AccessDenied で失敗するのではなく、数秒で `AD CONNECTIVITY FAILURE` という明確なエラーで即座に失敗します。
 
 ```bash
-# 手動での確認方法
+# Manual verification
 curl -sk -u "<user>:<pass>" "https://<mgmt-ip>/api/protocols/cifs/services?svm.name=<svm-name>&fields=ad_domain.fqdn"
-# records が返ればCIFS有効（AD参加済み）
-# その場合、以下でDC到達性を確認:
+# If records are returned → CIFS is enabled (AD-joined)
+# Then check DC reachability:
 curl -sk -u "<user>:<pass>" "https://<mgmt-ip>/api/protocols/cifs/domains?svm.name=<svm-name>&fields=discovered_servers"
-# discovered_servers が空 = AD DC到達不能 → ワークフロー実行前に修復が必要
+# Empty discovered_servers = AD DC unreachable → fix before running workflow
 ```
 
 > **純粋 NFS/UNIX の SVM ではこの確認は不要です。** CIFS が無効な SVM では name-mapping lookup が発生しないため、AD の有無に関わらず S3 AP データ操作は正常に動作します。
@@ -304,13 +304,12 @@ s3 server and retry.
 自分が完全に管理していない SVM に対してデプロイする前に、必ず確認してください:
 
 ```bash
-# ONTAP 管理エンドポイントに対して実行します(ONTAP 管理者認証情報が必要)
-# — このワークフローに事前チェックのステップとして追加できる、同等の
-# プログラム的なチェックについては AttachAccessPoint Lambda 自身の
-# docstring を参照してください
+# Run this against your ONTAP management endpoint (requires ONTAP admin
+# credentials) — see the AttachAccessPoint Lambda's own docstring for the
+# equivalent programmatic check this workflow could add as a pre-flight step
 curl -sk -u "<user>:<pass>" "https://<mgmt-ip>/api/protocols/s3/services?svm.name=<svm-name>"
-# {"records": [], "num_records": 0}  <- 進めて問題ない
-# {"records": [...], "num_records": 1}  <- 競合あり; 別の SVM を選ぶ
+# {"records": [], "num_records": 0}  <- safe to proceed
+# {"records": [...], "num_records": 1}  <- conflict; pick a different SVM
 ```
 
 チェックでレコードが返ってきた場合、**その S3 サーバーの所有者とそこに格納されているデータを確認せずに削除しないでください** — 共有ファイルシステムでは、それが無関係な別のユースケースに使われている可能性が非常に高いです。代わりに、別の SVM（あるいは新規作成した SVM）に対して本ワークフローをデプロイしてください。これは、他者の ONTAP S3 サーバー設定の削除について合意を取るよりも、ほぼ常に簡単で安全です。
@@ -324,8 +323,8 @@ curl -sk -u "<user>:<pass>" "https://<mgmt-ip>/api/protocols/s3/services?svm.nam
 ```bash
 curl -sk -u "<user>:<pass>" \
   "https://<mgmt-ip>/api/storage/volumes?name=<volume-name>&svm.name=<svm-name>&fields=nas.security_style"
-# "security_style": "unix"  <- 本ワークフローは動作する
-# "security_style": "ntfs"  <- ScanForIndicators が AccessDenied になる
+# "security_style": "unix"  <- this workflow works
+# "security_style": "ntfs"  <- ScanForIndicators will get AccessDenied
 ```
 
 対象ボリュームが NTFS security style の場合（Windows クライアントに SMB 共有しているボリュームでよくあるケース）、本ワークフローは出荷時点では対応していません — Windows アイデンティティ（`FileSystemIdentity.Type=WINDOWS`、Active Directory 連携が必要）を受け付けるように `AttachAccessPoint` を拡張することが先に必要です。代わりに、検証用に UNIX security style のボリュームを選ぶか新規作成してください。
@@ -397,7 +396,7 @@ Lambda 実行ロールには以下が必要です:
 
 ```bash
 aws ec2 describe-vpc-endpoints \
-  --filters "Name=vpc-id,Values=<対象VPCのID>" \
+  --filters "Name=vpc-id,Values=<your-vpc-id>" \
   --query "VpcEndpoints[].{Service:ServiceName,Type:VpcEndpointType,State:State}" \
   --output table
 ```
@@ -422,18 +421,18 @@ aws ec2 describe-vpc-endpoints \
 **それでもデプロイして競合に遭遇した場合**: スタックは自動的にロールバックし（`ROLLBACK_COMPLETE`）、CloudFormation はそのステートのスタックに対して `deploy`/`create-stack` を再試行させません — 先に削除する必要があります:
 
 ```bash
-# 失敗を確認し、どのリソースが競合したかを確認する
+# Confirm the failure and see which resource conflicted
 aws cloudformation describe-stack-events \
   --stack-name fsxn-restore-verification \
   --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].{Resource:LogicalResourceId,Reason:ResourceStatusReason}" \
   --output table
 
-# ロールバックしたスタックを削除する(安全です — 動作可能な状態に一度も
-# 到達していないため、台帳テーブルに失う検証履歴はありません)
+# Delete the rolled-back stack (safe — it never reached a working state,
+# so there is no verification history in the ledger table to lose)
 aws cloudformation delete-stack --stack-name fsxn-restore-verification
 aws cloudformation wait stack-delete-complete --stack-name fsxn-restore-verification
 
-# 上記の表に従って正しい CreateXxxEndpoint の値を指定して再デプロイする
+# Re-deploy with the correct CreateXxxEndpoint values per the table above
 ```
 
 ---
@@ -494,7 +493,7 @@ aws cloudformation deploy \
 
 ```bash
 aws stepfunctions start-execution \
-  --state-machine-arn <StateMachineArn の出力値> \
+  --state-machine-arn <StateMachineArn output> \
   --input '{
     "svm_name": "svm-prod-01",
     "volume_name": "vol_data",

@@ -73,12 +73,12 @@ aws cloudformation deploy \
 ### Lab 3: トリガーと確認
 
 ```bash
-# Lambda ログで処理成功を確認
+# Check Lambda logs for successful processing
 aws logs filter-log-events \
   --log-group-name /aws/lambda/fsxn-<vendor>-integration-shipper \
   --start-time $(python3 -c "import time; print(int((time.time()-300)*1000))")
 
-# ベンダー UI で確認（ベンダー固有のクエリ）
+# Verify in vendor UI (vendor-specific query)
 ```
 
 ### Lab 4: ダッシュボードとアラート
@@ -88,9 +88,9 @@ aws logs filter-log-events \
 ### Lab 5: 障害パス
 
 ```bash
-# シークレットを一時的に破壊して障害をシミュレート
-# （テスト後すぐに復元）
-# DLQ のメッセージを確認
+# Temporarily break the secret to simulate failure
+# (restore immediately after testing)
+# Check DLQ for messages
 aws sqs get-queue-attributes \
   --queue-url <dlq-url> \
   --attribute-names ApproximateNumberOfMessages

@@ -264,7 +264,6 @@ aws logs tail /aws/lambda/fsxn-otel-integration-shipper --since 5m
 
 Expected output: Log entries showing `OTLP payload sent successfully`.
 
-![CloudWatch OTLP delivery success](../../../../docs/screenshots/01-cloudwatch-otlp-success.png)
 
 ### 2. Verify Log Arrival in Grafana Cloud
 
@@ -275,7 +274,7 @@ In Grafana Cloud Explore, run the following query:
 
 Confirm that FSx for ONTAP audit logs appear within 5 minutes. Verify that `event.type`, `user.name`, and `fsxn.operation` attributes are present.
 
-![Grafana Cloud log arrival](../../../../docs/screenshots/02-grafana-logs-arrival.png)
+![Grafana Cloud log arrival](../../../../docs/screenshots/06-grafana-cloud-otel-logs.png)
 
 ### 3. Verify Log Arrival in Honeycomb
 

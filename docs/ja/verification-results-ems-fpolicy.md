@@ -152,7 +152,7 @@ aws logs filter-log-events \
 
 ```bash
 aws logs filter-log-events \
-  --log-group-name <API Gateway アクセスログ グループ名> \
+  --log-group-name <API Gateway access log group name> \
   --start-time $(date -d '5 minutes ago' +%s000) \
   --filter-pattern '"sourceIp"' \
   --region ap-northeast-1
@@ -240,16 +240,16 @@ aws cloudformation deploy \
 **実行コマンド:**
 
 ```bash
-# ECS タスクの状態確認
+# ECS task status check
 aws ecs describe-services \
   --cluster fsxn-fp-srv-cluster \
   --services fsxn-fp-srv-service \
   --region ap-northeast-1 \
   --query 'services[0].{running:runningCount,desired:desiredCount,status:status}'
 
-# Fargate タスク IP の確認
+# Fargate task IP check
 aws ecs list-tasks --cluster fsxn-fp-srv-cluster --service-name fsxn-fp-srv-service --region ap-northeast-1
-aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <タスクARN> \
+aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <task ARN> \
   --query 'tasks[0].attachments[?type==`ElasticNetworkInterface`].details[?name==`privateIPv4Address`].value' \
   --region ap-northeast-1
 ```
@@ -272,7 +272,7 @@ aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <タスクARN> \
 **実行コマンド:**
 
 ```bash
-# ECS ログで KeepAlive メッセージを確認（約6秒間隔で送信される）
+# Check KeepAlive messages in ECS logs (sent at ~6 second intervals)
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server-fsxn-fp-srv \
   --filter-pattern "KeepAlive" \
@@ -299,16 +299,16 @@ aws logs filter-log-events \
 **実行コマンド:**
 
 ```bash
-# 1. ECS ログで [SQS] Sent: パターンを確認
+# 1. Check ECS logs for [SQS] Sent: pattern
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server-fsxn-fp-srv \
   --filter-pattern "[SQS] Sent:" \
   --start-time $(date -d '5 minutes ago' +%s000) \
   --region ap-northeast-1
 
-# 2. SQS キューのメッセージ数を確認
+# 2. Check SQS queue message count
 aws sqs get-queue-attributes \
-  --queue-url https://sqs.ap-northeast-1.amazonaws.com/123456789012/<キュー名> \
+  --queue-url https://sqs.ap-northeast-1.amazonaws.com/123456789012/<queue-name> \
   --attribute-names ApproximateNumberOfMessages \
   --region ap-northeast-1
 ```

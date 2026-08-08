@@ -211,7 +211,7 @@ FPolicy events in this window are candidates for correlation
 ### Q1: 特定セッションでアクセスされた全ファイルを列挙
 
 ```sql
--- 「このエージェントセッションで読まれた全ファイル」
+-- "All files read during this agent session"
 SELECT DISTINCT
   cr.file_path,
   cr.correlation_confidence,
@@ -231,7 +231,7 @@ ORDER BY fp.timestamp ASC
 ### Q2: 特定ファイルにアクセスした全エージェントセッションを列挙
 
 ```sql
--- 「このファイルを読んだ全エージェントとセッション」
+-- "All agents and sessions that read this file"
 SELECT
   agent.agent_id,
   agent.session_id,
@@ -250,7 +250,7 @@ ORDER BY agent.timestamp_start DESC
 ### Q3: 権限外アクセスの検出
 
 ```sql
--- 「エージェントが FPolicy で failure を記録した = 権限外アクセス試行」
+-- "Agent attempted access that resulted in FPolicy failure = unauthorized"
 SELECT
   agent.agent_id,
   agent.session_id,
@@ -271,7 +271,7 @@ ORDER BY fp.timestamp DESC
 ### Q4: エージェント別アクセス頻度の時系列（異常検知向け）
 
 ```sql
--- 「エージェント種別ごとのファイルアクセス数推移」
+-- "File access count trend per agent type"
 SELECT
   agent.agent_id,
   DATE_TRUNC('hour', fp.timestamp) AS hour_bucket,
@@ -290,7 +290,7 @@ ORDER BY hour_bucket DESC, total_operations DESC
 ### Q5: セッション単位のデータアクセス範囲サマリ
 
 ```sql
--- 「各セッションがアクセスしたボリューム・パス範囲のサマリ」
+-- "Volume and path scope summary for each session"
 SELECT
   agent.session_id,
   agent.agent_id,

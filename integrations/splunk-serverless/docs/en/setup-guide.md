@@ -289,7 +289,11 @@ Capture the following screenshots and save them to `docs/screenshots/splunk/`:
 - Splunk Search results (SPL query, result count, expanded event)
 - Splunk dashboard (panel displaying FSx for ONTAP audit log data)
 
-![Splunk Search Results](../../../../docs/screenshots/splunk/splunk-search-results-20260101.png)
+![Splunk search showing FSx for ONTAP audit events](../../screenshots/splunk-e2e-search-fsxn-audit-xml.png)
+
+> Captured against Splunk Enterprise in Docker. See
+> [Splunk Verification Results](../../../../docs/en/verification-results-splunk.md)
+> for the scope of that run.
 
 ## Troubleshooting
 

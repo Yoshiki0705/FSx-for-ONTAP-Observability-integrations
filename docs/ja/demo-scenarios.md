@@ -18,9 +18,9 @@
 1. **準備**: Datadog 統合をデプロイ済み
 2. **操作**: FSx for ONTAP マウントポイントで権限のないファイルにアクセス
    ```bash
-   # 権限のないユーザーで機密ファイルにアクセス試行
+   # Attempt to access a confidential file as an unauthorized user
    sudo -u testuser cat /mnt/fsxn/confidential/secret-report.pdf
-   # → Permission denied (監査ログに Failure として記録)
+   # → Permission denied (recorded as Failure in audit log)
    ```
 3. **確認**: Datadog Logs で確認
    - 検索: `source:fsxn @attributes.result:Failure`
@@ -43,7 +43,7 @@ ARP/AI がランサムウェアの疑いのある活動を検知し、EMS イベ
 1. **準備**: Splunk 統合 + EMS Webhook 設定済み
 2. **シミュレーション**: 大量のファイルリネーム操作を実行
    ```bash
-   # ランサムウェアを模倣した大量リネーム（テスト環境のみ）
+   # Simulate ransomware-like mass rename (test environment only)
    for f in /mnt/fsxn/test-data/*.txt; do
      mv "$f" "${f}.encrypted"
    done
@@ -71,7 +71,7 @@ ARP/AI がランサムウェアの疑いのある活動を検知し、EMS イベ
 1. **準備**: New Relic 統合 + EMS CloudWatch 連携設定済み
 2. **操作**: 大容量ファイルを書き込んでクォータ超過
    ```bash
-   # テスト用大容量ファイル作成
+   # Create a large test file
    dd if=/dev/zero of=/mnt/fsxn/user-data/large-file.bin bs=1M count=500
    ```
 3. **EMS 発行**: `wafl.quota.softlimit.exceeded` イベント
@@ -267,7 +267,7 @@ CloudWatch Log Alarm または SIEM モニターで侵害ユーザーを検知�
    ```bash
    ./shared/scripts/automated-response-cli.sh contain-smb \
      --domain CORP --user jdoe --volume vol_data \
-     --reason "内部脅威シミュレーション"
+     --reason "Simulated insider threat"
    ```
 3. **確認（Lambda）**:
    ```bash
@@ -309,7 +309,7 @@ CloudWatch Log Alarm または SIEM モニターで侵害ユーザーを検知�
    ```bash
    ./shared/scripts/automated-response-cli.sh block-smb \
      --domain CORP --user jdoe \
-     --reason "TTL デモ - 5 分後に自動解除"
+     --reason "TTL demo - auto-expires in 5 minutes"
    ```
 3. **待機**: TTL クリーンアップ Lambda のログを ~5 分間観察
    ```bash
@@ -318,7 +318,7 @@ CloudWatch Log Alarm または SIEM モニターで侵害ユーザーを検知�
 4. **確認**: TTL 失効後にブロック自動解除
    ```bash
    ssh fsxadmin@<management-ip> "vserver name-mapping show -direction win-unix -replacement \" \""
-   # → 空（ブロック削除済み）
+   # → Empty (block removed)
    ```
 
 ### 期待結果

@@ -52,7 +52,7 @@
 - **API Key 作成** — Kibana → Stack Management → Security → API Keys → Create
 
 ```bash
-# API Key を Secrets Manager に登録
+# Register API Key in Secrets Manager
 aws secretsmanager create-secret \
   --name "elastic/fsxn-api-key" \
   --secret-string '{"api_key":"<base64_encoded_key>"}' \

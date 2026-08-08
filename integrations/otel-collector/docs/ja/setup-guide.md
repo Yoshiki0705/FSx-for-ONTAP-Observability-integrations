@@ -262,7 +262,6 @@ aws logs tail /aws/lambda/fsxn-otel-integration-shipper --since 5m
 
 期待される出力：`OTLP payload sent successfully` のログエントリが表示されること。
 
-![CloudWatch OTLP 配信成功](../../../../docs/screenshots/01-cloudwatch-otlp-success.png)
 
 ### 2. Grafana Cloud でのログ到着確認
 
@@ -273,7 +272,7 @@ Grafana Cloud Explore で以下のクエリを実行します：
 
 5分以内に FSx for ONTAP 監査ログが表示されることを確認します。`event.type`、`user.name`、`fsxn.operation` 属性が含まれていることを確認してください。
 
-![Grafana Cloud ログ到着](../../../../docs/screenshots/02-grafana-logs-arrival.png)
+![Grafana Cloud ログ到着](../../../../docs/screenshots/06-grafana-cloud-otel-logs.png)
 
 ### 3. Honeycomb でのログ到着確認
 

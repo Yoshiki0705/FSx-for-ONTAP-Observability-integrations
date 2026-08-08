@@ -273,22 +273,22 @@ Qtree 容量超過
 本リポジトリの EMS Webhook テンプレートを使用:
 
 ```bash
-# EMS Webhook スタックをデプロイ
+# Deploy EMS Webhook stack
 aws cloudformation deploy \
   --template-file shared/templates/ems-webhook-apigw.yaml \
   --stack-name fsxn-ems-webhook \
   --parameter-overrides \
-    LambdaFunctionArn=<EMS処理Lambda ARN> \
+    LambdaFunctionArn=<EMS handler Lambda ARN> \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
 **Step 2: SNS トピック作成 + メールサブスクリプション**
 
 ```bash
-# SNS トピック作成
+# Create SNS topic
 aws sns create-topic --name fsxn-quota-alerts
 
-# メールアドレスをサブスクライブ
+# Subscribe email address
 aws sns subscribe \
   --topic-arn arn:aws:sns:ap-northeast-1:123456789012:fsxn-quota-alerts \
   --protocol email \
@@ -300,23 +300,23 @@ aws sns subscribe \
 > ⚠️ EMS Webhook の設定は **CLI でのみ可能** です（System Manager GUI では未対応）。
 
 ```bash
-# SSH で ONTAP 管理エンドポイントに接続
+# SSH to ONTAP management endpoint
 ssh fsxadmin@<management-endpoint-ip>
 
-# 1. Webhook 通知先を作成
+# 1. Create webhook notification destination
 event notification destination create -name quota-webhook \
   -rest-api-url https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems
 
-# 2. クォータイベント用フィルタを作成
+# 2. Create quota event filter
 event filter create -filter-name quota-alerts
 event filter rule add -filter-name quota-alerts -type include \
   -message-name wafl.quota.*
 
-# 3. 通知を設定
+# 3. Create notification
 event notification create -filter-name quota-alerts \
   -destinations quota-webhook
 
-# 4. 確認
+# 4. Verify
 event notification show
 event notification destination show
 ```
@@ -324,9 +324,9 @@ event notification destination show
 **Step 4: 動作確認**
 
 ```bash
-# テスト: Qtree にデータを書き込んでソフトリミットを超過させる
-# Windows エクスプローラーから大きなファイルをコピー
-# → EMS イベント発行 → Webhook → Lambda → SNS → メール受信を確認
+# Test: Write data to Qtree exceeding soft limit
+# Copy a large file via Windows Explorer
+# → EMS event issued → Webhook → Lambda → SNS → Verify email received
 ```
 
 ### 4.3 方法 B: CloudWatch Alarms（ボリューム容量監視）
@@ -334,7 +334,7 @@ event notification destination show
 CloudWatch で監視できるのは**ボリュームレベル**の容量のみです（Qtree 単位は不可）。
 
 ```bash
-# CloudWatch アラーム作成例
+# Create CloudWatch alarm
 aws cloudwatch put-metric-alarm \
   --alarm-name "FSx-ONTAP-Volume-Capacity-Warning" \
   --metric-name "StorageCapacityUtilization" \
@@ -368,12 +368,12 @@ FSx for ONTAP は一部の EMS イベントを CloudWatch Events として自動
 ```
 
 ```bash
-# EventBridge ルール作成
+# Create EventBridge rule
 aws events put-rule \
   --name "FSx-ONTAP-Quota-Alert" \
   --event-pattern '{"source":["aws.fsx"],"detail-type":["FSx for ONTAP EMS Event"],"detail":{"event-name":["wafl.quota.softlimit.exceeded","wafl.quota.hardlimit.exceeded"]}}'
 
-# SNS ターゲット追加
+# Add SNS target
 aws events put-targets \
   --rule "FSx-ONTAP-Quota-Alert" \
   --targets "Id"="1","Arn"="arn:aws:sns:ap-northeast-1:123456789012:fsxn-quota-alerts"
