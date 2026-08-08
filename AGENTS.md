@@ -712,6 +712,15 @@ Full guide: `docs/ja/prerequisites.md` / `docs/en/prerequisites.md`
     `.env.example`, `.env.mackerel.example`, and `.env.triple.example`.
 12. Update root `README.md` vendor table (change 🚧 to ✅)
 13. Update `docs/{ja,en}/vendor-comparison.md`
+14. If you add a `docs/{en,ja}/verification-results-<vendor>.md`, the same
+    blanket-ignore trap applies: `.gitignore` has `docs/**/verification-results*.md`,
+    so `git add -A` skips it without saying anything and CI then fails on
+    `generate-docs-index.py --check` complaining the file "does not exist".
+    Force-add both languages: `git add -f docs/en/verification-results-<vendor>.md
+    docs/ja/verification-results-<vendor>.md`. All 18 tracked verification records
+    got there this way. Before force-adding, confirm the file carries no real
+    account ID, resource ID, private IP or instance hostname — that exposure is
+    why the blanket rule exists, and it stays.
 
 ### Cleanup Script Template
 
