@@ -434,7 +434,7 @@ aws cloudformation deploy \
    aws ecs describe-tasks --cluster <cluster> --tasks $TASK_ARN \
      --query 'tasks[0].attachments[0].details[?name==`privateIPv4Address`].value' --output text
    ```
-3. テンプレートには IP Updater Lambda が含まれており、タスク再起動時にエンジン IP を自動更新する（`FsxnMgmtIp`、`FsxnSvmUuid`、`FsxnEngineName`、`FsxnPolicyName`、`FsxnCredentialsSecret` パラメータを設定）
+3. テンプレートには IP Updater Lambda が含まれており、タスク再起動時にエンジン IP を自動更新する（`FsxnMgmtIp`、`FsxnSvmUuid`、`FsxnEngineName`、`FsxnPolicyName`、`FsxnCredentialsSecretArn` パラメータを設定）
 
 ### Automated Response Lambda: ModuleNotFoundError
 

@@ -133,54 +133,72 @@ FsxId*> security audit log-forwarding show
 
 ## Step 4: Verify
 
-```bash
-# Generate admin activity
-curl -sk -u fsxadmin:<PASSWORD> \
-  https://<FSx-Management-IP>/api/storage/volumes?fields=name --max-time 10 > /dev/null
+### Generate Logs (Perform an Admin Operation)
 
-# Check CloudWatch Logs (wait ~10 seconds)
-aws logs get-log-events \
-  --log-group-name /syslog/fsxn-admin-audit \
-  --log-stream-name "${VPCE_ID}_Syslog_ap-northeast-1" \
-  --limit 5 --region ap-northeast-1
+```bash
+# Any REST API operation produces an audit log entry
+curl -sk -u fsxadmin:<PASSWORD> \
+  https://<FSx-Management-IP>/api/storage/volumes?fields=name \
+  --max-time 10 > /dev/null
 ```
+
+### Verify in CloudWatch Logs
 
 ![CloudWatch Logs — Admin Audit Events](../screenshots/syslog-vpce/02-cloudwatch-log-events-ontap-audit.png)
 
----
-
-## Operational Monitoring
-
-Monitor the syslog pipeline health:
-
 ```bash
-aws cloudwatch put-metric-alarm \
-  --alarm-name "FSx-ONTAP-SyslogDropped" \
-  --metric-name SyslogMessagesDropped \
-  --namespace AWS/Logs \
-  --statistic Sum --period 300 --threshold 1 \
-  --comparison-operator GreaterThanOrEqualToThreshold \
-  --evaluation-periods 1 \
-  --dimensions Name=LogGroupName,Value=/syslog/fsxn-admin-audit \
-  --alarm-actions <SNS_TOPIC_ARN> \
+# Check the log stream (appears within seconds to a minute)
+aws logs describe-log-streams \
+  --log-group-name /syslog/fsxn-admin-audit \
+  --region ap-northeast-1
+
+# Check the latest events
+aws logs get-log-events \
+  --log-group-name /syslog/fsxn-admin-audit \
+  --log-stream-name "<VPCE_ID>_Syslog_<region>" \
+  --limit 5 \
   --region ap-northeast-1
 ```
 
-| Metric | Meaning | Alert threshold |
-|--------|---------|-----------------|
-| `SyslogMessagesDropped` | Messages dropped due to delivery failure | > 0 (5 min) |
-| `IncomingLogEvents` | Received log events | < 1 (1 hour) = no logs arriving |
+**Expected output** (from an actual verification run):
+
+```
+<190>Jun 28 02:06:40 FsxId09ffe72a3b2b7dbbd-01: ... [kern_audit:info:6392]
+  ... FsxId09ffe72a3b2b7dbbd:http ... POST /api/storage/volumes ... :: Success
+```
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Check | Fix |
-|---------|-------|-----|
-| No log stream created | Syslog Configuration missing | Run Step 2 |
-| ONTAP "Cannot contact destination" | SG blocking traffic | Add VPC CIDR → port 6514 to VPCE SG |
-| "User is not authorized" | fsxadmin locked | `aws fsx update-file-system --ontap-configuration '{"FsxAdminPassword":"<new>"}'` |
-| Logs delayed > 1 min | Network routing | Verify VPCE ENI is in same AZ as FSx |
+### Logs Are Not Arriving
+
+| Cause | How to check | Fix |
+|-------|-------------|-----|
+| Blocked by the security group | Look for REJECT in VPC Flow Logs | Add VPC CIDR → 1514/6514 to the SG |
+| Syslog Configuration not created | No log stream exists | Run Step 2 |
+| ONTAP destination not configured | `security audit log-forwarding show` | Run Step 3 |
+| fsxadmin locked | REST API returns "User is not authorized" | Reset the password (below) |
+| No ONTAP → VPCE connectivity | Fails without `force=true` | Check the SG, then re-create with `force=true` |
+
+### If the fsxadmin Account Is Locked
+
+Repeated SSH password failures lock the account. Reset it through the AWS API:
+
+```bash
+aws fsx update-file-system \
+  --file-system-id <FS_ID> \
+  --ontap-configuration '{"FsxAdminPassword":"<NEW_PASSWORD>"}' \
+  --region ap-northeast-1
+```
+
+> Wait about 30 seconds after the reset before connecting again.
+
+### Security Group Caveat
+
+> **Finding from verification**
+>
+> The FSx for ONTAP node ENIs use an internal security group that is not the one you assigned to the file system. Specifying "inbound from the FSx security group" as the source on the VPC endpoint's security group therefore **does not work**. Use the **VPC CIDR** as the source instead.
 
 ---
 
@@ -200,9 +218,67 @@ aws logs delete-log-group --log-group-name /syslog/fsxn-admin-audit --region ap-
 
 ---
 
+## Next Steps
+
+### Operational Monitoring (Recommended)
+
+Configure these CloudWatch metrics and alarms to monitor the health of the syslog pipeline itself:
+
+```bash
+# Alarm on the SyslogMessagesDropped metric
+aws cloudwatch put-metric-alarm \
+  --alarm-name "FSx-ONTAP-SyslogDropped" \
+  --metric-name SyslogMessagesDropped \
+  --namespace AWS/Logs \
+  --statistic Sum \
+  --period 300 \
+  --threshold 1 \
+  --comparison-operator GreaterThanOrEqualToThreshold \
+  --evaluation-periods 1 \
+  --dimensions Name=LogGroupName,Value=/syslog/fsxn-admin-audit \
+  --alarm-actions <SNS_TOPIC_ARN> \
+  --region ap-northeast-1
+```
+
+| Metric | Meaning | Suggested alarm threshold |
+|--------|---------|--------------------------|
+| `SyslogMessagesDropped` | Messages dropped because delivery failed | > 0 (5 min) |
+| `IncomingLogEvents` | Received log events | < 1 (1 hour) detects "logs stopped arriving" |
+
+> **Tip**
+>
+> The ONTAP fsx-control-plane runs periodic access checks, so logs normally arrive continuously. More than an hour with no logs suggests a problem with the VPCE connection or the ONTAP configuration.
+
+### Other Next Steps
+
+- **CloudWatch Alarms** — detect specific operations (privilege escalation, user creation) with metric filters
+- **Subscription Filter** — CloudWatch Logs → Lambda → Datadog/Splunk/SIEM for secondary delivery
+- **S3 Export** — export to S3 for long-term retention (can transition to Glacier)
+- **CloudWatch Logs Insights** — analysis queries over admin operations
+
+### CloudWatch Logs Insights Query Examples
+
+```sql
+-- Detect privilege escalation operations
+fields @timestamp, @message
+| filter @message like /set -privilege/
+| sort @timestamp desc
+| limit 20
+
+-- Success/failure breakdown of REST API operations
+fields @timestamp, @message
+| filter @message like /POST|GET|PATCH|DELETE/
+| parse @message "* :: *" as operation, result
+| stats count() by result
+```
+
+---
+
 ## Related Documents
 
 - [Architecture Evolution — Syslog VPCE](architecture-evolution-syslog-vpce.md)
 - [Event Sources Guide](event-sources.md)
 - [AWS Docs: Syslog ingestion](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_Syslog.html)
+- [AWS Docs: Setting up syslog ingestion](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_Syslog_Setup.html)
 - [NetApp: ONTAP audit destinations](https://docs.netapp.com/us-en/ontap/system-admin/forward-command-history-log-file-destination-task.html)
+- [Classmethod: FSx for ONTAP admin audit logs to CW Logs](https://dev.classmethod.jp/articles/amazon-fsx-for-netapp-ontap-security-audit-log-syslog-to-cw-logs/)

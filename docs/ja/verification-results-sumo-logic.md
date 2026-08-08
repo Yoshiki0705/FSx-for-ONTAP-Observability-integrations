@@ -93,7 +93,8 @@ aws cloudformation deploy \
 ```
 
 - **スタックステータス** — CREATE_COMPLETE
-- **作成されたリソース** — - [x] Lambda 関数
+- **作成されたリソース**:
+  - [x] Lambda 関数
   - [x] IAM ロール
   - [x] EventBridge Rule
   - [x] Dead Letter Queue（KMS 暗号化）
@@ -115,7 +116,8 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス** — ```json
+- **レスポンス**:
+```json
 {
   "statusCode": 200,
   "body": {
@@ -126,7 +128,8 @@ aws lambda invoke \
 }
 ```
 
-- **確認項目** — - [x] statusCode: 200
+- **確認項目**:
+  - [x] statusCode: 200
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (空)
@@ -142,7 +145,8 @@ aws lambda invoke \
 - **到着ログ数** — 1件（初回インデックス後に表示）
 - **到着までの時間** — 約10分（JP リージョン新規アカウントの初回インデックスラグ）
 
-- **検索結果メタデータ** — - HOST: `fsxn-ontap`
+- **検索結果メタデータ**:
+  - HOST: `fsxn-ontap`
   - NAME: `fsxn-ontap-audit`
   - CATEGORY: `aws/fsxn/audit`
   - INDEX: `sumologic_default`
@@ -167,7 +171,8 @@ Sumo Logic の検索結果で確認されたフィールド:
 | ObjectName | /vol/data/test.txt | ✅ OK |
 | Result | Success | ✅ OK |
 
-- **X-Sumo ヘッダー確認** — - [x] X-Sumo-Category: `aws/fsxn/audit`
+- **X-Sumo ヘッダー確認**:
+  - [x] X-Sumo-Category: `aws/fsxn/audit`
   - [x] X-Sumo-Name: `fsxn-ontap-audit`
   - [x] X-Sumo-Host: `fsxn-ontap`
 

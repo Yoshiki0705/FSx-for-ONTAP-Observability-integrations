@@ -446,11 +446,34 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
+> **このスタックはコレクターを同梱していません。** テンプレートはスケジュール、
+> アラーム、ダッシュボード、DLQ を作成しますが、Lambda のコードは
+> `NotImplementedError` を送出するプレースホルダーです。メトリクスはレイクハウスの
+> 構成（どの SnapMirror 関係か、どの FlexCache ボリュームか、どの DataSync タスクか）
+> に依存するため、同梱できる単一の実装が存在しません。
+>
+> デプロイ後にコレクターをアップロードしてください:
+>
+> ```bash
+> aws lambda update-function-code \
+>   --function-name fsxn-lakehouse-monitoring-collector \
+>   --zip-file fileb://collector.zip
+> ```
+>
+> 3 つのアラームが読む `SnapMirrorLagSeconds` / `FlexCacheHitRate` /
+> `AccessAnomalyCount` を `FSxONTAP/Lakehouse` 名前空間に発行する必要があります。
+>
+> プレースホルダーが成功を返さず送出するのは、この欠落を可視化するためです。失敗した
+> 呼び出しは DLQ に入り、最初のスケジュール実行で `-dlq-depth` が発火してメールが
+> 届きます。`200` を返すスタブだと、アラームは `INSUFFICIENT_DATA` のまま、
+> ダッシュボードは空のまま、理由を示すものが何もない状態になります。
+
 ## 前提条件
 
 - Lambda VPC からアクセス可能な管理エンドポイントを持つ FSx for ONTAP
 - Secrets Manager に保存された ONTAP REST API 認証情報（読み取り専用アクセス）
 - レイクハウスデータパス用の S3 Access Point
+- アップロードするコレクターの実装（上記の注記を参照）
 - （オプション）同期遅延監視用の DataSync タスク ARN
 - （オプション）異常検知用の CloudTrail S3 データイベント有効化
 

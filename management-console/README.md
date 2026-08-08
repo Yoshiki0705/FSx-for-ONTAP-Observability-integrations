@@ -243,8 +243,9 @@ management-console/
 │   ├── harvest.yml                    # Harvest poller configuration
 │   ├── adot-config.yaml               # ADOT Collector pipeline config
 │   └── dashboards/                    # Grafana dashboard JSON (imported to AMG)
-├── lambda/
-│   └── s3_copy_handler.py             # S3 AP → temp bucket copy + presign
+├── lambda/                            # Source of truth; inlined into the templates
+│   ├── s3_copy_handler.py             # S3 AP → temp bucket copy + presign
+│   └── dashboard_importer.py          # Grafana dashboard import (CFn custom resource)
 ├── scripts/
 │   ├── deploy.sh                      # Deploy all 5 stacks in order
 │   ├── cleanup.sh                     # Delete all stacks in reverse order
@@ -262,6 +263,7 @@ management-console/
 ├── tests/
 │   ├── conftest.py                    # Shared pytest fixtures
 │   ├── test_s3_copy_handler.py        # Lambda unit tests
+│   ├── test_dashboard_importer.py     # Dashboard importer unit tests
 │   └── test_data/                     # Sample events and responses
 └── docs/
     ├── ja/
@@ -287,6 +289,25 @@ Full deployment guides with step-by-step instructions:
 
 - 🇯🇵 [セットアップガイド（日本語）](docs/ja/setup-guide.md)
 - 🇺🇸 [Setup Guide (English)](docs/en/setup-guide.md)
+
+### Lambda code placement
+
+`lambda/s3_copy_handler.py` and `lambda/dashboard_importer.py` are the source of
+truth. Both are inlined into `templates/console.yaml` and
+`templates/observability.yaml` respectively, so `scripts/deploy.sh` produces
+working functions with no follow-up upload step.
+
+After editing either file, regenerate the inline copies:
+
+```bash
+python3 ../shared/scripts/sync-inline-lambda.py
+```
+
+`shared/python/tests/test_inline_lambda_sync.py` fails if a template's copy
+drifts from its source, if the handler is not `index.lambda_handler`, or if a
+placeholder is left behind. Both templates previously shipped placeholders — the
+S3 copy function returned HTTP 501 and the dashboard import was a no-op — while
+the stacks reported `CREATE_COMPLETE` and no guide mentioned the missing upload.
 
 ### Environment Variables
 

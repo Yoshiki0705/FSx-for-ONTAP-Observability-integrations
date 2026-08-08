@@ -88,6 +88,19 @@ jobs:
             shared/lambda-layers/ems-parser/tests/ \
             -v --tb=short
 
+      # management-console/tests/ was tracked but not run by any job, so these
+      # 29 tests covered the two console Lambdas without ever executing.
+      - name: Python tests - Management Console
+        env:
+          AWS_DEFAULT_REGION: ap-northeast-1
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+        run: |
+          python -m pytest \
+            management-console/tests/ \
+            -v --tb=short
       - name: Python tests - Shared Python Modules
         env:
           AWS_DEFAULT_REGION: ap-northeast-1
@@ -141,12 +154,25 @@ jobs:
         continue-on-error: true
         run: |
           pip install cfn-lint
-          cfn-lint --ignore-checks W integrations/*/template.yaml
+          # The `--` separator is required whenever --ignore-checks precedes the
+          # template paths, otherwise argparse swallows the paths into the ignore
+          # list and cfn-lint exits with a usage error. This line was missing the
+          # separator, and because the step is continue-on-error the usage error
+          # was reported as a passing step -- the integrations templates were not
+          # being linted at all.
+          #
+          # Also widened from template.yaml to template*.yaml so the EMS,
+          # FPolicy, Firehose and remediation stacks are covered, matching what
+          # the cfn-guard job already validates.
+          cfn-lint --ignore-checks W -- integrations/*/template*.yaml
           # E3006: AWS::CloudWatch::LogAlarm (GA 2026-07-01) not yet in the
           # cfn-lint resource spec. Deploy is verified working; remove E3006
           # once the spec includes the resource type. The `--` separator is
           # required when passing multiple ignore checks before the templates.
           cfn-lint --ignore-checks W E3006 -- shared/templates/*.yaml
+          # management-console/templates/ is tracked but was not covered by any
+          # cfn-lint or cfn-guard step, so nothing validated those five stacks.
+          cfn-lint --ignore-checks W -- management-console/templates/*.yaml
 
   cfn-guard:
     runs-on: ubuntu-latest
@@ -162,13 +188,41 @@ jobs:
           sudo mv cfn-guard-v3-ubuntu-latest/cfn-guard /usr/local/bin/
           cfn-guard --version
 
+      # Runs before any rule is applied to a real template. `cfn-guard validate`
+      # exits 0 when a rule file fails to parse, and a rule whose filter selects
+      # nothing reports no findings, so both a broken file and a broken rule look
+      # exactly like a clean result. Two rule files were unparseable and five
+      # rules silently matched nothing -- including one in the blocking set --
+      # and every step below reported success throughout.
+      #
+      # The self-test asserts each rule fires against a non-compliant fixture and
+      # stays quiet against a compliant one. Blocking: if the rules are not
+      # working, the results of the steps after this one mean nothing.
+      - name: Guard rule self-test (blocking)
+        run: bash guard/tests/run-guard-selftest.sh
+
       - name: Run cfn-guard critical rules (blocking)
         run: |
           echo "Running critical cfn-guard rules..."
-          for template in integrations/*/template*.yaml shared/templates/*.yaml; do
+          for template in integrations/*/template*.yaml shared/templates/*.yaml management-console/templates/*.yaml; do
             if [ -f "$template" ]; then
               echo "Validating: $template"
               cfn-guard validate -d "$template" -r guard/rules/critical-security.guard --show-summary fail
+            fi
+          done
+
+      # Scoped to management-console/templates/ on purpose. These rules are
+      # stricter than critical-security.guard (no wildcard IAM resources, no
+      # public task ingress, no public IPs on ECS tasks) and the console stacks
+      # are written to meet them. Applying them repo-wide would report the
+      # integrations and shared stacks too, which is a separate decision.
+      - name: Run management console rules (blocking)
+        run: |
+          echo "Running management console cfn-guard rules..."
+          for template in management-console/templates/*.yaml; do
+            if [ -f "$template" ]; then
+              echo "Validating: $template"
+              cfn-guard validate -d "$template" -r guard/rules/management-console-security.guard --show-summary fail
             fi
           done
 
@@ -176,7 +230,7 @@ jobs:
         run: |
           echo "Running advisory cfn-guard rules..."
           FAILED=0
-          for template in integrations/*/template*.yaml shared/templates/*.yaml; do
+          for template in integrations/*/template*.yaml shared/templates/*.yaml management-console/templates/*.yaml; do
             if [ -f "$template" ]; then
               echo "Validating: $template"
               cfn-guard validate -d "$template" -r guard/rules/lambda-security.guard --show-summary fail || FAILED=1

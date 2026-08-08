@@ -14,15 +14,14 @@
 
   {"ParameterKey": "ExistingDirectoryId", "ParameterValue": "",
    "_comment": "Pattern B only: d-xxxxxxxxxx"},
-
+  {"ParameterKey": "ExistingAdDomainName", "ParameterValue": "",
+   "_comment": "Pattern B only, required: corp.example.com"},
+  {"ParameterKey": "ExistingAdDnsIps", "ParameterValue": "",
+   "_comment": "Pattern B only, required: aws ds describe-directories --directory-ids <id> --query DirectoryDescriptions[0].DnsIpAddrs"},
   {"ParameterKey": "SelfManagedAdDomainName", "ParameterValue": "",
    "_comment": "Pattern C only: corp.example.com"},
   {"ParameterKey": "SelfManagedAdDnsIps", "ParameterValue": "",
-   "_comment": "Pattern C only: 198.51.100.10,198.51.100.11"},
-  {"ParameterKey": "SelfManagedAdUsername", "ParameterValue": "Admin"},
-  {"ParameterKey": "SelfManagedAdPassword", "ParameterValue": ""},
-  {"ParameterKey": "SelfManagedAdOu", "ParameterValue": "",
-   "_comment": "Pattern C only: OU=FSxServers,DC=corp,DC=example,DC=com"},
+   "_comment": "Pattern C only: 198.51.100.10,198.51.100.11. Pattern C sets DNS only; join Windows interactively per the SelfManagedJoinCommand output"},
 
   {"ParameterKey": "InstanceType", "ParameterValue": "t3.medium"},
   {"ParameterKey": "FsxSvmId", "ParameterValue": "svm-0123456789abcdef0"},

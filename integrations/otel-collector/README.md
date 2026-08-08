@@ -145,6 +145,19 @@ bash scripts/test-local-multi-backend.sh
 | Docker Compose | `docker-compose.yaml` | Local OTel Collector (pinned 0.152.0) |
 | CloudFormation | `template.yaml` | AWS deployment template |
 
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/deploy.sh` | Deploy the stack and upload handler code |
+| `scripts/validate-configs.sh` | Validate collector configs using the collector image (needs Docker) |
+| `scripts/create-alerts.sh` | Wire this stack's four CloudWatch alarms to an SNS notification channel |
+| `scripts/setup-full-observability.sh` | Validate → deploy → wire alarms → verify, in one command |
+| `scripts/verify.sh` | Post-deployment E2E verification |
+| `scripts/cleanup.sh` | Remove the stack and optional resources |
+
+> **Alerting scope note**: `create-alerts.sh` here does not create detection rules, because the collector is a fan-out point rather than a backend — detections belong in whichever backend you export to. What it does cover is a real gap in this stack: `template.yaml` creates four alarms (`audit-errors`, `ems-errors`, `fpolicy-errors`, `dlq-messages`) but only attaches `AlarmActions` when `AlarmNotificationTopicArn` is supplied. With the default empty value the alarms deploy, turn red on failure, and notify nobody. For detection rules run the backend's own script — `integrations/<backend>/scripts/create-alerts.sh` — and see [detection-use-cases.md](../../docs/en/detection-use-cases.md).
+
 ## Testing
 
 ```bash

@@ -56,7 +56,7 @@ aws cloudformation deploy \
 | File | Stack | Notes |
 |------|-------|-------|
 | `automated-response.example.json` | `automated-response.yaml` | VPC required. Set CreateVpcEndpoints=false if EPs exist. |
-| `automated-response-ttl.example.json` | `automated-response-ttl.yaml` | Deploy after automated-response. Same VPC params. |
+| `automated-response-ttl.example.json` | `automated-response-ttl.yaml` | Deploy after automated-response. Same `SubnetIds` / `SecurityGroupId` (no `VpcId` — this stack creates no VPC Endpoint or Security Group). |
 | `restore-verification.example.json` | `restore-verification.yaml` | Requires: UNIX vol, no ONTAP S3 server, Route Table IDs. |
 | `content-classification.example.json` | `content-classification-scanner.yaml` | VpcId empty = simplest (no VPC). |
 | `vendor-datadog.example.json` | `integrations/datadog/template.yaml` | Representative vendor example. No VPC by default. |
@@ -73,17 +73,30 @@ Do you have an Active Directory?
 │
 ├── YES, AWS Managed AD (via AWS Directory Service)
 │   └── Pattern B: use-existing-managed
-│       AdMode=use-existing-managed, fill ExistingDirectoryId
-│       Windows EC2 will auto-join. SVM join uses script with --domain/--dns-ips.
+│       AdMode=use-existing-managed
+│       Fill: ExistingDirectoryId, ExistingAdDomainName, ExistingAdDnsIps
+│       All three are required. The domain name feeds the SSM join document and
+│       the DomainName output; the DNS IPs are set on the instance before the
+│       join, without which AWS-JoinDirectoryServiceDomain fails silently.
+│       Windows EC2 will auto-join. SVM join: script with --ad-stack-name.
 │
 └── YES, Self-managed AD (EC2 instance or on-premises via VPN/Direct Connect)
     └── Pattern C: use-self-managed
         AdMode=use-self-managed
-        Fill: SelfManagedAdDomainName, SelfManagedAdDnsIps, SelfManagedAdUsername,
-              SelfManagedAdPassword, SelfManagedAdOu
-        Windows EC2 domain join: manual via PowerShell (no SSM auto-join for self-managed)
+        Fill: SelfManagedAdDomainName, SelfManagedAdDnsIps
+        Windows EC2: the template sets DNS but does not join. Run Add-Computer
+        interactively over SSM Session Manager -- see the SelfManagedJoinCommand
+        stack output. AWS-JoinDirectoryServiceDomain needs a Directory Service
+        directory ID, which a self-managed domain does not have, and AD Connector
+        has no CloudFormation resource type.
         SVM join: script with explicit --domain/--dns-ips/--ou
 ```
+
+> The `SelfManagedAdUsername`, `SelfManagedAdPassword` and `SelfManagedAdOu`
+> parameters were removed. The template never read them, and the only place it
+> could have put the password is UserData, which the instance metadata service
+> exposes to anything running on the host. `demo-ad-join-svm.sh` takes
+> `--ad-username`, `--ad-password` and `--ou` directly.
 
 ### Required AD Ports (Security Group)
 
@@ -156,7 +169,11 @@ Windows EC2 in private subnets uses VPC default DNS (`x.x.0.2`) which cannot res
 Set-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter | Where {$_.Status -eq 'Up'}).InterfaceIndex `
   -ServerAddresses 198.51.100.10,198.51.100.11
 ```
-The `demo-ad-environment.yaml` template handles this automatically via UserData for Pattern A.
+The `demo-ad-environment.yaml` template handles this automatically via UserData for
+all three patterns — Pattern A from the directory it creates, Pattern B from
+`ExistingAdDnsIps`, Pattern C from `SelfManagedAdDnsIps`. It previously did so for
+Pattern A only, so Pattern B's SSM join failed with nothing in the association
+status explaining why.
 
 ### 7. SSM VPC Endpoints (Private Subnet Access)
 

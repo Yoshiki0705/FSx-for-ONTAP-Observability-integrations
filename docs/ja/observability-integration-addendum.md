@@ -28,6 +28,36 @@
 
 FSx for ONTAP は `DataWriteIOPS` を CloudWatch に発行。ランサムウェアはファイル 1 から IOPS スパイクを引き起こす（ARP はファイル 20+ で検知）。このメトリクスの Anomaly Detection アラームで 10-30 秒早い警告が可能。
 
+```yaml
+# CloudFormation snippet
+WriteIopsAnomalyAlarm:
+  Type: AWS::CloudWatch::Alarm
+  Properties:
+    AlarmName: fsxn-write-iops-anomaly
+    MetricName: DataWriteIOps
+    Namespace: AWS/FSx
+    Dimensions:
+      - Name: FileSystemId
+        Value: !Ref FileSystemId
+      - Name: VolumeId
+        Value: !Ref VolumeId
+    Statistic: Sum
+    Period: 60
+    EvaluationPeriods: 2
+    ThresholdMetricId: ad1
+    ComparisonOperator: GreaterThanUpperThreshold
+    Metrics:
+      - Id: m1
+        MetricStat:
+          Metric:
+            MetricName: DataWriteIOps
+            Namespace: AWS/FSx
+          Period: 60
+          Stat: Sum
+      - Id: ad1
+        Expression: ANOMALY_DETECTION_BAND(m1, 3)
+```
+
 ---
 
 ## 2. MITRE ATT&CK マッピング
@@ -99,6 +129,8 @@ FSx for ONTAP は `DataWriteIOPS` を CloudWatch に発行。ランサムウェ�
 
 ## 5. クロスアカウント Observability パターン
 
+### アーキテクチャ: FSx はワークロードアカウント、監視は中央アカウント
+
 ```
 ワークロードアカウント（FSx for ONTAP）
   ├── Syslog VPCE → CloudWatch Logs（ソース）
@@ -113,9 +145,13 @@ FSx for ONTAP は `DataWriteIOPS` を CloudWatch に発行。ランサムウェ�
   └── SNS → Response trigger（ワークロードアカウントへクロスアカウント publish）
 ```
 
+**重要な設定**: ソースアカウント側の CloudWatch Logs リソースポリシーで、中央アカウントの配信ロールからの `logs:PutSubscriptionFilter` を許可する必要があります。
+
 ---
 
 ## 6. ベンダーポータビリティマトリクス
+
+### コンポーネントを切り替えたときに変わるもの
 
 | 切り替え対象 | 変更が必要 | 変更不要 |
 |------------|-----------|---------|
@@ -128,19 +164,7 @@ FSx for ONTAP は `DataWriteIOPS` を CloudWatch に発行。ランサムウェ�
 
 ---
 
-## 7. ログ量の見積もりガイド
-
-| ソース | 一般的なボリューム（100 ユーザー） | 影響因子 |
-|--------|-------------------------------|---------|
-| 管理監査（syslog） | 50-200 MB/月 | 管理操作の頻度 |
-| EMS イベント | 1-10 MB/月 | インフライベントの頻度 |
-| ファイルアクセス監査（EVTX） | 1-10 GB/月 | ファイル操作の集約度 |
-| FPolicy（リアルタイム） | 5-50 GB/月 | ファイル作成/削除レート |
-| Response Lambda ログ | <1 MB/月 | インシデント頻度 |
-
----
-
-## 8. Observability ヘルスモニタリング（カナリアパターン）
+## 7. Observability ヘルスモニタリング（カナリアパターン）
 
 監視パイプライン自体を監視:
 
@@ -157,10 +181,37 @@ EventBridge Schedule (毎時)
 
 ---
 
+## 8. ログ量の見積もりガイド
+
+### ソース別の想定ログ量
+
+| ソース | 一般的なボリューム（100 ユーザー） | 影響因子 |
+|--------|-------------------------------|---------|
+| 管理監査（syslog） | 50-200 MB/月 | 管理操作の頻度 |
+| EMS イベント | 1-10 MB/月 | インフライベントの頻度 |
+| ファイルアクセス監査（EVTX） | 1-10 GB/月 | ファイル操作の集約度 |
+| FPolicy（リアルタイム） | 5-50 GB/月 | ファイル作成/削除レート |
+| Response Lambda ログ | <1 MB/月 | インシデント頻度 |
+
+### CloudWatch Logs のコスト見積もり
+
+| ログ量 | 取り込み ($0.50/GB) | 保存 ($0.03/GB/月, 30日) | 合計/月 |
+|-------|-------------------|------------------------|--------|
+| 500 MB/月 | $0.25 | $0.02 | $0.27 |
+| 5 GB/月 | $2.50 | $0.15 | $2.65 |
+| 50 GB/月 | $25.00 | $1.50 | $26.50 |
+| 200 GB/月 | $100.00 | $6.00 | $106.00 |
+
+> **コスト最適化**: 30 日より古いログは S3 エクスポートを使う（$0.023/GB vs $0.03/GB）。
+> CloudWatch Logs の保持を 30 日に設定し、長期保存は S3 へエクスポートしてください。
+
+---
+
 ## 関連ドキュメント
 
 - [自動応答ガイド](automated-response-guide.md)
 - [セキュリティ補遺](automated-response-security-addendum.md)
 - [EMS 検知機能リファレンス](ems-detection-capabilities.md)
 - [パイプライン SLO](pipeline-slo.md)
+- [OTel Collector PII 秘匿クックブック](../../integrations/otel-collector/docs/en/pii-redaction-cookbook.md)
 - [OTel Collector PII Redaction Cookbook](../../integrations/otel-collector/docs/ja/pii-redaction-cookbook.md)

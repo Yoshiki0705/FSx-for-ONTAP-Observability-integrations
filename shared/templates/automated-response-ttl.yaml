@@ -18,10 +18,12 @@ Parameters:
     Type: String
     Description: Secrets Manager ARN for ONTAP admin credentials
 
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: VPC ID where FSx for ONTAP is deployed
-
+  # NOTE: this stack intentionally takes no VpcId. Unlike automated-response.yaml
+  # (which creates VPC Endpoints and a Security Group, both of which need a VPC
+  # ID), this stack only attaches a Lambda to an existing subnet / Security Group
+  # pair, and Lambda VpcConfig takes those IDs directly. Deploy alongside
+  # automated-response.yaml so the Secrets Manager Interface Endpoint that stack
+  # creates is reachable from this Lambda.
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Private subnet IDs with access to ONTAP management endpoint
@@ -57,6 +59,19 @@ Conditions:
   HasNotificationTopic: !Not [!Equals [!Ref NotificationTopicArn, '']]
 
 Resources:
+  # Dead Letter Queue
+  # CleanupSchedule invokes the cleanup function asynchronously, so a failing
+  # invocation is retried twice by Lambda and then dropped. That failure mode
+  # matters more here than in a metrics pipeline: if cleanup stops running, the
+  # blocks it was supposed to expire stay in place indefinitely, so a
+  # time-limited block silently becomes permanent.
+  CleanupDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+
   # Lambda Execution Role
   TtlLambdaRole:
     Type: AWS::IAM::Role
@@ -96,6 +111,10 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-cleanup:*'
+              - Sid: DeadLetterQueue
+                Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt CleanupDeadLetterQueue.Arn
 
   # Log Group with retention
   CleanupLogGroup:
@@ -114,6 +133,8 @@ Resources:
       MemorySize: 256
       Timeout: 60
       Role: !GetAtt TtlLambdaRole.Arn
+      DeadLetterConfig:
+        TargetArn: !GetAtt CleanupDeadLetterQueue.Arn
       VpcConfig:
         SubnetIds: !Ref SubnetIds
         SecurityGroupIds:
@@ -370,10 +391,46 @@ Resources:
         RoleArn: !GetAtt SchedulerRole.Arn
       State: ENABLED
 
+  # A message here means expired blocks are no longer being lifted. Treat it as
+  # a security-relevant alarm, not a monitoring gap: users or client IPs that
+  # should have regained access are still blocked, and nothing else in the stack
+  # reports that.
+  CleanupDlqDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-depth'
+      AlarmDescription: >-
+        The TTL cleanup function failed all retries. Expired automated-response
+        blocks are no longer being removed, so time-limited blocks are now
+        effectively permanent. Review the cleanup log group, then use
+        shared/scripts/automated-response-cli.sh to unblock anything that should
+        have expired.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt CleanupDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasNotificationTopic
+        - - !Ref NotificationTopicArn
+        - !Ref 'AWS::NoValue'
+
 Outputs:
   CleanupFunctionArn:
     Description: TTL cleanup Lambda ARN
     Value: !GetAtt TtlCleanupFunction.Arn
+
+  DeadLetterQueueUrl:
+    Description: >-
+      DLQ for failed cleanup invocations. Messages here mean expired blocks are
+      still in force.
+    Value: !Ref CleanupDeadLetterQueue
 
   ScheduleName:
     Description: EventBridge Scheduler name

@@ -50,6 +50,13 @@ When FSx for ONTAP data is replicated to S3 (via DataSync) or to another FSx fil
 | SnapMirror | `lag-time`, `state`, `healthy` | ONTAP REST API (`/api/snapmirror/relationships`) |
 | FSx CloudWatch | `DataReadBytes`, `DataWriteBytes` | CloudWatch Metrics (`AWS/FSx`) |
 
+### Alarm Thresholds
+
+| Metric | Warning | Critical | Rationale |
+|--------|---------|----------|-----------|
+| DataSyncLagSeconds | > 1800s (30 min) | > 3600s (1 hour) | Depends on the freshness requirement of your lakehouse queries |
+| SnapMirrorLagSeconds | > 900s (15 min) | > 1800s (30 min) | Based on a typical SnapMirror RPO |
+
 ### Implementation
 
 ```python
@@ -218,6 +225,16 @@ FlexCache accelerates read access to remote volumes. A declining hit rate indica
 
 ONTAP REST API: `GET /api/storage/flexcache/flexcaches/{uuid}?fields=**`
 
+### Alarm Thresholds
+
+| Metric | Warning | Critical | Rationale |
+|--------|---------|----------|-----------|
+| FlexCacheHitRatePercent | < 70% | < 50% | Below 70% starts to affect query performance |
+
+> **ONTAP REST API access**
+>
+> The Lambda has to reach the FSx for ONTAP management endpoint. Deploy it in a VPC that can route to the management IP.
+
 ### Implementation
 
 ```python
@@ -270,6 +287,14 @@ Unusual access patterns on FSx S3 Access Points (bulk downloads, new principals,
 ### Data Source
 
 CloudTrail S3 data events for the FSx S3 Access Point.
+
+### Detection Rules
+
+| Check | Condition | Severity |
+|-------|-----------|----------|
+| Out-of-hours access | Access outside 06:00-22:00 | Warning |
+| Volume spike | More than 1000 objects/hour per principal | Warning |
+| New principal | A principal absent from the baseline | Info |
 
 ### Implementation
 
@@ -419,11 +444,35 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
+> **This stack does not ship a collector.** The template creates the schedule,
+> the alarms, the dashboard and the DLQ, but its Lambda code is a placeholder that
+> raises `NotImplementedError`. The metrics depend on your lakehouse layout —
+> which SnapMirror relationships, which FlexCache volumes, which DataSync task —
+> so there is no single implementation to ship.
+>
+> Upload a collector after deploying:
+>
+> ```bash
+> aws lambda update-function-code \
+>   --function-name fsxn-lakehouse-monitoring-collector \
+>   --zip-file fileb://collector.zip
+> ```
+>
+> It must publish `SnapMirrorLagSeconds`, `FlexCacheHitRate` and
+> `AccessAnomalyCount` to the `FSxONTAP/Lakehouse` namespace, which is what the
+> three alarms read.
+>
+> The placeholder raises rather than returning success so the gap is visible: the
+> failed invocation lands in the DLQ, `-dlq-depth` fires on the first schedule
+> tick, and you get an email. A stub returning `200` would have left the alarms in
+> `INSUFFICIENT_DATA` and the dashboard empty with nothing explaining why.
+
 ## Prerequisites
 
 - FSx for ONTAP with management endpoint accessible from Lambda VPC
 - ONTAP REST API credentials in Secrets Manager (read-only access)
 - S3 Access Point for the lakehouse data path
+- A collector implementation to upload (see the note above)
 - (Optional) DataSync task ARN for sync lag monitoring
 - (Optional) CloudTrail with S3 data events for anomaly detection
 

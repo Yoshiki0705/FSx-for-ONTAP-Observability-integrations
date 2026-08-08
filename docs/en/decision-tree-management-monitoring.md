@@ -50,16 +50,6 @@ All content is based on **hands-on verification on May 28, 2026**, with source l
 | Timeline retention | **Previous 5 minutes only** | Same: "retaining the previous five minutes of data" |
 | CSV download | **Point-in-time snapshot** | Same: "display all the point-in-time data captured for the selected volume" |
 | Timeline limitation | Only collected while page is visible. Stops on navigation | Same: "automatically be disabled when you navigate away from the Activity tab" |
-
-### FSA Enablement Considerations
-
-| Consideration | Details | Source |
-|--------------|---------|--------|
-| **Performance impact** | Latency may increase during FSA initial scan | [NetApp KB: High or fluctuating latency after turning on FSA](https://kb.netapp.com/Advice_and_Troubleshooting/Data_Storage_Software/ONTAP_OS/High_or_fluctuating_latency_after_turning_on_NetApp_ONTAP_File_System_Analytics) |
-| **`-atime-update` prerequisite** | If disabled, Explorer shows only `modified_time`, not `accessed_time`, making inactive file detection unreliable | [View Activity](https://docs.netapp.com/us-en/ontap/task_nas_file_system_analytics_view.html) |
-| **Initial scan time** | Proportional to file count in volume. May take hours for large volumes | [FSA Overview](https://docs.netapp.com/us-en/ontap/concept_nas_file_system_analytics_overview.html) |
-| **Activity Tracking data may not display immediately** | Data appears based on 5-second sampling intervals; timing-dependent | [classmethod verification](https://dev.classmethod.jp/articles/amazon-fsx-for-netapp-ontap-netapp-console/) |
-| **Recommendation**: Test on a non-production volume before enabling on production | — | — |
 | Monitoring categories | Directories, Files, Clients, Users | Same |
 | Metrics | Read/Write IOPS, Read/Write throughput | Same |
 | Explorer inactive period | Customizable (default 1 year) | [View Activity](https://docs.netapp.com/us-en/ontap/task_nas_file_system_analytics_view.html): "you can customize the range to be reported" |
@@ -72,6 +62,7 @@ All content is based on **hands-on verification on May 28, 2026**, with source l
 | **Performance impact** | Latency may increase during FSA initial scan | [NetApp KB: High or fluctuating latency after turning on FSA](https://kb.netapp.com/Advice_and_Troubleshooting/Data_Storage_Software/ONTAP_OS/High_or_fluctuating_latency_after_turning_on_NetApp_ONTAP_File_System_Analytics) |
 | **`-atime-update` prerequisite** | If disabled, Explorer's accessed_time is not updated and inactive file analysis will not function | [View Activity](https://docs.netapp.com/us-en/ontap/task_nas_file_system_analytics_view.html) |
 | **Initial scan time** | Proportional to the number of files in the volume. May take several hours for volumes with many files | [FSA Overview](https://docs.netapp.com/us-en/ontap/concept_nas_file_system_analytics_overview.html) |
+| **Activity Tracking data may not display immediately** | Data appears based on 5-second sampling intervals; timing-dependent | [classmethod verification](https://dev.classmethod.jp/articles/amazon-fsx-for-netapp-ontap-netapp-console/) |
 | **Recommendation**: Verify impact on a test volume before enabling in production | — | — |
 
 ---

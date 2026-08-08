@@ -141,7 +141,7 @@ aws ecs describe-tasks \
   --output text
 ```
 
-**注意:** この IP アドレスは ONTAP FPolicy 外部エンジンの `primary-servers` に設定する値。タスク再起動時に変更される。`FsxnMgmtIp` / `FsxnSvmUuid` / `FsxnEngineName` / `FsxnPolicyName` / `FsxnCredentialsSecret` パラメータを指定していれば、`fpolicy-apigw.yaml` の IP Updater Lambda（`IpUpdaterLambdaFunction`）が ECS Task State Change イベントを検知して自動更新する。手動更新が必要な場合は `shared/scripts/fpolicy-update-engine-ip.sh --auto` を使う。
+**注意:** この IP アドレスは ONTAP FPolicy 外部エンジンの `primary-servers` に設定する値。タスク再起動時に変更される。`FsxnMgmtIp` / `FsxnSvmUuid` / `FsxnEngineName` / `FsxnPolicyName` / `FsxnCredentialsSecretArn` パラメータを指定していれば、`fpolicy-apigw.yaml` の IP Updater Lambda（`IpUpdaterLambdaFunction`）が ECS Task State Change イベントを検知して自動更新する。手動更新が必要な場合は `shared/scripts/fpolicy-update-engine-ip.sh --auto` を使う。
 
 ### Step 7: EventBridge カスタムバスの確認
 

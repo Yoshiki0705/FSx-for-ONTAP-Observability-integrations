@@ -15,7 +15,7 @@
 | 1 | FSx ファイルシステム ID | FSx コンソール → ファイルシステム → `fs-xxxxxxxxxxxxxxxxx` | `fsxn-audit-config`, `restore-verification` |
 | 2 | 管理エンドポイント IP | FSx コンソール → ファイルシステム詳細 → 管理 DNS/IP | `automated-response`, `restore-verification`, `fpolicy-apigw`, `lakehouse-monitoring` |
 | 3 | SVM 名 | FSx コンソール → ストレージ仮想マシン | `automated-response`, `automated-response-ttl` |
-| 4 | SVM ID | FSx コンソール → SVM 詳細 → `svm-xxxxxxxxxxxxxxxxx` | `fsxn-audit-config` |
+| 4 | SVM ID | FSx コンソール → SVM 詳細 → `svm-xxxxxxxxxxxxxxxxx` | `demo-ad-environment`（`FsxSvmId`、任意） |
 | 5 | VPC ID | VPC コンソール | 全 VPC モードスタック |
 | 6 | プライベートサブネット ID | VPC コンソール → サブネット（FSx ENI と同じ AZ） | 全 VPC モードスタック |
 | 7 | セキュリティグループ ID | FSx 管理 IP への HTTPS (443) を許可する SG | 全 VPC モードスタック |
@@ -192,7 +192,7 @@ automated-response.yaml (CreateVpcEndpoints=true)
 1. ONTAP 管理者クレデンシャルを Secrets Manager に保存
 2. VPC/Subnet/SG を指定して `automated-response.yaml` をデプロイ
 3. Lambda Layer（`shared/lambda-layers/`）をデプロイし、関数に適用
-4. 同じ VPC パラメータで `automated-response-ttl.yaml` をデプロイ
+4. 同じ `SubnetIds` / `SecurityGroupId` で `automated-response-ttl.yaml` をデプロイ（`VpcId` は受け取りません）
 
 **セキュリティに関する補足**: Lambda は ONTAP 管理 IP に直接到達するため VPC 内で実行されます。Secrets Manager と SNS の VPC Endpoint は最初のスタックが作成します。
 

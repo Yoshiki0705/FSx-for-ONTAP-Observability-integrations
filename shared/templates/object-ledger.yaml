@@ -15,7 +15,14 @@ Parameters:
   TTLDays:
     Type: Number
     Default: 90
-    Description: Days to retain ledger entries (0 = no TTL)
+    Description: >
+      Days to retain successfully-processed ledger entries (0 = keep forever).
+      Pass the same value to the shipper Lambda as LEDGER_TTL_DAYS: DynamoDB
+      only expires items that carry the expires_at attribute, and it is the
+      Lambda that writes it. Setting it here alone does nothing.
+      Poison-pill entries never expire regardless of this value -- they are the
+      permanent skip list, and losing one puts the pipeline back into a retry
+      loop on a file already known to be unprocessable.
     MinValue: 0
 
 Conditions:
@@ -34,6 +41,14 @@ Resources:
       KeySchema:
         - AttributeName: s3_key
           KeyType: HASH
+      # Expiry is driven by the expires_at attribute that
+      # shared/python/object_ledger.py writes on successful entries. Enabling
+      # TTL here without a writer -- which is what this template did before --
+      # leaves the table growing forever while TTLDays reads as if retention
+      # were configured.
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: !If [HasTTL, true, false]
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -102,6 +117,14 @@ Outputs:
     Value: !GetAtt LedgerTable.Arn
     Export:
       Name: !Sub ${AWS::StackName}-LedgerTableArn
+
+  LedgerTtlDays:
+    Description: >
+      Pass this to the shipper Lambda as LEDGER_TTL_DAYS. DynamoDB expires only
+      items carrying expires_at, and object_ledger.py writes it from this value.
+    Value: !Ref TTLDays
+    Export:
+      Name: !Sub ${AWS::StackName}-LedgerTtlDays
 
   PoisonPillAlarmArn:
     Condition: HasAlarmEmail

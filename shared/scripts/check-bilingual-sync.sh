@@ -15,6 +15,20 @@ NC='\033[0m'
 ERRORS=0
 WARNINGS=0
 
+# Markdown headings, excluding anything inside a fenced code block. A `#` at the
+# start of a line inside a bash block is a shell comment, not a heading.
+count_headings() {
+  awk '
+    /^[[:space:]]*```/ { fence = !fence; next }
+    !fence && /^#{1,6}[[:space:]]/ { n++ }
+    END { print n + 0 }
+  ' "$1"
+}
+
+count_fences() {
+  awk '/^[[:space:]]*```/ { n++ } END { print n + 0 }' "$1"
+}
+
 echo "=== Bilingual Documentation Sync Check ==="
 echo ""
 
@@ -56,7 +70,24 @@ check_directory_pair() {
     done
   fi
 
-  # Heading structure comparison for files that exist in both
+  # Heading structure comparison for files that exist in both.
+  #
+  # Headings are counted outside fenced code blocks only, and any difference is
+  # reported. The previous version ran `grep -c "^#"` with a tolerance of 3, which
+  # went wrong in both directions:
+  #
+  #   false positives  `# comment` lines inside bash blocks counted as headings.
+  #                    demo-automated-response.md was reported as 60 vs 70 while
+  #                    its heading structures were identical.
+  #   missed gaps      those same comment lines could balance a real difference.
+  #                    verification-results-datadog.md read as 46 vs 46 while the
+  #                    English copy had 17 headings the Japanese one did not, and
+  #                    the tolerance of 3 hid genuine 1-to-3 heading gaps in five
+  #                    more files.
+  #
+  # Counting fences also surfaces unclosed code blocks: an odd fence count means
+  # everything after the last fence renders as code, which is reported separately
+  # because it is a rendering defect rather than a translation gap.
   if [ -d "$ja_dir" ] && [ -d "$en_dir" ]; then
     for ja_file in "$ja_dir"/*.md; do
       [ -f "$ja_file" ] || continue
@@ -65,13 +96,22 @@ check_directory_pair() {
       local en_file="$en_dir/$basename"
       [ -f "$en_file" ] || continue
 
-      local ja_headings
-      ja_headings=$(grep -c "^#" "$ja_file" 2>/dev/null || echo 0)
-      local en_headings
-      en_headings=$(grep -c "^#" "$en_file" 2>/dev/null || echo 0)
+      local ja_headings en_headings ja_fences en_fences
+      ja_headings=$(count_headings "$ja_file")
+      en_headings=$(count_headings "$en_file")
+      ja_fences=$(count_fences "$ja_file")
+      en_fences=$(count_fences "$en_file")
 
-      local diff=$((ja_headings - en_headings))
-      if [ ${diff#-} -gt 3 ]; then
+      if [ $((ja_fences % 2)) -ne 0 ]; then
+        echo -e "  ${RED}UNCLOSED FENCE${NC}: $ja_dir/$basename (${ja_fences} fences; everything after the last one renders as code)"
+        ERRORS=$((ERRORS + 1))
+      fi
+      if [ $((en_fences % 2)) -ne 0 ]; then
+        echo -e "  ${RED}UNCLOSED FENCE${NC}: $en_dir/$basename (${en_fences} fences; everything after the last one renders as code)"
+        ERRORS=$((ERRORS + 1))
+      fi
+
+      if [ "$ja_headings" -ne "$en_headings" ]; then
         echo -e "  ${YELLOW}STRUCTURE DIFF${NC}: $basename (ja: ${ja_headings} headings, en: ${en_headings} headings)"
         WARNINGS=$((WARNINGS + 1))
       fi

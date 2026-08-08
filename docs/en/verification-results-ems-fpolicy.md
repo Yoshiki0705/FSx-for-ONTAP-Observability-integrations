@@ -211,7 +211,7 @@ aws cloudformation deploy \
     FsxnSvmUuid=<svm-uuid> \
     FsxnEngineName=fpolicy_lambda_engine \
     FsxnPolicyName=fpolicy_lambda_policy \
-    FsxnCredentialsSecret=<Secrets Manager ARN> \
+    FsxnCredentialsSecretArn=<Secrets Manager ARN> \
   --capabilities CAPABILITY_NAMED_IAM \
   --region ap-northeast-1
 ```

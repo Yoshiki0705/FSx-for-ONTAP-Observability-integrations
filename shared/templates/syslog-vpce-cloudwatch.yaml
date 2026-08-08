@@ -189,7 +189,9 @@ Outputs:
       SSH to FSx management endpoint and run:
       security audit log-forwarding create -destination <VPCE_ENI_IP> -port 6514 -protocol tcp-encrypted -facility local7
       (Use port 1514 + tcp-unencrypted as fallback if TLS validation fails)
-    Value: !Sub >
+    # Plain string, not Fn::Sub: every placeholder here is a literal the operator
+    # fills in by hand, so there is nothing for CloudFormation to substitute.
+    Value: >
       ssh fsxadmin@<FSx-Management-IP>
       "security audit log-forwarding create
       -destination <VPCE_ENI_IP>

@@ -31,14 +31,13 @@ Metadata:
           default: "Pattern B: Existing AWS Managed AD"
         Parameters:
           - ExistingDirectoryId
+          - ExistingAdDomainName
+          - ExistingAdDnsIps
       - Label:
           default: "Pattern C: Self-Managed AD (EC2 or on-premises)"
         Parameters:
           - SelfManagedAdDomainName
           - SelfManagedAdDnsIps
-          - SelfManagedAdUsername
-          - SelfManagedAdPassword
-          - SelfManagedAdOu
       - Label:
           default: Network Configuration
         Parameters:
@@ -101,7 +100,46 @@ Parameters:
       The Windows EC2 will be joined to this directory.
     AllowedPattern: '^(d-[0-9a-f]{10})?$'
 
+  ExistingAdDomainName:
+    Type: String
+    Default: ''
+    Description: >-
+      [Pattern B only] FQDN of your existing AWS Managed AD (e.g., corp.example.com).
+      Required: the SSM domain-join document needs the directory name, and
+      demo-ad-join-svm.sh --ad-stack-name reads it from the DomainName output.
+      Previously this resource read SelfManagedAdDomainName, a Pattern C field, so
+      Pattern B joined with an empty directory name unless you filled in the wrong
+      box.
+
+  ExistingAdDnsIps:
+    Type: String
+    Default: ''
+    Description: >-
+      [Pattern B only] Comma-separated DNS IPs of your existing AD domain
+      controllers. Example: 198.51.100.10,198.51.100.11
+      Required: a Windows instance in a private subnet resolves through the VPC
+      resolver, which cannot resolve the AD domain, and
+      AWS-JoinDirectoryServiceDomain fails without reporting why. Look them up
+      with:
+        aws ds describe-directories --directory-ids <id> \
+          --query 'DirectoryDescriptions[0].DnsIpAddrs'
+
   # --- Pattern C: Self-Managed AD ---
+  # Pattern C configures DNS on the Windows instance and stops there. Joining a
+  # self-managed domain needs a service-account password, and the only place this
+  # template could put one is UserData -- which is readable from the instance
+  # metadata service by anything running on the host and via
+  # describe-instance-attribute. Run the join interactively instead (see the
+  # SelfManagedJoinCommand output), where the password is not persisted.
+  #
+  # The SVM-side join to a self-managed AD is fully supported:
+  #   bash shared/scripts/demo-ad-join-svm.sh --svm-id <id> \
+  #     --domain <fqdn> --dns-ips '["ip1","ip2"]' --ou <dn> --ad-password <pass>
+  #
+  # SelfManagedAdUsername, SelfManagedAdPassword and SelfManagedAdOu were removed.
+  # Nothing in the template read them, and the script takes --ad-username,
+  # --ad-password and --ou directly. A NoEcho password parameter that is never
+  # used reads as though the template handles the join.
   SelfManagedAdDomainName:
     Type: String
     Default: ''
@@ -114,34 +152,6 @@ Parameters:
     Description: >-
       [Pattern C only] Comma-separated DNS IP addresses of your AD domain controllers.
       Example: 198.51.100.10,198.51.100.11
-
-  SelfManagedAdUsername:
-    Type: String
-    Default: Admin
-    Description: >-
-      [Pattern C only] AD username with permission to join machines to the domain.
-      Default: Admin (for AWS Managed AD). Use your service account for self-managed.
-
-  SelfManagedAdPassword:
-    Type: String
-    NoEcho: true
-    Default: ''
-    Description: >-
-      [Pattern C only] Password for the AD join user.
-
-  SelfManagedAdOu:
-    Type: String
-    Default: ''
-    Description: >-
-      [Pattern C only] OU distinguished name for computer objects.
-      For AWS Managed AD (Pattern A): The post-deploy script auto-generates
-      the correct path with the intermediate OU: OU=Computers,OU=<ShortName>,DC=...
-      For self-managed AD: Example: OU=FSxServers,DC=corp,DC=example,DC=com
-      Leave empty to use the script's auto-generated default.
-      IMPORTANT (AWS Managed AD): AWS Managed AD creates an intermediate OU
-      with the domain ShortName. The correct path is:
-        OU=Computers,OU=<ShortName>,DC=<part1>,DC=<part2>,DC=<part3>
-      NOT: OU=Computers,DC=<part1>,DC=<part2>,DC=<part3> (this will FAIL)
 
   # --- Network ---
   VpcId:
@@ -214,10 +224,59 @@ Parameters:
       For domain 'demo.fsx.local' (ShortName=demo), do NOT use 'DEMO' here.
       Must be unique across all SVMs joined to the same AD domain.
 
+# Parameter validation, evaluated before any resource is created or updated. A
+# stack that fails these never reaches the point of a silent domain-join failure.
+#
+# This is the fail-fast that was missing: every per-pattern parameter defaults to
+# an empty string, because CloudFormation cannot mark a parameter required only for
+# one value of another parameter. Without these rules, selecting Pattern B and
+# leaving its fields blank produced a stack that reached CREATE_COMPLETE and an SSM
+# association that failed with nothing in its status explaining why.
+Rules:
+  PatternARequiresPassword:
+    RuleCondition: !Equals [!Ref AdMode, 'create-new']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref AdPassword, '']]
+        AssertDescription: >-
+          AdMode=create-new requires AdPassword (8+ chars with upper, lower, digit
+          and symbol) for the new AWS Managed AD Admin user.
+
+  PatternBRequiresDirectoryDetails:
+    RuleCondition: !Equals [!Ref AdMode, 'use-existing-managed']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ExistingDirectoryId, '']]
+        AssertDescription: >-
+          AdMode=use-existing-managed requires ExistingDirectoryId (d-xxxxxxxxxx).
+      - Assert: !Not [!Equals [!Ref ExistingAdDomainName, '']]
+        AssertDescription: >-
+          AdMode=use-existing-managed requires ExistingAdDomainName. The SSM
+          domain-join document needs the directory name, and demo-ad-join-svm.sh
+          reads it from the DomainName output.
+      - Assert: !Not [!Equals [!Ref ExistingAdDnsIps, '']]
+        AssertDescription: >-
+          AdMode=use-existing-managed requires ExistingAdDnsIps. A private-subnet
+          instance resolves through the VPC resolver, which cannot resolve the AD
+          domain, and AWS-JoinDirectoryServiceDomain then fails without reporting
+          the reason in the association status.
+
+  PatternCRequiresDomainAndDns:
+    RuleCondition: !Equals [!Ref AdMode, 'use-self-managed']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref SelfManagedAdDomainName, '']]
+        AssertDescription: >-
+          AdMode=use-self-managed requires SelfManagedAdDomainName.
+      - Assert: !Not [!Equals [!Ref SelfManagedAdDnsIps, '']]
+        AssertDescription: >-
+          AdMode=use-self-managed requires SelfManagedAdDnsIps so the Windows
+          instance can resolve the domain before you run the interactive join.
+
 Conditions:
   CreateNewAd: !Equals [!Ref AdMode, 'create-new']
   UseExistingManagedAd: !Equals [!Ref AdMode, 'use-existing-managed']
   UseSelfManagedAd: !Equals [!Ref AdMode, 'use-self-managed']
+  # Patterns A and B both target an AWS Managed AD, so they share the directory-ID
+  # and DNS outputs that demo-ad-join-svm.sh reads.
+  IsManagedAd: !Not [!Equals [!Ref AdMode, 'use-self-managed']]
   HasSvmId: !Not [!Equals [!Ref FsxSvmId, '']]
 
 Resources:
@@ -275,19 +334,33 @@ Resources:
       SecurityGroupIds:
         - !Ref SecurityGroupId
       IamInstanceProfile: !Ref Ec2InstanceProfile
-      UserData: !If
-        - CreateNewAd
-        - !Base64
-            Fn::Sub:
-              - |
-                <powershell>
-                # Set DNS to AD DNS IPs (required for domain join in private subnets)
-                $adapter = Get-NetAdapter | Where-Object {$$_.Status -eq 'Up'} | Select-Object -First 1
-                Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses ${AdDns1},${AdDns2}
-                </powershell>
-              - AdDns1: !Select [0, !GetAtt ManagedAD.DnsIpAddresses]
-                AdDns2: !Select [1, !GetAtt ManagedAD.DnsIpAddresses]
-        - !Ref AWS::NoValue
+      # DNS is set for all three patterns, not just Pattern A. An instance in a
+      # private subnet resolves through the VPC resolver, which cannot resolve the
+      # AD domain, and AWS-JoinDirectoryServiceDomain then fails with no error
+      # visible in the association status -- only in the command output. Pattern B
+      # previously got no DNS configuration at all.
+      UserData: !Base64
+        Fn::Sub:
+          - |
+            <powershell>
+            # Point DNS at the AD domain controllers. Required before any domain
+            # join: the VPC resolver cannot resolve the AD domain name.
+            $adapter = Get-NetAdapter | Where-Object {$$_.Status -eq 'Up'} | Select-Object -First 1
+            $dns = "${AdDnsIps}" -split ',' | Where-Object { $$_ -ne '' }
+            if ($dns.Count -gt 0) {
+              Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $dns
+              Write-Output "DNS set to: $($dns -join ', ')"
+            } else {
+              Write-Output "No AD DNS IPs supplied; domain join will fail until DNS is set."
+            }
+            </powershell>
+          - AdDnsIps: !If
+              - CreateNewAd
+              - !Join [',', !GetAtt ManagedAD.DnsIpAddresses]
+              - !If
+                  - UseExistingManagedAd
+                  - !Ref ExistingAdDnsIps
+                  - !Ref SelfManagedAdDnsIps
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-windows-smb'
@@ -315,6 +388,10 @@ Resources:
           - !Select [0, !GetAtt ManagedAD.DnsIpAddresses]
           - !Select [1, !GetAtt ManagedAD.DnsIpAddresses]
 
+  # Pattern C has no association on purpose. AWS-JoinDirectoryServiceDomain takes
+  # a Directory Service directory ID, which a self-managed domain does not have,
+  # and AD Connector has no CloudFormation resource type. See the
+  # SelfManagedJoinCommand output for the interactive join.
   DomainJoinAssociationExisting:
     Type: AWS::SSM::Association
     Condition: UseExistingManagedAd
@@ -327,8 +404,11 @@ Resources:
       Parameters:
         directoryId:
           - !Ref ExistingDirectoryId
+        # Was !Ref SelfManagedAdDomainName -- a Pattern C parameter defaulting to
+        # an empty string, so this join ran with no directory name.
         directoryName:
-          - !Ref SelfManagedAdDomainName
+          - !Ref ExistingAdDomainName
+        dnsIpAddresses: !Split [',', !Ref ExistingAdDnsIps]
 
   # ================================================================
   # Amazon Linux EC2 Instance (for NFS demo)
@@ -371,22 +451,32 @@ Outputs:
     Description: AD pattern used
     Value: !Ref AdMode
 
+  # ManagedAdId and DomainName are both read by
+  # `demo-ad-join-svm.sh --ad-stack-name <stack>`. They used to be Pattern A only
+  # (ManagedAdId) and Pattern A / Pattern C (DomainName), so for Pattern B the
+  # script found no directory ID and an empty domain name. Both now cover A and B.
   ManagedAdId:
-    Condition: CreateNewAd
-    Description: "[Pattern A] AWS Managed AD Directory ID"
-    Value: !Ref ManagedAD
+    Condition: IsManagedAd
+    Description: "[Pattern A/B] AWS Managed AD Directory ID"
+    Value: !If [CreateNewAd, !Ref ManagedAD, !Ref ExistingDirectoryId]
 
   ManagedAdDnsIps:
-    Condition: CreateNewAd
-    Description: "[Pattern A] AD DNS IP addresses"
-    Value: !Join [',', !GetAtt ManagedAD.DnsIpAddresses]
+    Condition: IsManagedAd
+    Description: "[Pattern A/B] AD DNS IP addresses"
+    Value: !If
+      - CreateNewAd
+      - !Join [',', !GetAtt ManagedAD.DnsIpAddresses]
+      - !Ref ExistingAdDnsIps
 
   DomainName:
     Description: AD domain name used
     Value: !If
       - CreateNewAd
       - !Ref AdDomainName
-      - !Ref SelfManagedAdDomainName
+      - !If
+          - UseExistingManagedAd
+          - !Ref ExistingAdDomainName
+          - !Ref SelfManagedAdDomainName
 
   WindowsInstanceId:
     Description: Windows EC2 Instance ID (connect via SSM Session Manager or Fleet Manager RDP)
@@ -396,9 +486,26 @@ Outputs:
     Description: Linux EC2 Instance ID (connect via SSM Session Manager)
     Value: !Ref LinuxInstance
 
+  SelfManagedJoinCommand:
+    Condition: UseSelfManagedAd
+    Description: >-
+      [Pattern C] The template sets DNS on the Windows instance but does not join
+      it. Run this interactively over SSM Session Manager so the service-account
+      password is not written to UserData, where the instance metadata service
+      would expose it.
+    Value: !Sub |
+      # From SSM Session Manager on ${WindowsInstance} (PowerShell):
+      $cred = Get-Credential          # prompts for the AD join account
+      Add-Computer -DomainName ${SelfManagedAdDomainName} -Credential $cred -Restart
+      # If your AD places computer objects in a specific OU, add:
+      #   -OUPath "OU=FSxServers,DC=corp,DC=example,DC=com"
+
   SvmAdJoinCommand:
     Condition: HasSvmId
-    Description: Post-deploy SVM AD join command
+    Description: >-
+      Post-deploy SVM AD join command. --ad-stack-name reads the DomainName and
+      ManagedAdId outputs, so it covers Patterns A and B. For Pattern C pass
+      --domain, --dns-ips and --ou explicitly instead.
     Value: !Sub |
       bash shared/scripts/demo-ad-join-svm.sh \
         --svm-id ${FsxSvmId} \
@@ -436,7 +543,14 @@ Outputs:
       9. Take "access denied" screenshots
       10. Unblock and delete this stack when done
       === IMPORTANT NOTES ===
-      - Windows DNS must point to AD DNS IPs for domain join (UserData handles this for Pattern A)
+      - Windows DNS must point to AD DNS IPs for domain join. UserData handles this
+        for all three patterns (A from the new directory, B from ExistingAdDnsIps,
+        C from SelfManagedAdDnsIps). Without it AWS-JoinDirectoryServiceDomain
+        fails and the association status does not say why -- check the command
+        output, not the association.
+      - Pattern C joins the SVM but not the Windows instance. See the
+        SelfManagedJoinCommand output: run Add-Computer interactively over Session
+        Manager rather than putting a service-account password in UserData.
       - NFS export-policy deny rule is effective immediately (even for root clients)
       - Same-subnet NACL rules do NOT affect intra-subnet traffic — use export-policy for NFS blocking
       - MISCONFIGURED SVM: retry with corrected params (no SVM delete needed)

@@ -79,7 +79,8 @@ aws cloudformation deploy \
 ```
 
 - **スタックステータス** — CREATE_COMPLETE
-- **作成されたリソース** — - [x] Lambda 関数
+- **作成されたリソース**:
+  - [x] Lambda 関数
   - [x] IAM ロール
   - [x] EventBridge Rule
   - [x] Dead Letter Queue（KMS 暗号化）
@@ -101,7 +102,8 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス** — ```json
+- **レスポンス**:
+```json
 {
   "statusCode": 200,
   "body": {
@@ -112,7 +114,8 @@ aws lambda invoke \
 }
 ```
 
-- **確認項目** — - [x] statusCode: 200
+- **確認項目**:
+  - [x] statusCode: 200
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (空)
@@ -129,7 +132,8 @@ aws lambda invoke \
 - **到着までの時間** — 即時（数秒以内）
 - **インデックスパターン** — `fsxn-audit-YYYY.MM.DD`（日次インデックス）
 
-- **ECS フィールドマッピング確認** — - [x] `@timestamp` — ISO 8601 形式
+- **ECS フィールドマッピング確認**:
+  - [x] `@timestamp` — ISO 8601 形式
   - [x] `event.type` — イベント ID
   - [x] `user.name` — ユーザー名
   - [x] `fsxn.operation` — 操作タイプ

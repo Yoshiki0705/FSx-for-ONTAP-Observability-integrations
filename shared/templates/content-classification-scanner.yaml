@@ -281,6 +281,11 @@ Resources:
   # ================================================================
   ScannerFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Invoked on demand with aws lambda invoke (RequestResponse); the caller
+          receives the error directly
     Properties:
       FunctionName: !Sub '${AWS::StackName}-scanner'
       Runtime: python3.12

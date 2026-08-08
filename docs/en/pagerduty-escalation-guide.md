@@ -78,13 +78,23 @@ aws cloudwatch put-metric-alarm \
 | Mass snapshot deletion | > 5 deletes / 5 min | Critical | ✅ Recommended |
 | Lambda error rate | Errors > 5% (5 min) | High | ○ Optional |
 
-## Cost
+## Escalation Policy Example
 
-| Component | Monthly Estimate |
-|-----------|-----------------|
-| SNS Topic + HTTPS delivery | ~$0 (negligible at alert volumes) |
-| PagerDuty | Free tier: up to 5 users |
-| **Total** | **~$0** (with Free tier) |
+```
+Level 1 (immediate):  Storage administrator  — Push notification + Slack
+Level 2 (after 15m):  Security team          — Phone + SMS
+Level 3 (after 30m):  Infrastructure owner   — Phone
+```
+
+## Alert Lifecycle
+
+```
+[Alarm -> ALARM]  ->  PagerDuty incident created (trigger)
+[Alarm -> OK]     ->  PagerDuty incident auto-resolved (resolve)
+```
+
+- When the CloudWatch alarm returns to OK, the PagerDuty incident resolves automatically
+- Auto-resolution requires the same SNS topic to be set on `OKActions`
 
 ## Severity Mapping
 
@@ -109,6 +119,33 @@ This template assumes approach 3 (per-tier topics) as the minimal setup. Combine
 
 - **The integration URL is a secret**: it embeds the PagerDuty integration key. The CloudFormation parameter uses `NoEcho: true` to hide it from the console/API, but it is still stored on the SNS subscription endpoint. Treat the deploying principal and the SNS topic policy as sensitive.
 - **Key rotation**: if you rotate the PagerDuty integration key, update the stack to apply the new URL.
+
+## Cost
+
+| Component | Monthly Estimate |
+|-----------|-----------------|
+| SNS Topic + HTTPS delivery | ~$0 (negligible at alert volumes) |
+| PagerDuty | Free tier: up to 5 users |
+| **Total** | **~$0** (with Free tier) |
+
+## Testing
+
+```bash
+# Publish a test message to SNS and confirm an incident is raised in PagerDuty
+aws sns publish \
+  --topic-arn "$TOPIC_ARN" \
+  --subject "ALARM: fsxn-test-pagerduty" \
+  --message '{"AlarmName":"fsxn-test","NewStateValue":"ALARM","NewStateReason":"Test escalation"}'
+```
+
+## Troubleshooting
+
+| Symptom | Cause | Resolution |
+|---------|-------|-----------|
+| No incident created in PagerDuty | SNS subscription still Pending | The subscription needs confirming on the PagerDuty side (Events API v2 confirms automatically) |
+| Subscription stuck in ConfirmationPending | Wrong integration URL | Check that the URL ends in `/enqueue` |
+| Incidents never auto-resolve | `OKActions` not configured | Add `--ok-actions "$TOPIC_ARN"` |
+| Duplicate incidents | The same alarm entered ALARM more than once | PagerDuty deduplicates on the dedup key (AlarmName) |
 
 ## Vendor Alert vs AWS Alarm Escalation
 

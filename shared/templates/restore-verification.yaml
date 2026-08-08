@@ -399,6 +399,11 @@ Resources:
   # ================================================================
   CreateCloneFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Step Functions task; retries and failure routing are declared in the state
+          machine, which surfaces them as execution failures
     Properties:
       FunctionName: !Sub '${AWS::StackName}-create-clone'
       Runtime: python3.12
@@ -581,6 +586,11 @@ Resources:
   # ================================================================
   WaitForFsxDiscoveryFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Step Functions task; retries and failure routing are declared in the state
+          machine, which surfaces them as execution failures
     Properties:
       FunctionName: !Sub '${AWS::StackName}-wait-fsx-discovery'
       Runtime: python3.12
@@ -663,6 +673,11 @@ Resources:
   # ================================================================
   AttachAccessPointFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Step Functions task; retries and failure routing are declared in the state
+          machine, which surfaces them as execution failures
     Properties:
       FunctionName: !Sub '${AWS::StackName}-attach-ap'
       Runtime: python3.12
@@ -786,6 +801,11 @@ Resources:
   # ================================================================
   ScanFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Step Functions task; retries and failure routing are declared in the state
+          machine, which surfaces them as execution failures
     Properties:
       FunctionName: !Sub '${AWS::StackName}-scan'
       Runtime: python3.12
@@ -890,6 +910,11 @@ Resources:
   # ================================================================
   RecordVerdictFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Step Functions task; retries and failure routing are declared in the state
+          machine, which surfaces them as execution failures
     Properties:
       FunctionName: !Sub '${AWS::StackName}-record-verdict'
       Runtime: python3.12
@@ -971,6 +996,11 @@ Resources:
   # ================================================================
   CleanupFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          Step Functions task; retries and failure routing are declared in the state
+          machine, which surfaces them as execution failures
     Properties:
       FunctionName: !Sub '${AWS::StackName}-cleanup'
       Runtime: python3.12

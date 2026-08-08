@@ -38,31 +38,63 @@ def lambda_handler(event, context):
 | POWERTOOLS_METRICS_NAMESPACE | FSxONTAPObservability | CloudWatch Metrics namespace |
 | POWERTOOLS_LOG_LEVEL | INFO | Minimum log level |
 
-### idempotency.py
+### object_ledger.py
 
-DynamoDB-backed object ledger for idempotent object processing and duplicate suppression (Production Readiness Level 3).
+DynamoDB-backed object ledger for idempotent object processing and duplicate
+suppression (Production Readiness Level 3). Deploy the table with
+[`shared/templates/object-ledger.yaml`](../templates/object-ledger.yaml).
+
+> Replaces `idempotency.py`, which was removed. It defined a second class also
+> named `ObjectLedger`, keyed on `object_key` — a partition key that no template
+> in this repository creates, so every call against the shipped ledger table
+> raised `ValidationException`. Use this module instead.
 
 ```python
-from shared.python.idempotency import ObjectLedger
+from object_ledger import ObjectLedger
 
-ledger = ObjectLedger(table_name="fsxn-object-ledger")
+ledger = ObjectLedger(
+    table_name=os.environ["LEDGER_TABLE_NAME"],
+    ttl_days=int(os.environ.get("LEDGER_TTL_DAYS", "0")),
+)
 
-if ledger.is_processed(object_key):
-    return  # Skip duplicate
-
-# ... process ...
-
-ledger.mark_processed(object_key, record_count=42)
+if ledger.should_process(key, etag):
+    try:
+        process_and_ship(key)
+        ledger.mark_success(key, etag)
+    except Exception as exc:
+        ledger.mark_failure(key, etag, str(exc))
 ```
 
 **DynamoDB Table Schema:**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| object_key | String (PK) | S3 object key |
-| processed_at | Number | Unix timestamp of processing |
-| record_count | Number | Records extracted |
-| ttl | Number | DynamoDB TTL epoch |
+| s3_key | String (PK) | S3 object key |
+| etag | String | S3 ETag, used for deduplication |
+| status | String | `processing` / `success` / `failed` / `poison_pill` |
+| failure_count | Number | Consecutive failures; `max_failures` promotes to `poison_pill` |
+| last_error | String | Most recent error, truncated to 500 chars |
+| processed_at | Number | Epoch of last successful processing |
+| failed_at | Number | Epoch of last failure |
+| created_at | Number | Epoch first seen |
+| worker_id | String | Lambda request ID, for concurrency tracking |
+| expires_at | Number | DynamoDB TTL epoch. Present on successful entries only |
+
+**Retention needs both halves.** DynamoDB expires an item only if it carries the
+attribute named in the table's `TimeToLiveSpecification`. The template enables TTL
+on `expires_at`; this module writes it from `ttl_days` / `LEDGER_TTL_DAYS`. Set one
+without the other and retention reads as configured while the table grows without
+bound — which is what the stack did before: it exposed a `TTLDays` parameter with
+no `TimeToLiveSpecification` and no writer.
+
+Pass the ledger stack's `TTLDays` through to the Lambda as `LEDGER_TTL_DAYS` so the
+two agree. `0` means keep entries forever.
+
+**Poison pills never expire.** `expires_at` is removed when an entry is promoted to
+`poison_pill`. That list is what suppresses files already known to be
+unprocessable; if an entry expired, `should_process` would return `True` again and
+the pipeline would re-enter the failure loop that produced the poison pill —
+repeatedly, since each cycle re-creates and re-expires the entry.
 
 ## Lambda Powertools Dependency
 

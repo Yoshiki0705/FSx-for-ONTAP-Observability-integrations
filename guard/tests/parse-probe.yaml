@@ -1,0 +1,12 @@
+# Minimal template used only to make cfn-guard load and parse each rule file.
+#
+# `cfn-guard validate` exits 0 when a rule file fails to parse -- it prints
+# "Parsing error ..." to stdout and reports success. Two of this repository's
+# four rule files were unparseable for months without CI noticing, so
+# run-guard-selftest.sh validates every rule file against this template and
+# greps the output for that string.
+Resources:
+  Placeholder:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: guard-selftest-placeholder

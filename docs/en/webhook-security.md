@@ -65,6 +65,49 @@ vserver ems destination create -name grafana-webhook \
 
 > **Note**: ONTAP EMS webhook configuration for custom headers varies by ONTAP version. Consult your ONTAP documentation for the correct syntax to add an `Authorization: Bearer <token>` header to webhook requests.
 
+4. **Verify the authorizer accepts and rejects correctly**:
+
+```bash
+API_URL="https://<api-id>.execute-api.<region>.amazonaws.com/prod/ems"
+
+# Valid token — expect 200 (or the EMS handler's own status code)
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$API_URL" \
+  -H "Authorization: Bearer <token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"records":[]}'
+
+# Wrong token — expect 403
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$API_URL" \
+  -H "Authorization: Bearer <an-incorrect-token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"records":[]}'
+
+# No header — expect 401
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$API_URL" \
+  -H 'Content-Type: application/json' \
+  -d '{"records":[]}'
+```
+
+Run all three. A stack that deploys cleanly tells you nothing about whether the
+authorizer works, and the two failure modes look alike from the outside:
+
+| Response to a valid token | Meaning |
+|---|---|
+| `403` on every request, including the valid one | The authorizer is running but the token does not match. Check that the secret's JSON key is `webhook_secret` and that ONTAP is sending the value you stored. |
+| `500` on every request | The authorizer is not running. Check the `-authorizer` log group for an import error, and confirm `Handler` is `index.lambda_handler`. |
+
+> **Authorizer code placement**: the authorizer ships inline in the template's
+> `Code.ZipFile`, so `aws cloudformation deploy` produces a working authorizer
+> with no follow-up upload step. The source of truth is
+> `shared/lambda/authorizers/shared_secret_authorizer.py`; edit that file and run
+> `python3 shared/scripts/sync-inline-lambda.py` to regenerate the inline copy.
+> `shared/python/tests/test_inline_lambda_sync.py` fails if the two drift apart.
+>
+> Because CloudFormation writes inline code to a file named `index`, the resource
+> declares `Handler: index.lambda_handler`. Any other module name raises an
+> import error at invocation time, which API Gateway surfaces as HTTP 500 rather
+> than a clean 401.
+
 ### Secret Rotation
 
 The Lambda authorizer caches the secret for 5 minutes (configurable via `_SECRET_TTL` in the authorizer code). After rotating the secret in Secrets Manager:
@@ -148,6 +191,8 @@ For most deployments, the following combination provides strong security without
 
 | File | Purpose |
 |------|---------|
-| `shared/templates/ems-webhook-apigw.yaml` | API Gateway CloudFormation template |
-| `shared/lambda/authorizers/shared_secret_authorizer.py` | Lambda authorizer code |
+| `shared/templates/ems-webhook-apigw.yaml` | API Gateway CloudFormation template. Carries the authorizer inline in `Code.ZipFile`, generated from the file below |
+| `shared/lambda/authorizers/shared_secret_authorizer.py` | Lambda authorizer code — the source of truth; edit here |
+| `shared/scripts/sync-inline-lambda.py` | Regenerates the template's inline copy from the source. `--check` exits 1 on drift |
+| `shared/python/tests/test_inline_lambda_sync.py` | Fails if the inline copy drifts, if the handler is not `index.*`, or if a placeholder is left behind |
 | `shared/python/auth_cache.py` | Reusable credential cache (for handler-side auth) |

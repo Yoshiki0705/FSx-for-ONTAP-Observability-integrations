@@ -787,6 +787,16 @@ aws lambda delete-layer-version --layer-name fsxn-shared-python --version-number
 
 ---
 
+### `aws sns publish` でよくあるエラー
+
+| エラー | 原因 | 対処 |
+|-------|------|------|
+| `AuthorizationError` | IAM ユーザーに `sns:Publish` 権限が無い | トリガートピックの ARN に対する `sns:Publish` 権限を追加 |
+| `InvalidParameter` | メッセージの JSON が不正 | `echo '<msg>' | python3 -m json.tool` で JSON を検証 |
+| `TopicNotFound` | トピック ARN が誤っている | CloudFormation スタックの Outputs から ARN を確認 |
+
+---
+
 ## FAQ
 
 **Q: これは DII Storage Workload Security を完全に置き換えますか？**
@@ -826,5 +836,9 @@ A: SMB name-mapping ブロックは新しい接続に対して即時有効です
 **Q: 正当なユーザーをブロックしてしまうリスクはありますか？**
 A: はい — これは全ての自動応答システムに共通です。対策: (1) 検知閾値を保守的に設定、(2) 通知トピックでオペレーターに即時通知、(3) 自動解除付きの時間制限ブロックの実装、(4) 迅速な手動解除の手順書を整備。
 
-
 ---
+
+## 関連情報
+
+- [デプロイガイド](deployment-guide.md) — VPC Endpoint のセットアップ、パラメータファイル、事前検証を含む完全なデプロイ手順
+- [検証済みクリーン復旧ポイントガイド](verified-recovery-point-guide.md) — インシデント後の Snapshot 検証ワークフロー

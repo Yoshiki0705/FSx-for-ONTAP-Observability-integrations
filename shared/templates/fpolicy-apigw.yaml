@@ -74,7 +74,7 @@ Metadata:
           - FsxnSvmUuid
           - FsxnEngineName
           - FsxnPolicyName
-          - FsxnCredentialsSecret
+          - FsxnCredentialsSecretArn
 
 Parameters:
   ComputeType:
@@ -192,7 +192,11 @@ Parameters:
     Default: ''
     Description: FPolicy policy name configured on ONTAP
 
-  FsxnCredentialsSecret:
+  # Renamed from FsxnCredentialsSecret so the name matches the AllowedPattern
+  # below and the ...SecretArn convention used by every other secret reference
+  # in this repository. Existing stacks must pass the new parameter name on the
+  # next update.
+  FsxnCredentialsSecretArn:
     Type: String
     Default: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:placeholder'
     Description: ARN of Secrets Manager secret containing ONTAP admin credentials
@@ -665,6 +669,11 @@ Resources:
 
   BridgeLambdaFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        dlq_exempt: >-
+          SQS event source mapping; failed batches are redriven by
+          IngestionQueue.RedrivePolicy to FPolicyDeadLetterQueue
     Properties:
       FunctionName: !Sub '${AWS::StackName}-fpolicy-bridge'
       Runtime: python3.12
@@ -802,10 +811,62 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Ref FsxnCredentialsSecret
+                Resource: !Ref FsxnCredentialsSecretArn
+        - PolicyName: DeadLetterQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt IpUpdaterDeadLetterQueue.Arn
       Tags:
         - Key: Project
           Value: fsxn-observability
+
+  # IpUpdaterEventRule invokes this asynchronously on ECS task state change, so
+  # a failing invocation is retried twice by Lambda and then dropped. That is
+  # the worst failure to lose: if the IP update never lands, ONTAP keeps sending
+  # FPolicy traffic to the previous task IP and the whole pipeline goes quiet
+  # until someone runs fpolicy-update-engine-ip.sh by hand.
+  IpUpdaterDeadLetterQueue:
+    Condition: IsFargate
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-ip-updater-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Component
+          Value: fpolicy
+
+  IpUpdaterDlqDepthAlarm:
+    Condition: IsFargate
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-ip-updater-dlq-depth'
+      AlarmDescription: >-
+        The FPolicy IP updater failed all retries after an ECS task state
+        change. ONTAP is still pointed at the previous Fargate task IP, so
+        FPolicy events are not reaching the pipeline. Re-register with
+        `bash shared/scripts/fpolicy-update-engine-ip.sh --auto`, then check the
+        ip-updater log group for the underlying error.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt IpUpdaterDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
 
   IpUpdaterLambdaFunction:
     Condition: IsFargate
@@ -819,13 +880,15 @@ Resources:
       Timeout: 60
       MemorySize: 128
       Role: !GetAtt IpUpdaterLambdaRole.Arn
+      DeadLetterConfig:
+        TargetArn: !GetAtt IpUpdaterDeadLetterQueue.Arn
       Environment:
         Variables:
           FSXN_MGMT_IP: !Ref FsxnMgmtIp
           FSXN_SVM_UUID: !Ref FsxnSvmUuid
           FSXN_ENGINE_NAME: !Ref FsxnEngineName
           FSXN_POLICY_NAME: !Ref FsxnPolicyName
-          FSXN_CREDENTIALS_SECRET: !Ref FsxnCredentialsSecret
+          FSXN_CREDENTIALS_SECRET: !Ref FsxnCredentialsSecretArn
           CLUSTER_NAME: !Ref EcsCluster
       LoggingConfig:
         LogGroup: !Ref IpUpdaterLambdaLogGroup

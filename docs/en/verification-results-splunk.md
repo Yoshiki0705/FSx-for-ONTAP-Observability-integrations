@@ -2,6 +2,15 @@
 
 🌐 [日本語](../ja/verification-results-splunk.md) | **English** (this page)
 
+> **This record is an unfilled template.** Every judgment cell below still reads
+> `<PASS/FAIL>` and the environment fields are placeholders — no verification run
+> has been written up here yet. The audit log path itself was exercised: see
+> `integrations/splunk-serverless/screenshots/splunk-e2e-search-fsxn-audit-xml.png`
+> for the Splunk search showing FSx for ONTAP audit events. The EMS and FPolicy
+> paths have handlers and stacks but no recorded end-to-end run, which is why the
+> [telemetry path coverage](README.md#telemetry-path-coverage) matrix marks them
+> 🔧 rather than ✅.
+
 - **Verification Date**: <verification-date>
 - **Verifier**: <verifier-name> / <role>
 

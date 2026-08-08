@@ -416,12 +416,24 @@ creds = auth.get()  # Cached; force_refresh=True after 401/403
 ### `object_ledger.py` — DynamoDB per-object state (Level 3)
 ```python
 from object_ledger import ObjectLedger
-ledger = ObjectLedger(table_name=os.environ["LEDGER_TABLE_NAME"])
+ledger = ObjectLedger(
+    table_name=os.environ["LEDGER_TABLE_NAME"],
+    ttl_days=int(os.environ.get("LEDGER_TTL_DAYS", "0")),
+)
 if ledger.should_process(key, etag):
     process(key)
     ledger.mark_success(key, etag)
 # Auto-promotes to poison_pill after 3 failures
 ```
+
+Retention needs both halves: TTL enabled on the table (`object-ledger.yaml`, on
+attribute `expires_at`) **and** the module writing `expires_at` from
+`LEDGER_TTL_DAYS`. Setting one without the other reads as configured while the
+table grows without bound. Poison-pill entries never expire — that list is what
+suppresses files already known to be unprocessable.
+
+`shared/python/idempotency.py` was removed. It defined a second `ObjectLedger`
+keyed on `object_key`, which no template here creates.
 
 ### `sqs_buffer.py` — SQS buffering with partial batch failures (Level 3)
 ```python

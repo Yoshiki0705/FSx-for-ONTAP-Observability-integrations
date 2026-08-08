@@ -60,7 +60,8 @@ aws cloudformation deploy \
 ```
 
 - **スタックステータス** — CREATE_COMPLETE
-- **作成されたリソース** — - [x] Lambda 関数
+- **作成されたリソース**:
+  - [x] Lambda 関数
   - [x] IAM ロール（Named IAM）
   - [x] EventBridge Rule
   - [x] Dead Letter Queue（KMS 暗号化）
@@ -83,7 +84,8 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス** — ```json
+- **レスポンス**:
+```json
 {
   "statusCode": 200,
   "body": {
@@ -94,7 +96,8 @@ aws lambda invoke \
 }
 ```
 
-- **確認項目** — - [x] statusCode: 200
+- **確認項目**:
+  - [x] statusCode: 200
   - [x] total_logs: 3
   - [x] total_shipped: 3
   - [x] errors: [] (空)
@@ -111,7 +114,8 @@ aws lambda invoke \
 - **到着ログ数** — 1件（タイムスタンプ修正後の送信分）
 - **到着までの時間** — 約30秒
 
-- **属性確認** — - [x] `source` = `fsxn-ontap`
+- **属性確認**:
+  - [x] `source` = `fsxn-ontap`
   - [x] `service` = `ontap-audit`
   - [x] `event_type` = `4663`
   - [x] `svm` = `svm-prod-01`
@@ -281,7 +285,8 @@ mutation {
 - **判定** — ✅ 監査ログパス本番環境利用可能（EMS/FPolicy パスは別途検証）
 - **合格基準数** — 7 / 8（デモシナリオ6 は EMS インフラ未デプロイのため未実施）
 - **不合格基準** — なし
-- **未実施基準** — - ステップ 6: EMS Webhook インフラデプロイ後に実施予定
+- **未実施基準**:
+  - ステップ 6: EMS Webhook インフラデプロイ後に実施予定
 
 ---
 

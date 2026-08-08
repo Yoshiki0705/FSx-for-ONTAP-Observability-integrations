@@ -15,7 +15,7 @@ Gather the following from your existing environment:
 | 1 | FSx File System ID | FSx Console → File systems → `fs-xxxxxxxxxxxxxxxxx` | `fsxn-audit-config`, `restore-verification` |
 | 2 | Management Endpoint IP | FSx Console → File system details → Management DNS/IP | `automated-response`, `restore-verification`, `fpolicy-apigw`, `lakehouse-monitoring` |
 | 3 | SVM Name | FSx Console → Storage virtual machines | `automated-response`, `automated-response-ttl` |
-| 4 | SVM ID | FSx Console → SVM details → `svm-xxxxxxxxxxxxxxxxx` | `fsxn-audit-config` |
+| 4 | SVM ID | FSx Console → SVM details → `svm-xxxxxxxxxxxxxxxxx` | `demo-ad-environment` (`FsxSvmId`, optional) |
 | 5 | VPC ID | VPC Console | All VPC-mode stacks |
 | 6 | Private Subnet IDs | VPC Console → Subnets (same AZ as FSx ENIs) | All VPC-mode stacks |
 | 7 | Security Group ID | SG that allows HTTPS (443) to FSx management IP | All VPC-mode stacks |
@@ -193,7 +193,7 @@ automated-response.yaml (CreateVpcEndpoints=true)
 1. Store ONTAP admin credentials in Secrets Manager
 2. Deploy `automated-response.yaml` with your VPC/Subnet/SG
 3. Deploy Lambda Layer (`shared/lambda-layers/`) and update the function
-4. Deploy `automated-response-ttl.yaml` with the same VPC parameters
+4. Deploy `automated-response-ttl.yaml` with the same `SubnetIds` / `SecurityGroupId` (it takes no `VpcId`)
 
 **Security note**: The Lambda runs inside the VPC to reach the ONTAP management IP directly. VPC Endpoints for Secrets Manager and SNS are created by the first stack.
 

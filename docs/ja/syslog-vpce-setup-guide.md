@@ -322,6 +322,7 @@ fields @timestamp, @message
 ## 関連ドキュメント
 
 - [アーキテクチャ進化ドキュメント](architecture-evolution-syslog-vpce.md)
+- [イベントソースガイド](event-sources.md)
 - [AWS Docs: Syslog ingestion](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_Syslog.html)
 - [AWS Docs: Setting up syslog ingestion](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_Syslog_Setup.html)
 - [NetApp: ONTAP audit destinations](https://docs.netapp.com/us-en/ontap/system-admin/forward-command-history-log-file-destination-task.html)
