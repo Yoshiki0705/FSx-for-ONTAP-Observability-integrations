@@ -187,7 +187,7 @@ def _format_for_new_relic(
             # New Relic expects Unix epoch in milliseconds
             if isinstance(ts, str):
                 try:
-                    from datetime import datetime, timezone
+                    from datetime import datetime
                     dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                     entry["timestamp"] = int(dt.timestamp() * 1000)
                 except (ValueError, TypeError):

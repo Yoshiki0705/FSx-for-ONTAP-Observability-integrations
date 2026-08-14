@@ -316,7 +316,7 @@ Resources:
               "svm_name": "svm-prod-01",
               "domain": "CORP",           // for SMB actions
               "username": "jdoe",         // for SMB actions
-              "client_ip": "10.0.5.99",   // for NFS actions
+              "client_ip": "203.0.113.99",   // for NFS actions
               "volume_name": "vol1",      // for snapshot / composite actions
               "policy_name": "default",   // for NFS actions (optional)
               "reason": "ARP detection"   // human-readable reason

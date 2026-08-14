@@ -93,7 +93,7 @@ WriteIopsAnomalyAlarm:
 | Event name | `event.name` | `event.name` | `arw.volume.state` |
 | Severity | `severity_text` / `severity_number` | `severity_text` | `alert` |
 | Username | `user.name` | `enduser.id` | `CORP\jdoe` |
-| Client IP | `client.address` | `client.address` | `10.0.5.99` |
+| Client IP | `client.address` | `client.address` | `203.0.113.99` |
 | Volume | `service.name` | `service.name` | `vol_data` |
 | File path | `file.path` | `file.path` | `/data/confidential/report.pdf` |
 | Operation | `event.action` | custom: `fsxn.operation` | `read` / `write` / `delete` |

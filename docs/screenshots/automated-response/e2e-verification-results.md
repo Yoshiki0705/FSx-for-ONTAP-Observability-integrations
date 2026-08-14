@@ -11,7 +11,7 @@
 |---|--------|--------|----------|-------|
 | 1 | health_check | PASS | 825ms | /cluster + /svm/svms both OK |
 | 2 | create_snapshot | PASS | 545ms | incident_response_20260708_203432 on vol1 |
-| 3 | block_nfs_ip (direct API) | PASS | 201 Created | index:999, client:192.168.99.99 |
+| 3 | block_nfs_ip (direct API) | PASS | 201 Created | index:999, client:203.0.113.199 |
 | 4 | block_smb_user (direct API) | PASS | 201 Created | index:99, CORP\\testuser99 |
 | 5 | list_active_blocks | PASS | <1s | API responding correctly |
 | 6 | TTL cleanup (EventBridge) | PASS | 1.5s | "no expired blocks found" (correct) |

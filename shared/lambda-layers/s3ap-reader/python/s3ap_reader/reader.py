@@ -4,7 +4,6 @@ Handles reading objects from S3 Access Points with retry logic
 and streaming support for large files.
 """
 
-import io
 import logging
 from typing import Any
 
@@ -80,7 +79,7 @@ class S3AccessPointReader:
                 if not chunk:
                     break
                 yield chunk
-        except ClientError as e:
+        except ClientError:
             logger.error(
                 "Failed to stream object from S3 AP: %s/%s", access_point_arn, key
             )
@@ -106,7 +105,7 @@ class S3AccessPointReader:
                 "last_modified": response["LastModified"].isoformat(),
                 "etag": response["ETag"],
             }
-        except ClientError as e:
+        except ClientError:
             logger.error(
                 "Failed to get metadata from S3 AP: %s/%s", access_point_arn, key
             )

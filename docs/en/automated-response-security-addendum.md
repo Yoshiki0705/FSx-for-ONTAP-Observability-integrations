@@ -45,7 +45,7 @@ For volumes accessed via BOTH NFS and SMB (multiprotocol), execute both containm
 {"action": "contain_smb_threat", "svm_name": "svm-prod", "domain": "CORP", "username": "jdoe", "volume_name": "vol_data"}
 
 // Message 2: Block NFS (same user's workstation IP)
-{"action": "contain_nfs_threat", "svm_name": "svm-prod", "client_ip": "10.0.5.99", "volume_name": "vol_data"}
+{"action": "contain_nfs_threat", "svm_name": "svm-prod", "client_ip": "203.0.113.99", "volume_name": "vol_data"}
 ```
 
 > **Simpler alternative**: The `contain_multiprotocol_threat` composite action combines both blocks (plus snapshot and session disconnect) in a single message, instead of publishing the two messages shown above. See [Automated Response Guide — Composite Actions](automated-response-guide.md#supported-actions).

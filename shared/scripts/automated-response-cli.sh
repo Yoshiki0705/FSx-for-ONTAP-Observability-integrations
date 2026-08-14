@@ -10,11 +10,11 @@
 #   export DEFAULT_SVM="svm-prod-01"
 #
 #   ./automated-response-cli.sh block-smb --domain CORP --user jdoe --reason "ARP alert"
-#   ./automated-response-cli.sh block-nfs --ip 10.0.5.99 --reason "Mass deletion"
+#   ./automated-response-cli.sh block-nfs --ip 203.0.113.99 --reason "Mass deletion"
 #   ./automated-response-cli.sh contain-smb --domain CORP --user jdoe --volume vol_data
-#   ./automated-response-cli.sh contain-nfs --ip 10.0.5.99 --volume vol_data
+#   ./automated-response-cli.sh contain-nfs --ip 203.0.113.99 --volume vol_data
 #   ./automated-response-cli.sh unblock-smb --domain CORP --user jdoe
-#   ./automated-response-cli.sh unblock-nfs --ip 10.0.5.99
+#   ./automated-response-cli.sh unblock-nfs --ip 203.0.113.99
 #   ./automated-response-cli.sh snapshot --volume vol_data --reason "Evidence"
 #   ./automated-response-cli.sh test  # Dry-run test message
 #
@@ -69,7 +69,7 @@ Examples:
   ${SCRIPT_NAME} contain-smb --domain CORP --user jdoe --volume vol_data --reason "ARP detection"
 
   # Block an attacker IP
-  ${SCRIPT_NAME} block-nfs --ip 10.0.5.99 --reason "Mass deletion detected"
+  ${SCRIPT_NAME} block-nfs --ip 203.0.113.99 --reason "Mass deletion detected"
 
   # Unblock after investigation
   ${SCRIPT_NAME} unblock-smb --domain CORP --user jdoe

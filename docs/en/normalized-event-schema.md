@@ -15,7 +15,7 @@ All vendor integrations normalize ONTAP audit events into a common internal sche
   "timestamp": "2026-05-17T01:30:00.000Z",
   "svm": "svm-prod-01",
   "user": "admin@corp.local",
-  "client_ip": "10.0.1.50",
+  "client_ip": "198.51.100.50",
   "operation": "ReadData",
   "path": "/vol/data/reports/quarterly.xlsx",
   "result": "Success",

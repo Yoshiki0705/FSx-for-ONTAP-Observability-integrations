@@ -179,11 +179,11 @@ Post-deployment manual steps:
 
 | Step | Status | Notes |
 |------|--------|-------|
-| VPC Endpoint creation | ✅ Complete | `vpce-010e49474d23c7172`, ENI IP: `10.0.9.28` |
+| VPC Endpoint creation | ✅ Complete | `vpce-010e49474d23c7172`, ENI IP: `198.51.100.28` |
 | Security Group creation | ✅ Complete | VPC CIDR (10.0.0.0/16) → Port 6514 allowed |
 | Log Group creation | ✅ Complete | `/syslog/fsxn-admin-audit` |
 | Resource Policy configuration | ✅ Complete | `syslog.logs.amazonaws.com` → Log Group |
-| ONTAP log-forwarding configuration | ✅ Complete | `10.0.9.28:6514` (tcp_encrypted, local7) |
+| ONTAP log-forwarding configuration | ✅ Complete | `198.51.100.28:6514` (tcp_encrypted, local7) |
 | Syslog Configuration (Console) | 🔲 Next step | CLI not yet supported; use Console |
 | Log arrival confirmation | 🔲 After Syslog Configuration | |
 | CW Logs Insights query | 🔲 After log arrival | |

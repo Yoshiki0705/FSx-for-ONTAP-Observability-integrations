@@ -114,7 +114,7 @@ vserver audit create -vserver <svm-name> -destination /audit_log -rotate-size 20
 | TimeCreated | Event timestamp (UTC) | 2026-05-31T10:00:00Z |
 | Computer | SVM name | FPolicySMB |
 | SubjectUserName | User who performed the action | DOMAIN\username |
-| IpAddress | Client IP address | 10.0.1.50 |
+| IpAddress | Client IP address | 198.51.100.50 |
 | ObjectName | File/directory path | /share/folder/report.xlsx |
 | ObjectType | File or Directory | File |
 | HandleID | Object handle | — |

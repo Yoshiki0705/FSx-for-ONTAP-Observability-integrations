@@ -104,7 +104,7 @@ aws lambda invoke \
   - [x] Each log has `attributes.svm` = `svm-prod-01`
   - [x] Each log has `attributes.user` = `admin@corp.local` etc.
   - [x] Each log has `attributes.operation` = `ReadData` etc.
-  - [x] Each log has `attributes.client_ip` = `10.0.1.50` etc.
+  - [x] Each log has `attributes.client_ip` = `198.51.100.50` etc.
   - [x] Each log has `attributes.result` = `Success` / `Failure`
   - [x] Each log has `attributes.path` = `/vol/data/reports/quarterly.xlsx` etc.
 
@@ -150,14 +150,14 @@ aws lambda invoke \
   - User: `unknown@external.com`
   - Operation: `Open`
   - Path: `/vol/data/confidential/secret.pdf`
-  - Client IP: `192.168.1.100`
+  - Client IP: `203.0.113.100`
   - Result: `Failure`
 
 - **Checklist**:
   - [x] At least 1 result with `@attributes.result:Failure`
   - [x] `@attributes.user` is not empty (`unknown@external.com`)
   - [x] `@attributes.path` is not empty (`/vol/data/confidential/secret.pdf`)
-  - [x] `@attributes.client_ip` is not empty (`192.168.1.100`)
+  - [x] `@attributes.client_ip` is not empty (`203.0.113.100`)
 
 ![Unauthorized Access Detection](../screenshots/datadog-unauthorized-access.png)
 
@@ -294,14 +294,14 @@ aws lambda invoke \
 ```bash
 aws lambda invoke \
   --function-name fsxn-datadog-ems-fpolicy-fpolicy \
-  --payload '{"source":"fpolicy.fsxn","detail-type":"FPolicy File Operation","detail":{"operation":"create","file_path":"/vol/data/test-fpolicy.txt","user":"admin@corp.local","client_ip":"10.0.1.50","vserver":"FPolicySMB","timestamp":"2026-05-16T23:56:00Z","protocol":"cifs"}}' \
+  --payload '{"source":"fpolicy.fsxn","detail-type":"FPolicy File Operation","detail":{"operation":"create","file_path":"/vol/data/test-fpolicy.txt","user":"admin@corp.local","client_ip":"198.51.100.50","vserver":"FPolicySMB","timestamp":"2026-05-16T23:56:00Z","protocol":"cifs"}}' \
   --cli-binary-format raw-in-base64-out \
   --region ap-northeast-1 response.json
 ```
 
 - **Lambda Response**: `{"statusCode": 200, "body": {"total_events": 1, "shipped": 1}}`
 - **Datadog Search**: `source:fsxn-fpolicy` → 1 log confirmed
-- **Log Content**: `FPolicy: create /vol/data/test-fpolicy.txt by admin@corp.local from 10.0.1.50`
+- **Log Content**: `FPolicy: create /vol/data/test-fpolicy.txt by admin@corp.local from 198.51.100.50`
 - **Time to Arrival**: ~30 seconds
 
 ![FPolicy File Operation — Datadog Log List](../screenshots/datadog-fpolicy-suspect-activity.png)

@@ -157,6 +157,7 @@ class RestoreVerificationClient:
         region: str | None = None,
         fsx_client: Any | None = None,
         s3_client: Any | None = None,
+        strict_ad_check: bool = False,
     ) -> None:
         self.base_url = f"https://{mgmt_ip}/api"
         self.file_system_id = file_system_id
@@ -180,6 +181,10 @@ class RestoreVerificationClient:
 
         self._fsx = fsx_client or boto3.client("fsx", region_name=region)
         self._s3 = s3_client or boto3.client("s3", region_name=region)
+        self.strict_ad_check = strict_ad_check
+        # Verdict from the most recent create_flexclone, so a later AccessDenied
+        # can be attributed correctly. See check_ad_connectivity.
+        self.last_ad_check: str = "not_checked"
 
     # ------------------------------------------------------------------
     # Internal: ONTAP REST helpers (mirrors ontap_response.py conventions)
@@ -240,6 +245,100 @@ class RestoreVerificationClient:
     # Step 1: FlexClone lifecycle
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Pre-flight: Active Directory domain controller reachability
+    # ------------------------------------------------------------------
+
+    def _unverified_ad(self, svm_name: str, reason: str, detail: str) -> str:
+        """Record an AD state that is neither confirmed good nor confirmed bad.
+
+        Three answers are ambiguous: ONTAP omits the discovered_servers field,
+        returns no CIFS domain records, or errors on the domains endpoint. Each
+        is indistinguishable from an unreachable domain, and all share one
+        downstream symptom -- AccessDenied from ListObjectsV2 well after the
+        clone and access point were built.
+
+        Default is to proceed, because refusing to verify a restore candidate
+        during an incident because an older ONTAP omits a field is worse than
+        proceeding with the verdict recorded. Pass strict_ad_check=True where
+        every SVM is AD-joined and a false pass is the greater risk.
+        """
+        message = (
+            f"AD DC reachability UNVERIFIED for AD-joined SVM '{svm_name}': {detail} "
+            "This is indistinguishable from an unreachable domain, and both surface "
+            "later as AccessDenied from ListObjectsV2. Suspect AD DC reachability "
+            "before the S3 Access Point policy."
+        )
+        if self.strict_ad_check:
+            raise RestoreVerificationError(
+                f"AD CONNECTIVITY FAILURE (strict mode): {message}",
+                step="ad_precheck",
+            )
+        logger.warning("%s Proceeding because strict_ad_check is off.", message)
+        return f"unverified:{reason}"
+
+    def check_ad_connectivity(self, svm_name: str) -> str:
+        """Verify the SVM can reach its domain controllers before anything is built.
+
+        On an AD-joined SVM, ONTAP performs a unix->win reverse name-mapping
+        lookup for every S3 Access Point data operation, so unreachable domain
+        controllers make ListObjectsV2 and GetObject return AccessDenied at the
+        file system layer while HeadBucket still succeeds. That asymmetry is what
+        makes the failure hard to read: the metadata probe that an operator
+        naturally reaches for is the one call that still works.
+
+        Checking here costs one API call. Discovering it later costs the clone,
+        the FSx discovery wait, and the access point.
+
+        Returns "not_applicable", "verified", or "unverified:<reason>".
+        """
+        cifs = self._request(
+            "GET", f"/protocols/cifs/services?svm.name={svm_name}&fields=ad_domain.fqdn"
+        )
+        if not cifs.get("records", []):
+            logger.info("SVM '%s' has no CIFS service; AD is not involved", svm_name)
+            return "not_applicable"
+
+        ad_fqdn = cifs["records"][0].get("ad_domain", {}).get("fqdn", "unknown")
+        logger.info("SVM '%s' has CIFS enabled (AD: %s)", svm_name, ad_fqdn)
+
+        try:
+            domains = self._request(
+                "GET",
+                f"/protocols/cifs/domains?svm.name={svm_name}&fields=discovered_servers",
+            )
+        except RestoreVerificationError as e:
+            return self._unverified_ad(
+                svm_name, "domains_api_error",
+                f"the domains endpoint returned an error ({e}).",
+            )
+
+        records = domains.get("records", [])
+        if not records:
+            return self._unverified_ad(
+                svm_name, "no_domain_records", "ONTAP returned no CIFS domain records.",
+            )
+
+        servers = records[0].get("discovered_servers", None)
+        if servers is None:
+            return self._unverified_ad(
+                svm_name, "field_absent",
+                "ONTAP did not return the discovered_servers field.",
+            )
+        if len(servers) == 0:
+            # The one unambiguous bad answer. Always fatal, strict mode or not.
+            raise RestoreVerificationError(
+                f"AD CONNECTIVITY FAILURE: SVM '{svm_name}' is AD-joined "
+                f"(domain: {ad_fqdn}) but cannot discover any domain controllers. "
+                f"S3 Access Point data operations will fail with AccessDenied. "
+                f"Verify AD ({ad_fqdn}) is running and DNS IPs are reachable "
+                f"from the SVM's network interfaces.",
+                step="ad_precheck",
+            )
+
+        logger.info("AD domain controllers reachable: %d discovered", len(servers))
+        return "verified"
+
     def create_flexclone(
         self,
         svm_name: str,
@@ -263,6 +362,12 @@ class RestoreVerificationClient:
         Returns:
             Dict with clone details (clone_name, svm, uuid).
         """
+        # Pre-flight before anything is built. This module previously had no AD
+        # check while the CloudFormation-embedded copy of the same workflow did,
+        # so the two implementations disagreed about whether the guard existed --
+        # and this is the one packaged as a Lambda layer by build-layer.sh.
+        self.last_ad_check = self.check_ad_connectivity(svm_name)
+
         if not clone_name:
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             clone_name = f"verify_{volume_name}_{timestamp}"[:203]  # ONTAP name limit
@@ -302,6 +407,9 @@ class RestoreVerificationClient:
             "volume_uuid": records[0]["uuid"],
             "parent_volume": volume_name,
             "parent_snapshot": snapshot_name,
+            # Carried so a later AccessDenied can be attributed to AD rather than
+            # to the access point policy, which this workflow never sets.
+            "ad_check": self.last_ad_check,
         }
 
     def delete_flexclone(self, volume_uuid: str) -> None:

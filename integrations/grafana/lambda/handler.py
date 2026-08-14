@@ -23,7 +23,7 @@ import logging
 import os
 import time
 from base64 import b64encode
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import boto3

@@ -165,14 +165,14 @@ Key outputs:
 ```bash
 # Dry run (preview commands only)
 bash shared/scripts/ontap-audit-setup.sh \
-  --endpoint 10.0.1.100 \
+  --endpoint 198.51.100.100 \
   --svm svm-prod-01 \
   --format evtx \
   --dry-run
 
 # Execute
 bash shared/scripts/ontap-audit-setup.sh \
-  --endpoint 10.0.1.100 \
+  --endpoint 198.51.100.100 \
   --svm svm-prod-01 \
   --format evtx
 ```

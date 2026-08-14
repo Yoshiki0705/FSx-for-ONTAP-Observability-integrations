@@ -21,14 +21,14 @@ Usage:
     # Block an attacker IP immediately at network layer
     client.block_ip(
         subnet_id="subnet-0123456789abcdef0",
-        client_ip="10.0.5.99",
+        client_ip="203.0.113.99",
         reason="Ransomware activity detected",
     )
 
     # Unblock after investigation
     client.unblock_ip(
         subnet_id="subnet-0123456789abcdef0",
-        client_ip="10.0.5.99",
+        client_ip="203.0.113.99",
     )
 
     # List all active network blocks
@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -106,7 +105,7 @@ class NetworkBlockClient:
             ip: IP address string (with or without /32 suffix).
 
         Returns:
-            Normalized CIDR string (e.g., "10.0.5.99/32").
+            Normalized CIDR string (e.g., "203.0.113.99/32").
 
         Raises:
             NetworkBlockError: If the IP is invalid.

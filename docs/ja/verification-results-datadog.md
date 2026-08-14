@@ -103,7 +103,7 @@ aws lambda invoke \
   - [x] 各ログに `attributes.svm` = `svm-prod-01`
   - [x] 各ログに `attributes.user` = `admin@corp.local` 等
   - [x] 各ログに `attributes.operation` = `ReadData` 等
-  - [x] 各ログに `attributes.client_ip` = `10.0.1.50` 等
+  - [x] 各ログに `attributes.client_ip` = `198.51.100.50` 等
   - [x] 各ログに `attributes.result` = `Success` / `Failure`
   - [x] 各ログに `attributes.path` = `/vol/data/reports/quarterly.xlsx` 等
 
@@ -149,14 +149,14 @@ aws lambda invoke \
   - ユーザー: `unknown@external.com`
   - 操作: `Open`
   - パス: `/vol/data/confidential/secret.pdf`
-  - クライアントIP: `192.168.1.100`
+  - クライアントIP: `203.0.113.100`
   - 結果: `Failure`
 
 - **確認項目**:
   - [x] `@attributes.result:Failure` で1件以上表示
   - [x] `@attributes.user` が空でない（`unknown@external.com`）
   - [x] `@attributes.path` が空でない（`/vol/data/confidential/secret.pdf`）
-  - [x] `@attributes.client_ip` が空でない（`192.168.1.100`）
+  - [x] `@attributes.client_ip` が空でない（`203.0.113.100`）
 
 ![不正アクセス検知](../screenshots/datadog-unauthorized-access.png)
 
@@ -295,14 +295,14 @@ aws lambda invoke \
 ```bash
 aws lambda invoke \
   --function-name fsxn-datadog-ems-fpolicy-fpolicy \
-  --payload '{"source":"fpolicy.fsxn","detail-type":"FPolicy File Operation","detail":{"operation":"create","file_path":"/vol/data/test-fpolicy.txt","user":"admin@corp.local","client_ip":"10.0.1.50","vserver":"FPolicySMB","timestamp":"2026-05-16T23:56:00Z","protocol":"cifs"}}' \
+  --payload '{"source":"fpolicy.fsxn","detail-type":"FPolicy File Operation","detail":{"operation":"create","file_path":"/vol/data/test-fpolicy.txt","user":"admin@corp.local","client_ip":"198.51.100.50","vserver":"FPolicySMB","timestamp":"2026-05-16T23:56:00Z","protocol":"cifs"}}' \
   --cli-binary-format raw-in-base64-out \
   --region ap-northeast-1 response.json
 ```
 
 - **Lambda レスポンス** — `{"statusCode": 200, "body": {"total_events": 1, "shipped": 1}}`
 - **Datadog 検索** — `source:fsxn-fpolicy` → 1件到着確認
-- **ログ内容** — `FPolicy: create /vol/data/test-fpolicy.txt by admin@corp.local from 10.0.1.50`
+- **ログ内容** — `FPolicy: create /vol/data/test-fpolicy.txt by admin@corp.local from 198.51.100.50`
 - **到着時間** — 約30秒
 
 ![FPolicy ファイル操作 — Datadog ログ一覧](../screenshots/datadog-fpolicy-suspect-activity.png)

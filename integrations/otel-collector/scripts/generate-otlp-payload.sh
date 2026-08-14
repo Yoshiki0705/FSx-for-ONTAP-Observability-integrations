@@ -48,7 +48,7 @@ PATHS=("/vol1/reports/quarterly.xlsx" "/vol1/data/export.csv" "/vol1/confidentia
 RESULTS=("Success" "Success" "Success" "Access Denied" "Failure" "Success")
 EVENT_IDS=("4663" "4656" "4660" "4663" "4656" "4663")
 SVMS=("svm-prod-01" "svm-prod-01" "svm-dev-01")
-CLIENT_IPS=("10.0.1.100" "10.0.1.101" "10.0.2.50" "10.0.3.200")
+CLIENT_IPS=("198.51.100.100" "198.51.100.101" "198.51.100.150" "198.51.100.200")
 
 # Build log records JSON array
 RECORDS=""

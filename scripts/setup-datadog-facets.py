@@ -74,7 +74,7 @@ def send_sample_log() -> bool:
                 "svm": "svm-prod-01",
                 "user": "admin@corp.local",
                 "operation": "ReadData",
-                "client_ip": "10.0.1.50",
+                "client_ip": "198.51.100.50",
                 "result": "Success",
                 "path": "/vol/data/setup-test.txt",
                 "event_type": "4663",
@@ -140,7 +140,8 @@ def main() -> int:
     print()
 
     # Step 3: Print Datadog UI URL
-    console_domain = DD_SITE.replace("datadoghq", "app.datadoghq")
+    # (a console_domain was computed here and never read; every branch below
+    # builds console_url directly)
     if DD_SITE == "datadoghq.eu":
         console_url = "https://app.datadoghq.eu/logs"
     elif DD_SITE == "ddog-gov.com":

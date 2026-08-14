@@ -63,7 +63,7 @@ body = {"svm": {"uuid": svm_uuid}, "name": "my_engine", ...}
 
 # CORRECT
 url = f"https://{mgmt_ip}/api/protocols/fpolicy/{svm_uuid}/engines"
-body = {"name": "my_engine", "port": 9898, "primary_servers": ["10.0.12.74"], ...}
+body = {"name": "my_engine", "port": 9898, "primary_servers": ["198.51.100.74"], ...}
 ```
 
 ### 2. `allow_privileged_access` 設定不可（コード 262196）

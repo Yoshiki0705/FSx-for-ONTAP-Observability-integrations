@@ -24,7 +24,7 @@
 #
 #   ./automated-response-multi-svm-cli.sh block-nfs \
 #     --svms "svm-prod-01,svm-prod-02" \
-#     --ip 10.0.5.99 --reason "Mass deletion from FPolicy"
+#     --ip 203.0.113.99 --reason "Mass deletion from FPolicy"
 #
 #   # Dry run across all SVMs first
 #   ./automated-response-multi-svm-cli.sh contain-smb \
@@ -72,7 +72,7 @@ Examples:
 
   # Dry-run first to confirm the message payloads
   ${SCRIPT_NAME} block-nfs --svms "svm-prod-01,svm-prod-02" \\
-    --ip 10.0.5.99 --reason "test" --dry-run
+    --ip 203.0.113.99 --reason "test" --dry-run
 EOF
     exit 0
 }

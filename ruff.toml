@@ -1,0 +1,53 @@
+# ruff configuration.
+#
+# Two tiers, on purpose.
+#
+# `make lint-py` runs the BLOCKING tier: the whole F ruleset plus E9. F covers
+# undefined names, redefinitions, unused imports and unused locals -- pyflakes
+# rules, which fire on a defect rather than on a style preference.
+#
+# This tier reported 34 findings when it was first run and is clean now. Of
+# those, 19 were re-exports in two Lambda layer `__init__.py` files, which are
+# not defects at all: the correct fix was to declare `__all__`, and deleting the
+# imports as "unused" would have removed the layers' public API and broken the
+# import smoke test in CI. The rest were genuinely dead -- five unused
+# `timezone` imports, three unused `build_auth_headers` imports, `io`, `time`,
+# `ClientError`, two unused exception bindings, and one computed-then-ignored
+# local.
+#
+# `make lint-py-full` runs `--select ALL`, which is advisory and always will be:
+# it includes opinionated and mutually contradictory rulesets that are a style
+# decision, not a correctness one.
+#
+# A gate switched on while already failing gets disabled or ignored within a
+# week, so the blocking tier stays a set that passes.
+
+target-version = "py312"
+line-length = 100
+
+exclude = [
+    ".venv",
+    "node_modules",
+    ".hypothesis",
+    ".playwright-mcp",
+    "__pycache__",
+    "shared/python/dist",
+]
+
+[lint]
+# The blocking tier. Keep it to rules that indicate a real defect; anything
+# stylistic belongs in the advisory tier so this one stays green and therefore
+# trustworthy.
+select = [
+    "E9",  # syntax and IO errors
+    "F",   # pyflakes: undefined names, redefinitions, unused imports/locals
+]
+
+[lint.per-file-ignores]
+# Tests import fixtures for their side effects (F401), shadow names across
+# parametrised cases (F811), and bind context managers they never reference
+# (F841) -- `with patch(...) as mock_secrets` where the patch itself is the
+# point. All three are idiomatic in tests and defects only in source.
+"**/tests/**" = ["F401", "F811", "F841"]
+# The vendor-rule test holds one synthetic credential per format as fixtures.
+"scripts/tests/test_gitleaks_vendor_rules.py" = ["E501"]

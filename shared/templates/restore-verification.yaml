@@ -60,6 +60,24 @@ Parameters:
     Description: UNIX identity for the S3 Access Point (volume must be UNIX security style)
     Default: root
 
+  StrictAdConnectivityCheck:
+    Type: String
+    Description: >-
+      Fail the workflow when AD DC reachability cannot be confirmed on an AD-joined SVM,
+      rather than proceeding with a warning. The check can always confirm the bad case
+      (ONTAP reports zero discovered domain controllers) and that always fails. This
+      parameter governs the ambiguous cases: ONTAP omits the discovered_servers field,
+      returns no CIFS domain records, or errors on the domains endpoint. Those are
+      indistinguishable from an unreachable domain, and they produce the same downstream
+      symptom -- AccessDenied from ListObjectsV2 roughly 30 to 80 minutes later, which
+      reads like an IAM or access point policy problem.
+      Default false: this workflow verifies recovery points during an incident, and
+      refusing to verify a restore candidate because an older ONTAP omits a field is
+      worse than proceeding with a recorded warning. Set true where every SVM is
+      AD-joined and a false pass is the greater risk.
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+
   LambdaMemorySize:
     Type: Number
     Description: Lambda memory size in MB for the verification steps
@@ -423,13 +441,21 @@ Resources:
         Variables:
           ONTAP_MGMT_IP: !Ref OntapMgmtIp
           ONTAP_CREDENTIALS_SECRET_ARN: !Ref OntapCredentialsSecretArn
+          STRICT_AD_CHECK: !Ref StrictAdConnectivityCheck
       Code:
         ZipFile: |
           """Step 1: Create a FlexClone volume from the candidate snapshot.
 
           Input:  {"svm_name", "volume_name", "snapshot_name"}
           Output: {"clone_name", "svm_name", "volume_uuid", "parent_volume",
-                    "parent_snapshot"}
+                    "parent_snapshot", "ad_check"}
+
+          `ad_check` carries the AD DC reachability verdict forward so a later
+          AccessDenied can be diagnosed correctly instead of being blamed on the
+          access point policy. One of:
+            not_applicable  -- SVM has no CIFS service, so no AD is involved
+            verified        -- ONTAP reported at least one discovered DC
+            unverified:<why> -- the check could not confirm either way
           """
           import json
           import logging
@@ -491,51 +517,108 @@ Resources:
               raise RuntimeError(f"ONTAP job {job_uuid} did not complete within {max_wait_seconds}s")
 
 
+          class AdConnectivityError(RuntimeError):
+              """AD DC reachability failed, or could not be confirmed in strict mode."""
+
+
+          def _unverified(svm_name: str, reason: str, detail: str) -> str:
+              """Record an AD state that is neither confirmed good nor confirmed bad.
+
+              The three ambiguous answers -- ONTAP omitting discovered_servers,
+              returning no domain records, or erroring on the domains endpoint --
+              are indistinguishable from an unreachable domain, and all four share
+              one downstream symptom: AccessDenied from ListObjectsV2 some 30 to 80
+              minutes later, which reads like an IAM or access point policy problem.
+
+              Two things happen here so an unverified pass is never silent. The
+              verdict is returned and travels with the event, so the scan step can
+              name AD as the likely cause instead of the policy. And STRICT_AD_CHECK
+              turns the ambiguity into an immediate failure for deployments where
+              every SVM is AD-joined and a false pass is the greater risk.
+              """
+              message = (
+                  f"AD DC reachability UNVERIFIED for AD-joined SVM '{svm_name}': {detail} "
+                  "This is indistinguishable from an unreachable domain, and both surface "
+                  "later as AccessDenied from ListObjectsV2. Suspect AD DC reachability "
+                  "before the S3 Access Point policy."
+              )
+              if os.environ.get("STRICT_AD_CHECK", "false").lower() == "true":
+                  raise AdConnectivityError(
+                      f"AD CONNECTIVITY FAILURE (strict mode): {message} "
+                      "Set StrictAdConnectivityCheck=false to proceed with a warning instead."
+                  )
+              logger.warning("%s Proceeding because strict mode is off.", message)
+              return f"unverified:{reason}"
+
+
+          def _check_ad_connectivity(svm_name: str) -> str:
+              """Verify the SVM can reach its domain controllers before anything is built.
+
+              On an AD-joined SVM, ONTAP performs a unix->win reverse name-mapping
+              lookup for every S3 Access Point data operation, so unreachable DCs
+              make ListObjectsV2 and GetObject return AccessDenied at the file
+              system layer while HeadBucket still succeeds. Checking here costs one
+              API call; discovering it later costs the clone, the FSx discovery wait
+              and the access point.
+
+              Returns the verdict recorded on the event: "not_applicable",
+              "verified", or "unverified:<reason>".
+              """
+              cifs_data = _request(
+                  "GET", f"/protocols/cifs/services?svm.name={svm_name}&fields=ad_domain.fqdn"
+              )
+              if not cifs_data.get("records", []):
+                  logger.info("SVM '%s' has no CIFS service; AD is not involved", svm_name)
+                  return "not_applicable"
+
+              ad_fqdn = cifs_data["records"][0].get("ad_domain", {}).get("fqdn", "unknown")
+              logger.info("SVM '%s' has CIFS enabled (AD: %s)", svm_name, ad_fqdn)
+
+              try:
+                  dc_check = _request(
+                      "GET",
+                      f"/protocols/cifs/domains?svm.name={svm_name}&fields=discovered_servers",
+                  )
+              except AdConnectivityError:
+                  raise
+              except RuntimeError as e:
+                  return _unverified(
+                      svm_name, "domains_api_error", f"the domains endpoint returned an error ({e})."
+                  )
+
+              dc_records = dc_check.get("records", [])
+              if not dc_records:
+                  return _unverified(
+                      svm_name, "no_domain_records", "ONTAP returned no CIFS domain records."
+                  )
+
+              servers = dc_records[0].get("discovered_servers", None)
+              if servers is None:
+                  return _unverified(
+                      svm_name,
+                      "field_absent",
+                      "ONTAP did not return the discovered_servers field.",
+                  )
+              if len(servers) == 0:
+                  # The one unambiguous bad answer. Always fatal, strict mode or not.
+                  raise AdConnectivityError(
+                      f"AD CONNECTIVITY FAILURE: SVM '{svm_name}' is AD-joined "
+                      f"(domain: {ad_fqdn}) but cannot discover any domain controllers. "
+                      f"S3 Access Point data operations will fail with AccessDenied. "
+                      f"Verify AD ({ad_fqdn}) is running and DNS IPs are reachable "
+                      f"from the SVM's network interfaces."
+                  )
+
+              logger.info("AD domain controllers reachable: %d servers discovered", len(servers))
+              return "verified"
+
+
           def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
               svm_name = event["svm_name"]
               volume_name = event["volume_name"]
               snapshot_name = event["snapshot_name"]
 
-              # --- Pre-flight: AD DC reachability check ---
-              # If the SVM has CIFS enabled (AD-joined), S3 AP data operations
-              # require AD DC connectivity for unix->win reverse name-mapping.
-              # If AD is unreachable, S3 AP ListObjectsV2/GetObject will return
-              # AccessDenied at the file-system layer — a confusing error that
-              # looks like a policy issue but is actually AD connectivity.
-              # Fail fast here with a clear message instead of waiting 30+ min
-              # for clone creation + FSx discovery only to hit AccessDenied.
-              cifs_data = _request("GET", f"/protocols/cifs/services?svm.name={svm_name}&fields=ad_domain.fqdn")
-              cifs_records = cifs_data.get("records", [])
-              if cifs_records:
-                  ad_fqdn = cifs_records[0].get("ad_domain", {}).get("fqdn", "unknown")
-                  logger.info("SVM '%s' has CIFS enabled (AD: %s)", svm_name, ad_fqdn)
-                  # Also check DNS connectivity to AD by verifying domain
-                  # controller reachability via ONTAP's own diagnostic
-                  try:
-                      dc_check = _request("GET", f"/protocols/cifs/domains?svm.name={svm_name}&fields=discovered_servers")
-                      dc_records = dc_check.get("records", [])
-                      if dc_records:
-                          servers = dc_records[0].get("discovered_servers", None)
-                          if servers is not None and len(servers) == 0:
-                              raise RuntimeError(
-                                  f"AD CONNECTIVITY FAILURE: SVM '{svm_name}' is AD-joined "
-                                  f"(domain: {ad_fqdn}) but cannot discover any domain controllers. "
-                                  f"S3 Access Point data operations will fail with AccessDenied. "
-                                  f"Verify AD ({ad_fqdn}) is running and DNS IPs are reachable "
-                                  f"from the SVM's network interfaces."
-                              )
-                          elif servers is not None:
-                              logger.info("AD domain controllers reachable: %d servers discovered", len(servers))
-                          else:
-                              # Field not returned by this ONTAP version — cannot verify
-                              logger.info("AD DC reachability check: discovered_servers field not available (proceeding)")
-                      else:
-                          logger.info("No CIFS domain records found — proceeding without DC verification")
-                  except RuntimeError as e:
-                      if "AD CONNECTIVITY" in str(e):
-                          raise
-                      # If the domains API is unavailable (older ONTAP), fall through
-                      logger.warning("Could not verify AD DC reachability (API unavailable): %s", e)
+              ad_check = _check_ad_connectivity(svm_name)
 
               timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
               clone_name = f"verify_{volume_name}_{timestamp}"[:203]
@@ -578,6 +661,9 @@ Resources:
                   "volume_uuid": records[0]["uuid"],
                   "parent_volume": volume_name,
                   "parent_snapshot": snapshot_name,
+                  # Carried so the scan step can tell an AD problem from a policy
+                  # problem when ListObjectsV2 returns AccessDenied.
+                  "ad_check": ad_check,
               })
               return result
 
@@ -778,7 +864,7 @@ Resources:
                   # policy for same-account access. IAM identity policy alone
                   # is sufficient (verified in FSx-for-ONTAP-S3AccessPoints-
                   # Serverless-Patterns repo). Calling put_access_point_policy
-                  # on FSx ONTAP APs caused persistent AccessDenied in E2E
+                  # on FSx for ONTAP S3 APs caused persistent AccessDenied in E2E
                   # testing — the policy either doesn't propagate or conflicts
                   # with FSx's internal authorization layer.
                   ap_alias = ap.get("Alias", "")
@@ -832,7 +918,8 @@ Resources:
           for an automated go/no-go gate before a human reviews borderline
           cases.
 
-          Input:  {"access_point_arn", "access_point_alias", ...(passthrough)}
+          Input:  {"access_point_arn", "access_point_alias", "ad_check",
+                    ...(passthrough)}
           Output: {"objects_scanned", "suspicious_objects", "suspicious_ratio",
                     "verdict", "reason", ...(passthrough)}
           """
@@ -841,6 +928,7 @@ Resources:
           from typing import Any
 
           import boto3
+          from botocore.exceptions import ClientError
 
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
@@ -867,13 +955,45 @@ Resources:
               suspicious = []
 
               paginator = s3.get_paginator("list_objects_v2")
-              for page in paginator.paginate(Bucket=access_point_alias, MaxKeys=1000):
-                  for obj in page.get("Contents", []):
-                      total_objects += 1
-                      key = obj["Key"]
-                      lower_key = key.lower()
-                      if any(lower_key.endswith(ext) for ext in SUSPICIOUS_EXTENSIONS):
-                          suspicious.append(key)
+              try:
+                  for page in paginator.paginate(Bucket=access_point_alias, MaxKeys=1000):
+                      for obj in page.get("Contents", []):
+                          total_objects += 1
+                          key = obj["Key"]
+                          lower_key = key.lower()
+                          if any(lower_key.endswith(ext) for ext in SUSPICIOUS_EXTENSIONS):
+                              suspicious.append(key)
+              except ClientError as e:
+                  # AccessDenied here has two plausible causes and they point in
+                  # opposite directions. On an AD-joined SVM whose DCs are
+                  # unreachable, ONTAP fails the per-operation unix->win lookup and
+                  # returns AccessDenied at the file system layer -- nothing about
+                  # IAM or the access point is wrong. The pre-check in
+                  # CreateFlexClone catches that when ONTAP answers clearly, and
+                  # records ad_check when it cannot.
+                  #
+                  # Without that context this error reliably sends the reader to the
+                  # access point policy, which this workflow never sets, so they find
+                  # nothing and conclude propagation delay.
+                  if e.response.get("Error", {}).get("Code") != "AccessDenied":
+                      raise
+                  ad_check = event.get("ad_check", "unknown")
+                  if ad_check.startswith("unverified") or ad_check == "unknown":
+                      raise RuntimeError(
+                          f"AccessDenied listing objects through the access point, and AD DC "
+                          f"reachability was never confirmed for SVM '{event.get('svm_name')}' "
+                          f"(ad_check={ad_check}). On an AD-joined SVM, ONTAP performs a "
+                          f"unix->win lookup per data operation, so unreachable domain "
+                          f"controllers produce exactly this error while HeadBucket still "
+                          f"succeeds. Check AD DC reachability from the SVM before "
+                          f"investigating IAM or the access point policy."
+                      ) from e
+                  raise RuntimeError(
+                      f"AccessDenied listing objects through the access point. AD DC "
+                      f"reachability was confirmed (ad_check={ad_check}), so AD is not the "
+                      f"cause; investigate the IAM identity policy and the volume security "
+                      f"style instead."
+                  ) from e
 
               ratio = (len(suspicious) / total_objects) if total_objects else 0.0
               is_suspicious = len(suspicious) >= min_count and ratio >= ratio_threshold
@@ -1254,7 +1374,7 @@ Resources:
                   "IntervalSeconds": 15,
                   "BackoffRate": 2.0,
                   "MaxAttempts": 5,
-                  "Comment": "S3 AP resource policy eventual consistency — propagation takes a few seconds after put_access_point_policy"
+                  "Comment": "Access point authorization settling after attach. The previous comment here attributed this to put_access_point_policy propagation, but this workflow never calls that API — FSx for ONTAP S3 APs need no resource policy for same-account access — so that explanation sent readers looking for a policy that does not exist. If retries are exhausted, the scan Lambda reports whether AD DC reachability was confirmed (ad_check), which is the other cause of AccessDenied on an AD-joined SVM."
                 }
               ],
               "Catch": [

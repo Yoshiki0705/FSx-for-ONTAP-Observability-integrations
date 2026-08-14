@@ -31,7 +31,7 @@ CloudWatch Logs (/syslog/fsxn-admin-audit)
 | VPC ID | FSx Console → File system → Network | `vpc-0ae01826f906191af` |
 | Subnet ID | Same AZ as FSx | `subnet-0e36804c7fbc819a6` |
 | VPC CIDR | VPC Console → Target VPC | `10.0.0.0/16` |
-| FSx Management IP | FSx Console → Management endpoint | `10.0.3.72` |
+| FSx Management IP | FSx Console → Management endpoint | `198.51.100.72` |
 
 ---
 
