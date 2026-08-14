@@ -43,6 +43,22 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements-dev.txt
 
+      # scripts/tests/test_gitleaks_vendor_rules.py plants one synthetic
+      # credential per vendor format and requires a finding for each. Those 15
+      # tests skipif gitleaks is absent, so without this step they reported as
+      # skipped -- a detection suite that never detects anything, which is the
+      # exact failure mode this change set exists to remove. The separate
+      # gitleaks job scans the tree; it does not exercise the rules.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
       # Now blocking. It was continue-on-error, and there was no eslint config
       # of any kind: ESLint 9 dropped .eslintrc and neither it nor
       # eslint.config.js existed, so `npm run lint` exited 2 on a configuration

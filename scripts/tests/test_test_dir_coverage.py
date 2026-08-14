@@ -19,6 +19,7 @@ is listed in the Makefile.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -38,14 +39,29 @@ def _makefile_list(name: str) -> list[str]:
     Reading it through make rather than by parsing text means the test sees
     the same value the recipes see, including any variable composition.
     """
+    # --no-print-directory, and MAKELEVEL/MAKEFLAGS stripped from the
+    # environment. When these tests run under `make test-py`, this nested make
+    # inherits MAKELEVEL and GNU make then writes "make[1]: Entering directory
+    # ..." to stdout, which this function parsed as though those words were
+    # paths. It passed locally, where pytest was invoked directly, and failed
+    # only in CI where the runner goes through the Makefile -- the same
+    # local-and-CI divergence the Makefile exists to remove.
+    env = {k: v for k, v in os.environ.items() if k not in ("MAKELEVEL", "MAKEFLAGS", "MFLAGS")}
     result = subprocess.run(
-        ["make", f"print-{name}"],
-        cwd=REPO_ROOT, capture_output=True, text=True, timeout=60,
+        ["make", "--no-print-directory", f"print-{name}"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=60, env=env,
     )
     assert result.returncode == 0, (
         f"`make print-{name}` failed: {result.stderr.strip()}"
     )
-    return result.stdout.split()
+    values = result.stdout.split()
+    # Guard the guard: a stray line here silently becomes a bogus "directory".
+    stray = [v for v in values if v.startswith("make") or v.startswith("'")]
+    assert not stray, (
+        f"`make print-{name}` emitted non-path output {stray}; the recipe or the "
+        "make invocation is leaking diagnostics into the value"
+    )
+    return values
 
 
 def _discover_test_dirs() -> list[str]:
