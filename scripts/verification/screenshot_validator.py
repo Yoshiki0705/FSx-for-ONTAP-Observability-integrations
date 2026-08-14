@@ -132,7 +132,7 @@ def _validate_single_screenshot(
             result="failure",
             screenshot_path=filepath,
             error_detail=(
-                f"Invalid PNG format: file does not start with PNG magic bytes"
+                "Invalid PNG format: file does not start with PNG magic bytes"
             ),
             timestamp=timestamp,
         )

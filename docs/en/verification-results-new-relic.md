@@ -131,7 +131,7 @@ aws lambda invoke \
 | EventID | event_type | 4663 | ✅ OK |
 | SVMName | svm | svm-prod-01 | ✅ OK |
 | UserName | user | admin@corp.local | ✅ OK |
-| ClientIP | client_ip | 10.0.1.50 | ✅ OK |
+| ClientIP | client_ip | 198.51.100.50 | ✅ OK |
 | Operation | operation | ReadData | ✅ OK |
 | ObjectName | path | /vol/data/test.txt | ✅ OK |
 | Result | result | Success | ✅ OK |

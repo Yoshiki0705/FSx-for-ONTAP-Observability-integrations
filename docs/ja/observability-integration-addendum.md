@@ -97,7 +97,7 @@ WriteIopsAnomalyAlarm:
 | イベント名 | `event.name` | `event.name` | `arw.volume.state` |
 | 重大度 | `severity_text` | `severity_text` | `alert` |
 | ユーザー名 | `user.name` | `enduser.id` | `CORP\jdoe` |
-| クライアント IP | `client.address` | `client.address` | `10.0.5.99` |
+| クライアント IP | `client.address` | `client.address` | `203.0.113.99` |
 | ボリューム | `service.name` | `service.name` | `vol_data` |
 | ファイルパス | `file.path` | `file.path` | `/data/confidential/report.pdf` |
 | 操作 | `event.action` | カスタム: `fsxn.operation` | `read` / `write` / `delete` |

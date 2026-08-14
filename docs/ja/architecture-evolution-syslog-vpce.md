@@ -183,11 +183,11 @@ aws cloudformation deploy \
 
 | ステップ | 状態 | 備考 |
 |---------|------|------|
-| VPC Endpoint 作成 | ✅ 完了 | `vpce-010e49474d23c7172`, ENI IP: `10.0.9.28` |
+| VPC Endpoint 作成 | ✅ 完了 | `vpce-010e49474d23c7172`, ENI IP: `198.51.100.28` |
 | Security Group 作成 | ✅ 完了 | VPC CIDR (10.0.0.0/16) → Port 6514 許可 |
 | Log Group 作成 | ✅ 完了 | `/syslog/fsxn-admin-audit` |
 | Resource Policy 設定 | ✅ 完了 | `syslog.logs.amazonaws.com` → Log Group |
-| ONTAP log-forwarding 設定 | ✅ 完了 | `10.0.9.28:6514` (tcp_encrypted, local7) |
+| ONTAP log-forwarding 設定 | ✅ 完了 | `198.51.100.28:6514` (tcp_encrypted, local7) |
 | Syslog Configuration (Console) | ✅ 完了 | raw SigV4 HTTP API で作成（スクリプト化済み） |
 | ログ到着確認 | ✅ 完了 | TCP plaintext (1514) で配信確認 |
 | CW Logs Insights クエリ | ✅ 完了 | SSH/REST API 操作が構造化ログとして到着 |

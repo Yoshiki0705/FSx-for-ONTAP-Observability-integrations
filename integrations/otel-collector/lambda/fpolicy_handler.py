@@ -26,7 +26,7 @@ from typing import Any, Optional
 import boto3
 import urllib3
 
-from otlp_auth import build_auth_headers, validate_auth_mode_header, validate_extra_headers_json
+from otlp_auth import validate_auth_mode_header, validate_extra_headers_json
 from otlp_protobuf import encode_logs_data
 
 # ─── Configuration ─────────────────────────────────────────────────────────

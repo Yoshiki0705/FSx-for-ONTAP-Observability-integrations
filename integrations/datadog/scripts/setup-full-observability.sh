@@ -196,7 +196,7 @@ VERIFY=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
   "https://http-intake.logs.${DD_SITE}/api/v2/logs" \
   -H "Content-Type: application/json" \
   -H "DD-API-KEY: ${DD_API_KEY}" \
-  -d '[{"ddsource":"fsxn","ddtags":"env:test","hostname":"SetupVerify","service":"ontap-audit","message":"{\"event_type\":\"4663\",\"user\":\"CORP\\\\setup-verify\",\"path\":\"/share/test/setup-ok.txt\",\"result\":\"Audit Success\",\"svm\":\"TestSVM\",\"client_ip\":\"10.0.0.1\"}"}]')
+  -d '[{"ddsource":"fsxn","ddtags":"env:test","hostname":"SetupVerify","service":"ontap-audit","message":"{\"event_type\":\"4663\",\"user\":\"CORP\\\\setup-verify\",\"path\":\"/share/test/setup-ok.txt\",\"result\":\"Audit Success\",\"svm\":\"TestSVM\",\"client_ip\":\"198.51.100.1\"}"}]')
 
 if [ "$VERIFY" = "202" ]; then
   echo "  ✅ Verification event accepted (HTTP 202)"

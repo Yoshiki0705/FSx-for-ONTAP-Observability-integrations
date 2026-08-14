@@ -12,7 +12,7 @@ import logging
 import os
 import random
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import boto3

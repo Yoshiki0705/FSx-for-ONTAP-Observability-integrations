@@ -322,7 +322,7 @@ def _format_for_splunk(
 
 def _to_epoch(timestamp: str) -> float | None:
     """Convert ISO timestamp to epoch seconds."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     try:
         if timestamp.endswith("Z"):

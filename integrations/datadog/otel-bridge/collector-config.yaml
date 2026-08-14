@@ -58,7 +58,7 @@ processors:
         statements:
           # Hash user field (preserves correlation without exposing identity)
           - replace_pattern(attributes["user"], "^(.*)$", "SHA256:$$1")
-          # Mask client_ip to subnet level (10.0.1.50 → 10.0.1.0/24)
+          # Mask client_ip to subnet level (198.51.100.50 → 198.51.100.0/24)
           - replace_pattern(attributes["client_ip"], "(\\d+\\.\\d+\\.\\d+)\\.\\d+", "$$1.0/24")
           # Truncate path to directory (keep share/dir, redact filename)
           - replace_pattern(attributes["path"], "/([^/]+)$", "/[REDACTED]")

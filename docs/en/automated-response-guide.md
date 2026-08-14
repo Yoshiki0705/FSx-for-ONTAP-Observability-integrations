@@ -172,12 +172,12 @@ aws cloudformation deploy \
 
 **Standalone network block** (without ONTAP-layer):
 ```json
-{"action": "block_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "10.0.5.99", "reason": "Mass deletion"}
+{"action": "block_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "203.0.113.99", "reason": "Mass deletion"}
 ```
 
 **Unblock**:
 ```json
-{"action": "unblock_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "10.0.5.99"}
+{"action": "unblock_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "203.0.113.99"}
 ```
 
 > **Scope note**: NACL deny rules block ALL traffic from the specified IP to the entire subnet (not just NFS port 2049). Set `block_all_ports: false` in the SNS message to restrict blocking to NFS port only. The ONTAP export-policy rule is NFS-specific and more granular.

@@ -22,7 +22,7 @@ Usage:
     client.block_smb_user(svm_name="svm-prod", domain="CORP", username="jdoe")
 
     # Block an attacker IP from NFS access
-    client.block_nfs_ip(svm_name="svm-prod", policy_name="default", client_ip="10.0.5.99")
+    client.block_nfs_ip(svm_name="svm-prod", policy_name="default", client_ip="203.0.113.99")
 
     # Create protective snapshot for evidence preservation
     client.create_snapshot(svm_name="svm-prod", volume_name="vol1", prefix="incident")
@@ -385,7 +385,7 @@ class OntapResponseClient:
         Args:
             svm_name: Name of the SVM.
             policy_name: Export policy name (often "default").
-            client_ip: IP address to block (e.g., "10.0.5.99").
+            client_ip: IP address to block (e.g., "203.0.113.99").
             rule_index: Rule position (1 = evaluated first). Default: 1.
 
         Returns:

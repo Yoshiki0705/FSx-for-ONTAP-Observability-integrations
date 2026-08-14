@@ -176,12 +176,12 @@ aws cloudformation deploy \
 
 **スタンドアロンのネットワークブロック**（ONTAP 層なし）:
 ```json
-{"action": "block_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "10.0.5.99", "reason": "Mass deletion"}
+{"action": "block_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "203.0.113.99", "reason": "Mass deletion"}
 ```
 
 **解除**:
 ```json
-{"action": "unblock_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "10.0.5.99"}
+{"action": "unblock_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "203.0.113.99"}
 ```
 
 > **スコープに関する補足**

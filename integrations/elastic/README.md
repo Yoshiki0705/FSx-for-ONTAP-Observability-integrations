@@ -137,7 +137,7 @@ fsxn.svm: "svm-prod-01" AND event.type: "4663"
   "@timestamp": "2026-01-15T12:00:00Z",
   "event": {"type": "4663"},
   "user": {"name": "admin@corp.local"},
-  "source": {"ip": "10.0.1.50"},
+  "source": {"ip": "198.51.100.50"},
   "fsxn": {
     "operation": "ReadData",
     "path": "/vol/data/file.txt",

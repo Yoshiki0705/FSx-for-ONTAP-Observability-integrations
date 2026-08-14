@@ -282,7 +282,7 @@ Lambda 内のパーサーは ONTAP XML 監査ログを以下のように処理�
     <Data Name="SubjectUserName">CORP\user-finance-01</Data>
     <Data Name="ObjectName">/share/finance/quarterly-reports/Q2-2026.xlsx</Data>
     <Data Name="ObjectType">File</Data>
-    <Data Name="IpAddress">10.0.1.50</Data>
+    <Data Name="IpAddress">198.51.100.50</Data>
     <Data Name="HandleID">0x000001A4</Data>
     <Data Name="Keywords">Audit Success</Data>
   </EventData>
@@ -311,7 +311,7 @@ Lambda 内のパーサーは ONTAP XML 監査ログを以下のように処理�
     "user": "CORP\\user-finance-01",
     "path": "/share/finance/quarterly-reports/Q2-2026.xlsx",
     "result": "Audit Success",
-    "client_ip": "10.0.1.50",
+    "client_ip": "198.51.100.50",
     "svm": "ProductionSVM",
     "operation": "File"
   },

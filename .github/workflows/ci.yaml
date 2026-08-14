@@ -36,10 +36,20 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      # Pinned, from requirements-dev.txt. The previous unpinned install meant
+      # CI resolved whatever was newest while local runs used whatever was
+      # already present, so the same code could lint clean in one place and
+      # fail in the other with no version difference visible in the log.
       - name: Install Python dependencies
-        run: |
-          pip install pytest pytest-cov boto3 urllib3 moto hypothesis
+        run: pip install -r requirements-dev.txt
 
+      # Now blocking. It was continue-on-error, and there was no eslint config
+      # of any kind: ESLint 9 dropped .eslintrc and neither it nor
+      # eslint.config.js existed, so `npm run lint` exited 2 on a configuration
+      # error rather than on a lint result. The skip below meant that never
+      # surfaced -- the repo has no .ts files today -- so the gate was broken
+      # precisely for the moment someone added one. eslint.config.js now exists
+      # and is verified to fail on an unused variable and unreachable code.
       - name: TypeScript lint
         run: |
           if find . -name "*.ts" -not -path "*/node_modules/*" | grep -q .; then
@@ -47,71 +57,43 @@ jobs:
           else
             echo "No TypeScript files found, skipping lint"
           fi
-        continue-on-error: true
 
       - name: TypeScript tests
         run: npx jest --passWithNoTests
 
-      - name: Python tests - All vendors
-        env:
-          AWS_DEFAULT_REGION: ap-northeast-1
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_SECURITY_TOKEN: testing
-          AWS_SESSION_TOKEN: testing
-        run: |
-          FAILED=0
-          for vendor in datadog grafana splunk-serverless otel-collector new-relic elastic dynatrace sumo-logic honeycomb crowdstrike; do
-            echo "::group::Testing $vendor"
-            python -m pytest "integrations/$vendor/tests/" \
-              -v --tb=short \
-              --cov=integrations/$vendor \
-              --cov-append \
-              --cov-report= || FAILED=1
-            echo "::endgroup::"
-          done
-          python -m pytest --cov-report=term-missing --cov-report=html:coverage-html --co -q 2>/dev/null || true
-          if [ "$FAILED" -eq 1 ]; then
-            echo "::error::One or more vendor test suites failed"
-            exit 1
-          fi
+      # One target, one path list. This job previously carried its own inline
+      # vendor list while AGENTS.md documented a different and staler one;
+      # scripts/verification/tests (172 tests) and
+      # shared/lambda-layers/log-parser/tests (12 tests) appeared in neither and
+      # so ran nowhere. The list now lives only in the Makefile
+      # (PYTEST_DIRS), and scripts/tests/test_test_dir_coverage.py fails when a
+      # tests/ directory on disk is missing from it.
+      #
+      # The target runs one pytest process per directory. Vendors share module
+      # names (lambda/handler.py, tests/test_fpolicy_handler.py) and each
+      # conftest puts its own lambda/ dir on sys.path, so a single combined
+      # process yields 193 failures and 43 errors purely from collisions.
+      - name: Python tests (all suites, list from Makefile)
+        run: make test-py
 
-      - name: Python tests - Shared Lambda Layers
-        env:
-          AWS_DEFAULT_REGION: ap-northeast-1
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_SECURITY_TOKEN: testing
-          AWS_SESSION_TOKEN: testing
-        run: |
-          python -m pytest \
-            shared/lambda-layers/ems-parser/tests/ \
-            -v --tb=short
+      # Drift guards: .PHONY coverage, test-directory coverage, bandit baseline
+      # integrity, always-loaded context budget. These fail when the
+      # configuration stops describing reality.
+      - name: Drift guards
+        run: make drift
 
-      # management-console/tests/ was tracked but not run by any job, so these
-      # 29 tests covered the two console Lambdas without ever executing.
-      - name: Python tests - Management Console
-        env:
-          AWS_DEFAULT_REGION: ap-northeast-1
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_SECURITY_TOKEN: testing
-          AWS_SESSION_TOKEN: testing
-        run: |
-          python -m pytest \
-            management-console/tests/ \
-            -v --tb=short
-      - name: Python tests - Shared Python Modules
-        env:
-          AWS_DEFAULT_REGION: ap-northeast-1
-          AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
-          AWS_SECURITY_TOKEN: testing
-          AWS_SESSION_TOKEN: testing
-        run: |
-          python -m pytest \
-            shared/python/tests/ \
-            -v --tb=short
+      # ruff blocking tier (ruff.toml [lint] select): rules that only fire on a
+      # definite defect. Clean at adoption, so a red result is a regression.
+      - name: Python lint (blocking tier)
+        run: make lint-py
+
+      # bandit. Had never run against this repo before: the first execution
+      # reported 6 Medium findings, all B314 (stdlib ElementTree parsing audit
+      # XML whose content originates from whoever touches the volume). Those 6
+      # are recorded in .bandit-baseline.json and are an open decision; any
+      # finding beyond them fails this step.
+      - name: Python security scan
+        run: make security
 
       - name: Python tests - Shared Parser (log-parser v1.1.0)
         env:
@@ -150,29 +132,17 @@ jobs:
           path: coverage-html/
           retention-days: 14
 
+      # Now blocking. It was continue-on-error, which meant a real finding and a
+      # usage error both rendered as a green step -- and the invocation had in
+      # fact been failing on a missing `--` separator, so the integrations
+      # templates went unlinted while the step reported success. Measured clean
+      # across all 59 templates at the pinned cfn-lint 1.55.1, so making it
+      # blocking cannot start red.
+      #
+      # cfn-lint version is pinned in requirements-dev.txt: an unpinned install
+      # meant CI silently adopted new checks the moment they shipped.
       - name: Validate CloudFormation templates
-        continue-on-error: true
-        run: |
-          pip install cfn-lint
-          # The `--` separator is required whenever --ignore-checks precedes the
-          # template paths, otherwise argparse swallows the paths into the ignore
-          # list and cfn-lint exits with a usage error. This line was missing the
-          # separator, and because the step is continue-on-error the usage error
-          # was reported as a passing step -- the integrations templates were not
-          # being linted at all.
-          #
-          # Also widened from template.yaml to template*.yaml so the EMS,
-          # FPolicy, Firehose and remediation stacks are covered, matching what
-          # the cfn-guard job already validates.
-          cfn-lint --ignore-checks W -- integrations/*/template*.yaml
-          # E3006: AWS::CloudWatch::LogAlarm (GA 2026-07-01) not yet in the
-          # cfn-lint resource spec. Deploy is verified working; remove E3006
-          # once the spec includes the resource type. The `--` separator is
-          # required when passing multiple ignore checks before the templates.
-          cfn-lint --ignore-checks W E3006 -- shared/templates/*.yaml
-          # management-console/templates/ is tracked but was not covered by any
-          # cfn-lint or cfn-guard step, so nothing validated those five stacks.
-          cfn-lint --ignore-checks W -- management-console/templates/*.yaml
+        run: make cfn-lint
 
   cfn-guard:
     runs-on: ubuntu-latest
@@ -238,21 +208,20 @@ jobs:
             fi
           done
 
-      - name: Run cfn-guard advisory rules (non-blocking)
+      # Now blocking, and no longer described as advisory. Measured across every
+      # template at adoption: zero findings from both rule sets. A rule set that
+      # reports nothing and cannot fail the build is indistinguishable from one
+      # that is not running -- which is the failure the guard self-test above
+      # exists to catch, so leaving these two unenforced undercut it.
+      - name: Run cfn-guard lambda and secrets rules (blocking)
         run: |
-          echo "Running advisory cfn-guard rules..."
-          FAILED=0
           for template in integrations/*/template*.yaml shared/templates/*.yaml management-console/templates/*.yaml; do
             if [ -f "$template" ]; then
               echo "Validating: $template"
-              cfn-guard validate -d "$template" -r guard/rules/lambda-security.guard --show-summary fail || FAILED=1
-              cfn-guard validate -d "$template" -r guard/rules/secrets-management.guard --show-summary fail || FAILED=1
+              cfn-guard validate -d "$template" -r guard/rules/lambda-security.guard --show-summary fail
+              cfn-guard validate -d "$template" -r guard/rules/secrets-management.guard --show-summary fail
             fi
           done
-          if [ "$FAILED" -eq 1 ]; then
-            echo "::warning::cfn-guard advisory rules found violations (non-blocking)"
-          fi
-        continue-on-error: true
 
   security-scan:
     runs-on: ubuntu-latest
@@ -318,6 +287,16 @@ jobs:
         with:
           persist-credentials: false
 
+      # Deliberately stays non-blocking, and this is the one check where that is
+      # the right answer. It resolves external URLs, so it fails for reasons
+      # outside this repository: vendor documentation reorganising, rate limits,
+      # transient DNS or TLS errors, and sites that reject CI user agents. Making
+      # it blocking would produce failures no change here can fix, and the usual
+      # response to that is to stop reading the check at all.
+      #
+      # Internal link rot is covered by a gate that can be deterministic instead:
+      # scripts/check_agent_context_budget.py fails when AGENTS.md points at a
+      # path that does not exist or is untracked.
       - name: Check markdown links
         uses: gaurav-nelson/github-action-markdown-link-check@499c1e7f3637c131334fa8e937c45144f79d72d2 # v1
         with:
@@ -332,11 +311,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # Now blocking. Measured clean against every workflow at actionlint 1.7.12,
+      # and unlike the link check it is deterministic: it reads the workflow
+      # files and nothing else, so a failure is always something in this repo.
       - name: Run actionlint
         uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
 
   bilingual-sync:
     runs-on: ubuntu-latest
@@ -345,9 +326,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # Now blocking. Measured clean ("All bilingual docs are in sync"). Japanese
+      # is the primary language here and English must mirror its structure, so a
+      # heading-count divergence means one language is missing a section -- a
+      # defect, not a style preference. It was non-blocking while the stricter
+      # code-block check beside it already blocked, which was inconsistent.
       - name: Check bilingual documentation sync
         run: bash shared/scripts/check-bilingual-sync.sh
-        continue-on-error: true
 
       # Blocking, unlike the heading-structure check above. A translated comment
       # inside a ```bash fence means the Japanese guide documents a different

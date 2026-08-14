@@ -10,36 +10,51 @@ regex = '''(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.
 keywords = ["10.", "172.", "192.168"]
 
 [rules.allowlist]
+# The blanket entries docs/, scripts/ and shared/scripts/ used to be here, which
+# exempted essentially all documentation -- the largest surface for an
+# accidentally pasted management IP, and the one place a reader is most likely
+# to copy one from. They were removed rather than trimmed, and the 44 tracked
+# findings that surfaced were fixed at the source: every private example address
+# is now an RFC 5737 documentation address (198.51.100.0/24 for our own
+# infrastructure, 203.0.113.0/24 for external and attacker addresses), which is
+# what this project's own deployment-documentation standard already required.
+#
+# What remains is narrow and each entry has a reason:
 paths = [
+  # Never committed (gitignored), so its contents cannot leak via this repo.
   '''docs/blog/''',
+  # Not committed either; agent configuration.
   '''.kiro/''',
+  # Documents the placeholder convention itself, including literal 10.0.x.x.
   '''AGENTS.md''',
+  # Test fixtures and sample payloads, where addresses are the data under test.
   '''integrations/.*/tests/''',
   '''shared/test-data/''',
   '''shared/python/tests/''',
-  '''shared/python/ontap_response\.py''',
-  '''shared/templates/automated-response.*\.yaml''',
-  '''examples/''',
-  '''docs/.*/verification-results-.*\.md''',
-  '''scripts/verification/''',
-  '''integrations/.*/scripts/''',
-  '''docs/''',
-  '''scripts/''',
-  '''shared/scripts/''',
   '''shared/lambda-layers/.*/tests/''',
-  '''integrations/.*/README\.md''',
+  '''scripts/verification/''',
+  '''examples/''',
+  # Source and templates whose subject matter is IP-based blocking, so example
+  # client addresses appear in docstrings and default policy bodies.
+  '''shared/python/ontap_response\.py''',
+  '''shared/python/network_block\.py''',
+  '''shared/templates/automated-response.*\.yaml''',
 ]
 regexTarget = "line"
+# Only the documented placeholder shapes. The bare words placeholder, example,
+# CIDR, sample, test and fixture used to be listed here, and because
+# regexTarget is "line" each one exempted any line containing that word --
+# repo-wide, for every path, not just documentation. A real management IP on a
+# line that happened to mention a test was silently exempt.
+#
+# Removing them was measured against the working tree: findings went from 0 to
+# 0. The exemptions were protecting nothing and widening the hole, so the
+# narrowing costs no noise. Re-measure before adding any word here; an
+# unanchored word is an exemption for every line that mentions it.
 regexes = [
   '''10\.0\.x\.x''',
   '''10\.0\.\d+\.\d+/\d+''',
   '''192\.168\.x\.x''',
-  '''placeholder''',
-  '''example''',
-  '''CIDR''',
-  '''sample''',
-  '''test''',
-  '''fixture''',
 ]
 
 [[rules]]
@@ -74,9 +89,129 @@ paths = [
   '''integrations/.*/template.*\.yaml''',
 ]
 
+# ===========================================================================
+# Vendor credential rules
+#
+# Why these exist
+# ---------------
+# This repository ships audit logs to nine external SaaS vendors, so a vendor
+# credential is the highest-value secret it handles. A planted-secret test
+# showed that before these rules, 6 of 7 vendor credential formats were
+# undetected when written without an adjacent KEY= assignment. Only Grafana was
+# caught, by a gitleaks default rule.
+#
+# The apparent coverage was an artifact of the test fixture: gitleaks'
+# generic-api-key rule fires on the assignment keyword, not the credential, so
+# `DATADOG_API_KEY=<hex>` was caught while the same key pasted into a sentence
+# in a setup guide was not. Prose in docs/ is the realistic leak path for this
+# repo, because the setup guides walk a reader through obtaining these keys.
+#
+# scripts/tests/test_gitleaks_vendor_rules.py plants one credential per format
+# and fails if any goes undetected, so a rule that stops matching is caught.
+# ===========================================================================
+
+# Sumo Logic: the collector URL IS the credential -- there is no separate token
+# to redact, so a URL pasted into a doc is a full ingestion capability leak.
+# Highest severity of the set and, unlike a bare key, unambiguous to match.
+[[rules]]
+id = "sumologic-collector-url"
+description = "Sumo Logic HTTP collector URL (embeds the credential)"
+regex = '''https://endpoint\d+\.collection\.(?:[a-z0-9-]+\.)?sumologic\.com/receiver/v1/http/[A-Za-z0-9+/=_-]{32,}'''
+keywords = ["sumologic.com"]
+
+[rules.allowlist]
+regexTarget = "line"
+regexes = [
+  '''<[A-Za-z0-9_-]+>''',            # https://endpoint<N>.collection... in docs
+  '''endpoint<N>''',
+  '''YOUR[-_]?COLLECTOR''',
+  '''xxxx+''',
+]
+
+# Honeycomb ingest key. Prefixed, so matching is unambiguous.
+[[rules]]
+id = "honeycomb-ingest-key"
+description = "Honeycomb ingest API key"
+regex = '''\bhcaik_[A-Za-z0-9]{20,}'''
+keywords = ["hcaik_"]
+
+# New Relic: NRAK- user keys and the 40-char ingest license key ending NRAL.
+[[rules]]
+id = "newrelic-key"
+description = "New Relic user key or ingest license key"
+# Length range, not a fixed count: NRAK- keys have been observed at 27 and 28
+# characters, and a rule that is exact-by-one silently matches nothing.
+regex = '''\b(?:NRAK-[A-Z0-9]{25,32}|NRJS-[a-f0-9]{19}|[A-Za-z0-9]{36}NRAL)\b'''
+keywords = ["NRAK-", "NRJS-", "NRAL"]
+
+# Dynatrace API token: fixed prefix and fixed segment lengths.
+[[rules]]
+id = "dynatrace-api-token"
+description = "Dynatrace API token"
+regex = '''\bdt0[a-zA-Z]\d{2}\.[A-Z0-9]{24}\.[A-Z0-9]{64}\b'''
+keywords = ["dt0c01.", "dt0s01."]
+
+# Datadog and Splunk HEC are keyword-anchored, not format-anchored, and this is
+# a deliberate limit rather than an oversight. A Datadog API key is 32 lowercase
+# hex, identical to an MD5 digest; a Splunk HEC token is a bare UUID, identical
+# to any GUID. Matching those formats unanchored would fire on every checksum
+# and every resource identifier in the repo, and a rule that noisy gets
+# allowlisted into uselessness within a week. Anchoring on nearby wording
+# catches the realistic shapes -- an assignment, a curl header, a doc sentence
+# naming the key -- and misses a truly bare paste, which is recorded as a
+# residual gap rather than claimed as covered.
+[[rules]]
+id = "datadog-api-key-in-context"
+description = "Datadog API or APP key near datadog wording"
+# The gap between the wording and the value is `[^\n]{0,40}?` rather than a
+# punctuation class. A punctuation-only separator matches `DD_API_KEY=<hex>` but
+# not "the Datadog API key is <hex>", and prose is the shape this rule exists to
+# catch. Bounded to one line so it cannot span unrelated content.
+# `[\s_-]{0,2}` between the words, not `[_-]?`: the underscore form matches the
+# environment-variable spelling DATADOG_API_KEY, but documentation writes
+# "Datadog API key" with spaces, and the space form was the one going undetected.
+regex = '''(?i)(?:datadog|dd)[\s_-]{0,2}(?:api|app)[\s_-]{0,2}key[^\n]{0,40}?\b([a-f0-9]{32,40})\b'''
+keywords = ["datadog", "dd_api", "dd-api"]
+secretGroup = 1
+
+[rules.allowlist]
+regexTarget = "line"
+regexes = [
+  '''0{32,}''',
+  '''x{8,}''',
+  '''<[A-Za-z0-9_-]+>''',
+  '''\$\{?[A-Z_]+\}?''',             # ${DD_API_KEY} and $DD_API_KEY
+  '''(?i)secret(s)?manager''',
+  '''(?i)secret_arn''',
+]
+
+[[rules]]
+id = "splunk-hec-token-in-context"
+description = "Splunk HEC token near HEC wording"
+regex = '''(?i)(?:splunk|hec)[^\n]{0,40}?\b([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b'''
+keywords = ["splunk", "hec"]
+secretGroup = 1
+
+[rules.allowlist]
+regexTarget = "line"
+regexes = [
+  '''0{8}-0{4}''',
+  '''x{8}-x{4}''',
+  '''<[A-Za-z0-9_-]+>''',
+  '''\$\{?[A-Z_]+\}?''',
+  '''(?i)secret(s)?manager''',
+  '''(?i)secret_arn''',
+]
+
 [allowlist]
 paths = [
   '''.gitleaks.toml''',
+  # Compiled bytecode is a build artifact, not source. Scanning it produced 8
+  # findings that were copies of example IPs from the .py files beside them,
+  # where the source form is already allowlisted -- noise that made a
+  # non-clean scan the normal state and so trained readers to ignore it.
+  '''__pycache__/''',
+  '''\.pyc$''',
   '''node_modules/''',
   '''package-lock.json''',
   '''.hypothesis/''',
@@ -84,6 +219,10 @@ paths = [
   '''management-console/tests/''',
   '''integrations/.*/tests/''',
   '''scripts/verification/tests/''',
+  # Holds one synthetic credential per vendor format on purpose: it is the test
+  # that proves the vendor rules still fire. Without this entry the suite
+  # reports its own fixtures and the gate can never be clean.
+  '''scripts/tests/test_gitleaks_vendor_rules\.py''',
   '''shared/scripts/datadog-screenshot-continuation-prompt\.md''',
   '''shared/python/network_block\.py''',
   '''shared/python/tests/test_network_block\.py''',

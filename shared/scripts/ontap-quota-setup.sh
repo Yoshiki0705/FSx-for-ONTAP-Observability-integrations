@@ -62,12 +62,12 @@ Environment variables:
 
 Examples:
   # Create qtree with 100GB hard limit, 80GB soft limit
-  ${SCRIPT_NAME} --endpoint 10.0.1.100 --svm svm-prod \\
+  ${SCRIPT_NAME} --endpoint 198.51.100.100 --svm svm-prod \\
     --volume vol_data --qtree dept-sales \\
     --hard-limit 100GB --soft-limit 80GB
 
   # Dry-run to preview
-  ${SCRIPT_NAME} --endpoint 10.0.1.100 --svm svm-prod \\
+  ${SCRIPT_NAME} --endpoint 198.51.100.100 --svm svm-prod \\
     --volume vol_data --qtree dept-sales \\
     --hard-limit 50GB --dry-run
 EOF

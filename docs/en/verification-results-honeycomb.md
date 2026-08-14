@@ -135,7 +135,7 @@ aws lambda invoke \
 | operation | ReadData | ✅ OK |
 | path | /vol/data/report.pdf | ✅ OK |
 | result | Success / Failure | ✅ OK |
-| client_ip | 10.0.1.50 | ✅ OK |
+| client_ip | 198.51.100.50 | ✅ OK |
 | s3_key | audit/svm-prod-01/2026/05/24/audit-001.json | ✅ OK |
 | Dataset | fsxn-audit | ✅ OK |
 | Sample Rate | 1 | ✅ OK |

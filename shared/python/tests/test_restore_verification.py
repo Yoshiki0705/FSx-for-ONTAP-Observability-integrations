@@ -58,6 +58,14 @@ def client(fsx_client, s3_client):
     return c
 
 
+# create_flexclone now runs an AD DC reachability pre-flight before creating
+# anything, so every scripted response sequence for it begins with the CIFS
+# service lookup. An SVM with no CIFS service short-circuits the check in one
+# call, which keeps these sequences focused on clone creation.
+# The AD paths themselves are covered in test_restore_verification_ad_precheck.py.
+AD_NOT_APPLICABLE = {"records": []}
+
+
 # ==========================================================================
 # FlexClone lifecycle
 # ==========================================================================
@@ -66,6 +74,8 @@ def client(fsx_client, s3_client):
 class TestCreateFlexclone:
     def test_create_flexclone_success(self, client):
         client._http.request.side_effect = [
+            # GET /protocols/cifs/services -> no CIFS, so AD is not involved
+            make_response(200, AD_NOT_APPLICABLE),
             # POST /storage/volumes -> job response (no async job, immediate)
             make_response(202, {"job": {"uuid": "job-uuid-1"}}),
             # GET /cluster/jobs/{uuid} -> success
@@ -86,8 +96,11 @@ class TestCreateFlexclone:
         assert result["parent_volume"] == "vol_data"
         assert result["parent_snapshot"] == "incident_response_20260708_143022"
 
-        # Verify the clone request body
-        post_call = client._http.request.call_args_list[0]
+        assert result["ad_check"] == "not_applicable"
+
+        # Verify the clone request body. Index 1, not 0: the AD pre-flight GET
+        # runs first, which is the ordering that makes the check useful.
+        post_call = client._http.request.call_args_list[1]
         body = json.loads(post_call[1]["body"])
         assert body["clone"]["parent_volume"]["name"] == "vol_data"
         assert body["clone"]["parent_snapshot"]["name"] == "incident_response_20260708_143022"
@@ -95,6 +108,7 @@ class TestCreateFlexclone:
 
     def test_create_flexclone_default_name(self, client):
         client._http.request.side_effect = [
+            make_response(200, AD_NOT_APPLICABLE),
             make_response(202, {"job": {"uuid": "job-uuid-1"}}),
             make_response(200, {"state": "success"}),
             make_response(200, {"records": [{"uuid": "clone-uuid-1"}]}),
@@ -108,6 +122,7 @@ class TestCreateFlexclone:
 
     def test_create_flexclone_job_failure(self, client):
         client._http.request.side_effect = [
+            make_response(200, AD_NOT_APPLICABLE),
             make_response(202, {"job": {"uuid": "job-uuid-1"}}),
             make_response(200, {"state": "failure", "message": "insufficient space"}),
         ]
@@ -119,6 +134,7 @@ class TestCreateFlexclone:
 
     def test_create_flexclone_lookup_fails_after_create(self, client):
         client._http.request.side_effect = [
+            make_response(200, AD_NOT_APPLICABLE),
             make_response(202, {"job": {"uuid": "job-uuid-1"}}),
             make_response(200, {"state": "success"}),
             make_response(200, {"records": []}),
@@ -128,6 +144,116 @@ class TestCreateFlexclone:
             client.create_flexclone(
                 svm_name="svm-prod", volume_name="vol_data", snapshot_name="snap1",
             )
+
+
+class TestAdConnectivityPrecheck:
+    """The library had no AD check while the CloudFormation-embedded copy of the
+    same workflow did, and this module is the one build-layer.sh ships as a
+    Lambda layer. These cover the check now that both agree.
+
+    Why it matters: on an AD-joined SVM, ONTAP performs a unix->win lookup per
+    S3 Access Point data operation, so unreachable domain controllers produce
+    AccessDenied from ListObjectsV2 while HeadBucket still succeeds. The probe an
+    operator naturally reaches for is the one that still works.
+    """
+
+    CIFS_ENABLED = {"records": [{"ad_domain": {"fqdn": "corp.example.com"}}]}
+
+    def test_no_cifs_service_is_not_applicable(self, client):
+        client._http.request.side_effect = [make_response(200, {"records": []})]
+        assert client.check_ad_connectivity("svm-prod") == "not_applicable"
+        # The domains endpoint must not be queried when there is no AD at all.
+        assert client._http.request.call_count == 1
+
+    def test_reachable_domain_controllers_verify(self, client):
+        client._http.request.side_effect = [
+            make_response(200, self.CIFS_ENABLED),
+            make_response(200, {"records": [{"discovered_servers": [{"name": "dc1"}]}]}),
+        ]
+        assert client.check_ad_connectivity("svm-prod") == "verified"
+
+    def test_zero_discovered_controllers_always_fails(self, client):
+        """The one unambiguous bad answer. Fatal regardless of strict mode."""
+        client._http.request.side_effect = [
+            make_response(200, self.CIFS_ENABLED),
+            make_response(200, {"records": [{"discovered_servers": []}]}),
+        ]
+        with pytest.raises(RestoreVerificationError, match="AD CONNECTIVITY FAILURE"):
+            client.check_ad_connectivity("svm-prod")
+
+    @pytest.mark.parametrize(
+        "domains,reason",
+        [
+            ({"records": [{}]}, "field_absent"),
+            ({"records": []}, "no_domain_records"),
+        ],
+    )
+    def test_ambiguous_answers_proceed_with_a_recorded_verdict(self, client, domains, reason):
+        client._http.request.side_effect = [
+            make_response(200, self.CIFS_ENABLED),
+            make_response(200, domains),
+        ]
+        assert client.check_ad_connectivity("svm-prod") == f"unverified:{reason}"
+
+    def test_domains_endpoint_error_is_unverified_not_fatal(self, client):
+        client._http.request.side_effect = [
+            make_response(200, self.CIFS_ENABLED),
+            make_response(500, {"error": {"message": "internal"}}),
+        ]
+        assert client.check_ad_connectivity("svm-prod") == "unverified:domains_api_error"
+
+    @pytest.mark.parametrize(
+        "domains", [{"records": [{}]}, {"records": []}]
+    )
+    def test_strict_mode_fails_closed_on_ambiguous_answers(
+        self, fsx_client, s3_client, domains
+    ):
+        strict = RestoreVerificationClient(
+            mgmt_ip="10.0.1.100",
+            username="fsxadmin",
+            password="test-password",
+            file_system_id="fs-0123456789abcdef0",
+            fsx_client=fsx_client,
+            s3_client=s3_client,
+            strict_ad_check=True,
+        )
+        strict._http = MagicMock()
+        strict._http.request.side_effect = [
+            make_response(200, self.CIFS_ENABLED),
+            make_response(200, domains),
+        ]
+        with pytest.raises(RestoreVerificationError, match="strict mode"):
+            strict.check_ad_connectivity("svm-prod")
+
+    def test_create_flexclone_runs_the_check_before_creating_anything(self, client):
+        """Ordering is the whole value: after the clone and access point exist,
+        the check saves nothing."""
+        client._http.request.side_effect = [
+            make_response(200, self.CIFS_ENABLED),
+            make_response(200, {"records": [{"discovered_servers": []}]}),
+        ]
+        with pytest.raises(RestoreVerificationError, match="AD CONNECTIVITY FAILURE"):
+            client.create_flexclone(
+                svm_name="svm-prod", volume_name="vol_data", snapshot_name="snap1",
+            )
+        methods = [c[0][0] for c in client._http.request.call_args_list]
+        assert "POST" not in methods, (
+            "the clone was created despite the AD check failing"
+        )
+
+    def test_verdict_is_exposed_for_downstream_diagnosis(self, client):
+        client._http.request.side_effect = [
+            make_response(200, self.CIFS_ENABLED),
+            make_response(200, {"records": [{}]}),
+            make_response(202, {"job": {"uuid": "job-1"}}),
+            make_response(200, {"state": "success"}),
+            make_response(200, {"records": [{"uuid": "clone-uuid-1"}]}),
+        ]
+        result = client.create_flexclone(
+            svm_name="svm-prod", volume_name="vol_data", snapshot_name="snap1",
+        )
+        assert result["ad_check"] == "unverified:field_absent"
+        assert client.last_ad_check == "unverified:field_absent"
 
 
 class TestDeleteFlexclone:

@@ -20,7 +20,7 @@ Usage:
         --log-group /aws/lambda/fsxn-ems-receiver \
         --svm-name svm-prod-01 \
         --volume-name vol1 \
-        --management-ip 10.0.1.100
+        --management-ip 198.51.100.100
 """
 
 from __future__ import annotations

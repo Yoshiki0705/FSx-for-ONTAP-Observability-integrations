@@ -53,13 +53,13 @@ Optional:
 
 Examples:
   # Enable EVTX format audit logging
-  $0 --endpoint 10.0.1.100 --svm svm-prod-01
+  $0 --endpoint 198.51.100.100 --svm svm-prod-01
 
   # Enable XML format with custom rotation
-  $0 --endpoint 10.0.1.100 --svm svm-prod-01 --format xml --rotate-size 50MB
+  $0 --endpoint 198.51.100.100 --svm svm-prod-01 --format xml --rotate-size 50MB
 
   # Preview commands without executing
-  $0 --endpoint 10.0.1.100 --svm svm-prod-01 --dry-run
+  $0 --endpoint 198.51.100.100 --svm svm-prod-01 --dry-run
 EOF
   exit 0
 }
