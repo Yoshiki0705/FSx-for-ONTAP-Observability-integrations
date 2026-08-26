@@ -38,6 +38,38 @@ Parameters:
     MaxValue: 60
     Description: NFSv3 write-complete wait seconds
 
+  SocketTimeoutSeconds:
+    Type: Number
+    Default: 300
+    MinValue: 60
+    MaxValue: 86400
+    Description: >-
+      Per-connection idle timeout on the FPolicy server socket. Must exceed the
+      SVM's fpolicy keep-alive interval. Raise it when measuring how long an
+      ONTAP session survives: a server-side timeout closes the socket exactly
+      like an ONTAP-side disconnect, and the log cannot then tell them apart.
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+    Description: >-
+      Server log level. DEBUG additionally logs the raw notification body, which
+      is the only way to see which fields ONTAP actually sends at a given
+      protocol version. It is verbose, so it is not the default.
+
+  AssignPublicIp:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [DISABLED, ENABLED]
+    Description: >-
+      Whether the Fargate task ENI gets a public IP. DISABLED requires an egress
+      path to ECR, CloudWatch Logs and SQS (NAT gateway or interface VPC
+      endpoints). ENABLED is only for a subnet routed to an internet gateway
+      that has no such path; the task is then reachable from the internet at the
+      IP's open ports, so the task security group must stay restricted to the
+      SVM security group as the sole inbound source.
+
   DesiredCount:
     Type: Number
     Default: 1
@@ -308,6 +340,10 @@ Resources:
               Value: realtime
             - Name: WRITE_COMPLETE_DELAY_SEC
               Value: !Sub "${WriteCompleteDelaySec}"
+            - Name: SOCKET_TIMEOUT_SEC
+              Value: !Sub "${SocketTimeoutSeconds}"
+            - Name: LOG_LEVEL
+              Value: !Ref LogLevel
             - Name: SCHEMA_PATH
               Value: /app/schemas/fpolicy-event-schema.json
           LogConfiguration:
@@ -330,7 +366,7 @@ Resources:
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
+          AssignPublicIp: !Ref AssignPublicIp
           Subnets: !Ref SubnetIds
           SecurityGroups:
             - !Ref FPolicyServerSecurityGroup
