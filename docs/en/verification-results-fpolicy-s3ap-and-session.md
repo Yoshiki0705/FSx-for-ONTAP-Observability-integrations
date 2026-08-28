@@ -421,8 +421,11 @@ hours with no spontaneous disconnect.**
 one configuration. Behaviour past 72 hours, after the engine IP is re-registered, and with a load
 balancer in front all remain separate questions.
 
-Log retention is 30 days, so this window can be re-examined under the same conditions until roughly
-2026-09-27. Deleting the verification environment itself does not change that.
+The verification environment was deleted once the window was confirmed closed. **Log retention is 30
+days, but the log group is a resource of the Fargate stack, so it goes when the stack goes.** What
+remains re-examinable is the tabulation above plus an export of the whole window's server log taken
+before the deletion (held outside the tracked tree; it carries internal IPs and is not published).
+**"The logs can still be re-checked after the environment is gone" cannot be written.**
 
 #### The two events that nearly voided the window start
 
