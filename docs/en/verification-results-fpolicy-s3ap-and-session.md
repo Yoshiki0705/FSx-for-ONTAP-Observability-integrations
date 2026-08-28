@@ -18,7 +18,7 @@ file-protocol access.
 | **Verification date** | `2026-08-26` (JST) |
 | **Question 1 state** | Measurement complete (both UNIX / NFS and WINDOWS / SMB) |
 | **Question 2 state** | Measurement complete |
-| **Question 3 state** | Measurement in progress (about 0.8 hours elapsed as this page was written) |
+| **Question 3 state** | Measurement complete (the 72-hour window is filled; 0 spontaneous disconnects) |
 
 ### Verification environment
 
@@ -399,21 +399,51 @@ sees the S3 path" are wrong.** Which mechanism to use depends on what is to be g
 
 ## 5. FPolicy session continuity
 
-### 5-1. Current state
+### 5-1. Result — the 72-hour window is filled
 
-The measurement is still running. Only the following is settled as this page is written.
+The window has closed. **With the engine IP pinned, the FPolicy control channel stayed up for 72
+hours with no spontaneous disconnect.**
 
 | Item | Value |
 |------|-------|
-| Observation window start | `2026-08-25T17:16:53Z` (when the reconnection after the scope change completed; any earlier window is void) |
-| Elapsed as written | about 0.5 hours |
-| 72-hour mark | `2026-08-28T17:16:53Z` |
-| Spontaneous disconnects | 0 as written |
-| Server-side idle timeouts | 0 |
-| Measured KeepAlive interval | 120.4–120.5 s, matching the engine's `keep_alive_interval=PT2M` |
+| Observation window | `2026-08-25T17:16:53Z` → `2026-08-28T17:16:53Z` (the start is when the reconnection after the scope change completed; any earlier window is void) |
+| Confirmed at | `2026-08-28T17:17:12Z` (72.01 hours elapsed) |
+| New sessions established | **1 only** (the one at the start, `socket_timeout=3600`) |
+| Spontaneous disconnects (`closed by peer`) | **0** |
+| `fpolicy.server.disconnect` in ONTAP EMS | **0** |
+| Server-side idle timeouts fired | **0** |
+| Server process restarts / task replacements | **0** (the same task stayed `RUNNING` for the whole window) |
+| Errors / exceptions | **0** |
+| KeepAlive | 4,694 lines, maximum gap **120.4 s**, gaps over 300 s: **0** (matching the engine's `keep_alive_interval=PT2M`) |
+| Server log events in the window | 5,975 |
 
-At this elapsed time "the session is not cut" cannot be written. That is answerable only once
-the 72-hour window is filled.
+**This is not generalised to "the session is never cut".** What was measured is one run, 72 hours,
+one configuration. Behaviour past 72 hours, after the engine IP is re-registered, and with a load
+balancer in front all remain separate questions.
+
+Log retention is 30 days, so this window can be re-examined under the same conditions until roughly
+2026-09-27. Deleting the verification environment itself does not change that.
+
+#### The two events that nearly voided the window start
+
+EMS holds two events inside the window. **Neither belongs to the measured session.**
+
+| Time | Event | Engine it refers to |
+|------|-------|---------------------|
+| `2026-08-25T23:25:56Z` | `fpolicy.server.connectError` | `<unreachable-engine-ip>` (an address other than the measured one) |
+| `2026-08-25T23:55:07Z` | `fpolicy.server.connect` | `<blackhole-engine-ip>` (policy `sync_mandatory_policy`) |
+
+The measured task's IP (`<verify-engine-ip>`) is registered against a different engine,
+`verify_engine`, on the same SVM. Both events above concern `sync_blackhole_engine`, the separate
+engine built for the mandatory-blocking test, and they match on neither IP nor engine name. Together
+with the absence of any further connection line on the server side, **the 23:55 connect is not a
+reconnection of the measured session.**
+
+What settled it is not the address values but the fact that **the engine EMS reported and the engine
+registered against `verify_engine` are different ones**, so placeholders are sufficient above.
+
+This is a live instance of the confounds listed in 5-2. **Reading either side alone would have
+counted that connect as a reconnection and moved the window start to 2026-08-25T23:55:07Z.**
 
 ### 5-2. Removing the confounds
 
