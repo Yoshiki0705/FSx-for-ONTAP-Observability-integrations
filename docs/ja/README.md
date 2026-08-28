@@ -268,6 +268,9 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [Sumo Logic 統合 動作確認結果](verification-results-sumo-logic.md)
 - [Honeycomb 統合 動作確認結果](verification-results-honeycomb.md)
 - [EMS/FPolicy E2E 動作確認結果](verification-results-ems-fpolicy.md)
+- [Create an event per candidate, deleting the ones that succeed to leave the cluster as found](verification-results-fpolicy-s3ap-and-session.md)
+- [support-inquiry-s3ap-audit-coverage](support-inquiry-s3ap-audit-coverage.md)
+- [s3ap-monitoring-coverage-implications](s3ap-monitoring-coverage-implications.md)
 
 **プロジェクト**
 

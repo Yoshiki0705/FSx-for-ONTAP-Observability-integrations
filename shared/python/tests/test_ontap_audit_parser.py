@@ -278,3 +278,92 @@ class TestNormalizeEvent:
         assert n["user"] == "" and n["path"] == "" and n["client_ip"] == ""
         # event_type falls back to a usable default rather than empty
         assert n["event_type"] == "audit"
+
+
+class TestMeasuredOntapFieldNames:
+    """Fields as ONTAP actually emits them, taken from a captured audit log.
+
+    The older cases above use plausible names (`IpAddress`, `ObjectType` carrying
+    an operation) that ONTAP does not emit for file auditing. Every event in a
+    real log therefore normalized with an empty client_ip and an operation of
+    "File" until this was measured. These cases pin the real names so that
+    cannot recur.
+
+    Captured on FSx for ONTAP, ONTAP 9.18.1P3D1, xml audit log format.
+    """
+
+    # An SMB access: the subject is fully populated.
+    CIFS_EVENT = {
+        "Source": "CIFS",
+        "EventID": "4663",
+        "EventName": "Write Object",
+        "SubjectIP": "10.0.0.10",
+        "SubjectUserName": "svcuser",
+        "SubjectDomainName": "EXAMPLE",
+        "ObjectName": "(vol1);/data/file.txt",
+        "ObjectType": "File",
+        "Keywords": "0x8020000000000000",
+        "Computer": "FsxId0123456789abcdef0/svm1",
+        "TimeCreated_SystemTime": "2026-08-25T17:33:12.508483636Z",
+    }
+
+    # The same volume reached over the S3 access path: ONTAP fills the subject
+    # attributes with the literal string "Not Present".
+    S3_PATH_EVENT = {
+        "Source": "HTTP",
+        "EventID": "4656",
+        "EventName": "Create Object",
+        "SubjectIP": "203.0.113.10",
+        "SubjectUserName": "Not Present",
+        "SubjectDomainName": "Not Present",
+        "ObjectName": "(vol1);/data/object.txt",
+        "ObjectType": "File",
+        "Computer": "FsxId0123456789abcdef0/svm1",
+        "TimeCreated_SystemTime": "2026-08-25T23:32:21.000000000Z",
+    }
+
+    def test_subject_ip_is_the_field_that_carries_the_address(self):
+        assert normalize_event(self.CIFS_EVENT)["client_ip"] == "10.0.0.10"
+
+    def test_event_name_is_the_operation_not_object_type(self):
+        # ObjectType is "File" on every file event, so it cannot be the operation.
+        assert normalize_event(self.CIFS_EVENT)["operation"] == "Write Object"
+
+    def test_access_protocol_distinguishes_the_s3_path_from_a_file_protocol(self):
+        assert normalize_event(self.CIFS_EVENT)["access_protocol"] == "CIFS"
+        assert normalize_event(self.S3_PATH_EVENT)["access_protocol"] == "HTTP"
+
+    def test_not_present_subject_is_treated_as_absent_not_as_a_user_named_so(self):
+        n = normalize_event(self.S3_PATH_EVENT)
+        assert n["user"] == ""
+        assert n["domain"] == ""
+
+    def test_the_address_survives_even_when_the_subject_does_not(self):
+        # The operation and the path are still attributable to the volume even
+        # though the requester is not, so they must not be dropped along with it.
+        n = normalize_event(self.S3_PATH_EVENT)
+        assert n["client_ip"] == "203.0.113.10"
+        assert n["operation"] == "Create Object"
+        assert n["path"] == "(vol1);/data/object.txt"
+
+    def test_s3_list_uses_its_own_source_value(self):
+        # A LIST through the access point is audited as Source=S3, not HTTP.
+        n = normalize_event({
+            "Source": "S3",
+            "EventID": "4663",
+            "EventName": "S3A List Object",
+            "SubjectUserName": "Not Present",
+            "SubjectIP": "203.0.113.11",
+        })
+        assert n["access_protocol"] == "S3"
+        assert n["operation"] == "S3A List Object"
+        assert n["user"] == ""
+
+    def test_file_name_is_accepted_as_a_path_source(self):
+        # Unlink events carry FileName instead of ObjectName.
+        n = normalize_event({
+            "Source": "HTTP",
+            "EventName": "Unlink Object",
+            "FileName": "(vol1);/data/gone.txt",
+        })
+        assert n["path"] == "(vol1);/data/gone.txt"
