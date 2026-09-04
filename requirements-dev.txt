@@ -12,18 +12,18 @@
 # --- Test runtime ---------------------------------------------------------
 pytest==9.1.1
 pytest-cov==7.1.0
-coverage==7.14.3
-moto==5.2.2
-hypothesis==6.155.7
+coverage==7.16.0
+moto==5.2.3
+hypothesis==6.167.1
 
 # --- Lambda runtime libraries (present in the AWS Python 3.12 runtime) -----
 # urllib3 rather than requests: requests is not in the Lambda runtime.
-boto3==1.43.36
+boto3==1.43.89
 urllib3==2.7.0
 
 # --- Gates ----------------------------------------------------------------
 # These three were absent from the venv entirely. bandit was not installed
 # anywhere, so no Python security scan had ever run against this repo.
-ruff==0.16.3
+ruff==0.16.6
 bandit==1.9.4
-cfn-lint==1.55.1
+cfn-lint==1.56.0
