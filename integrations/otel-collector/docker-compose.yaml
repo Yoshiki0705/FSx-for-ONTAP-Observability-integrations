@@ -21,7 +21,7 @@
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.152.0
+    image: otel/opentelemetry-collector-contrib:0.160.0
     ports:
       - "4318:4318"   # OTLP HTTP
       - "13133:13133" # Health check
