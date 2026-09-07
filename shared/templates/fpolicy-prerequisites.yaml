@@ -84,8 +84,11 @@ Resources:
 Outputs:
   ECRRepositoryUri:
     Description: >
-      ECR repository URI. Use this to build and push the FPolicy server image:
-      docker buildx build --platform linux/amd64 -t <this-uri>:latest --push shared/fpolicy-server/
+      ECR repository URI. Build and push the FPolicy server image with
+      shared/fpolicy-server/build-and-push.sh, which pushes a multi-platform
+      manifest. A hand-rolled single-platform build
+      (docker buildx build --platform linux/amd64 ...) serves Fargate only and
+      fails on the arm64 EC2 mode of fpolicy-apigw.yaml with "exec format error".
     Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${FPolicyServerRepository}'
 
   ECRRepositoryArn:

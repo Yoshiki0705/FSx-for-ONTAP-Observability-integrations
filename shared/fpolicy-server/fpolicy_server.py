@@ -13,6 +13,13 @@ Configuration (環境変数):
     MODE: 動作モード (realtime / batch, default: realtime)
     LOG_DIR: Batch モード時のログ出力ディレクトリ
     WRITE_COMPLETE_DELAY_SEC: NFSv3 write-complete 待機秒数 (default: 5)
+    SOCKET_TIMEOUT_SEC: 接続ごとの recv タイムアウト秒数 (default: 300)
+        ONTAP の keep_alive_interval より大きくする。セッション継続時間を
+        測定する場合は、サーバー側タイムアウトが ONTAP 側の切断と
+        混同されないよう十分大きい値にする。
+    LOG_LEVEL: ログレベル (default: INFO)
+        DEBUG にすると通知の生ボディも出力する。あるプロトコルバージョンで
+        ONTAP が実際にどのフィールドを送るかは、これを見る以外に確認手段がない。
     SCHEMA_PATH: JSON Schema ファイルパス
 
 Protocol:
@@ -24,7 +31,8 @@ Protocol:
 Reference:
     - NetApp Docs: https://docs.netapp.com/us-en/ontap-technical-reports/
       ontap-security-hardening/create-fpolicy.html
-    - Shengyu Fang: https://github.com/YhunerFSY/ontap-fpolicy-aws-integration
+    - 先行実装（NetApp の同僚による検証実装）:
+      https://github.com/YhunerFSY/ontap-fpolicy-aws-integration
 """
 
 from __future__ import annotations
@@ -61,7 +69,9 @@ except ImportError:
         PROTOBUF_AVAILABLE = False
 
 logging.basicConfig(
-    level=logging.INFO,
+    # DEBUG additionally logs the raw notification body, which is the only way to
+    # see what fields ONTAP actually sends for a given protocol version.
+    level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("fpolicy-server")
@@ -73,6 +83,7 @@ AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-1")
 MODE = os.environ.get("MODE", "realtime")  # realtime or batch
 LOG_DIR = os.environ.get("LOG_DIR", "/var/log/fpolicy")
 WRITE_COMPLETE_DELAY_SEC = int(os.environ.get("WRITE_COMPLETE_DELAY_SEC", "5"))
+SOCKET_TIMEOUT_SEC = float(os.environ.get("SOCKET_TIMEOUT_SEC", "300"))
 SCHEMA_PATH = os.environ.get(
     "SCHEMA_PATH",
     str(Path(__file__).parent.parent / "schemas" / "fpolicy-event-schema.json"),
@@ -180,19 +191,45 @@ class FPolicyServer:
 
     def handle_client(self, conn: socket.socket, addr: tuple) -> None:
         """クライアント接続を処理する（スレッド単位）."""
-        logger.info("[+] Connection from %s", addr)
-        # Timeout must exceed ONTAP keep_alive_interval (default 2min=120s)
-        # Set to 300s to safely receive KEEP_ALIVE before timeout
-        conn.settimeout(300.0)
+        # Timeout must exceed ONTAP keep_alive_interval (default 2min=120s).
+        # When measuring how long an ONTAP session survives, this value has to be
+        # well above the keep-alive interval: a server-side timeout closes the
+        # socket exactly like an ONTAP-side disconnect would, and the two are
+        # then indistinguishable in the log.
+        conn.settimeout(SOCKET_TIMEOUT_SEC)
+
+        connected_at = time.monotonic()
+        logger.info(
+            "[+] Connection from %s (socket_timeout=%.0fs)",
+            addr,
+            SOCKET_TIMEOUT_SEC,
+        )
 
         # Per-connection session context (populated by NEGO_REQ)
         conn_ctx: dict[str, str] = {}
+        # Per-connection counters, used to tell a quiet session apart from a
+        # session that ended: reported on every close path below.
+        counters: dict[str, float] = {"keepalive": 0, "event": 0, "other": 0}
+        conn_ctx["_counters"] = counters  # type: ignore[assignment]
+
+        def _uptime() -> str:
+            return f"{time.monotonic() - connected_at:.1f}s"
 
         try:
             while self._running:
                 raw_msg = self.read_fpolicy_message(conn)
                 if raw_msg is None:
-                    logger.info("[-] Connection closed: %s", addr)
+                    # Peer sent FIN (or a malformed frame forced a close).
+                    # Distinct from the socket.timeout path below.
+                    logger.info(
+                        "[-] Connection closed by peer: %s | uptime=%s | "
+                        "keepalive=%d event=%d other=%d",
+                        addr,
+                        _uptime(),
+                        counters["keepalive"],
+                        counters["event"],
+                        counters["other"],
+                    )
                     break
 
                 # Auto-detect format or use configured format
@@ -206,9 +243,27 @@ class FPolicyServer:
                 self._dispatch_message(conn, header_str, body_str, conn_ctx)
 
         except socket.timeout:
-            logger.warning("[-] Timeout: %s", addr)
+            # Server-side idle timeout — NOT an ONTAP-side disconnect.
+            logger.warning(
+                "[-] Server-side socket timeout after %.0fs idle: %s | "
+                "uptime=%s | keepalive=%d event=%d other=%d",
+                SOCKET_TIMEOUT_SEC,
+                addr,
+                _uptime(),
+                counters["keepalive"],
+                counters["event"],
+                counters["other"],
+            )
         except Exception as e:
-            logger.error("[Error] %s: %s", addr, str(e))
+            logger.error(
+                "[Error] %s: %s | uptime=%s | keepalive=%d event=%d other=%d",
+                addr,
+                str(e),
+                _uptime(),
+                counters["keepalive"],
+                counters["event"],
+                counters["other"],
+            )
         finally:
             conn.close()
 
@@ -369,7 +424,25 @@ class FPolicyServer:
             ["ClientIp", "ClientIP", "SourceIp", "SourceIP"],
         )
 
-        logger.info("[Event] %s %s", operation, ontap_path)
+        # Access protocol as reported by ONTAP. Recorded because which protocol a
+        # notification is attributed to is the thing under test when a volume is
+        # reachable over more than one access path.
+        access_protocol = self._extract_xml_value(
+            body_str,
+            ["Protocol", "ProtocolVersion", "AccessProtocol"],
+        )
+
+        counters = conn_ctx.get("_counters")
+        if isinstance(counters, dict):
+            counters["event"] = counters.get("event", 0) + 1
+
+        logger.info(
+            "[Event] %s %s | protocol=%s | client=%s",
+            operation,
+            ontap_path,
+            access_protocol or "unreported",
+            client_ip or "unreported",
+        )
 
         # NFSv3 write-complete delay
         # NOTE: This fixed delay is a fallback, not a correctness guarantee.
@@ -393,6 +466,8 @@ class FPolicyServer:
         }
         if client_ip:
             fpolicy_event["client_ip"] = client_ip
+        if access_protocol:
+            fpolicy_event["protocol"] = access_protocol
 
         if self.mode == "realtime":
             self._send_to_sqs(fpolicy_event)
@@ -428,7 +503,7 @@ class FPolicyServer:
             "<NotfType>KEEP_ALIVE_REQ</NotfType>" in header_str
             or "<NotfType>KEEP_ALIVE</NotfType>" in header_str
         ):
-            logger.info("[KeepAlive] Received — connection healthy")
+            self._log_keepalive(conn_ctx, "")
         elif "<NotfType>ALERT_MSG</NotfType>" in header_str:
             alert_match = re.search(
                 r"<AlertMsg>(.*?)</AlertMsg>", header_str + body_str
@@ -444,13 +519,20 @@ class FPolicyServer:
         elif "<NotfType>STATUS_REQ</NotfType>" in header_str:
             logger.debug("[StatusReq] Received (no response needed for async)")
         else:
-            # Log unknown message types for debugging
+            # Log unknown message types in full. An unrecognised notification is
+            # the one case where the header itself is the finding, so it is not
+            # truncated: a silently dropped message type would read the same as
+            # no message at all.
             notf_match = re.search(r"<NotfType>(.*?)</NotfType>", header_str)
             notf_type = notf_match.group(1) if notf_match else "UNKNOWN"
+            counters = conn_ctx.get("_counters")
+            if isinstance(counters, dict):
+                counters["other"] = counters.get("other", 0) + 1
             logger.info(
-                "[Message] Type=%s | Header(100)=%s",
+                "[Message] Type=%s | Header=%s | Body(400)=%s",
                 notf_type,
-                header_str[:100],
+                header_str,
+                body_str[:400],
             )
 
     def _dispatch_protobuf_message(
@@ -504,7 +586,7 @@ class FPolicyServer:
             self._handle_protobuf_notification(body_bytes, conn_ctx)
 
         elif notf_type in ("KEEP_ALIVE_REQ", "KEEP_ALIVE"):
-            logger.info("[KeepAlive/PB] Received — connection healthy")
+            self._log_keepalive(conn_ctx, "/PB")
 
         else:
             logger.info("[Message/PB] Type=%s", notf_type)
@@ -562,6 +644,35 @@ class FPolicyServer:
             self._send_to_sqs(fpolicy_event)
         else:
             self._write_to_log(fpolicy_event)
+
+    def _log_keepalive(self, conn_ctx: dict[str, str], suffix: str) -> None:
+        """KEEP_ALIVE を受信間隔つきで記録する.
+
+        間隔を出すのは、ログが途切れた区間を「静かだった」と「切れていた」に
+        読み分けるため。連番と前回からの経過秒があれば、欠落した区間の長さが
+        後から確定できる。
+        """
+        now = time.monotonic()
+        prev = conn_ctx.get("_last_keepalive_at")
+        seq = int(conn_ctx.get("_keepalive_seq", 0)) + 1  # type: ignore[arg-type]
+        conn_ctx["_keepalive_seq"] = seq  # type: ignore[assignment]
+        conn_ctx["_last_keepalive_at"] = now  # type: ignore[assignment]
+
+        counters = conn_ctx.get("_counters")
+        if isinstance(counters, dict):
+            counters["keepalive"] = counters.get("keepalive", 0) + 1
+
+        if prev is None:
+            logger.info(
+                "[KeepAlive%s] seq=%d | first since handshake", suffix, seq
+            )
+        else:
+            logger.info(
+                "[KeepAlive%s] seq=%d | since_prev=%.1fs",
+                suffix,
+                seq,
+                now - float(prev),  # type: ignore[arg-type]
+            )
 
     def _handle_nego_req(
         self, conn: socket.socket, body_str: str, conn_ctx: dict[str, str]

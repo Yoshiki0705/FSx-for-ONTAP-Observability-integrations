@@ -4,7 +4,7 @@
 
 ## Overview
 
-This document defines five operational monitoring patterns for FSx for ONTAP environments integrated with lakehouse architectures (referenced from [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations)). All patterns are vendor-neutral, built on Lambda + CloudWatch, with delivery paths to any observability backend via the OTLP/vendor-specific pipelines established in this project.
+This document defines five operational monitoring patterns for FSx for ONTAP environments integrated with lakehouse architectures (referenced from [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations)). All patterns are vendor-neutral, built on Lambda + CloudWatch, with delivery paths to any observability backend via the OTLP/vendor-specific pipelines established in this project.
 
 > **Relationship to audit log shipping**: The main project ships file access audit logs, EMS events, and FPolicy notifications to observability platforms. These lakehouse monitoring patterns complement that by providing **infrastructure-level operational metrics** — sync delays, latency, cache efficiency, anomaly detection, and cost visibility.
 
@@ -481,4 +481,4 @@ aws cloudformation deploy \
 - [Pipeline SLO Definitions](pipeline-slo.md)
 - [S3 AP Specification](s3ap-fsxn-specification.md)
 - [Vendor Comparison](vendor-comparison.md)
-- [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations)
+- [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations)

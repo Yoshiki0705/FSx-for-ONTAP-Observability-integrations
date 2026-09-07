@@ -401,7 +401,7 @@ export ONTAP_CREDENTIALS_SECRET_ARN="<arn>"
 
 ### ARP ダッシュボード関連
 
-#### ARP データが表示されない
+#### ARP データの未表示
 
 **症状**: ARP ダッシュボードに「Data source unavailable」と表示される
 
@@ -417,7 +417,7 @@ curl -k https://<management-ip>/api/storage/volumes?fields=anti_ransomware \
 aws logs tail /ecs/fsxn-mgmt-tooljet --since 10m
 ```
 
-#### 「ARP/AI features require ONTAP 9.17 or later」と表示される
+#### 「ARP/AI features require ONTAP 9.17 or later」の表示
 
 **原因**: 接続先の FSx for ONTAP ファイルシステムが ONTAP 9.17 未満
 
@@ -426,7 +426,7 @@ aws logs tail /ecs/fsxn-mgmt-tooljet --since 10m
 - ARP/AI 機能を使用するには ONTAP 9.17 以降にアップグレードが必要
 - スナップショットリストアと FlexClone は 9.17 未満でも利用可能
 
-#### 保護スナップショットの作成に失敗する
+#### 保護スナップショットの作成の失敗
 
 **症状**: ワンクリックスナップショットでエラーが表示される
 
@@ -443,7 +443,7 @@ curl -k https://<management-ip>/api/storage/volumes/<uuid>/snapshots \
 
 ### スナップショットリストア関連
 
-#### リストアジョブが失敗する
+#### リストアジョブの失敗
 
 **症状**: ジョブポーリングで `failure` 状態が表示される
 
@@ -454,7 +454,7 @@ curl -k https://<management-ip>/api/storage/volumes/<uuid>/snapshots \
 - ボリュームに対する他の操作（SnapMirror 転送など）が完了するまで待機
 - 再試行する
 
-#### リストア中にクライアント接続が切断される
+#### リストア中のクライアント接続の切断
 
 **症状**: NFS/CIFS クライアントがリストア中にアクセスエラーを報告
 
@@ -468,7 +468,7 @@ curl -k https://<management-ip>/api/storage/volumes/<uuid>/snapshots \
 
 ### FlexClone 関連
 
-#### クローン作成が失敗する（スペース不足）
+#### クローン作成の失敗（スペース不足）
 
 **症状**: ONTAP エラーコード 917927 が表示される
 
@@ -478,7 +478,7 @@ curl -k https://<management-ip>/api/storage/volumes/<uuid>/snapshots \
 - アグリゲートの使用率を確認
 - 不要なスナップショットやボリュームを削除してスペースを確保
 
-#### バリデーションエラーが表示される
+#### バリデーションエラーの表示
 
 **症状**: フォーム送信時にフィールドレベルのエラーが表示される
 
@@ -505,7 +505,7 @@ curl -k https://<management-ip>/api/storage/volumes/<uuid>/snapshots \
 - 各エンドポイントに対応するシークレット ARN が存在することを確認
 - カンマの前後にスペースを入れない
 
-#### 特定のポーラーだけが接続に失敗する
+#### 特定のポーラーだけに起きる接続の失敗
 
 **症状**: CloudWatch アラームが特定のポーラーの接続失敗を通知
 
@@ -523,7 +523,7 @@ aws ec2 describe-security-groups --group-ids <fsxn-sg-id> \
 
 - Harvest タスクの SG から対象ファイルシステムの SG へのポート 443 アクセスが許可されていることを確認
 
-#### ファイルシステム切替時にエラーが表示される
+#### ファイルシステム切替時のエラー表示
 
 **症状**: UI でファイルシステムを切り替えると接続エラーが表示される
 
@@ -555,7 +555,7 @@ aws ec2 describe-security-groups --group-ids <fsxn-sg-id> \
     --query 'services[0].{desired:desiredCount,running:runningCount}'
   ```
 
-#### Grafana ダッシュボードに ARP メトリクスが表示されない
+#### Grafana ダッシュボードでの ARP メトリクスの未表示
 
 **症状**: ARP Grafana ダッシュボードのパネルが「No data」と表示される
 

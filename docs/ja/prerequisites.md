@@ -27,7 +27,7 @@
 
 ## 2つのデプロイパターン
 
-### パターン A: 既存 FSx for ONTAP 環境に追加する（推奨）
+### パターン A: 既存 FSx for ONTAP 環境への追加（推奨）
 
 既に FSx for ONTAP が稼働している環境に、監査ログ配信パイプラインを追加します。
 
@@ -42,7 +42,7 @@
 3. [Step 3: ログ配信の確認](#step-3-ログ配信の確認)
 4. [Step 4: ベンダー統合のデプロイ](#step-4-ベンダー統合のデプロイ)
 
-### パターン B: ゼロから構築する（検証・デモ用）
+### パターン B: ゼロからの構築（検証・デモ用）
 
 FSx for ONTAP を含む全リソースを新規作成します。
 
@@ -372,7 +372,7 @@ aws cloudformation deploy \
 
 ## トラブルシューティング
 
-### 監査ログが S3 に届かない
+### S3 への監査ログの不着
 
 1. **FSx for ONTAP 側の確認**:
    ```
@@ -391,7 +391,7 @@ aws cloudformation deploy \
    - DataSync タスクが正常に実行されているか
    - FSx S3 Access Point が正しく設定されているか
 
-### EventBridge イベントが発生しない
+### EventBridge イベントの未発生
 
 1. S3 バケットの EventBridge 通知が有効か確認:
    ```bash
@@ -419,7 +419,7 @@ aws cloudformation deploy \
 2. サブネットに NAT Gateway を追加（本番推奨）
 3. Interface VPC Endpoint を作成: `com.amazonaws.<region>.ecr.api`、`com.amazonaws.<region>.ecr.dkr`、S3 Gateway Endpoint
 
-### FPolicy Fargate: ONTAP が FPolicy サーバーに接続できない
+### FPolicy Fargate: ONTAP から FPolicy サーバーへの接続の不可
 
 **症状**: Fargate コンテナログに `[+] Connection from` エントリが表示されない。
 

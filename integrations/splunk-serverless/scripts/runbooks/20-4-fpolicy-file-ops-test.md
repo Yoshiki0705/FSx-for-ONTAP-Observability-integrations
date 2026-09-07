@@ -216,26 +216,26 @@ rm /Volumes/<share-name>/fpolicy-test-*.txt
 
 ## トラブルシューティング
 
-### ECS ログに SQS 送信メッセージが表示されない
+### ECS ログでの SQS 送信メッセージの未表示
 
 1. KeepAlive メッセージが表示されているか確認（接続が生きているか）
 2. FPolicy ポリシーが有効か確認: `vserver fpolicy show`
 3. ファイル操作が CIFS プロトコル経由か確認（NFS は対象外）
 4. FPolicy イベントの `file-operations` に `create` が含まれているか確認
 
-### Lambda がイベントを受信しない
+### Lambda でのイベントの未受信
 
 - **原因**: EventBridge ルールのターゲット設定が不正
 - **解決**: `aws events list-targets-by-rule` でターゲットを確認
 
-### 30 秒以内に Splunk に到着しない
+### 30 秒以内の Splunk 到着の不成立
 
 1. SQS キューにメッセージが滞留していないか確認
 2. Lambda の実行エラーを CloudWatch Logs で確認
 3. HEC エンドポイントの接続性を確認
 4. Lambda のコンカレンシー制限を確認
 
-### ファイル操作が検知されない
+### ファイル操作の未検知
 
 - **原因**: FPolicy フィルターが適用されている
 - **解決**: FPolicy スコープ設定を確認し、テスト対象ボリュームが含まれているか確認

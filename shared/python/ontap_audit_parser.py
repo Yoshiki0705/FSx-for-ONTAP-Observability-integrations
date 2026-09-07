@@ -240,9 +240,15 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
     ONTAP JSON names (`UserName`, `ClientIP`…) and already-normalized keys, so it
     is safe to call on any of them.
     """
+    # ONTAP writes the literal string "Not Present" where a subject attribute is
+    # unavailable, which happens for every operation that arrives over the S3
+    # access path. Carrying it through makes an absent identity look like a user
+    # named "Not Present", so it is treated as absent here.
+    absent = {"", "Not Present", "-"}
+
     def pick(*names: str, default: str = "") -> Any:
         for n in names:
-            if n in raw and raw[n] not in (None, ""):
+            if n in raw and raw[n] is not None and raw[n] not in absent:
                 return raw[n]
         return default
 
@@ -252,9 +258,18 @@ def normalize_event(raw: dict[str, Any]) -> dict[str, Any]:
         "source": "fsxn-ontap",
         "svm": pick("Computer", "SVMName", "svm"),
         "user": pick("SubjectUserName", "UserName", "user"),
-        "client_ip": pick("IpAddress", "ClientIP", "client_ip"),
-        "operation": pick("ObjectType", "Operation", "operation"),
-        "path": pick("ObjectName", "HandleID", "path"),
+        "domain": pick("SubjectDomainName", "DomainName", "domain"),
+        # SubjectIP is the name ONTAP actually emits in file-audit XML. The other
+        # spellings are kept for JSON exports and already-normalized input.
+        "client_ip": pick("SubjectIP", "IpAddress", "ClientIP", "client_ip"),
+        # EventName carries the operation ("Create Object"); ObjectType only says
+        # what kind of thing was touched ("File"), so it is the weaker fallback.
+        "operation": pick("EventName", "ObjectType", "Operation", "operation"),
+        # Which access path the operation arrived over. ONTAP uses CIFS and NFS
+        # for the file protocols, and HTTP or S3 for the S3 access path — so this
+        # is the field that tells an S3-access-point event apart from a file one.
+        "access_protocol": pick("Source", "access_protocol"),
+        "path": pick("ObjectName", "FileName", "HandleID", "path"),
         "result": pick("Keywords", "Result", "result"),
         "raw": raw,
     }

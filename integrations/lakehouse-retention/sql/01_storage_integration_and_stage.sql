@@ -5,14 +5,14 @@
 --
 -- Target: a STANDARD S3 bucket (created by ../template.yaml), NOT an FSx for
 -- ONTAP S3 Access Point. Unlike the FSx S3 AP integration in
--- fsxn-lakehouse-integrations, this bucket supports S3 Event Notifications,
+-- FSx-for-ONTAP-Lakehouse-Integrations, this bucket supports S3 Event Notifications,
 -- so real Snowpipe auto-ingest is expected to work here (see 02_snowpipe.sql).
 --
 -- Prerequisites:
 --   - IAM Role deployed via ../snowflake-role.yaml (Phase 1, own-account trust)
 --   - IAMRoleArn output value from that stack
 --
--- Two-phase trust setup (same pattern as fsxn-lakehouse-integrations):
+-- Two-phase trust setup (same pattern as FSx-for-ONTAP-Lakehouse-Integrations):
 --   Phase 1: CREATE STORAGE INTEGRATION with own-account-trusted role -> DESCRIBE INTEGRATION
 --   Phase 2: redeploy snowflake-role.yaml with SnowflakeAccountId/SnowflakeExternalId
 --            from DESCRIBE INTEGRATION output, then re-run DESCRIBE INTEGRATION to confirm

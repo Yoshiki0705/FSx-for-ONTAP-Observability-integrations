@@ -114,7 +114,7 @@ diff /tmp/ja_headings.txt /tmp/en_headings.txt
 
 ## トラブルシューティング
 
-### bilingual_comparator.py が見つからない
+### bilingual_comparator.py の不検出
 
 ```bash
 # スクリプトの場所を検索

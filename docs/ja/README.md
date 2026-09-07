@@ -1,13 +1,13 @@
 # FSx for ONTAP Observability Integrations
 
-[![CI](https://github.com/Yoshiki0705/fsxn-observability-integrations/actions/workflows/ci.yaml/badge.svg)](https://github.com/Yoshiki0705/fsxn-observability-integrations/actions/workflows/ci.yaml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Yoshiki0705/fsxn-observability-integrations/badge)](https://scorecard.dev/viewer/?uri=github.com/Yoshiki0705/fsxn-observability-integrations)
+[![CI](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/actions/workflows/ci.yaml/badge.svg)](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/actions/workflows/ci.yaml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/badge)](https://scorecard.dev/viewer/?uri=github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations)
 
 🌐 **日本語** | [English](../en/README.md)
 
 > Amazon FSx for NetApp ONTAP の監査ログを 9 つの Observability ベンダーへ、さらに EMS イベントと FPolicy ファイル操作をそのうち 9 ベンダーへ（うち 3 経路が E2E 検証済み）、EC2 不要で配信するサーバーレスパターン集。FSx for ONTAP S3 Access Points 経由。AWS + ストレージ運用チーム向けコミュニティリファレンス実装。ベンダーごとの内訳は[テレメトリ経路のカバレッジ](#テレメトリ経路のカバレッジ)を参照。
 
-## はじめる
+## はじめ方
 
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
@@ -268,6 +268,9 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [Sumo Logic 統合 動作確認結果](verification-results-sumo-logic.md)
 - [Honeycomb 統合 動作確認結果](verification-results-honeycomb.md)
 - [EMS/FPolicy E2E 動作確認結果](verification-results-ems-fpolicy.md)
+- [Create an event per candidate, deleting the ones that succeed to leave the cluster as found](verification-results-fpolicy-s3ap-and-session.md)
+- [support-inquiry-s3ap-audit-coverage](support-inquiry-s3ap-audit-coverage.md)
+- [s3ap-monitoring-coverage-implications](s3ap-monitoring-coverage-implications.md)
 
 **プロジェクト**
 
@@ -279,8 +282,19 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 | リポジトリ | 説明 |
 |-----------|------|
 | [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | FPolicy パイプライン含む 17 業界ユースケース |
-| [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) | S3 AP 経由の Data Lake / Lakehouse 統合 |
+| [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) | S3 AP 経由の Data Lake / Lakehouse 統合 |
 | [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Bedrock によるアクセス制御対応 Agentic RAG |
+| [FSx-for-ONTAP-Adoption-Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | **どの収集経路を選ぶか**。作り始める前に読むもの |
+
+最後のリンクはモジュールのハブで、個別ノートではありません（ノートは改名されます）。日本語版は
+ハブ冒頭の言語スイッチャから 1 クリックで開けます。言語別の URL を並べず単一の URL を指している
+のは、リンク先が再構成されたときに直す箇所を 1 か所に保つためです。経路を
+決めていない段階なら先に読んでください。本リポジトリが実装するのは 4 経路のうちの 1 つ
+（すでに運用している可観測性プラットフォームへログを送る形）であり、それが全ての状況で最適だと
+主張するものではありません。ハブには、転送経路を動かし始めてから現れる制約も記録されています。
+**監査ログの保存先が枯渇するとクライアントアクセスが停止します**（監視の劣化ではなく停止です）、
+SMB アクセス監査はオブジェクトごとに最初の読み取りと最初の書き込みしか記録しない、p99 レイテンシは
+CloudWatch のボリュームメトリクスからは導出できない、の 3 点です。
 
 ### 記事
 

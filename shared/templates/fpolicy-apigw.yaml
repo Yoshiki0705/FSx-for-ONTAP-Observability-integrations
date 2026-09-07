@@ -30,6 +30,33 @@ Description: >-
 #       ContainerImage=123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/fsxn-fpolicy-server:latest \
 #       AssignPublicIp=ENABLED \
 #     --capabilities CAPABILITY_NAMED_IAM
+#
+# EC2 mode differs in more than ComputeType: Cpu/Memory/DesiredCount/
+# AssignPublicIp do not apply, InstanceType does, and the instance still needs
+# outbound access to ECR by one of the three routes above. Every doc in this
+# repository deploys ComputeType=fargate, so the EC2 path is the less travelled
+# one.
+#
+#   aws cloudformation deploy \
+#     --template-file fpolicy-apigw.yaml \
+#     --stack-name fsxn-fp-srv \
+#     --parameter-overrides \
+#       ComputeType=ec2 \
+#       InstanceType=t4g.micro \
+#       VpcId=vpc-0123456789abcdef0 \
+#       SubnetIds=subnet-aaa,subnet-bbb \
+#       FsxnSvmSecurityGroupId=sg-0123456789abcdef0 \
+#       ContainerImage=123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/fsxn-fpolicy-server:latest \
+#     --capabilities CAPABILITY_NAMED_IAM
+#
+# ARCHITECTURE NOTE:
+# EC2 mode is arm64 (al2023 arm64 AMI, t4g.* instance types) while the Fargate
+# task definition pins X86_64, so ContainerImage must resolve to both.
+# shared/fpolicy-server/build-and-push.sh pushes a multi-platform manifest that
+# does. A single-platform amd64 image starts under Fargate and then fails here
+# with "exec format error" in the FPolicyServerLogGroup container log stream.
+#
+# Register Ec2PrivateIp (an output) on the ONTAP FPolicy external engine.
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -424,10 +451,41 @@ Resources:
   # ============================================================
   # CloudWatch Log Groups
   # ============================================================
+  # Receives the fpolicy-server container's stdout in BOTH compute modes: via the
+  # awslogs LogDriver in the Fargate task definition, and via `docker run
+  # --log-driver=awslogs` in the EC2 UserData. The EC2 side previously had the
+  # log group and the IAM grant but no driver, so the container logged to the
+  # local json-file driver and this group stayed empty.
+  #
+  # The `/ecs/` prefix is a misnomer in EC2 mode. It is kept because renaming a
+  # log group replaces it, which would discard the history of existing Fargate
+  # deployments for a cosmetic gain.
   FPolicyServerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/${AWS::StackName}-fpolicy-server'
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+
+  # Host-level telemetry for EC2 mode, collected from the systemd journal.
+  #
+  # This exists because the container log group cannot report the failures that
+  # matter most here: UserData runs under `set -euo pipefail`, so a failed
+  # `yum install docker` or `aws ecr get-login-password` aborts the script before
+  # any container starts. There is then nothing to log to
+  # FPolicyServerLogGroup, and the only record is on the instance's own journal.
+  # ONTAP reports this as an unreachable FPolicy external engine with no
+  # indication of why.
+  #
+  # Fargate mode has no equivalent: a Fargate task has no systemd journal, and
+  # the ECS service events cover the same ground.
+  JournaldLogGroup:
+    Condition: IsEC2
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ec2/${AWS::StackName}-fpolicy-host'
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -1065,6 +1123,15 @@ Resources:
                   - ecr:BatchGetImage
                   - ecr:GetDownloadUrlForLayer
                 Resource: '*'
+        # Two writers share this grant: the docker awslogs driver
+        # (FPolicyServerLogGroup) and the CloudWatch agent's journald collection
+        # (JournaldLogGroup).
+        #
+        # Deliberately narrower than the managed CloudWatchAgentServerPolicy:
+        # both log groups are created by this template, so logs:CreateLogGroup is
+        # not needed, and the agent config omits retention_in_days so
+        # logs:PutRetentionPolicy is not needed either. DescribeLogStreams is
+        # what the agent calls to resume from its last position.
         - PolicyName: CloudWatchLogs
           PolicyDocument:
             Version: '2012-10-17'
@@ -1073,7 +1140,10 @@ Resources:
                 Action:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !GetAtt FPolicyServerLogGroup.Arn
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !GetAtt FPolicyServerLogGroup.Arn
+                  - !GetAtt JournaldLogGroup.Arn
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Tags:
@@ -1104,6 +1174,80 @@ Resources:
           #!/bin/bash
           set -euo pipefail
 
+          # Instance ID is used to name log streams. IMDSv2 with a token works
+          # whether or not the instance requires it.
+          IMDS_TOKEN=$(curl -sS -X PUT http://169.254.169.254/latest/api/token \
+            -H 'X-aws-ec2-metadata-token-ttl-seconds: 300')
+          INSTANCE_ID=$(curl -sS http://169.254.169.254/latest/meta-data/instance-id \
+            -H "X-aws-ec2-metadata-token: $IMDS_TOKEN")
+
+          # ------------------------------------------------------------------
+          # CloudWatch agent: journald collection
+          #
+          # Installed FIRST, before the steps that can fail. Under
+          # `set -euo pipefail` a failed docker install or ECR login aborts this
+          # script, and if the agent were installed afterwards the reason would
+          # never leave the instance. Starting it here means those failures are
+          # already being shipped when they happen.
+          #
+          # Every agent step is `|| true`: this is telemetry, and losing it must
+          # not stop the FPolicy server itself from coming up. The workload steps
+          # below keep aborting on error as before.
+          #
+          # journald is where these logs live at all. Amazon Linux 2023 uses the
+          # systemd journal as its primary log store and does not write
+          # /var/log/messages, so a `files` collect_list has nothing to read.
+          # ------------------------------------------------------------------
+          {
+            yum install -y amazon-cloudwatch-agent
+
+            cat > /opt/aws/amazon-cloudwatch-agent/etc/fpolicy-journald.json << 'CWCONFIG'
+          {
+            "logs": {
+              "logs_collected": {
+                "journald": {
+                  "collect_list": [
+                    {
+                      "log_group_name": "${JournaldLogGroup}",
+                      "log_stream_name": "units/{instance_id}",
+                      "units": [
+                        "docker.service",
+                        "cloud-init*",
+                        "cloud-config.service",
+                        "cloud-final.service",
+                        "amazon-ssm-agent.service",
+                        "amazon-cloudwatch-agent.service"
+                      ]
+                    },
+                    {
+                      "log_group_name": "${JournaldLogGroup}",
+                      "log_stream_name": "errors/{instance_id}",
+                      "priority": "err"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+          CWCONFIG
+
+            # Scoped on purpose. AL2023 routes everything at info and above into
+            # the journal, so an unfiltered collect_list would ship the whole
+            # host journal at standard CloudWatch Logs ingestion rates. The first
+            # entry takes only the units that explain a failed startup; the
+            # second takes err and above (err, crit, alert, emerg) from any unit.
+            #
+            # Unit names carry the .service suffix because that is the literal
+            # _SYSTEMD_UNIT value in the journal. `journalctl -u docker` resolves
+            # a bare name, but the agent is not documented as doing the same, so
+            # bare names risk matching nothing and failing silently. cloud-init*
+            # uses the documented wildcard to cover cloud-init.service and
+            # cloud-init-local.service in one entry.
+            /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+              -a fetch-config -m ec2 -s \
+              -c file:/opt/aws/amazon-cloudwatch-agent/etc/fpolicy-journald.json
+          } || true
+
           # Install Docker
           yum update -y
           yum install -y docker
@@ -1118,9 +1262,23 @@ Resources:
             $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
 
           # Run FPolicy server container
+          #
+          # --log-driver=awslogs is what puts the container's stdout into
+          # FPolicyServerLogGroup. Without it AL2023's default json-file driver
+          # keeps the output on local disk, where nothing reads it and it is lost
+          # when the instance is replaced.
+          #
+          # awslogs-stream (not awslogs-stream-prefix, which is an ECS-only
+          # option) is set explicitly because the driver otherwise names the
+          # stream after the docker container ID, which is only resolvable by
+          # logging in to the instance.
           docker run -d \
             --name fpolicy-server \
             --restart always \
+            --log-driver=awslogs \
+            --log-opt awslogs-region=${AWS::Region} \
+            --log-opt awslogs-group=${FPolicyServerLogGroup} \
+            --log-opt awslogs-stream=fpolicy/$INSTANCE_ID \
             -p ${FPolicyPort}:${FPolicyPort} \
             -e FPOLICY_PORT=${FPolicyPort} \
             -e SQS_QUEUE_URL=${IngestionQueue} \
@@ -1179,8 +1337,21 @@ Outputs:
     Value: !GetAtt EcsService.Name
 
   FPolicyServerLogGroupName:
-    Description: CloudWatch Logs log group for the FPolicy server
+    Description: >-
+      CloudWatch Logs log group for the FPolicy server container's stdout, in
+      both compute modes. Empty in EC2 mode means the container never started —
+      check JournaldLogGroupName for the reason.
     Value: !Ref FPolicyServerLogGroup
+
+  JournaldLogGroupName:
+    Condition: IsEC2
+    Description: >-
+      CloudWatch Logs log group for the EC2 host's systemd journal (EC2 mode).
+      Read this when the FPolicy external engine is unreachable and the container
+      log group is empty: stream units/<instance-id> carries the docker and
+      cloud-init records that explain a failed startup, errors/<instance-id>
+      carries err and above from any unit.
+    Value: !Ref JournaldLogGroup
 
   NLBDnsName:
     Condition: IsFargate

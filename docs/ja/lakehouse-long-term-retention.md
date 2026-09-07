@@ -8,7 +8,7 @@ Observability ベンダーは通常、FSx for ONTAP の監査ログを数週間�
 
 **E2E 検証済み**（2026年7月19日、ap-northeast-1）: 合成監査ログ 500 件 → Kinesis Data Firehose（JSON → Parquet 変換）→ S3（Snappy 圧縮 Parquet、日付パーティション）→ Glue Data Catalog（Partition Projection、クローラー不要）→ Amazon Athena。`SELECT COUNT(*)` で正確に 500 件、`GROUP BY operation, result` 集計クエリの結果が入力データの分布と一致。クエリ実行はスキャン量 556 バイト、実行時間 417ms。
 
-## なぜ第二の経路が必要か
+## 第二の経路が必要な理由
 
 本プロジェクトの9ベンダー統合（Datadog、Splunk、Elastic など）は**検索とアラート**のために構築されています — 今この瞬間に問題のログ行を見つけ、数秒以内にアラートを発火させることです。**複数年にわたる SQL 分析**のためには構築されていません。「過去3年間の四半期ごとにSVM別で失敗した削除操作は何件か」という問いは異なる種類の問いであり、多くの Observability プラットフォームの保持期間（標準ティアで30〜90日）とGBあたりの取り込み課金は、この規模の問いには適していません。
 
@@ -169,7 +169,7 @@ ORDER BY cnt DESC;
 
 ## Snowflake でのクエリ（External Table）
 
-Snowflake 対応は、[fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) の Snowflake 統合で既に確立済みの2段階 Storage Integration トラストパターンを再利用しています — FSx for ONTAP S3 Access Point 向けではなく、通常のS3バケット向けに適応しています。
+Snowflake 対応は、[FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) の Snowflake 統合で既に確立済みの2段階 Storage Integration トラストパターンを再利用しています — FSx for ONTAP S3 Access Point 向けではなく、通常のS3バケット向けに適応しています。
 
 ```bash
 # Phase 1: deploy the IAM role with a placeholder (own-account) trust policy
@@ -226,7 +226,7 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 
 ### FSx for ONTAP S3 AP 版 Snowflake パスとの構成上の違い
 
-本パイプラインのデータは FSx for ONTAP S3 Access Point ではなく**通常のS3バケット**に着地するため、S3イベント通知によってトリガーされる実際の Snowpipe 自動取り込みが直接動作すると予想されます。`fsxn-lakehouse-integrations` プロジェクトの Snowflake 統合は、まさにこの理由（FSx for ONTAP S3 AP は S3イベント通知非対応）で FSx for ONTAP S3 AP に対して自動取り込みを使えず、FPolicy + Lambda + SNS + Snowpipe REST API、またはスケジュール実行の `COPY INTO` にフォールバックする必要がありました。本ガイドのアーキテクチャは、保管先の標準S3バケットがS3イベント通知をネイティブにサポートするため、この制約を取り除いています（本検証では Snowpipe 自動取り込み自体は実施しておらず、上記External Tableパスを検証しました。ただし自動取り込みが依存するS3イベント通知機能自体は、FSx for ONTAP S3 AP とは異なり通常のS3バケットの標準機能です）。
+本パイプラインのデータは FSx for ONTAP S3 Access Point ではなく**通常のS3バケット**に着地するため、S3イベント通知によってトリガーされる実際の Snowpipe 自動取り込みが直接動作すると予想されます。`FSx-for-ONTAP-Lakehouse-Integrations` プロジェクトの Snowflake 統合は、まさにこの理由（FSx for ONTAP S3 AP は S3イベント通知非対応）で FSx for ONTAP S3 AP に対して自動取り込みを使えず、FPolicy + Lambda + SNS + Snowpipe REST API、またはスケジュール実行の `COPY INTO` にフォールバックする必要がありました。本ガイドのアーキテクチャは、保管先の標準S3バケットがS3イベント通知をネイティブにサポートするため、この制約を取り除いています（本検証では Snowpipe 自動取り込み自体は実施しておらず、上記External Tableパスを検証しました。ただし自動取り込みが依存するS3イベント通知機能自体は、FSx for ONTAP S3 AP とは異なり通常のS3バケットの標準機能です）。
 
 ## 検証済みデプロイパス
 
@@ -322,4 +322,4 @@ aws cloudformation delete-stack --stack-name fsxn-lakehouse-retention --region <
 - [データ分類ガイド](data-classification.md)
 - [パイプライン SLO 定義](pipeline-slo.md)
 - [Lakehouse モニタリングパターン](lakehouse-monitoring-patterns.md) — FSx for ONTAP + Lakehouse 統合の運用メトリクス（別の関心事: 監査データそのもののクエリではなく、パイプラインの健全性の監視）
-- [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) — 本ガイドの Snowflake パターンと Athena/Glue IAM 規約の元になった姉妹プロジェクト
+- [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) — 本ガイドの Snowflake パターンと Athena/Glue IAM 規約の元になった姉妹プロジェクト

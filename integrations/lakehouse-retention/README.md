@@ -122,4 +122,4 @@ gitleaks detect --config ../../.gitleaks.toml --no-git --source .
 - [Full guide (EN)](../../docs/en/lakehouse-long-term-retention.md) / [full guide (JA)](../../docs/ja/lakehouse-long-term-retention.md) — architecture, table schema, three CloudFormation gotchas found during validation (including the Lake Formation permission requirement), cost comparison, query examples
 - [Vendor Comparison](../../docs/en/vendor-comparison.md)
 - [Data Classification Guide](../../docs/en/data-classification.md)
-- [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) — the sibling project this integration's Snowflake pattern and Athena/Glue IAM conventions are adapted from
+- [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) — the sibling project this integration's Snowflake pattern and Athena/Glue IAM conventions are adapted from

@@ -206,7 +206,7 @@ aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 
 For the comprehensive compatibility matrix, validated patterns, and known constraints (confirmed with AWS Support, May 2026), refer to:
 
-📋 **[FSx for ONTAP S3 AP Compatibility Matrix](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md)**
+📋 **[FSx for ONTAP S3 AP Compatibility Matrix](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/compatibility-matrix.md)**
 
 Key constraints relevant to this project:
 
@@ -221,7 +221,7 @@ Key constraints relevant to this project:
 | Presigned URLs: Not officially supported | Works in practice but not guaranteed | Use for non-critical paths only; prefer IAM-based access |
 | ONTAP 9.17.1+ required | Minimum version for S3 Access Points | Verify FSx file system ONTAP version before deployment |
 
-For the full matrix including platform-specific compatibility (Athena, Glue, EMR, Databricks, Snowflake, Bedrock), see the [complete document](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md).
+For the full matrix including platform-specific compatibility (Athena, Glue, EMR, Databricks, Snowflake, Bedrock), see the [complete document](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/compatibility-matrix.md).
 
 ### ListObjectsV2 Latency — the "30-80x" Figure Is Retracted
 
@@ -236,8 +236,8 @@ A re-measurement on 2026-08-05 did not reproduce the previously documented "30-8
 
 **Measurement conditions**: ap-northeast-1; SINGLE_AZ_1 file system, SSD 1024 GB, 128 MBps throughput; UNIX security style volume; Internet-origin access point. Medians over 5 recorded trials per data point, with one warm-up call discarded beforehand. The timed region covers only the paginated `ListObjectsV2` loop — client construction, credential resolution, and object seeding are excluded. Retries were disabled (`max_attempts=1`) so that a slow call is measured rather than silently retried. Flat and nested layouts (two directory levels, 10 objects per leaf) produced the same ratios.
 
-- Evidence record: [`verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml)
-- Reproduction script: [`shared/scripts/benchmark_list_objects.py`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/shared/scripts/benchmark_list_objects.py)
+- Evidence record: [`verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml`](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml)
+- Reproduction script: [`shared/scripts/benchmark_list_objects.py`](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/shared/scripts/benchmark_list_objects.py)
 
 **Scope limit — larger directories are untested.** Measurement stopped at 5,000 objects. Behaviour at hundreds of thousands to millions of keys under a single prefix has not been measured. ONTAP sorts directory entries in memory to produce the lexicographic ordering `ListObjectsV2` requires, so listing cost grows with directory size. File consolidation and keyspace partitioning therefore remain the recommended design for large datasets — but base that decision on directory size and the in-memory sort, not on a small-scale latency penalty that did not reproduce.
 

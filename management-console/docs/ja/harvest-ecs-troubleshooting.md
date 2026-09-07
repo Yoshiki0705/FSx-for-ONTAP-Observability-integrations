@@ -2,7 +2,7 @@
 
 🌐 **日本語**（このページ） | [English](../en/harvest-ecs-troubleshooting.md)
 
-## 事象: Harvest コンテナが ECS Fargate で ExitCode 1 で終了する
+## 事象: Harvest コンテナの ECS Fargate での ExitCode 1 終了
 
 ### 症状
 
@@ -71,7 +71,7 @@ Pollers:
 
 参考: [Harvest Prometheus Exporter — port_range](https://netapp.github.io/harvest/nightly/prometheus-exporter/#port_range)
 
-#### 要因 5: ログが出力されない
+#### 要因 5: ログの未出力
 
 コンテナがロギングドライバーとの接続を確立する前に終了すると、CloudWatch ログストリームが作成されません。以下の場合に発生:
 

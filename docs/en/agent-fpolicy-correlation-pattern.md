@@ -4,7 +4,7 @@
 
 > **Status**: Design document (implementation in a subsequent phase)
 > **Prerequisite**: Agent infrastructure (Omnigent / AgentCore) must be built first
-> **Related**: [fsxn-lakehouse-integrations Cross-Repo Integration Strategy](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/cross-repo-integration-strategy.md)
+> **Related**: [FSx-for-ONTAP-Lakehouse-Integrations Cross-Repo Integration Strategy](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/cross-repo-integration-strategy.md)
 
 ---
 
@@ -409,5 +409,5 @@ The following Databricks Platform Security features announced at DAIS 2026 (2026
 - [Pipeline SLO](pipeline-slo.md)
 - [Data Classification Guide](data-classification.md)
 - [Security Best Practices](security-best-practices.md)
-- [fsxn-lakehouse-integrations: Cross-Repo Integration Strategy](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/cross-repo-integration-strategy.md)
-- [fsxn-lakehouse-integrations: Omnigent Evaluation (Observability Design Section)](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/omnigent-multi-agent-evaluation.md)
+- [FSx-for-ONTAP-Lakehouse-Integrations: Cross-Repo Integration Strategy](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/cross-repo-integration-strategy.md)
+- [FSx-for-ONTAP-Lakehouse-Integrations: Omnigent Evaluation (Observability Design Section)](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/omnigent-multi-agent-evaluation.md)

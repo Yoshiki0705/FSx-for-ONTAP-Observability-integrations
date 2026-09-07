@@ -261,7 +261,7 @@ Option C: Dual Collector (recommended for hybrid)
 
 ## Cloud Insights / BlueXP との関係
 
-### 補完的であり、置き換えではない
+### 補完関係の成立と置き換えの不成立
 
 | 機能 | Cloud Insights / BlueXP | 本プロジェクト (OTel) |
 |------|------------------------|---------------------|

@@ -6,12 +6,12 @@ Thank you for your interest in contributing to FSx for ONTAP Observability Integ
 
 ### Asking Questions
 
-- Use [GitHub Discussions](https://github.com/Yoshiki0705/fsxn-observability-integrations/discussions/categories/q-a) (Q&A category) for setup questions, "which vendor should I use", and deployment troubleshooting
+- Use [GitHub Discussions](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/discussions/categories/q-a) (Q&A category) for setup questions, "which vendor should I use", and deployment troubleshooting
 - Discussions keep Issues focused on actionable defects, and answered threads stay searchable for the next person with the same question
 
 ### Reporting Issues
 
-- Use [GitHub Issues](https://github.com/Yoshiki0705/fsxn-observability-integrations/issues) for bug reports and feature requests
+- Use [GitHub Issues](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues) for bug reports and feature requests
 - Include your environment details (AWS region, vendor, Lambda runtime)
 - For security issues, email directly instead of opening a public issue
 
@@ -55,6 +55,53 @@ Thank you for your interest in contributing to FSx for ONTAP Observability Integ
 - Same heading structure in both languages
 - Code examples identical across languages
 
+### Japanese section headings are noun phrases (体言止め)
+
+Every `##` and deeper heading in Japanese. A reader scans headings as labels, so a
+sentence in that position reads as a stumble. `make headings` enforces this.
+
+| 型 | 避ける | 使う |
+|---|---|---|
+| 動詞終止形 | 自分の環境で確かめる | 自環境での確認手順 |
+| 疑問形 | なぜこの区分が必要か | この区分が必要な理由 |
+| 述語文（敬体） | 記録されない読み取りがあります | 記録されない読み取りの存在 |
+| 述語文（平叙） | クロスアカウントのアクセスは成立する | クロスアカウントアクセスの成立 |
+| 述語文（否定） | ボリュームは AWS 側からしか消せない | AWS 側からしか消せないボリューム |
+
+**Nominalising must not drop the assertion.** A heading often carries the finding
+itself. Turning 「監査は 2 つの面に分かれ、片方に穴があります」 into 「監査の 2 つの面と
+片方の穴」 demotes "there is a hole" to the noun "hole". Keep the assertion with a
+suffix or a modifier.
+
+- 接尾語: 〜の存在 / 不在 / 成立 / 不成立 / 必要 / 不可 / 無効化 / 差 / 上限 / 失敗 /
+  不着 / 未表示 / 不一致 / 理由
+- 修飾: 未対応の〜 / 既定で無効な〜 / 容量に比例して伸びる〜 / 〜で止まる〜
+- 例: `CopyBackup には仕組みがありません` → `CopyBackup における定期実行の仕組みの不在`
+- 例: `Snapshot をロックすると上限が効かない` → `Snapshot のロックによる世代数上限の無効化`
+
+Out of scope, and the checker skips each of them: H1 and the frontmatter `title`
+(those follow the separate "one-line claim" rule), English headings, `#` lines
+inside code fences (shell comments), table cells and list items.
+
+A trailing qualifier does not exempt a heading. `## 既存環境に追加する（推奨）` is a
+violation; the checker strips the parenthetical before judging the head noun.
+
+**Narrative headings are exempt, and the test is whether the heading works as an
+index entry.** Chronological narration (`15:29 チェックイン時にパスポートが無い事に
+気付く`), advice whose imperative tone is the content (`心身の状態を整えておく`), and
+statements of intent (`Kubernetes の学習を通じて理解を深める`) all break when
+nominalised. Mark those on the heading line and say in the surrounding prose why the
+section is narration:
+
+```markdown
+## 15:29 チェックイン時にパスポートが無い事に気付く <!-- allow:heading-style -->
+```
+
+Renaming a heading changes its anchor. `grep -rn '](#' --include='*.md' .` finds the
+in-document references and `grep -rn '\.md#' --include='*.md' .` the cross-document
+ones; update them in the same commit. GitHub serves an unknown fragment as the top of
+the page, so a stale link never announces itself.
+
 ## Adding a New Vendor Integration
 
 1. Create directory: `mkdir -p integrations/<vendor>/{lambda,docs/{ja,en},tests,scripts}`
@@ -88,8 +135,8 @@ cfn-lint --ignore-checks W -- integrations/*/template*.yaml shared/templates/*.y
 
 ## Documentation and policy checks
 
-The first two fail the build. Run them before opening a PR if you touched docs or
-templates.
+All of these fail the build except `check-bilingual-sync.sh`, which is advisory. Run
+them before opening a PR if you touched docs or templates.
 
 ```bash
 # Executable code blocks must be identical between docs/ja and docs/en.
@@ -105,10 +152,35 @@ bash guard/tests/run-guard-selftest.sh
 
 # Heading structure between languages (advisory, does not fail the build).
 bash shared/scripts/check-bilingual-sync.sh
+
+# Japanese section headings must be noun phrases. The self-test runs first and is
+# blocking: a checker that inspects nothing also reports zero violations.
+make headings
+
+# Every repository name linked from this tree must resolve without a redirect.
+# Needs the network, so it is weekly in CI rather than per-PR. Run it by hand after
+# adding a link to a sibling repository.
+make repo-names
 ```
 
 Diagram fences (untagged, `mermaid`, `text`) stay localised on purpose and are not
 touched by the code-block check — see AGENTS.md for why.
+
+### Enabling the pre-commit hook
+
+```bash
+make hooks    # git config core.hooksPath .githooks
+```
+
+**Required once per clone**, and nothing in the repository can check that you did it.
+`core.hooksPath` lives in `.git/config`, which is per-checkout and not tracked, so a gate
+placed in the repository is structurally unable to see whether the hook is active. A fresh
+clone runs no hook and says nothing about it — and if you have a global `core.hooksPath`
+set, that one wins and the tracked hook never runs at all.
+
+`make hooks` is idempotent. The hook itself checks the author email and runs gitleaks over
+staged files; `make drift` verifies the hook is tracked and executable, which is as far as
+an in-repository check can reach.
 
 ## Commit Convention
 

@@ -50,7 +50,7 @@ OTLP はプロデューサーと Collector 間のワイヤーフォーマット�
 
 各バックエンドは独自のデータモデルに従って OTLP 属性を解釈します。PoC 中にバックエンドごとの動作を検証してください（[PoC チェックリスト](poc-checklist.md)参照）。
 
-## OpenTelemetry はバックエンドではない
+## バックエンドではない OpenTelemetry
 
 OpenTelemetry が定義するもの：
 - テレメトリー生成のための API と SDK

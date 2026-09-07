@@ -4,47 +4,122 @@ This directory contains Grafana dashboard JSON files from the [NetApp Harvest](h
 
 ## Supported Harvest Dashboards for FSx for ONTAP
 
-NetApp Harvest provides 60+ pre-built Grafana dashboards for ONTAP. However, FSx for ONTAP is a managed service with limited access to certain subsystems. The following dashboards are **supported and recommended** for FSx for ONTAP deployments.
+NetApp Harvest ships 60+ Grafana dashboards for ONTAP. FSx for ONTAP **exposes a different
+metric set than on-premises ONTAP**, so only a subset works, and the split is not a matter
+of dashboard format — it is which metrics exist to query.
 
-### Dashboard Categories (Minimum 20 Required)
+AWS publishes the classification. The three lists below are that classification, not an
+independent judgement: **19 supported (tagged `fsx`), 8 supported but not enabled by default
+in Harvest, 10 unsupported.** Source:
+[AWS — Monitoring FSx for ONTAP file systems using Harvest and Grafana](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/monitoring-harvest-grafana.html),
+retrieved **2026-09-07**. Confirm against that page for your own Harvest version before
+planning around it.
 
-| Category | Dashboard | Filename | Description |
-|----------|-----------|----------|-------------|
-| **Volume Performance** | Volume Performance | `volume_performance.json` | Combined IOPS, throughput, latency overview |
-| | Volume IOPS | `volume_iops.json` | Read/write/other IOPS per volume |
-| | Volume Throughput | `volume_throughput.json` | Read/write data rate per volume |
-| | Volume Latency | `volume_latency.json` | Read/write/other latency per volume |
-| | Volume Top N | `volume_top_n.json` | Top volumes by IOPS, throughput, latency |
-| **Aggregate Utilization** | Aggregate Capacity | `aggregate_capacity.json` | Total/used/available capacity per aggregate |
-| | Aggregate Utilization | `aggregate_utilization.json` | Percentage utilization and trends |
-| | Aggregate Growth | `aggregate_growth.json` | Capacity growth rate and projections |
-| | Aggregate Space Savings | `aggregate_space_savings.json` | Deduplication and compression savings |
-| **SVM Health** | SVM Overview | `svm_overview.json` | SVM state, protocols, volume count |
-| | SVM NFS Operations | `svm_nfs_operations.json` | NFS operation types and latency |
-| | SVM CIFS Operations | `svm_cifs_operations.json` | CIFS/SMB operation types and latency |
-| | SVM iSCSI Operations | `svm_iscsi_operations.json` | iSCSI read/write operations and latency |
-| **Network Interfaces** | LIF Throughput | `network_lif_throughput.json` | Network interface data throughput |
-| | LIF Errors | `network_lif_errors.json` | Network interface error counts |
-| | Port Status | `network_port_status.json` | Physical/logical port up/down status |
-| | LIF Packets | `network_lif_packets.json` | Packet counts per network interface |
-| **Disk Status** | Disk Health | `disk_health.json` | Disk health state and SMART status |
-| | Disk Utilization | `disk_utilization.json` | Disk busy percentage and queue depth |
-| | Disk Errors | `disk_errors.json` | Disk error counts and types |
-| | Disk Spare Count | `disk_spare_count.json` | Available spare disk inventory |
+> **Correction note (2026-09-07)**: this file previously carried a hand-written list that
+> was never sourced, and it disagreed with AWS on `ONTAP: Disk` — four Disk dashboards
+> (health, utilization, errors, spare count) were listed as "supported and recommended"
+> while AWS lists `ONTAP: Disk` as unsupported. Anyone who followed the old list downloaded
+> a dashboard that cannot populate. The old list also named 21 JSON files, none of which
+> were ever committed here; they were download instructions, not shipped artifacts. See
+> [Downloading](#how-to-download-dashboard-json-from-harvest-github) for what this
+> directory actually contains.
 
-### Dashboards NOT Supported on FSx for ONTAP
+### Supported (tagged `fsx`) — 19
 
-The following Harvest dashboards rely on features not available in FSx for ONTAP:
+```text
+Harvest: Metadata
+ONTAP: Aggregate
+ONTAP: cDOT
+ONTAP: Cluster
+ONTAP: Compliance
+ONTAP: Datacenter
+ONTAP: Data Protection
+ONTAP: LUN
+ONTAP: Network
+ONTAP: Node
+ONTAP: Qtree
+ONTAP: Security
+ONTAP: SnapMirror
+ONTAP: SnapMirror Destinations
+ONTAP: SnapMirror Sources
+ONTAP: SVM
+ONTAP: Volume
+ONTAP: Volume by SVM
+ONTAP: Volume Deep Dive
+```
 
-| Dashboard | Reason |
-|-----------|--------|
-| Cluster Hardware | FSx manages hardware — no user access |
-| Shelf/Bay Status | Physical shelf management not exposed |
-| MetroCluster | Not available on FSx for ONTAP |
-| FabricPool Tiering | FSx manages tiering internally |
-| Node-level CPU/Memory | Node metrics not exposed to users |
-| Cluster Peer | Cross-cluster peering managed by AWS |
-| AutoSupport | Managed by AWS, not user-accessible |
+**Supported is not the same as fully populated.** AWS states that some panels in these
+dashboards may be missing information that is not supported. `ONTAP: Node` is the clearest
+case: the dashboard is supported, and its node CPU and memory panels have nothing behind
+them, because FSx manages the nodes. That panel-level gap is what
+[Step 1](#step-1-remove-unsupported-panels) strips, and it is only findable by opening the
+dashboard — the classification does not describe it.
+
+### Supported but disabled by default in Harvest — 8
+
+```text
+ONTAP: FlexCache
+ONTAP: FlexGroup
+ONTAP: NFS Clients
+ONTAP: NFSv4 Storepool Monitors
+ONTAP: NFS Troubleshooting
+ONTAP: NVMe Namespaces
+ONTAP: SMB
+ONTAP: Workload
+```
+
+These are available; they are not switched on. SMB and NFS troubleshooting, FlexCache and
+per-workload views all sit in this list, so a migration plan that assumes them needs to
+budget the enabling step rather than treat them as present.
+
+### Unsupported — 10
+
+```text
+ONTAP: Disk
+ONTAP: External Service Operation
+ONTAP: File Systems Analytics (FSA)
+ONTAP: Headroom
+ONTAP: Health
+ONTAP: MAV Request
+ONTAP: MetroCluster
+ONTAP: Power
+ONTAP: Shelf
+ONTAP: S3 Object Stores
+```
+
+**These 10 do not have equal operational weight.** Disk, Shelf, Power and MetroCluster are
+absent because AWS owns the physical layer and MetroCluster is not an FSx deployment type —
+nothing to replace. Two of the ten change how you operate:
+
+| Dashboard | What its absence costs |
+|-----------|------------------------|
+| `ONTAP: Health` | No single-screen entry point for "is the system healthy". Health becomes a set of CloudWatch alarms over individual metrics plus what FSx for ONTAP itself reports |
+| `ONTAP: Headroom` | No indicator of remaining performance margin. "How much more load can this take" has to be rebuilt from throughput capacity and credit balance |
+
+> **Naming note**: `ONTAP: S3 Object Stores` covers ONTAP's own S3 object store feature. It
+> is not a view of FSx for ONTAP S3 Access Points, which this repository monitors through
+> the audit-log pipeline instead.
+
+### Scope: "does not transfer" is about the exposed set, not about what is achievable
+
+The classification above is bounded to **the metric set the managed service publishes**. It
+is not a statement that a missing value can never be seen. The ONTAP REST API is reachable,
+and a value absent from the published set can be read from it and republished — this
+repository does exactly that in
+[`shared/templates/qtree-quota-monitor.yaml`](../../../shared/templates/qtree-quota-monitor.yaml),
+which polls `/storage/quota/reports` and writes `FSxONTAP/Qtree` custom metrics to
+CloudWatch.
+
+Two things that keeps straight:
+
+- **A dashboard in the unsupported ten is not a dead end.** It means the shipped dashboard
+  has nothing behind it, not that the underlying number is unreachable. Whether rebuilding
+  it is worth the code is a separate judgement, and for `Health` and `Headroom` it is a
+  substantial one.
+- **Quota is not an example of that.** AWS lists `ONTAP: Qtree` among the supported 19, so
+  the Harvest route already covers it. The gap `qtree-quota-monitor.yaml` fills is in the
+  **CloudWatch** metric set — the route that uses no collection stack at all. Reading it as
+  a Harvest-route gap gets the reason for the template wrong.
 
 ## How to Download Dashboard JSON from Harvest GitHub
 
@@ -70,10 +145,20 @@ curl -sL "${HARVEST_REPO}/iscsi.json" -o svm_iscsi_operations.json
 # Download network dashboards
 curl -sL "${HARVEST_REPO}/lif.json" -o network_lif_throughput.json
 curl -sL "${HARVEST_REPO}/network.json" -o network_port_status.json
-
-# Download disk dashboards
-curl -sL "${HARVEST_REPO}/disk.json" -o disk_health.json
 ```
+
+> **No `disk.json`.** It was in this list until 2026-09-07. `ONTAP: Disk` is in the AWS
+> unsupported list above, so that download produced a dashboard with no data behind it.
+
+> **The filename-to-dashboard mapping above is not verified here**, and Harvest renames
+> files between versions. The authoritative selection is the **`fsx` tag in Grafana** and
+> the AWS list above — match on the dashboard title after import, not on the filename. A
+> file that downloads successfully is not evidence that the dashboard it contains is one of
+> the supported 19.
+
+**This directory ships one dashboard**, `arp-status.json` (ARP state distribution and alert
+timeline, built here rather than taken from Harvest). Everything else is fetched by the
+commands above; nothing else is committed.
 
 ### Option 2: Clone Entire Harvest Repository
 
@@ -108,7 +193,10 @@ After downloading, dashboards need customization to work with FSx for ONTAP and 
 
 ### Step 1: Remove Unsupported Panels
 
-Some panels reference metrics not available on FSx for ONTAP. Remove or hide them:
+Some panels inside otherwise-supported dashboards reference metrics FSx for ONTAP does not
+expose. This is the panel-level gap AWS warns about, and it is a **metric** problem, not a
+dashboard-format one — which is why the filter below matches on the PromQL expression and
+not on anything about the dashboard itself.
 
 ```bash
 # Use jq to remove panels referencing unsupported metrics
@@ -116,13 +204,15 @@ jq '
   .panels |= map(
     select(
       (.targets // [] | map(.expr // "") | join("")) |
-      test("node_cpu|node_memory|shelf_|metrocluster_|fabricpool_") | not
+      test("node_cpu|node_memory|shelf_|metrocluster_|fabricpool_|cluster_peer_|autosupport_") | not
     )
   )
 ' input_dashboard.json > output_dashboard.json
 ```
 
-**Metrics to remove** (not available on FSx for ONTAP):
+**Metrics to remove** (not available on FSx for ONTAP). The list and the `test()` pattern
+above must stay in step; `cluster_peer_` and `autosupport_` were listed here for a while
+without being in the pattern, so the command stripped five of the seven:
 - `node_cpu_*` — Node CPU metrics (managed by AWS)
 - `node_memory_*` — Node memory metrics (managed by AWS)
 - `shelf_*` — Physical shelf metrics
@@ -317,5 +407,6 @@ After running `import-dashboards.sh`, the script generates `panel-embed-urls.jso
 - [NetApp Harvest GitHub — Grafana Dashboards](https://github.com/NetApp/harvest/tree/main/grafana/dashboards)
 - [AWS Docs — Amazon Managed Grafana](https://docs.aws.amazon.com/grafana/latest/userguide/what-is-Amazon-Managed-Service-Grafana.html)
 - [AWS Docs — FSx for ONTAP Monitoring](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/monitoring-overview.html)
+- [AWS Docs — Monitoring FSx for ONTAP using Harvest and Grafana](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/monitoring-harvest-grafana.html) — the authoritative 19 / 8 / 10 dashboard classification used above
 - [Grafana HTTP API — Dashboard](https://grafana.com/docs/grafana/latest/developers/http_api/dashboard/)
 - [Grafana Embedding — Solo Panel](https://grafana.com/docs/grafana/latest/dashboards/share-dashboards-panels/#embed-a-panel)

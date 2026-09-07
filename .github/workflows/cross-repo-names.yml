@@ -1,0 +1,55 @@
+name: cross-repo names
+
+# Resolves every repository name this tree links to and fails when one only still works
+# because GitHub redirects it.
+#
+# Why this is not in ci.yaml
+# --------------------------
+# It needs the network to reach github.com. Wiring that into the pull-request gate would
+# make a merge depend on github.com answering at that moment, and the two things this check
+# exists for are not urgent — they are silent:
+#
+#   - A sibling repository is renamed. Every link built on the old name keeps returning 200,
+#     so a link checker reports the tree healthy while two documents spell the same
+#     repository differently. Seven renames went undetected this way in the sibling
+#     Adoption Playbook, and this repository's own former name was one of the seven.
+#   - The correction does not hold on its own. That sweep had to run twice, because a
+#     document reintroduced the old name a day after the first pass.
+#
+# A schedule is the right shape: a transient network failure costs nobody a merge, and the
+# decay it catches is measured in weeks. Same reasoning as the `sibling-drift` target in the
+# Makefile, which is likewise kept out of CI rather than allowed to pass by never running.
+on:
+  schedule:
+    # Mondays, 04:00 UTC.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  names:
+    name: repository names resolve without a redirect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # Blocking, and first. The checker resolves names over the network, and both of its
+      # silent-pass modes (the pattern stops matching, the file walk returns nothing) exit
+      # 0. On a weekly schedule nobody is watching closely enough to notice a green run
+      # that inspected nothing. The self-test needs no network.
+      - name: Self-test the checker
+        run: python3 scripts/check_repo_names.py --selftest
+
+      # No `make repo-names`: that target depends on the self-test, and re-running it here
+      # would hide which of the two steps failed in the scheduled run's summary.
+      - name: Resolve repository names
+        run: python3 scripts/check_repo_names.py

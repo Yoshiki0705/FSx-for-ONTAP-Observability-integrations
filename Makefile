@@ -38,6 +38,7 @@ CFN_LINT    := $(if $(wildcard $(VENV)/bin/cfn-lint),$(VENV)/bin/cfn-lint,cfn-li
 # derives its expectation from the filesystem, so adding tests/ to one of them
 # fails the drift test until it is listed here.
 VENDOR_TEST_DIRS := \
+  integrations/amplify-portal/tests \
   integrations/crowdstrike/tests \
   integrations/datadog/tests \
   integrations/dynatrace/tests \
@@ -94,11 +95,13 @@ help:
 	@echo "  test           All tests (python + typescript)"
 	@echo "  test-py        pytest across every directory in PYTEST_DIRS"
 	@echo "  test-ts        jest"
-	@echo "  lint           ruff + eslint"
+	@echo "  lint           ruff + eslint + Japanese heading style"
 	@echo "  security       bandit over PY_SRC"
 	@echo "  cfn            cfn-lint + cfn-guard over CFN_TEMPLATES"
 	@echo "  gitleaks       Secret scan, including the vendor-credential rules"
 	@echo "  drift          Guards that fail when config and reality diverge"
+	@echo "  repo-names     Resolve linked repository names (network; weekly in CI)"
+	@echo "  hooks          Enable the tracked pre-commit hook (once per clone)"
 	@echo "  all            test + lint + security + cfn + drift"
 	@echo ""
 	@echo "Each gate whose failure mode is silence has a test that breaks it"
@@ -153,7 +156,7 @@ test-ts:
 
 # --- Lint and security ----------------------------------------------------
 
-lint: lint-py lint-ts
+lint: lint-py lint-ts headings
 
 # Blocking tier: ruff.toml [lint] select is restricted to rules that only fire
 # on a definite defect, and it is clean today. See ruff.toml for why the
@@ -169,6 +172,65 @@ lint-py-full:
 
 lint-ts:
 	npm run lint
+# Japanese section headings (## and deeper) must be noun phrases. The rule and
+# the conversion vocabulary live in CONTRIBUTING.md; only the wiring is here.
+#
+# The self-test runs first and is blocking, for the same reason cfn-guard's
+# does. Three ways this checker can report a clean tree while inspecting
+# nothing: the heading regex stops matching, the verbal-ending alternation
+# loses a branch, or the file discovery returns an empty list. All three exit 0.
+# The self-test asserts both directions -- inputs that must be flagged and
+# inputs that must not -- so a checker that flags everything and a checker that
+# flags nothing both fail it.
+#
+# scripts/tests/test_heading_style.py runs the same assertions under pytest, so
+# `make test-py` and `make drift` enforce this in CI without a workflow change.
+headings: headings-selftest
+	$(PY) scripts/check_heading_style.py
+headings-selftest:
+	@$(PY) scripts/check_heading_style.py --selftest >/dev/null
+
+# Repository names that only still resolve because GitHub redirects them.
+#
+# Deliberately NOT in `all`, `lint` or `drift`, for the same reason as
+# sibling-drift below: it resolves names over the network. In CI that would make
+# a merge depend on github.com answering, and a network failure there would read
+# as a content defect. It runs weekly instead --
+# .github/workflows/cross-repo-names.yml carries the full reasoning.
+#
+# The self-test runs first and is blocking. This checker has two silent-pass
+# modes -- the URL pattern stops matching, or the file walk returns an empty
+# list -- and both exit 0. scripts/tests/test_repo_names.py runs the same
+# assertions under pytest, so the logic (not the network half) is enforced by
+# `make test-py` and `make drift` without a workflow change.
+repo-names: repo-names-selftest
+	$(PY) scripts/check_repo_names.py
+repo-names-selftest:
+	@$(PY) scripts/check_repo_names.py --selftest >/dev/null
+
+# Point git at the tracked hook. Once per clone, and deliberately not automatic:
+# core.hooksPath lives in .git/config, which is per-checkout and untracked, so no
+# gate in this repository can tell whether the hook is active. Worse, a global
+# core.hooksPath silently wins over the tracked one -- the hook exists, is
+# executable, and never runs. scripts/tests/test_githooks.py checks the half that
+# is checkable (tracked, executable, documented); this target is the other half.
+# The global check is not decoration. Without it this target prints
+# "core.hooksPath = .githooks" whether or not a global value had been silently
+# winning until now, so the one state that looks protected and is not leaves no
+# trace. Reported after setting the local value, because at that point the global
+# one no longer applies here and the message is history rather than a warning
+# about the current clone.
+hooks:
+	@global=$$(git config --global core.hooksPath 2>/dev/null || true); \
+	git config core.hooksPath .githooks; \
+	echo "core.hooksPath = $$(git config core.hooksPath)"; \
+	if [ -n "$$global" ]; then \
+	  echo ""; \
+	  echo "NOTE: a global core.hooksPath is set ($$global)."; \
+	  echo "      It was winning in this clone until now, so the tracked hook existed,"; \
+	  echo "      was executable, and never ran. Any other clone of this repository"; \
+	  echo "      without the local value is still in that state."; \
+	fi
 
 # bandit reports pattern shapes, so a clean run is not evidence that a class of
 # defect is absent. It does not report a module-level SQL template fed through
@@ -239,6 +301,14 @@ bilingual:
 	bash shared/scripts/check-bilingual-sync.sh
 	$(PY) shared/scripts/sync-code-blocks.py --check
 
+# Drift against the instrumentation module in fsxn-s3ap-serverless-patterns.
+# Deliberately NOT part of `all` or CI: CI has no access to the sibling
+# repository, so wiring it in would make it report success by never running the
+# comparison. Run it when either side's instrumentation changes.
+# Override the location with SIBLING_REPO=/path/to/checkout.
+sibling-drift:
+	bash shared/scripts/check-sibling-observability-drift.sh
+
 # --- Housekeeping ---------------------------------------------------------
 
 clean:
@@ -250,5 +320,7 @@ clean:
 # dangerous ones: without .PHONY make finds the directory, decides the target
 # is up to date, and runs nothing while exiting 0.
 .PHONY: help all install test test-py test-ts lint lint-py lint-py-full \
-        lint-ts security security-full cfn cfn-lint cfn-guard \
-        cfn-guard-selftest gitleaks drift agent-config bilingual clean
+        lint-ts headings headings-selftest security security-full \
+        cfn cfn-lint cfn-guard \
+        cfn-guard-selftest gitleaks drift agent-config bilingual \
+        repo-names repo-names-selftest hooks sibling-drift clean

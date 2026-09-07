@@ -210,7 +210,7 @@ vserver fpolicy policy external-engine show-connected \
 
 ## トラブルシューティング
 
-### KeepAlive メッセージが表示されない
+### KeepAlive メッセージの未表示
 
 1. Fargate タスクが Running 状態か確認
 2. セキュリティグループで TCP:9898 インバウンドが許可されているか確認

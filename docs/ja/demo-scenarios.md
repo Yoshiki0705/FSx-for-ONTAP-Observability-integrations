@@ -240,7 +240,7 @@ OTel Collector を使って、同一の監査ログを Grafana Cloud と Honeyco
 > **ローテーション間隔 + スケジュール間隔**を見込んでください。強制ローテーションは
 > `vserver audit rotate -vserver <svm-name>`。待たずにパイプラインをリハーサルする方法は
 > Datadog セットアップガイドの
-> [ローテーションを待たない検証](../../integrations/datadog/docs/ja/setup-guide.md#53-任意-ontap-のローテーションを待たずに検証する)
+> [ローテーションを待たない検証](../../integrations/datadog/docs/ja/setup-guide.md#53-任意-ontap-のローテーションを待たない検証)
 > を参照してください。
 
 ## スクリーンショット撮影ポイント

@@ -44,6 +44,50 @@ All 9 vendor integrations are E2E verified. Datadog paid plan verification compl
 - [x] Automated incident response module (ONTAP REST API user/IP blocking, snapshot, session disconnect)
 - [ ] Cost model validation (estimated vs actual billing comparison)
 
+## Application-Layer Signals (Level 2, In Progress)
+
+A fourth signal source, alongside the three that FSx for ONTAP emits itself
+(audit log, EMS, FPolicy): the telemetry a **self-managed application** produces
+about what it asked the storage to do.
+
+It exists because of a measured gap. An audit record for an operation arriving
+through an S3 access point does not name the requester, and CloudTrail's answer —
+the IAM principal — is the same for every user of an application that reads the
+access point through one execution role. Neither log can say which person opened
+the file. The application can, and this is the plumbing for it.
+
+Kept as its own section rather than folded into Phase 4, which is about community
+and packaging.
+
+- [x] Dependency-free EMF + X-Ray instrumentation module (`shared/python/observability.py`)
+- [x] Deterministic join key, protocol-filtered so a later SMB/NFS touch of the same file is not misattributed
+- [x] Audit-side correlator: Lambda, schedule, record-timestamp watermark, dashboard, alarms
+- [x] End-to-end correlation verified on ONTAP 9.18.1P3D1 — 6 of 6 operations, two users kept distinct
+- [x] ONTAP S3 event names measured, closing the unverified `Read Object` (GET) gap
+- [x] Bilingual setup guide with the identity and ACL prerequisites the configuration actually needs
+- [ ] Application-side signal emitted from inside the reference portal rather than a test driver
+- [ ] Delivery through the OTel Collector to the nine vendor backends
+- [ ] Cost of a real run measured (tag-based allocation lags the teardown)
+- [ ] Correlation latency measured
+- [ ] Confirm behaviour on a domain (rather than local) Windows identity
+
+### Follow-up split out of this work
+
+- [ ] **Audit-log checkpointing in the vendor integrations.** `crowdstrike`,
+      `datadog` and `grafana` set `params["StartAfter"] = last_processed_key`,
+      a last-processed-**key** high-water mark. Measured against an ONTAP audit
+      volume that stalls permanently: the active log file has a fixed key that
+      sorts *after* every rotated one, so once the checkpoint reaches it, no later
+      file is ever listed. `integrations/amplify-portal` uses a record timestamp
+      instead. Deliberately not changed across the vendors in the same change;
+      run `make sibling-drift` for the current list, and see
+      [the setup guide](integrations/amplify-portal/docs/en/setup-guide.md#why-the-checkpoint-is-a-timestamp)
+      for the measurement.
+- [ ] **`shared/templates/fsxn-audit-config.yaml` offers `AuditLogFormat: json`.**
+      JSON is not an ONTAP audit output format; `evtx` and `xml` are, and
+      `shared/scripts/ontap-audit-setup.sh` already restricts itself to those two.
+      Selecting `json` produces a configuration the parser cannot read.
+
 ## Phase 4: Community & Ecosystem (In Progress)
 
 Target: 2027 H1
@@ -54,7 +98,7 @@ Target: 2027 H1
 - [ ] Terraform module equivalents
 - [ ] CDK construct library
 - [x] Community contribution guidelines (CONTRIBUTING.md)
-- [x] [GitHub Discussions](https://github.com/Yoshiki0705/fsxn-observability-integrations/discussions) for Q&A
+- [x] [GitHub Discussions](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/discussions) for Q&A
 - [ ] Integration test suite with LocalStack
 - [x] CrowdStrike Falcon LogScale integration (handler + template + tests + docs)
 - [x] Parser v1.1.0 (FIELD_MAPPING, Strategy pattern, defusedxml, 178K events/sec)

@@ -174,14 +174,14 @@ grep -n "TODO\|TBD" docs/ja/verification-results-splunk.md
 
 ## トラブルシューティング
 
-### テンプレートが存在しない
+### テンプレートの不在
 
 ```bash
 # Task 11.3 の成果物を確認
 find docs/ -name "verification-results-splunk*"
 ```
 
-### E2E レイテンシが計算できない
+### E2E レイテンシの計算の不可
 
 - **原因**: S3 オブジェクトのタイムスタンプと Splunk _indextime のタイムゾーンが異なる
 - **解決**: 両方を UTC に統一して計算

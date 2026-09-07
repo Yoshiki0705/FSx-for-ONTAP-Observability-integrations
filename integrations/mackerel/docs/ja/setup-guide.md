@@ -254,7 +254,7 @@ aws cloudformation deploy \
 
 > **注意**: このデプロイは共有の `otel-collector/template.yaml` から3つの Lambda 関数（監査ログ、EMS Webhook、FPolicy）すべてを作成します — 独立した `integrations/mackerel/template.yaml` は存在しません。パラメータの詳細は [OTel Collector README](../../../otel-collector/README.md#alternative-mackerel-backend-open-beta) を参照してください。
 
-### 5.3 Collector 経由 vs. 直接送信: どちらを使うか
+### 5.3 Collector 経由と直接送信の使い分け
 
 | | Collector 経由（Step 1〜4） | 直接送信（本 Step） |
 |---|---|---|

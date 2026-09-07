@@ -1,0 +1,565 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  FSx for ONTAP application-layer signal correlation - emits the audit side of a
+  deterministic join against signals from a self-managed application (reference
+  case: the Amplify Gen2 file portal)
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: FSx for ONTAP audit source
+        Parameters:
+          - FsxS3AccessPointArn
+          - AuditLogPrefix
+      - Label:
+          default: Correlation
+        Parameters:
+          - AppSignalLogGroupName
+          - EmfNamespace
+          - JoinWindowSeconds
+      - Label:
+          default: Lambda and schedule
+        Parameters:
+          - ScheduleRate
+          - MaxKeysPerRun
+          - LambdaMemorySize
+          - LambdaTimeout
+          - SharedLayerArn
+          - LogLevel
+          - LogRetentionInDays
+      - Label:
+          default: Operations and cost attribution
+        Parameters:
+          - Environment
+          - AlarmNotificationTopicArn
+          - CostTagValue
+          - OwnerTag
+
+Parameters:
+  FsxS3AccessPointArn:
+    Type: String
+    Description: >-
+      ARN of the FSx for ONTAP S3 Access Point that exposes the volume holding
+      the ONTAP audit log files. Used directly as the S3 Bucket parameter.
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:s3:[a-z0-9-]+:\d{12}:accesspoint/.+$'
+
+  AuditLogPrefix:
+    Type: String
+    Default: ''
+    Description: >-
+      Key prefix under which ONTAP writes rotated audit log files. Leave empty
+      to scan the whole access point.
+
+  AppSignalLogGroupName:
+    Type: String
+    Default: ''
+    Description: >-
+      Log group that receives the application side of the join (the portal
+      Lambdas' log group). Recorded in the dashboard query only; this stack does
+      not read it, so it may be left empty until the application is
+      instrumented.
+
+  EmfNamespace:
+    Type: String
+    Default: FSxONTAPAppSignals
+    Description: >-
+      CloudWatch namespace for the EMF metrics. Must match the namespace the
+      application side uses, or the two halves land in different namespaces.
+    AllowedPattern: '^[A-Za-z0-9._/-]{1,255}$'
+
+  JoinWindowSeconds:
+    Type: Number
+    Default: 120
+    MinValue: 5
+    MaxValue: 3600
+    Description: >-
+      Width of the time window the join tolerates between the application
+      timestamp and the ONTAP timestamp. The two come from different clocks at
+      different points in the request, so the join is a window rather than an
+      equality. Recorded for the dashboard query; the Lambda does not enforce it.
+
+  ScheduleRate:
+    Type: String
+    Default: rate(5 minutes)
+    Description: >-
+      How often to poll for newly rotated audit files. FSx for ONTAP S3 Access
+      Points emit no S3 Event Notifications and no EventBridge object-level
+      events, so polling is the only trigger available.
+
+  MaxKeysPerRun:
+    Type: Number
+    Default: 50
+    MinValue: 1
+    MaxValue: 1000
+    Description: Maximum audit log files to read in one invocation.
+
+  LambdaMemorySize:
+    Type: Number
+    Default: 512
+    MinValue: 128
+    MaxValue: 10240
+
+  LambdaTimeout:
+    Type: Number
+    Default: 300
+    MinValue: 3
+    MaxValue: 900
+
+  SharedLayerArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN of the fsxn-shared-python layer built by
+      shared/python/build-layer.sh. The handler imports `observability` and
+      `ontap_audit_parser` from it. Without the layer the function raises
+      ImportError on the first invocation.
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365]
+    Description: >-
+      Correlation records land in this log group and are what the join reads, so
+      retention bounds how far back a correlation can be run.
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Value of the Environment metric dimension.
+
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: Optional SNS topic for alarm notifications.
+
+  CostTagValue:
+    Type: String
+    Default: fsxn-obs-appsig
+    Description: >-
+      Value of the `cost` tag. `cost` is used because it is already an activated
+      cost allocation tag in the target account; a newly activated tag key only
+      applies to data recorded after activation.
+
+  OwnerTag:
+    Type: String
+    Description: >-
+      Owner of these resources, for a shared account. Deliberately without a
+      default so no individual's name is committed to this template.
+    MinLength: 1
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
+  HasSharedLayer: !Not [!Equals [!Ref SharedLayerArn, '']]
+
+Resources:
+  # Failed invocations land here rather than being retried indefinitely against
+  # an audit file that cannot be read.
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+      Tags:
+        - Key: cost
+          Value: !Ref CostTagValue
+        - Key: Project
+          Value: fsxn-observability-integrations
+        - Key: Purpose
+          Value: app-layer-signal-verification
+        - Key: AutoDelete
+          Value: 'true'
+        - Key: Owner
+          Value: !Ref OwnerTag
+
+  # Watermark over the audit *records*, as epoch nanoseconds. There is no event
+  # notification to react to, so this is what distinguishes a new record from one
+  # already emitted.
+  #
+  # Deliberately not a key high-water mark, which is the obvious design and does
+  # not work here. Measured on ONTAP 9.18.1P3D1:
+  #
+  #   * ONTAP appends to one active file whose key never changes,
+  #     audit_<svm>_last.xml. A key watermark stops reading it as soon as it has
+  #     read it once -- the file grew from 907 to 12,754 bytes and the next run
+  #     listed zero files.
+  #   * A rotated key, audit_<svm>_D<timestamp>_<n>.xml, sorts *before* _last
+  #     because 'D' < 'l'. Once the watermark holds _last.xml, every file rotated
+  #     afterwards is skipped permanently.
+  #
+  # '0' means "start from the beginning". A value left over from the key-based
+  # scheme is treated as 0 rather than causing a failure.
+  CheckpointParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/fsxn-appsig/${AWS::StackName}/record-watermark-ns'
+      Type: String
+      Value: '0'
+      Description: >-
+        Epoch-nanosecond timestamp of the newest audit record already emitted.
+        Not a key: ONTAP's active audit file has a fixed key that sorts after
+        every rotated one, so a key high-water mark stalls the pipeline
+        permanently. '0' means start from the beginning.
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3AccessPointRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref FsxS3AccessPointArn
+                  - !Sub '${FsxS3AccessPointArn}/object/*'
+
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-correlator:*'
+
+        - PolicyName: SSMCheckpoint
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/fsxn-appsig/${AWS::StackName}/*'
+
+        - PolicyName: DeadLetterSend
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt DeadLetterQueue.Arn
+
+        # No X-Ray permissions here on purpose. This correlator runs with
+        # ENABLE_XRAY=false and produces no span worth a trace; X-Ray write
+        # permissions take no resource-level scoping, so granting them
+        # pre-emptively would widen the role for a capability it does not use.
+        # Active tracing is enabled on the *application's* functions, which
+        # carry their own roles.
+
+  CorrelatorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-correlator'
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      # Placeholder only. The real lambda/handler.py is uploaded by
+      # scripts/deploy.sh after the stack is created; deploying this template on
+      # its own leaves a function that only raises.
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              raise NotImplementedError(
+                  "Placeholder code is still deployed. Upload the real handler: "
+                  "bash integrations/amplify-portal/scripts/deploy.sh"
+              )
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: !Ref LambdaMemorySize
+      Timeout: !Ref LambdaTimeout
+      Layers: !If
+        - HasSharedLayer
+        - [!Ref SharedLayerArn]
+        - !Ref AWS::NoValue
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Environment:
+        Variables:
+          FSX_S3_ACCESS_POINT_ARN: !Ref FsxS3AccessPointArn
+          AUDIT_LOG_PREFIX: !Ref AuditLogPrefix
+          CHECKPOINT_PARAM_NAME: !Ref CheckpointParameter
+          MAX_KEYS_PER_RUN: !Ref MaxKeysPerRun
+          EMF_NAMESPACE: !Ref EmfNamespace
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: !Ref LogLevel
+          # Left off by default: tracing is enabled out-of-band on the
+          # application's own functions during verification, and this correlator
+          # produces no span worth a trace on its own.
+          ENABLE_XRAY: 'false'
+      Tags:
+        - Key: cost
+          Value: !Ref CostTagValue
+        - Key: Project
+          Value: fsxn-observability-integrations
+        - Key: Purpose
+          Value: app-layer-signal-verification
+        - Key: AutoDelete
+          Value: 'true'
+        - Key: Owner
+          Value: !Ref OwnerTag
+
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-scheduler-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: InvokeCorrelator
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt CorrelatorFunction.Arn
+
+  CorrelatorSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub '${AWS::StackName}-poll'
+      Description: Poll the FSx for ONTAP audit log prefix for newly rotated files
+      ScheduleExpression: !Ref ScheduleRate
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      State: ENABLED
+      Target:
+        Arn: !GetAtt CorrelatorFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"source": "scheduler", "action": "correlate_audit_logs"}'
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-correlator'
+      RetentionInDays: !Ref LogRetentionInDays
+
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-errors'
+      AlarmDescription: The correlator is failing, so the audit side of the join is not being produced
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CorrelatorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - [!Ref AlarmNotificationTopicArn]
+        - !Ref AWS::NoValue
+
+  DlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-not-empty'
+      AlarmDescription: An invocation failed past its retries; audit files may be unread
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - [!Ref AlarmNotificationTopicArn]
+        - !Ref AWS::NoValue
+
+  # An unparseable audit file is the failure mode that does not raise: the
+  # invocation succeeds, the checkpoint advances, and the records in that file
+  # are never emitted. Without this alarm the pipeline looks healthy while
+  # losing data.
+  UnparseableFileAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-unparseable-audit-files'
+      AlarmDescription: >-
+        An audit log file could not be parsed. The invocation still succeeded and
+        the checkpoint still advanced, so this does not appear as a Lambda error.
+      Namespace: !Ref EmfNamespace
+      MetricName: UnparseableFiles
+      Dimensions:
+        - Name: ServiceName
+          Value: audit-correlator
+        - Name: Environment
+          Value: !Ref Environment
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - [!Ref AlarmNotificationTopicArn]
+        - !Ref AWS::NoValue
+
+  CorrelationDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-correlation'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text", "x": 0, "y": 0, "width": 24, "height": 4,
+              "properties": {
+                "markdown": "## Application-layer signal correlation\n\nThe **audit side** of the join is produced by `${AWS::StackName}-correlator` and lands in `/aws/lambda/${AWS::StackName}-correlator`. The **application side** is produced by whatever emits `s3ap_join_key` (see `shared/python/observability.py`, `emit_s3ap_app_signal`).\n\nJoin window: **${JoinWindowSeconds}s**. The two timestamps come from different clocks, so the join is a window rather than an equality.\n\n**An FSx for ONTAP audit record does not name the requester** (`SubjectUserName` is `Not Present` on the S3 access path, `SubjectIP` is a service-side address). End-user attribution comes from the application side only."
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 4, "width": 12, "height": 6,
+              "properties": {
+                "title": "Audit records: S3 access path vs file protocol",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "stacked": false,
+                "metrics": [
+                  [ "${EmfNamespace}", "S3PathRecords", "ServiceName", "audit-correlator", "Environment", "${Environment}", { "label": "S3 access path (joinable)" } ],
+                  [ ".", "FileProtocolRecordsSkipped", ".", ".", ".", ".", { "label": "SMB/NFS (excluded from the join)" } ]
+                ],
+                "stat": "Sum", "period": 300
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 4, "width": 12, "height": 6,
+              "properties": {
+                "title": "Join keys emitted vs application signals",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "stacked": false,
+                "metrics": [
+                  [ "${EmfNamespace}", "JoinKeysEmitted", "ServiceName", "audit-correlator", "Environment", "${Environment}", { "label": "Audit side" } ],
+                  [ "${EmfNamespace}", "S3apOperations", "Operation", "PUT", "Environment", "${Environment}", { "label": "App side (PUT)" } ],
+                  [ "...", "GET", ".", ".", { "label": "App side (GET)" } ],
+                  [ "...", "LIST", ".", ".", { "label": "App side (LIST)" } ],
+                  [ "...", "DELETE", ".", ".", { "label": "App side (DELETE)" } ]
+                ],
+                "stat": "Sum", "period": 300
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 10, "width": 12, "height": 6,
+              "properties": {
+                "title": "Silent-loss indicators",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "stacked": false,
+                "metrics": [
+                  [ "${EmfNamespace}", "UnparseableFiles", "ServiceName", "audit-correlator", "Environment", "${Environment}", { "label": "Unparseable audit files" } ],
+                  [ ".", "UnmappedOperations", ".", ".", ".", ".", { "label": "Operations with no verified verb mapping" } ],
+                  [ ".", "UndatedRecords", ".", ".", ".", ".", { "label": "Records with no timestamp (dropped, cannot be deduplicated)" } ],
+                  [ ".", "PathlessRecordsSkipped", ".", ".", ".", ".", { "label": "Records with no path (not joinable to an object)" } ]
+                ],
+                "stat": "Sum", "period": 900,
+                "annotations": { "horizontal": [ { "value": 1, "label": "any occurrence is worth reading", "color": "#d62728" } ] }
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 10, "width": 12, "height": 6,
+              "properties": {
+                "title": "Correlator health",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "stacked": false,
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "${CorrelatorFunction}", { "stat": "Sum" } ],
+                  [ ".", "Errors", ".", ".", { "stat": "Sum" } ],
+                  [ ".", "Duration", ".", ".", { "stat": "Average", "yAxis": "right" } ]
+                ],
+                "period": 300
+              }
+            },
+            {
+              "type": "log", "x": 0, "y": 16, "width": 24, "height": 8,
+              "properties": {
+                "title": "Audit side of the join (most recent)",
+                "region": "${AWS::Region}",
+                "query": "SOURCE '/aws/lambda/${AWS::StackName}-correlator' | fields @timestamp, s3ap_join_key, audit_operation, audit_volume, audit_access_protocol, audit_source_key | filter marker = 'fsxn.audit.correlation' | sort @timestamp desc | limit 50"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  CorrelatorFunctionArn:
+    Description: ARN of the correlator Lambda
+    Value: !GetAtt CorrelatorFunction.Arn
+
+  CorrelatorFunctionName:
+    Description: Name of the correlator Lambda, for update-function-code
+    Value: !Ref CorrelatorFunction
+
+  CorrelationLogGroupName:
+    Description: Log group holding the audit side of the join
+    Value: !Ref LogGroup
+
+  CheckpointParameterName:
+    Description: SSM parameter holding the audit log high-water mark
+    Value: !Ref CheckpointParameter
+
+  DeadLetterQueueUrl:
+    Description: DLQ URL
+    Value: !Ref DeadLetterQueue
+
+  DashboardName:
+    Description: CloudWatch dashboard name
+    Value: !Ref CorrelationDashboard
+
+  EmfNamespaceUsed:
+    Description: >-
+      Namespace both halves of the join must share. Verify the application side
+      uses the same value.
+    Value: !Ref EmfNamespace
+
+  JoinQuery:
+    Description: >-
+      CloudWatch Logs Insights query that performs the join. Select this stack's
+      correlation log group and the application's log group together, then run
+      it. Verified against both log groups on 2026-08-30. Counting with
+      count(<field>) rather than count(*) is what makes "seen from both sides"
+      distinguishable from "seen twice on one side"; note also that Logs Insights
+      has ispresent() but no ismissing().
+    Value: >-
+      fields s3ap_join_key, marker, app_principal, audit_source_key, audit_operation
+      | filter ispresent(s3ap_join_key)
+      | stats count(marker) as audit_rows, count(app_principal) as app_rows,
+      earliest(app_principal) as principal, earliest(audit_source_key) as audit_file
+      by s3ap_join_key
+      | filter audit_rows > 0 and app_rows > 0
+      | sort s3ap_join_key

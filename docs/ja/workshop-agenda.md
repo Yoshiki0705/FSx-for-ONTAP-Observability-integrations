@@ -51,7 +51,7 @@
 - [ ] AWS CLI 設定済み（`aws sts get-caller-identity` が動作）
 - [ ] ベンダーアカウントアクセス（Datadog/Grafana/Splunk 等）
 - [ ] `git`、`python3`、`aws` CLI が使えるターミナル
-- [ ] リポジトリクローン済み: `git clone https://github.com/Yoshiki0705/fsxn-observability-integrations.git`
+- [ ] リポジトリクローン済み: `git clone https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git`
 
 ## Lab 手順サマリー
 

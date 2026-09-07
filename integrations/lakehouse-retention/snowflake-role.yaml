@@ -3,7 +3,7 @@ Description: >-
   IAM Role for Snowflake Storage Integration to access the FSx for ONTAP
   audit log Parquet lakehouse retention bucket (integrations/lakehouse-retention/
   template.yaml). Two-phase trust setup, reusing the pattern from
-  fsxn-lakehouse-integrations/integrations/snowflake/template.yaml, adapted
+  FSx-for-ONTAP-Lakehouse-Integrations/integrations/snowflake/template.yaml, adapted
   for a standard S3 bucket target instead of an FSx for ONTAP S3 Access Point.
   Stack name: fsxn-lakehouse-retention-snowflake
 
@@ -13,7 +13,7 @@ Description: >-
 #   - A Snowflake account (any edition; a free trial works) with ACCOUNTADMIN access
 #
 # THIS IS A TWO-PHASE DEPLOYMENT (the same "chicken-and-egg" pattern documented
-# in fsxn-lakehouse-integrations/integrations/snowflake/sql/01_storage_integration.sql):
+# in FSx-for-ONTAP-Lakehouse-Integrations/integrations/snowflake/sql/01_storage_integration.sql):
 # Snowflake needs an IAM Role ARN to create a Storage Integration, but the IAM
 # Role's trust policy needs Snowflake's AWS account ID + external ID, which
 # Snowflake only reveals AFTER the Storage Integration is created. Breaking the

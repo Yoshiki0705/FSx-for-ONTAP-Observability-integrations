@@ -87,7 +87,10 @@ bash shared/scripts/test.sh
 ## FPolicy Operations
 
 ```bash
-# Build and push FPolicy server image (MUST use linux/amd64 for Fargate)
+# Build and push FPolicy server image.
+# Pushes a multi-platform manifest (linux/amd64 + linux/arm64) because the two
+# compute modes of fpolicy-apigw.yaml differ: Fargate pins X86_64, EC2 mode runs
+# an al2023 arm64 AMI on t4g. Override with PLATFORMS= for a single platform.
 bash shared/fpolicy-server/build-and-push.sh v2-timeout-fix
 
 # Start/stop FPolicy Fargate service
@@ -125,7 +128,7 @@ shared/
   │   ├── sqs-buffering.yaml       # SQS buffer queue + DLQ + alarms (Level 3)
   │   ├── secrets-rotation-sample.yaml  # Auto-rotation Lambda (all vendors)
   │   └── multi-account-stackset.yaml  # StackSets deployment (Enterprise)
-  ├── fpolicy-server/        # FPolicy TCP server (Go, linux/amd64)
+  ├── fpolicy-server/        # FPolicy TCP server (Go, linux/amd64 + linux/arm64)
   └── scripts/               # Operational scripts
       ├── deploy.sh, test.sh, cleanup-vendor.sh
       ├── check-bilingual-sync.sh   # ja/en doc sync verification
@@ -442,7 +445,7 @@ All scripts use environment variables with sensible defaults:
 ### Operations
 - `shared/scripts/fpolicy-fargate-control.sh` — FPolicy Fargate start/stop/status
 - `shared/scripts/fpolicy-update-engine-ip.sh` — ONTAP Engine IP auto-update
-- `shared/fpolicy-server/build-and-push.sh` — ECR image build (linux/amd64 required)
+- `shared/fpolicy-server/build-and-push.sh` — ECR image build (multi-platform manifest: amd64 for Fargate, arm64 for EC2 mode)
 - `shared/scripts/deploy-log-alarm.sh` — Deploy CloudWatch Log Alarm (env-var driven; CLI has no `put-log-alarm` yet, use CFN)
 - `shared/scripts/cleanup-log-alarm.sh` — Delete Log Alarm stacks (`--all`, `--delete-sns`, `-y`)
 - `docs/screenshots/mask_screenshots.py` — Screenshot masking (PII removal)
@@ -550,6 +553,12 @@ Detects: internal IPs (10.x/172.16-31.x/192.168.x), AWS Account IDs, internal ho
 
 ### Bilingual docs (JA primary + EN)
 - JA/EN parity を維持（セクション構成/数の一致、inline note の対応）。片方を変更したら同じ変更で両方に反映。
+
+### 日本語の節見出しは体言止め
+- `##` 以下の日本語見出しは名詞句。動詞終止形・疑問形・述語文は不可。名詞化で断定を落とさない（接尾語か修飾で保つ）。
+- 規約本体・変換語彙・叙述の例外はここに二重化せず、CONTRIBUTING.md「Japanese section headings are noun phrases」に置く。2 か所に書くと片方だけが更新される。
+- ゲート: `make headings`（本検査の前に `--selftest` が走る）。CI は `scripts/tests/test_heading_style.py` 経由で `make test-py` / `make drift` から強制する。
+- 叙述・助言・抱負の見出しだけが例外。見出し行に `<!-- allow:heading-style -->` を付け、なぜ叙述なのかを本文に書く。
 
 ### Technical reference / guide docs
 - 必須要素: エグゼクティブサマリの結論、FAQ/よくある誤解、選択フローチャート（mermaid 可）、OT/IT セキュリティ考慮（該当時）、段階的導入ステップ、Related Documents（逆リンク）、≥10 の inline トピック別ノート（役職名ではなく `**XXXに関する補足**` 形式のラベル）。

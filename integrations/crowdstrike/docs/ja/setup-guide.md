@@ -36,7 +36,7 @@ aws secretsmanager create-secret \
 
 ## Step 4: CloudFormation スタックのデプロイ
 
-### 推奨: デプロイスクリプトを使う
+### 推奨: デプロイスクリプトの利用
 
 このスクリプトはスタックのデプロイと実 Lambda コードのアップロードを**両方**行います。
 CloudFormation テンプレートはハンドラをインラインに持てないため、1 ステップで動作する
@@ -62,7 +62,7 @@ bash integrations/crowdstrike/scripts/deploy.sh
 > アラームが通知されるようになります。未設定の場合アラームは通知アクションなしで
 > 作成され、コンソールには表示されますが誰にも通知されません。
 
-### 代替: CloudFormation を手動でデプロイする
+### 代替: CloudFormation の手動デプロイ
 
 ```bash
 aws cloudformation deploy \

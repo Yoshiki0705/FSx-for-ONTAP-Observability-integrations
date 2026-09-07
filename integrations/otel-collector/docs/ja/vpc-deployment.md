@@ -26,7 +26,7 @@
             Grafana Cloud      Honeycomb        Datadog
 ```
 
-## いつ VPC デプロイが必要か
+## VPC デプロイが必要な条件
 
 | シナリオ | VPC 必要 | 理由 |
 |---------|---------|------|
@@ -197,13 +197,13 @@ ScalingPolicy:
 
 ## トラブルシューティング
 
-### Lambda が OTel Collector に接続できない
+### Lambda から OTel Collector への接続の不可
 
 1. Lambda と Collector が同じ VPC 内にあることを確認
 2. セキュリティグループのインバウンドルール（Port 4318）を確認
 3. Lambda のサブネットからのルーティングを確認
 
-### OTel Collector が外部バックエンドに送信できない
+### OTel Collector から外部バックエンドへの送信の不可
 
 1. NAT Gateway が正しく設定されていることを確認
 2. プライベートサブネットのルートテーブルに NAT Gateway へのルートがあることを確認

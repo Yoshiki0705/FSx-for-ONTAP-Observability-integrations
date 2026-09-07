@@ -141,7 +141,7 @@ processors:
 | FPolicy | OTel Collector | Splunk | 🚧 計画中 | — |
 | 監査ログ | OTel Collector | Elastic | 🚧 計画中 | — |
 
-## 判断ガイド: どのパスを使うか
+## 判断ガイド: パスの選択
 
 ```
 ┌─────────────────────────────────────────────┐

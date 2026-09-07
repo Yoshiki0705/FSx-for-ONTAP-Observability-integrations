@@ -54,7 +54,7 @@ S3 → Lambda → OTel Collector → Vendor API(s)
 
 > **注意**: パターン B の固定費（Fargate + NAT Gateway）は ~$60/月。イベント量が増えるほどパターン B が有利になります。
 
-## いつどちらを使うか
+## 両者の使い分け
 
 ### パターン A（直接送信）を推奨するケース
 

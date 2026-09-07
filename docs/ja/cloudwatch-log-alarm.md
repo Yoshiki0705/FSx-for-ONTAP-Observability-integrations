@@ -296,7 +296,7 @@ aws cloudwatch put-log-alarm \
 | コスト | メトリクス従量 + アラーム料金 | Scheduled Query 実行 + アラーム料金 |
 | 遡及クエリ | ❌ (フィルタ適用後のデータのみ) | ✅ (既存ログに対してクエリ可能) |
 
-### いつ Log Alarm を選ぶか
+### Log Alarm を選ぶ基準
 
 - ログの文字列パターンに基づいてアラートしたい
 - Logs Insights の柔軟なクエリ構文を使いたい
@@ -304,7 +304,7 @@ aws cloudwatch put-log-alarm \
 - 中間メトリクスの管理を避けたい
 - **既存のログ**に対しても遡及的にアラートしたい
 
-### いつメトリクスフィルター方式を選ぶか
+### メトリクスフィルター方式を選ぶ基準
 
 - 時系列メトリクスとしてダッシュボード表示したい
 - Anomaly Detection を使いたい
@@ -619,7 +619,7 @@ CloudWatch がアラームアクションとして SNS に通知を送るため�
 
 > System Manager（GUI）の操作は内部的に ONTAP REST API 経由で実行されるため、管理監査ログに**記録されます** — GUI 由来の Snapshot 削除も CLI と同様に検知されます。（System Manager の管理プレーン詳細は記事4を参照。）
 
-### `security audit` — 何が記録されるか
+### `security audit` — 記録される内容
 
 管理監査ログに何が入るかは、log-forwarding ではなく ONTAP の `security audit` 設定で決まります。参照系（GET）操作は**デフォルトで無効**です:
 
@@ -660,7 +660,7 @@ fields @timestamp
 
 Log Alarm は**リージョン**リソースです。Active-Passive DR 構成では、フェイルオーバー後も検知が生き残るよう、DR リージョンにも同じ Log Alarm スタックをデプロイし、DR 側の EMS イベント（SnapMirror 先の `sms.vol.full`）が見えるようにしてください。[cross-region-replication.md](./cross-region-replication.md) 参照。
 
-### 誰が検知を無効化できるか（改ざん耐性）
+### 検知を無効化できる主体（改ざん耐性）
 
 動いていると信頼できない検知は検知ではありません。CloudWatch/CloudFormation 権限を持つ主体は、**アラームやロググループを削除**してすべてを黙らせられます。上記のデッドマンズスイッチは*取り込み*停止は捕捉しますが、*アラーム削除*は捕捉しません。以下で堅牢化します。
 

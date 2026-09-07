@@ -1,7 +1,7 @@
 # FSx for ONTAP Observability Integrations
 
-[![CI](https://github.com/Yoshiki0705/fsxn-observability-integrations/actions/workflows/ci.yaml/badge.svg)](https://github.com/Yoshiki0705/fsxn-observability-integrations/actions/workflows/ci.yaml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Yoshiki0705/fsxn-observability-integrations/badge)](https://scorecard.dev/viewer/?uri=github.com/Yoshiki0705/fsxn-observability-integrations)
+[![CI](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/actions/workflows/ci.yaml/badge.svg)](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/actions/workflows/ci.yaml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/badge)](https://scorecard.dev/viewer/?uri=github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations)
 
 🌐 [日本語](docs/ja/README.md) | **English**
 
@@ -151,8 +151,17 @@ documents, see the docs README in either language:
 | Repository | Description |
 |-----------|-------------|
 | [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | 17 industry use cases with FPolicy pipeline |
-| [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) | Data Lake / Lakehouse integrations via S3 AP |
+| [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) | Data Lake / Lakehouse integrations via S3 AP |
 | [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Access-aware Agentic RAG with Bedrock |
+| [FSx-for-ONTAP-Adoption-Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | **Which collection route to choose**, before building one |
+
+That last link is the module hub, not a note — notes get renamed. Read it first if you have
+not settled on a route: this repository implements one of the four (ship logs to the
+observability platform you already run) and does not argue that it is the right one for
+every case. The hub also records limits that surface once a forwarding path is live —
+**the audit destination filling up stops client access rather than degrading monitoring**,
+SMB access auditing records only the first read and first write per object, and p99 latency
+cannot be derived from the CloudWatch volume metrics.
 
 ### Articles
 

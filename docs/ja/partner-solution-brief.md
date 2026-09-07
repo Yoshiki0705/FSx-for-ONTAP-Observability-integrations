@@ -140,7 +140,7 @@ FSx for ONTAP → S3 Access Point → EventBridge Scheduler → Lambda → Vendo
 
 ## リソース
 
-- [GitHub リポジトリ](https://github.com/Yoshiki0705/fsxn-observability-integrations)
+- [GitHub リポジトリ](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations)
 - [PoC 成功基準](poc-success-criteria.md)
 - [ベンダー比較](vendor-comparison.md)
 - [セキュリティベストプラクティス](security-best-practices.md)
