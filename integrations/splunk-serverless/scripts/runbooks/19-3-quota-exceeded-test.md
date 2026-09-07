@@ -163,24 +163,24 @@ volume quota policy rule delete \
 
 ## トラブルシューティング
 
-### クォータ設定が反映されない
+### クォータ設定の未反映
 
 - **原因**: クォータが `on` になっていない
 - **解決**: `volume quota on` を実行し、`volume quota show` で状態を確認
 
-### EMS イベントが発行されない
+### EMS イベントの未発行
 
 - **原因**: ソフトクォータ超過が検知されていない
 - **解決**: `volume quota report` で使用量がソフトリミットを超えているか確認
 
-### 180 秒以内に Splunk に到着しない
+### 180 秒以内の Splunk 到着の不成立
 
 1. ONTAP EMS 宛先設定を確認: `event destination show`
 2. Lambda CloudWatch Logs でエラーを確認
 3. API Gateway のアクセスログを確認
 4. HEC エンドポイントの接続性を確認
 
-### クォータレポートに使用量が反映されない
+### クォータレポートへの使用量の未反映
 
 - **原因**: クォータスキャンが完了していない
 - **解決**: `volume quota report` を再実行し、スキャン完了を待つ

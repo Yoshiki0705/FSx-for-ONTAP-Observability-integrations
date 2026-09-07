@@ -158,8 +158,8 @@ arn:aws:secretsmanager:ap-northeast-1:<account-id>:secret:crowdstrike/fsxn-inges
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/Yoshiki0705/fsxn-observability-integrations.git
-cd fsxn-observability-integrations
+git clone https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
+cd FSx-for-ONTAP-Observability-integrations
 
 # CloudFormation テンプレートをデプロイ
 aws cloudformation deploy \
@@ -408,7 +408,7 @@ LogScale 側: Falcon Insight XDR の 10GB/day 無料インジェスト枠内で�
 
 ## リソース
 
-- [GitHub リポジトリ](https://github.com/Yoshiki0705/fsxn-observability-integrations/tree/main/integrations/crowdstrike)
+- [GitHub リポジトリ](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/tree/main/integrations/crowdstrike)
 - [LogScale HEC API ドキュメント](https://library.humio.com/logscale-api/log-shippers-hec.html)
 - [CrowdStrike Developer Center - Data Ingestion](https://developer.crowdstrike.com/ngsiem/data-ingestion/)
 - [ONTAP 監査ログ設定ガイド](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-access-auditing.html)

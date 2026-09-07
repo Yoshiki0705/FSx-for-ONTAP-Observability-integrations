@@ -151,7 +151,7 @@ file docs/screenshots/splunk/*.png
 
 ## トラブルシューティング
 
-### 500KB を超えるファイルがある
+### 500KB を超えるファイルの存在
 
 ```bash
 # macOS でリサイズ
@@ -164,14 +164,14 @@ convert docs/screenshots/splunk/<filename>.png -resize 1280x docs/screenshots/sp
 pngquant --quality=65-80 docs/screenshots/splunk/<filename>.png
 ```
 
-### 命名規約に違反するファイルがある
+### 命名規約に違反するファイルの存在
 
 ```bash
 # ファイル名を修正（例）
 mv docs/screenshots/splunk/old-name.png docs/screenshots/splunk/splunk-search-results-20260120.png
 ```
 
-### PNG 形式でないファイルがある
+### PNG 形式でないファイルの存在
 
 ```bash
 # JPEG から PNG に変換

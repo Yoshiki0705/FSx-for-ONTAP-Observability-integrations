@@ -261,7 +261,7 @@ aws cloudwatch describe-alarms \
 
 ### よくあるデプロイ失敗パターン
 
-#### 1. サブネットが 2 AZ にまたがっていない
+#### 1. 2 AZ にまたがっていないサブネット
 
 **エラー**: `At least two subnets in two different Availability Zones must be specified`
 
@@ -277,7 +277,7 @@ aws ec2 describe-subnets \
 
 異なる AZ のサブネットを指定してください。
 
-#### 2. Secrets Manager シークレットが見つからない
+#### 2. Secrets Manager シークレットの不検出
 
 **エラー**: `Secret not found: arn:aws:secretsmanager:...`
 
@@ -307,7 +307,7 @@ aws secretsmanager get-secret-value \
 - 未使用の Elastic IP を解放する
 - Service Quotas で上限引き上げをリクエストする
 
-#### 4. ECS タスクが起動しない
+#### 4. ECS タスクの起動失敗
 
 **エラー**: `STOPPED (CannotPullContainerError)`
 
@@ -325,7 +325,7 @@ aws ecs describe-tasks \
 - ECR VPC Endpoint (`com.amazonaws.<region>.ecr.dkr`, `com.amazonaws.<region>.ecr.api`) が作成されていることを確認
 - Security Group のアウトバウンドルールで VPC Endpoints への HTTPS (443) が許可されていることを確認
 
-#### 5. Harvest が ONTAP に接続できない
+#### 5. Harvest から ONTAP への接続の不可
 
 **エラー**: CloudWatch Logs に `connection refused` または `timeout`
 
@@ -336,7 +336,7 @@ aws ecs describe-tasks \
 - `OntapManagementEndpoint` パラメータが正しい IP/DNS であることを確認
 - FSx for ONTAP のセキュリティグループで ECS タスクからのアクセスが許可されていることを確認
 
-#### 6. CloudFormation スタックが DELETE_FAILED になる
+#### 6. CloudFormation スタックの DELETE_FAILED 遷移
 
 **原因**: リソースが他のリソースから参照されている、または手動で変更されている。
 
@@ -350,7 +350,7 @@ aws cloudformation describe-stack-resources \
 
 手動でリソースを削除してから、スタック削除を再試行してください。
 
-#### 7. Harvest コンテナが起動しない（/bin/sh not found）
+#### 7. Harvest コンテナの起動失敗（/bin/sh not found）
 
 **エラー**: `exec: "/bin/sh": stat /bin/sh: no such file or directory`
 
@@ -361,7 +361,7 @@ aws cloudformation describe-stack-resources \
 - 現在の `templates/observability.yaml` は `/busybox/sh -c` で設定ファイルを書き込み、`exec bin/poller` を実行
 - init コンテナパターンは不要 — Harvest コンテナ自身が設定生成を処理
 
-#### 8. Harvest コンテナが起動しない（bin/poller not found）
+#### 8. Harvest コンテナの起動失敗（bin/poller not found）
 
 **エラー**: `exec: "bin/poller": stat bin/poller: no such file or directory`
 

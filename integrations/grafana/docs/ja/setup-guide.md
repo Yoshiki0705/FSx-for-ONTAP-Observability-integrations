@@ -110,7 +110,7 @@ https://123456.grafana.net/loki/api/v1/push
 
 ## Step 2: CloudFormation デプロイ
 
-### 推奨: デプロイスクリプトを使う
+### 推奨: デプロイスクリプトの利用
 
 このスクリプトはスタックのデプロイと実 Lambda コードのアップロードを**両方**行います。
 CloudFormation テンプレートはハンドラをインラインに持てないため、1 ステップで動作する
@@ -135,7 +135,7 @@ bash integrations/grafana/scripts/deploy.sh
 > アラームが通知されるようになります。未設定の場合アラームは通知アクションなしで
 > 作成され、コンソールには表示されますが誰にも通知されません。
 
-### 代替: CloudFormation を手動でデプロイする
+### 代替: CloudFormation の手動デプロイ
 
 CloudFormation テンプレートを使用して Lambda 関数と関連リソースをデプロイします。
 
@@ -634,7 +634,7 @@ count_over_time({job="fsxn-audit"} | json | Result="Failure" [5m])
 
 本セクションでは、Grafana Cloud Loki 統合で発生しうる問題とその解決手順をまとめます。Step 3〜4 で記載したトラブルシューティングの内容を含む、包括的なリファレンスです。
 
-### ログが Grafana に届かない
+### Grafana へのログの不着
 
 Grafana Explore で `{job="fsxn-audit"}` を実行してもログが表示されない場合、以下の 3 つのカテゴリを順に確認してください。
 

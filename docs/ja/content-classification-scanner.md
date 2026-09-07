@@ -123,7 +123,7 @@ for chunk in _chunk_text(file_text, target_bytes=98_000):
 >
 > DynamoDB にレポートを書き込む前に、CloudFormation テンプレートのインライン Lambda コードは `json.loads(json.dumps(report), parse_float=str)` というラウンドトリップを行います — これは `boto3` の DynamoDB リソース API が Python 標準の `float` 値を受け付けない（DynamoDB の数値型は `Decimal` を要求する）ことへの回避策です。この副作用として、`highest_confidence_by_type` の確信度スコアは DynamoDB に**文字列**として保存され、数値としては保存されません。つまり、確信度スコアに対して数値的なフィルタやソートを行う DynamoDB クエリ（数値比較を使う `FilterExpression`、あるいは数値カラムを期待する後続の Athena/QuickSight クエリなど）は、明示的なキャスト処理なしにはこのフィールドに対して機能しません — 文字列 `"0.31"` は文字列 `"0.99"` と、期待するような数値的な比較にはなりません。このレポートテーブルの確信度スコアを基にアナリティクスやダッシュボードを構築する予定がある場合は、`put_item` の呼び出し前に Lambda 側で正しく `Decimal` にキャストして `parse_float=str` の回避策を取り除くか、下流の全クエリでこの文字列型フィールドを明示的に考慮してください。
 
-### エラーハンドリング — 1 ファイルの失敗がスキャン全体を止めない
+### エラーハンドリング — 1 ファイルの失敗では止まらないスキャン
 
 読み取り失敗（`AccessDenied`、`NoSuchKey`）、デコード失敗、Comprehend API エラー（`TextSizeLimitExceededException`、スロットリング）は、例外を発生させずにファイル単位の `error` フィールドに記録されます。問題のある 1 ファイルは記録されてスキップされ、ボリューム内の残りのファイルに対するスキャンは継続されます。
 

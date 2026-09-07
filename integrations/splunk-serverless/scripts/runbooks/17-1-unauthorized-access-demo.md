@@ -163,19 +163,19 @@ python3 docs/screenshots/mask_screenshots.py
 
 ## トラブルシューティング
 
-### Lambda が失敗する
+### Lambda の失敗
 
 1. CloudWatch Logs でエラーメッセージを確認
 2. HEC トークンが有効か確認
 3. S3 Access Point へのアクセス権限を確認
 
-### Splunk で Failure イベントが見つからない
+### Splunk での Failure イベントの不検出
 
 1. 時間範囲を広げて再検索: `earliest=-1h`
 2. Index を確認: `index=fsxn_audit` が正しいか
 3. フィールド名を確認: `result` vs `Result`（大文字小文字）
 
-### result フィールドが表示されない
+### result フィールドの未表示
 
 - **原因**: フィールド抽出が設定されていない
 - **解決**: `| spath` を追加して JSON フィールドを展開

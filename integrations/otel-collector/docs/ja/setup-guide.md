@@ -135,7 +135,7 @@ service:
 
 3 つのシッパー Lambda（監査ログ、EMS、FPolicy）と関連リソースをデプロイします。
 
-### 推奨: デプロイスクリプトを使う
+### 推奨: デプロイスクリプトの利用
 
 他のベンダーと違い、このテンプレートはインラインのプレースホルダではなく S3 から Lambda
 コードを取得します。そのためスタック作成**より前に**パッケージが S3 に存在している必要が
@@ -157,7 +157,7 @@ bash integrations/otel-collector/scripts/deploy.sh
 > アラームが通知されるようになります。未設定の場合アラームは通知アクションなしで作成され、
 > コンソールには表示されますが誰にも通知されません。
 
-### 代替: CloudFormation を手動でデプロイする
+### 代替: CloudFormation の手動デプロイ
 
 先にコードをパッケージしてアップロードします。`LambdaCodeS3Bucket` は必須で、オブジェクト
 が既に存在していなければなりません:
@@ -480,7 +480,7 @@ S3 Access Point → Lambda → Kinesis Data Firehose → OTel Collector → Back
                                     └── バックプレッシャー処理
 ```
 
-### いつ Firehose パスを使用するか
+### Firehose パスを使用する場面
 
 | 条件 | 直接送信 | Firehose パス |
 |------|---------|--------------|

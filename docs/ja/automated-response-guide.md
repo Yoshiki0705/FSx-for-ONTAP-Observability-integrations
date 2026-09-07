@@ -773,7 +773,7 @@ aws lambda delete-layer-version --layer-name fsxn-shared-python --version-number
 | `Volume not found` エラー | ボリュームが存在しないか SVM が違う | ボリューム名と SVM の関連付けを確認 |
 | DLQ メッセージの蓄積 | 繰り返しの失敗 | Lambda CloudWatch Logs で根本原因を確認、DLQ からリプレイ |
 
-### ブロックが効かない
+### ブロックの不発
 
 | 症状 | 原因 | 解決策 |
 |------|------|--------|

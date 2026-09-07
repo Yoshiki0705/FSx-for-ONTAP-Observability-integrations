@@ -571,6 +571,32 @@ The Harvest container configuration has been fully validated:
 
 **Deployment readiness**: Stack 3 is ready for full deployment with Secrets Manager credentials injection.
 
+**What "Validated" excludes here**: the Harvest container and its Prometheus exporter were
+confirmed. The **ADOT sidecar's remote-write to the Prometheus workspace was not**. Harvest
+offers a scrape endpoint and no `remote_write` of its own, so that sidecar is the whole hop
+between collection and storage — and it is the untested half.
+
+### The monitoring plane can look healthy while nothing arrives
+
+Two settings in `templates/observability.yaml` combine into a blind spot worth naming,
+because it is the failure that monitoring stacks are supposed to catch and this one cannot
+catch it in itself:
+
+| Setting | Consequence |
+|---------|-------------|
+| ADOT sidecar is `Essential: false` | Its exit does not stop the task. Harvest keeps scraping ONTAP normally |
+| Harvest `HealthCheck` is commented out | Nothing asserts that `:12990/metrics` still answers |
+
+Together: **the task reports healthy, Harvest collects, and metrics stop reaching the
+workspace, with nothing reporting it.** Collection running and delivery arriving are two
+different facts, and this configuration only observes the first.
+
+Detecting it has to come from outside this task — an absence-of-data alarm on the Prometheus
+workspace side, not a container health check, because the container is not what failed. Note
+that `DesiredCount` is `0` in the committed template, so the service is deliberately not
+running until someone scales it up; do not read a quiet workspace as this failure before
+checking that.
+
 ## Data Classification
 
 | Data Type | Classification | Storage Location | Retention | Access Control |

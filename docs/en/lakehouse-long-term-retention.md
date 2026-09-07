@@ -170,7 +170,7 @@ ORDER BY cnt DESC;
 
 ## Querying with Snowflake (External Table)
 
-Snowflake support reuses the two-phase Storage Integration trust pattern already established in [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations)'s Snowflake integration — adapted here for a standard S3 bucket target rather than an FSx for ONTAP S3 Access Point.
+Snowflake support reuses the two-phase Storage Integration trust pattern already established in [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations)'s Snowflake integration — adapted here for a standard S3 bucket target rather than an FSx for ONTAP S3 Access Point.
 
 ```bash
 # Phase 1: deploy the IAM role with a placeholder (own-account) trust policy
@@ -227,7 +227,7 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 
 ### Architectural Difference from the FSx for ONTAP S3 AP Snowflake Path
 
-Because this pipeline's data lands in a **standard S3 bucket** rather than an FSx for ONTAP S3 Access Point, real Snowpipe auto-ingest (triggered by S3 Event Notifications) is expected to work directly — the `fsxn-lakehouse-integrations` project's Snowflake integration could not use auto-ingest against FSx for ONTAP S3 APs for exactly this reason (S3 Event Notifications are not supported on FSx for ONTAP S3 APs) and had to fall back to FPolicy + Lambda + SNS + Snowpipe REST API, or scheduled `COPY INTO`. This guide's architecture removes that constraint, since the standard S3 destination bucket supports S3 Event Notifications natively. (Snowpipe auto-ingest itself was not exercised in this verification — the External Table path above was — but the underlying S3 Event Notification capability this would depend on is a standard S3 bucket feature, unlike the FSx for ONTAP S3 AP case.)
+Because this pipeline's data lands in a **standard S3 bucket** rather than an FSx for ONTAP S3 Access Point, real Snowpipe auto-ingest (triggered by S3 Event Notifications) is expected to work directly — the `FSx-for-ONTAP-Lakehouse-Integrations` project's Snowflake integration could not use auto-ingest against FSx for ONTAP S3 APs for exactly this reason (S3 Event Notifications are not supported on FSx for ONTAP S3 APs) and had to fall back to FPolicy + Lambda + SNS + Snowpipe REST API, or scheduled `COPY INTO`. This guide's architecture removes that constraint, since the standard S3 destination bucket supports S3 Event Notifications natively. (Snowpipe auto-ingest itself was not exercised in this verification — the External Table path above was — but the underlying S3 Event Notification capability this would depend on is a standard S3 bucket feature, unlike the FSx for ONTAP S3 AP case.)
 
 ## Verified Deployment Paths
 
@@ -323,4 +323,4 @@ If a stack deletion still fails after following the above (e.g. a `DELETE_FAILED
 - [Data Classification Guide](data-classification.md)
 - [Pipeline SLO Definitions](pipeline-slo.md)
 - [Lakehouse Monitoring Patterns](lakehouse-monitoring-patterns.md) — operational metrics for FSx for ONTAP + lakehouse integrations (a different concern: monitoring the pipeline's health, not querying the audit data itself)
-- [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) — the sibling project this guide's Snowflake pattern and Athena/Glue IAM conventions are adapted from
+- [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) — the sibling project this guide's Snowflake pattern and Athena/Glue IAM conventions are adapted from

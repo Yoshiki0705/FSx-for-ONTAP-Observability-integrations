@@ -140,7 +140,7 @@ This solution does not aim to replace these options; it offers a serverless alte
 
 ## Resources
 
-- [GitHub Repository](https://github.com/Yoshiki0705/fsxn-observability-integrations)
+- [GitHub Repository](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations)
 - [PoC Success Criteria](poc-success-criteria.md)
 - [Vendor Comparison](vendor-comparison.md)
 - [Security Best Practices](security-best-practices.md)

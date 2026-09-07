@@ -98,6 +98,55 @@ point policy exists. The wording points at IAM; the cause is the network origin.
 > A successful `HeadBucket` combined with `AccessDenied` on `ListObjectsV2` is the
 > signature of unreachable AD DCs, not an IAM or policy problem.
 
+## One collector or one per site
+
+The question that decides the shape of a multi-file-system or multi-site deployment
+is **which side opens the connection**, not how many sites there are. Adding a site
+is the same kind of change as adding an account for every mechanism here except one.
+
+| Mechanism | Direction | One central collector | What pins it |
+|-----------|-----------|----------------------|--------------|
+| S3 access point audit polling | pull | yes | only the access point's network origin |
+| ONTAP REST polling (quota, response) | pull | in-VPC, not per-site | a private management IP |
+| Harvest → ONTAP management endpoint | pull | yes | nothing; endpoints are a list |
+| EMS webhook | push | yes | nothing here; ONTAP needs an egress path to the public API Gateway URL |
+| **FPolicy** | push | **no** | ONTAP holds the engine's **IP address**, and ingress is from the SVM's own security group |
+
+Pull-mode collection is a list, not a topology. The management console takes
+`OntapManagementEndpoints` as a comma-separated parameter and runs one poller per
+endpoint inside a single task, and the audit shipper Lambda runs with no VPC
+configuration at all. AWS sizes a single Harvest instance up to 40+ file systems
+rather than adding instances.
+
+**FPolicy is the exception, and reachability does not fix it.** ONTAP connects out to
+a specific address on TCP 9898, so a second site needs its own engine no matter how
+much routing you add on the collector side. `shared/scripts/fpolicy-update-engine-ip.sh`
+exists because that address changes when the task restarts.
+
+### Which layer fails first
+
+Recorded in this order, which matters because it decides what a team concludes:
+
+1. **Reachability, as a timeout rather than an error.** The Gateway-Endpoint row in
+   the matrix above. Nothing logs a refusal; the invocation runs out of time.
+2. **Authorization, wearing the wrong label.** Both shapes above — the VPC-origin
+   `explicit deny in a resource-based policy` with no policy present, and the
+   AD-joined `HeadBucket` 200 next to `ListObjectsV2` `AccessDenied`.
+3. **Throughput did not appear.** No throughput failure is recorded in this
+   repository, and none is attributable to centralizing collection. The measured
+   numbers in [the S3 AP throughput benchmark](s3ap-throughput-benchmark.md) are a
+   sizing reference for one environment, not a ceiling.
+
+So the answer to "is this a network change or an architecture change" is **a network
+change for every path except FPolicy**. That is a narrow correct answer rather than a
+wrong one, and the narrowness only shows up when FPolicy is added — the failure a
+team meets first is a network one, so "network change" holds until it does not.
+
+> **Evidence note**: items 1 and 2 are measured in our environment and are the two
+> most common deployment failures here. The topology table is read from the
+> templates, not from a deployment spanning two sites — **no cross-site placement has
+> been measured**, on either side of this comparison.
+
 ## Alarm notifications
 
 Every stack creates CloudWatch alarms for Lambda errors and dead-letter queue

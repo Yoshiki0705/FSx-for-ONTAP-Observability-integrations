@@ -237,13 +237,46 @@ def _inject_code_block_content_difference(content: str) -> str:
     return content
 
 
+def _fenced_line_numbers(lines: list[str]) -> set[int]:
+    """Indices of lines inside a fenced code block, fence markers included.
+
+    Both table injectors below look for "starts with | and ends with |", which a single
+    `|` inside a ```bash block satisfies. Injecting there edits a code block instead of a
+    table, so the comparator correctly reports a `code_block` difference and the test's
+    assertion on a `table` difference fails — a defect in the generator, not in the
+    comparator. Found by hypothesis with the falsifying example:
+
+        ```bash
+        |
+        ```
+
+        | 0 | 0 |
+        | --- | --- |
+        | 0 | 0 |
+    """
+    fenced: set[int] = set()
+    in_fence = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            fenced.add(i)
+            continue
+        if in_fence:
+            fenced.add(i)
+    return fenced
+
+
 def _inject_table_row_count_mismatch(content: str) -> str:
-    """Add an extra row to the first table found."""
+    """Add an extra row to the first table found, ignoring fenced blocks."""
     lines = content.split("\n")
+    fenced = _fenced_line_numbers(lines)
     in_table = False
     last_table_line = -1
 
     for i, line in enumerate(lines):
+        if i in fenced:
+            continue
         stripped = line.strip()
         if stripped.startswith("|") and stripped.endswith("|"):
             in_table = True
@@ -261,17 +294,20 @@ def _inject_table_row_count_mismatch(content: str) -> str:
 
 
 def _inject_table_column_count_mismatch(content: str) -> str:
-    """Add an extra column to all rows of the first table found.
+    """Add an extra column to all rows of the first table found, ignoring fenced blocks.
 
     Inserts a new pipe-delimited column before the trailing pipe
     in each row of the first table, creating a column count mismatch.
     """
     lines = content.split("\n")
+    fenced = _fenced_line_numbers(lines)
     in_table = False
     table_start = -1
     table_end = -1
 
     for i, line in enumerate(lines):
+        if i in fenced:
+            continue
         stripped = line.strip()
         if stripped.startswith("|") and stripped.endswith("|"):
             if not in_table:

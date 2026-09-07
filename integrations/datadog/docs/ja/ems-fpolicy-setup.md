@@ -122,7 +122,7 @@ aws cloudformation deploy \
 | SQS イベントソースマッピング | FPolicy 主経路、`ReportBatchItemFailures` 付き |
 | 4 つの CloudWatch アラーム | EMS エラー、FPolicy エラー、FPolicy スロットル、DLQ 深度 |
 
-### 失敗したイベントは実際どこへ行くのか
+### 失敗したイベントの実際の行き先
 
 ここは誤解されやすいので正確に記します。3 つの配送経路があり、それぞれ失敗の挙動が異なります。
 
@@ -171,7 +171,7 @@ event notification create \
   -destinations datadog-webhook
 ```
 
-### 2.3 転送するイベントを選ぶ
+### 2.3 転送するイベントの選択
 
 EMS イベントをすべて転送するとノイズになります。セキュリティ用途で価値が高いのは
 アンチランサムウェアと可用性関連のイベントです。
@@ -245,7 +245,7 @@ aws logs tail /aws/lambda/fsxn-datadog-ems-fpolicy-fpolicy --follow
 
 ## トラブルシューティング
 
-### EMS イベントが届かない
+### EMS イベントの不着
 
 1. ONTAP は Webhook 宛先に**信頼された CA** を要求します。自己署名証明書は
    ONTAP 側でサイレントに拒否されます。
@@ -272,7 +272,7 @@ aws sqs get-queue-attributes \
   --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible
 ```
 
-### 同じ FPolicy イベントが繰り返し配送される
+### 同一 FPolicy イベントの重複配送
 
 パースできないメッセージは、破棄せずキューの redrive ポリシーで DLQ に移動させるため
 failure として報告されます。`maxReceiveCount` に達するまではリトライされ、
@@ -283,7 +283,7 @@ failure として報告されます。`maxReceiveCount` に達するまではリ
 aws sqs receive-message --queue-url <ingestion-dlq-url> --max-number-of-messages 1
 ```
 
-### partial batch failure が機能しない
+### partial batch failure の不動作
 
 イベントソースマッピングに `FunctionResponseTypes: [ReportBatchItemFailures]` が
 設定されている必要があります。無い場合、ハンドラの `batchItemFailures` レスポンスは

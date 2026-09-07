@@ -26,12 +26,18 @@
 #   - jq
 #   - AWS CLI (for AMP workspace ID resolution)
 #
-# Dashboard Categories (minimum 20 dashboards, 3+ per category):
+# Dashboard Categories:
 #   - Volume Performance: IOPS, throughput, latency, top volumes
 #   - Aggregate Utilization: capacity, used space, available space, growth
 #   - SVM Health: state, protocols, connections, operations
 #   - Network Interfaces: throughput, errors, status, packets
-#   - Disk Status: health, utilization, errors, spare count
+#
+# There is no Disk Status category. It was here until 2026-09-07, importing four disk
+# dashboards into a folder named for them. AWS classifies `ONTAP: Disk` as unsupported on
+# FSx for ONTAP -- the physical layer is not exposed -- so those panels have no metrics
+# behind them. A folder that exists and stays empty reads as a broken import rather than as
+# a capability the platform does not offer.
+# See management-console/harvest/dashboards/README.md for the full 19 / 8 / 10 split.
 #
 set -euo pipefail
 
@@ -44,14 +50,13 @@ DEFAULT_REGION="${AWS_REGION:-ap-northeast-1}"
 
 # Dashboard definitions by category
 # These correspond to Harvest's pre-built Grafana dashboards for ONTAP
-CATEGORIES="volume_performance aggregate_utilization svm_health network_interfaces disk_status"
+CATEGORIES="volume_performance aggregate_utilization svm_health network_interfaces"
 
 # Dashboards per category (space-separated filenames)
 DASHBOARDS_volume_performance="volume_performance.json volume_iops.json volume_throughput.json volume_latency.json volume_top_n.json"
 DASHBOARDS_aggregate_utilization="aggregate_capacity.json aggregate_utilization.json aggregate_growth.json aggregate_space_savings.json"
 DASHBOARDS_svm_health="svm_overview.json svm_nfs_operations.json svm_cifs_operations.json svm_iscsi_operations.json"
 DASHBOARDS_network_interfaces="network_lif_throughput.json network_lif_errors.json network_port_status.json network_lif_packets.json"
-DASHBOARDS_disk_status="disk_health.json disk_utilization.json disk_errors.json disk_spare_count.json"
 
 # Helper: get dashboards for a category
 get_dashboards_for_category() {
@@ -501,7 +506,6 @@ main() {
   local folder_id_aggregate_utilization=""
   local folder_id_svm_health=""
   local folder_id_network_interfaces=""
-  local folder_id_disk_status=""
 
   for category in $CATEGORIES; do
     local folder_title

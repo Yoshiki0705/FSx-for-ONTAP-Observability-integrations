@@ -405,7 +405,7 @@ bash deploy.sh --skip-dashboard-import
 
 ### カスタムドメイン関連
 
-#### DNS が解決されない
+#### DNS の名前解決の失敗
 
 **症状**: `dig console.example.com` が NXDOMAIN を返す
 
@@ -459,7 +459,7 @@ aws acm describe-certificate \
 
 ### RBAC 関連
 
-#### 書き込み操作が「Insufficient permissions」でブロックされる
+#### 書き込み操作の「Insufficient permissions」によるブロック
 
 **症状**: 管理者ユーザーなのに書き込み操作がブロックされる
 
@@ -481,7 +481,7 @@ aws cognito-idp admin-add-user-to-group \
 
 > グループ変更後、ユーザーは再ログインが必要です（OIDC トークンの更新のため）。
 
-#### 全ユーザーが管理者権限を持ってしまう
+#### 全ユーザーへの管理者権限の付与
 
 **症状**: 閲覧者グループのユーザーも書き込み操作が可能
 
@@ -492,7 +492,7 @@ aws cognito-idp admin-add-user-to-group \
 - 各書き込みワークフロー（snapshot-restore, flexclone-management, volume-management, arp-dashboard）に RBAC チェックが含まれていることを確認
 - ToolJet のワークフローを再インポートする
 
-#### 初期管理者ユーザーにメールが届かない
+#### 初期管理者ユーザーへのメールの不着
 
 **症状**: `ADMIN_EMAIL` を設定してデプロイしたが、一時パスワードのメールが届かない
 
@@ -517,7 +517,7 @@ aws cognito-idp admin-set-user-password \
 
 ### ダッシュボード自動プロビジョニング関連
 
-#### ダッシュボードがインポートされない
+#### ダッシュボードの未インポート
 
 **症状**: デプロイ完了後、AMG にダッシュボードが表示されない
 
@@ -547,7 +547,7 @@ aws secretsmanager describe-secret \
 - 3 回のリトライ後も失敗する場合は、時間をおいて再デプロイ
 - ダッシュボード数が多い場合は、複数回に分けてデプロイを検討
 
-#### S3 バケットにダッシュボード JSON がアップロードされない
+#### S3 バケットへのダッシュボード JSON の未アップロード
 
 **症状**: Lambda ログに「No dashboard files found in S3」と記録される
 

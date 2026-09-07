@@ -171,7 +171,7 @@ aws iam get-role-policy --role-name <lambda-role> --policy-name S3AccessPointRea
 aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 ```
 
-### 症状: ListObjectsV2 が空の結果を返す
+### 症状: ListObjectsV2 が返す空の結果
 
 **原因候補**:
 - Prefix が間違っている（FSx for ONTAP のパス構造は `/` 始まりではない）
@@ -209,7 +209,7 @@ aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 
 包括的な互換性マトリクス、検証済みパターン、既知の制約（2026年5月 AWS サポート確認済み）については以下を参照:
 
-📋 **[FSx for ONTAP S3 AP 互換性マトリクス](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md)**
+📋 **[FSx for ONTAP S3 AP 互換性マトリクス](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/compatibility-matrix.md)**
 
 本プロジェクトに関連する主要な制約:
 
@@ -224,7 +224,7 @@ aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 | Presigned URL: 公式非対応 | 実際には動作するが保証なし | 非クリティカルパスのみ使用、IAM ベースアクセスを推奨 |
 | ONTAP 9.17.1+ 必須 | S3 Access Points の最小バージョン | デプロイ前に FSx ファイルシステムの ONTAP バージョンを確認 |
 
-プラットフォーム固有の互換性（Athena, Glue, EMR, Databricks, Snowflake, Bedrock）を含む完全なマトリクスは[完全版ドキュメント](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/en/compatibility-matrix.md)を参照。
+プラットフォーム固有の互換性（Athena, Glue, EMR, Databricks, Snowflake, Bedrock）を含む完全なマトリクスは[完全版ドキュメント](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/compatibility-matrix.md)を参照。
 
 ### ListObjectsV2 レイテンシ — 「30-80 倍」の記述は撤回
 
@@ -239,8 +239,8 @@ aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 
 **測定条件**: ap-northeast-1、SINGLE_AZ_1 ファイルシステム、SSD 1024GB、スループット 128MBps、UNIX security style ボリューム、Internet-origin アクセスポイント。データ点ごとに warm-up 1 回を破棄した上で記録試行 5 回の median。計測範囲はページネーションされた `ListObjectsV2` ループのみで、クライアント生成・認証解決・オブジェクト投入は除外しています。リトライは無効化（`max_attempts=1`）し、遅い呼び出しが再試行で隠れないようにしています。フラット構造とネスト構造（2 階層・leaf あたり 10 オブジェクト）で同じ比率になりました。
 
-- エビデンス: [`verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml)
-- 再現スクリプト: [`shared/scripts/benchmark_list_objects.py`](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/shared/scripts/benchmark_list_objects.py)
+- エビデンス: [`verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml`](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml)
+- 再現スクリプト: [`shared/scripts/benchmark_list_objects.py`](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/shared/scripts/benchmark_list_objects.py)
 
 **測定範囲の限界 — 大規模ディレクトリは未測定です。** 測定は 5,000 オブジェクトで打ち切っており、単一 prefix 配下に数十万〜数百万件が存在する場合の挙動は測定していません。ONTAP は `ListObjectsV2` が要求する辞書順を得るためにディレクトリエントリをインメモリでソートするため、リスト処理のコストはディレクトリ規模に応じて増加します。したがって大規模データセットではファイル統合とキー空間のパーティション化が引き続き推奨される設計です。ただしその判断根拠はディレクトリ規模とインメモリソートであり、再現しなかった小規模でのレイテンシペナルティではありません。
 

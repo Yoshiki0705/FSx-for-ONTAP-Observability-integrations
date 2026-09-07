@@ -195,12 +195,12 @@ aws logs tail \
 
 ## トラブルシューティング
 
-### Lambda がイベントを受信しない
+### Lambda でのイベントの未受信
 
 - **原因**: EventBridge ルールのターゲット設定が不正
 - **解決**: `aws events list-targets-by-rule` でターゲット Lambda ARN を確認
 
-### HEC 送信が失敗する
+### HEC 送信の失敗
 
 - **原因**: HEC トークンが無効、エンドポイント接続不可
 - **解決**: Secrets Manager のトークンと HEC エンドポイントの接続性を確認

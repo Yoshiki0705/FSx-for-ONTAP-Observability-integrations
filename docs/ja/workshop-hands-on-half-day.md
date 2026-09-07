@@ -43,8 +43,8 @@ aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE --region ap
 ### リポジトリのクローン
 
 ```bash
-git clone https://github.com/Yoshiki0705/fsxn-observability-integrations.git
-cd fsxn-observability-integrations
+git clone https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
+cd FSx-for-ONTAP-Observability-integrations
 ```
 
 ### ベンダーの選択
@@ -224,14 +224,14 @@ Production Readiness Levels をレビュー：
 
 ### レビュー: Pipeline SLO
 
-[Pipeline SLO ドキュメント](https://github.com/Yoshiki0705/fsxn-observability-integrations/blob/main/docs/ja/pipeline-slo.md) をウォークスルー：
+[Pipeline SLO ドキュメント](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/pipeline-slo.md) をウォークスルー：
 - 配信レイテンシ目標
 - データ損失率目標
 - Level 1 から Level 2 への Go/No-Go 基準
 
 ### レビュー: データ分類
 
-[データ分類ガイド](https://github.com/Yoshiki0705/fsxn-observability-integrations/blob/main/docs/ja/data-classification.md) をウォークスルー：
+[データ分類ガイド](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/data-classification.md) をウォークスルー：
 - どのフィールドが PII か？
 - どの取り扱いパターンが要件に適合するか？
 - ベンダーは必要なデータレジデンシーをサポートしているか？
@@ -256,7 +256,7 @@ bash integrations/<vendor>/scripts/cleanup.sh --all
 
 ### 持ち帰り資料
 
-- [ ] リポジトリリンク: github.com/Yoshiki0705/fsxn-observability-integrations
+- [ ] リポジトリリンク: github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations
 - [ ] PoC 成功基準テンプレート（Module 5 で記入済み）
 - [ ] Pipeline SLO ドキュメント
 - [ ] データ分類ガイド

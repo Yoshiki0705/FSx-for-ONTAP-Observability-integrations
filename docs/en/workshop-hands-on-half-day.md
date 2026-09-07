@@ -43,8 +43,8 @@ aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE --region ap
 ### Clone Repository
 
 ```bash
-git clone https://github.com/Yoshiki0705/fsxn-observability-integrations.git
-cd fsxn-observability-integrations
+git clone https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
+cd FSx-for-ONTAP-Observability-integrations
 ```
 
 ### Choose Your Vendor
@@ -222,14 +222,14 @@ Review the Production Readiness Levels:
 
 ### Review: Pipeline SLO
 
-Walk through the [Pipeline SLO document](https://github.com/Yoshiki0705/fsxn-observability-integrations/blob/main/docs/en/pipeline-slo.md):
+Walk through the [Pipeline SLO document](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/pipeline-slo.md):
 - Delivery latency targets
 - Data loss rate targets
 - Go/No-Go criteria for Level 1 to Level 2
 
 ### Review: Data Classification
 
-Walk through the [Data Classification Guide](https://github.com/Yoshiki0705/fsxn-observability-integrations/blob/main/docs/en/data-classification.md):
+Walk through the [Data Classification Guide](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/data-classification.md):
 - Which fields are PII?
 - What handling pattern fits your requirements?
 - Does your vendor support the needed data residency?
@@ -254,7 +254,7 @@ bash integrations/<vendor>/scripts/cleanup.sh --all
 
 ### Take-Home Materials
 
-- [ ] Repository link: github.com/Yoshiki0705/fsxn-observability-integrations
+- [ ] Repository link: github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations
 - [ ] PoC Success Criteria template (filled in during Module 5)
 - [ ] Pipeline SLO document
 - [ ] Data Classification Guide

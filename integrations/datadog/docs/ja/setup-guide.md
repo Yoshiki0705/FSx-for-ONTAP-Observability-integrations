@@ -147,7 +147,7 @@ VPC-origin のアクセスポイントは、アクセスポイントポリシー
 
 ## Step 3: デプロイ
 
-### 3.1 推奨: デプロイスクリプトを使う
+### 3.1 推奨: デプロイスクリプトの利用
 
 このスクリプトはスタックをデプロイし、**かつ** CloudFormation ではインライン化できない
 実際の Lambda コードをアップロードします。特別な理由がなければこちらを使ってください。
@@ -421,7 +421,7 @@ ONTAP は監査レコードをステージングファイルに書き込み、�
 vserver audit rotate -vserver <svm-name>
 ```
 
-### 5.3 任意: ONTAP のローテーションを待たずに検証する
+### 5.3 任意: ONTAP のローテーションを待たない検証
 
 ONTAP は監査レコードをステージングファイルからローテーションするまで読み取り可能にしないため、
 アクセスの少ないシステムでは時間がかかります。パイプライン全体を即座に検証するには、
@@ -489,7 +489,7 @@ aws logs tail /aws/lambda/fsxn-datadog-integration-shipper --follow
 
 ## トラブルシューティング
 
-### Lambda が NotImplementedError を投げる
+### Lambda が投げる NotImplementedError
 
 placeholder コードがまだデプロイされています。[Step 3.3](#33-実際の-lambda-コードをアップロード必須)
 を参照するか、以下を実行してください。
@@ -498,7 +498,7 @@ placeholder コードがまだデプロイされています。[Step 3.3](#33-�
 bash integrations/datadog/scripts/deploy.sh --code-only
 ```
 
-### AccessDenied "explicit deny in a resource-based policy" が出る
+### AccessDenied "explicit deny in a resource-based policy" の発生
 
 アクセスポイントが VPC-origin で Lambda が VPC 外にある（またはその逆）状態です。
 文言に反してアクセスポイントポリシーは関係ありません。
@@ -506,7 +506,7 @@ bash integrations/datadog/scripts/deploy.sh --code-only
 `VpcEnabled` を合わせてください。オリジンは変更できないため、別のオリジンが必要な場合は
 アクセスポイントを新規作成します。
 
-### Datadog にログが表示されない
+### Datadog でのログの未表示
 
 1. **Lambda エラーを確認**:
    ```bash
@@ -531,7 +531,7 @@ bash integrations/datadog/scripts/deploy.sh --code-only
 5. **Datadog サイトを確認**: Lambda 環境変数 `DATADOG_SITE` が正しいサイトを指していることを
    確認します。日本リージョンでは `ap1.datadoghq.com` を使用します。
 
-### チェックポイントが進まない
+### チェックポイントの停滞
 
 シッパーは配送できなかった最初のファイルで意図的に停止します。そこを飛ばして進めると
 その監査レコードが恒久的に失われるためです。Lambda ログから失敗したキーを特定し、
@@ -554,7 +554,7 @@ aws ssm put-parameter \
 
 [checkpoint-stale.md](../../../../docs/ja/runbooks/checkpoint-stale.md) も参照してください。
 
-### 同じログが Datadog に 2 回現れる
+### Datadog での同一ログの二重出現
 
 チェックポイントが永続化されていません。Lambda ログで `Failed to update checkpoint` を
 確認してください（通常は `ssm:PutParameter` 権限の不足）。あわせて環境変数

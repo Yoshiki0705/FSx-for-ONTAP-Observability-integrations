@@ -146,17 +146,17 @@ ONTAP から Lambda への Webhook 呼び出し自体は `x-api-key` ヘッダ�
 
 ## トラブルシューティング
 
-### スタックが CREATE_FAILED になる
+### スタックの CREATE_FAILED 遷移
 
 - **原因**: IAM ロール名の競合、パラメータ不正（`S3AccessPointArn` / `SplunkHecTokenSecretArn` 等の必須パラメータ未指定）
 - **解決**: `aws cloudformation describe-stack-events` でエラー詳細を確認
 
-### API Gateway が作成されない
+### API Gateway の未作成
 
 - **原因**: テンプレートの `AWS::ApiGatewayV2::Api` 定義に問題
 - **解決**: テンプレートの `EmsHttpApi` / `EmsHttpApiIntegration` / `EmsHttpApiRoute` リソースを確認
 
-### Lambda が 401 を返す
+### Lambda が返す 401
 
 - **原因**: `x-api-key` ヘッダーが未指定、または `EmsApiKeySecretArn` の値と不一致
 - **解決**: `ems_handler.py` の `_validate_api_key` ロジックと Secrets Manager の値を確認

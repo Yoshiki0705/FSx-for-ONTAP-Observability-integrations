@@ -172,24 +172,24 @@ security anti-ransomware volume show -vserver <svm-name> -volume <volume-name>
 
 ## トラブルシューティング
 
-### ARP シミュレーションが失敗する
+### ARP シミュレーションの失敗
 
 - **原因**: ARP が `enabled` 状態でない（learning-mode 中）
 - **解決**: `security anti-ransomware volume show` で状態を確認し、learning 完了を待つ
 
-### EMS イベントが発行されない
+### EMS イベントの未発行
 
 - **原因**: EMS 宛先設定が不正
 - **解決**: `event destination show` で Webhook 宛先が設定されているか確認
 
-### 120 秒以内に Splunk に到着しない
+### 120 秒以内の Splunk 到着の不成立
 
 1. Lambda CloudWatch Logs でエラーを確認
 2. HEC エンドポイントの接続性を確認
 3. API Gateway のアクセスログを確認
 4. ONTAP EMS 宛先の HTTP 設定を確認
 
-### HEC レスポンスが Success でない
+### HEC レスポンスの Success 不一致
 
 | レスポンス | 原因 | 対応 |
 |-----------|------|------|

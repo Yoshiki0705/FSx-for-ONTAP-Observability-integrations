@@ -151,12 +151,12 @@ index=fsxn_audit sourcetype=fsxn:ontap:audit
 3. Index 名が正しいか確認（`fsxn_audit`）
 4. 時間範囲を広げて再検索
 
-### フィールドが表示されない
+### フィールドの未表示
 
 - **原因**: イベントが展開されていない
 - **解決**: イベント行の左側の `>` をクリックして展開
 
-### sourcetype が異なる
+### sourcetype の不一致
 
 - **原因**: HEC トークン設定で sourcetype が正しく設定されていない
 - **解決**: Task 14.2 の HEC トークン設定を再確認

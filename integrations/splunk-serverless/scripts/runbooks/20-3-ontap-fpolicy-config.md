@@ -195,14 +195,14 @@ vserver fpolicy policy external-engine show-connected \
 - **原因**: SVM 名が不正、ポート番号が範囲外
 - **解決**: `vserver show` で SVM 名を確認
 
-### KeepAlive メッセージが表示されない
+### KeepAlive メッセージの未表示
 
 1. **ネットワーク接続を確認**: ONTAP SVM から Fargate タスク IP:9898 への TCP 接続が可能か
 2. **セキュリティグループを確認**: Fargate タスクの SG で TCP:9898 インバウンドが許可されているか
 3. **Fargate タスク状態を確認**: タスクが Running かつ Healthy か
 4. **外部エンジン接続状態を確認**: `vserver fpolicy policy external-engine show-connected`
 
-### 接続が切断される
+### 接続の切断
 
 - **原因**: Fargate タスクが再起動した（IP 変更）
 - **解決**: 新しい Fargate タスク IP を取得し、外部エンジンを更新:
@@ -211,7 +211,7 @@ vserver fpolicy policy external-engine show-connected \
   bash shared/scripts/fpolicy-update-engine-ip.sh --auto
   ```
 
-### FPolicy ポリシーが有効化できない
+### FPolicy ポリシーの有効化の不可
 
 - **原因**: イベントまたはエンジンの参照が不正
 - **解決**: `vserver fpolicy policy show` でポリシー設定を確認

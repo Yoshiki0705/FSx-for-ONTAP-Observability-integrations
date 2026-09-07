@@ -230,27 +230,27 @@ aws cloudformation deploy \
 
 ## トラブルシューティング
 
-### ECS タスクが起動しない
+### ECS タスクの起動失敗
 
 - **原因**: ECR イメージの取得失敗、リソース不足、アーキテクチャ不一致（イメージが `linux/arm64` でビルドされている等）
 - **解決**: ECS イベントログを確認: `aws ecs describe-services --cluster ... --query 'services[0].events[:5]'`。イメージを `shared/fpolicy-server/build-and-push.sh` で `linux/amd64` として再ビルド
 
-### Fargate タスクが STOPPED になる
+### Fargate タスクの STOPPED 遷移
 
 - **原因**: コンテナのヘルスチェック失敗、OOM
 - **解決**: CloudWatch Logs でコンテナログを確認
 
-### セキュリティグループで接続が拒否される
+### セキュリティグループによる接続の拒否
 
 - **原因**: TCP:9898 のインバウンドルールが不足
 - **解決**: Fargate タスクの SG に FSx for ONTAP SVM SG からの TCP:9898 を許可
 
-### EventBridge カスタムバスが作成されない
+### EventBridge カスタムバスの未作成
 
 - **原因**: テンプレートの EventBridge リソース定義に問題
 - **解決**: CloudFormation イベントでエラー詳細を確認
 
-### Splunk シッパー Lambda が SQS イベントを受け取らない
+### Splunk シッパー Lambda での SQS イベントの未受信
 
 - **原因**: `FPolicySqsQueueArn` パラメータが未指定または誤り（`HasFPolicySqsQueue` Condition が false のままだと `FPolicySqsEventSourceMapping` が作成されない）
 - **解決**: `aws cloudformation describe-stacks --stack-name fsxn-splunk-fpolicy` で実際に渡されたパラメータを確認し、Step 10 の `FP_SQS_ARN` が正しく解決されているか確認

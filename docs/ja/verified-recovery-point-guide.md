@@ -388,7 +388,7 @@ Lambda 実行ロールには以下が必要です:
 
 ---
 
-## デプロイ前チェック: 既存の VPC Endpoint を確認する
+## デプロイ前チェック: 既存の VPC Endpoint の確認
 
 これは本スタックで最も頻発するデプロイ失敗であり、しかもエラーメッセージを一読しただけでは診断を誤りやすい形で失敗します。同じ VPC 内に、同じサービス向けの Interface VPC Endpoint が `PrivateDnsEnabled: true` で既に存在する場合、CloudFormation は**2 つ目**の Interface Endpoint 作成を拒否します。両方の Endpoint が同じプライベート DNS ドメイン（例: `secretsmanager.<region>.amazonaws.com`）を VPC 内に登録しようとするためです。エラーメッセージは競合している DNS ドメイン名を示しますが、それを既に登録しているリソースの名前は示さないため、見当違いの場所を調査してしまいがちです。
 
@@ -468,18 +468,18 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-3 つの `CreateXxxEndpoint` の値は、上記の[デプロイ前チェック](#デプロイ前チェック-既存の-vpc-endpoint-を確認する)の表に従って設定してください — `describe-vpc-endpoints` による確認を行わずにデフォルト値のままデプロイしないでください。
+3 つの `CreateXxxEndpoint` の値は、上記の[デプロイ前チェック](#デプロイ前チェック-既存の-vpc-endpoint-の確認)の表に従って設定してください — `describe-vpc-endpoints` による確認を行わずにデフォルト値のままデプロイしないでください。
 
 スタックが作成するリソース:
 - Step Functions ステートマシン（`{stack-name}-workflow`）。`AttachAccessPoint` には実測した FSx for ONTAP 同期遅延に合わせてサイジングした `Retry` ブロックが設定されています（上記「検証の仕組み」のステップ2参照）
 - Lambda 関数 5 個（create-clone、attach-ap、scan、record-verdict、cleanup）— VPC 内で実行されるのは `create-clone` と `scan` のみで、`attach-ap`、`record-verdict`、`cleanup` は VPC 外で実行されます（上記[ネットワークアクセス](#ネットワークアクセス)参照）
 - DynamoDB 台帳テーブル（`{stack-name}-ledger`）
 - ステートマシン用 CloudWatch Logs（365 日保持）、各 Lambda 用 CloudWatch Logs（90 日保持。record-verdict はコンプライアンスエビデンスも兼ねるため 365 日保持）
-- `true` のままにした Secrets Manager・STS（Interface）・S3 Gateway の各 VPC Endpoint — どの Lambda がどの Endpoint を必要とするかは上記[ネットワークアクセス](#ネットワークアクセス)、それぞれを独立して選ぶ方法は[デプロイ前チェック](#デプロイ前チェック-既存の-vpc-endpoint-を確認する)を参照
+- `true` のままにした Secrets Manager・STS（Interface）・S3 Gateway の各 VPC Endpoint — どの Lambda がどの Endpoint を必要とするかは上記[ネットワークアクセス](#ネットワークアクセス)、それぞれを独立して選ぶ方法は[デプロイ前チェック](#デプロイ前チェック-既存の-vpc-endpoint-の確認)を参照
 
 > **変更管理に関する補足**
 >
-> 変更承認プロセス向けに、本デプロイが触れるものと触れないものを明確にしておきます — 本デプロイは新規かつ追加的なリソース（新しい Step Functions ステートマシン、新しい Lambda 群、新しい DynamoDB テーブル、選択した VPC Endpoint）のみを作成し、FSx for ONTAP ファイルシステム本体、既存の ONTAP ボリューム、あるいは既存の VPC ネットワーク構成は一切変更しません。デプロイ失敗時の影響範囲はこれらの新規リソースに限定され、`cloudformation delete-stack` によるロールバックは本番ストレージに一切触れずにこれらを削除します。変更チケットで明記すべき唯一の共有状態リスクは次の点です: いずれかの `CreateXxxEndpoint` パラメータを `true` のままにした対象サービスについて、対象 VPC に既に別のスタック（例: `automated-response.yaml` の VPC、あるいは中央管理された共有サービス VPC — 上記の Route53 プライベートホストゾーンに関する補足を参照）による Interface Endpoint が存在している場合、本デプロイは既存の Endpoint を暗黙的に再利用するのではなく、重複 Endpoint の DNS 競合でスタック全体がロールバックします。この確認は最初の失敗後に後追いで行うのではなく、変更チケットのデプロイ前検証の一部として[デプロイ前チェック](#デプロイ前チェック-既存の-vpc-endpoint-を確認する)を実行してください。
+> 変更承認プロセス向けに、本デプロイが触れるものと触れないものを明確にしておきます — 本デプロイは新規かつ追加的なリソース（新しい Step Functions ステートマシン、新しい Lambda 群、新しい DynamoDB テーブル、選択した VPC Endpoint）のみを作成し、FSx for ONTAP ファイルシステム本体、既存の ONTAP ボリューム、あるいは既存の VPC ネットワーク構成は一切変更しません。デプロイ失敗時の影響範囲はこれらの新規リソースに限定され、`cloudformation delete-stack` によるロールバックは本番ストレージに一切触れずにこれらを削除します。変更チケットで明記すべき唯一の共有状態リスクは次の点です: いずれかの `CreateXxxEndpoint` パラメータを `true` のままにした対象サービスについて、対象 VPC に既に別のスタック（例: `automated-response.yaml` の VPC、あるいは中央管理された共有サービス VPC — 上記の Route53 プライベートホストゾーンに関する補足を参照）による Interface Endpoint が存在している場合、本デプロイは既存の Endpoint を暗黙的に再利用するのではなく、重複 Endpoint の DNS 競合でスタック全体がロールバックします。この確認は最初の失敗後に後追いで行うのではなく、変更チケットのデプロイ前検証の一部として[デプロイ前チェック](#デプロイ前チェック-既存の-vpc-endpoint-の確認)を実行してください。
 
 > **リソースタグ付けに関する補足**
 >

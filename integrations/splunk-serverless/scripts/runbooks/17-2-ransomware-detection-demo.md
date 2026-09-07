@@ -184,29 +184,29 @@ python3 docs/screenshots/mask_screenshots.py
 
 ## トラブルシューティング
 
-### API Gateway が 401 を返す
+### API Gateway が返す 401
 
 - **原因**: API キーが無効または未設定
 - **解決**: Secrets Manager の API キーと `x-api-key` ヘッダーの値が一致するか確認
 
-### API Gateway が 400 を返す
+### API Gateway が返す 400
 
 - **原因**: EMS ペイロードに必須フィールドが不足
 - **解決**: `message-name`, `message-severity`, `message-timestamp` が含まれているか確認
 
-### API Gateway が 502 を返す
+### API Gateway が返す 502
 
 - **原因**: Splunk HEC エンドポイントに接続できない
 - **解決**: HEC エンドポイントの接続性と HEC トークンの有効性を確認
 
-### Splunk で EMS イベントが見つからない
+### Splunk での EMS イベントの不検出
 
 1. Index を確認: `fsxn_ems` が存在するか
 2. Sourcetype を確認: `fsxn:ontap:ems` が正しいか
 3. 時間範囲を広げて再検索: `earliest=-1h`
 4. Lambda CloudWatch Logs でエラーを確認
 
-### fsxn_ems Index が存在しない
+### fsxn_ems Index の不在
 
 ```bash
 # Splunk CLI で Index を作成（Splunk Enterprise の場合）

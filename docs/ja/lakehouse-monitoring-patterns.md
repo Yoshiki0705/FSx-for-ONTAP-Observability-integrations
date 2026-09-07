@@ -4,7 +4,7 @@
 
 ## 概要
 
-本ドキュメントは、レイクハウスアーキテクチャと統合された FSx for ONTAP 環境向けの5つの運用監視パターンを定義します（[fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations) から参照）。全パターンはベンダー中立で、Lambda + CloudWatch をベースに、本プロジェクトで確立した OTLP/ベンダー固有パイプライン経由で任意のオブザーバビリティバックエンドに配信可能です。
+本ドキュメントは、レイクハウスアーキテクチャと統合された FSx for ONTAP 環境向けの5つの運用監視パターンを定義します（[FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) から参照）。全パターンはベンダー中立で、Lambda + CloudWatch をベースに、本プロジェクトで確立した OTLP/ベンダー固有パイプライン経由で任意のオブザーバビリティバックエンドに配信可能です。
 
 > **監査ログ配信との関係**
 >
@@ -482,4 +482,4 @@ aws cloudformation deploy \
 - [パイプライン SLO 定義](pipeline-slo.md)
 - [S3 AP 仕様](s3ap-fsxn-specification.md)
 - [ベンダー比較](vendor-comparison.md)
-- [fsxn-lakehouse-integrations](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations)
+- [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations)

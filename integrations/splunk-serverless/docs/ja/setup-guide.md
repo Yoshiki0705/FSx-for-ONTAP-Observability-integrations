@@ -73,7 +73,7 @@ aws secretsmanager get-secret-value \
 
 ## Step 3: CloudFormation デプロイ
 
-### 推奨: デプロイスクリプトを使う
+### 推奨: デプロイスクリプトの利用
 
 このスクリプトはスタックのデプロイと実 Lambda コードのアップロードを**両方**行います。
 CloudFormation テンプレートはハンドラをインラインに持てないため、1 ステップで動作する
@@ -98,7 +98,7 @@ bash integrations/splunk-serverless/scripts/deploy.sh
 > アラームが通知されるようになります。未設定の場合アラームは通知アクションなしで
 > 作成され、コンソールには表示されますが誰にも通知されません。
 
-### 代替: CloudFormation を手動でデプロイする
+### 代替: CloudFormation の手動デプロイ
 
 ### 3.1 スタックのデプロイ
 

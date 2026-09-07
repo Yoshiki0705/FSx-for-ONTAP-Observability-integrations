@@ -8,7 +8,7 @@
 > エージェント基盤（Omnigent / AgentCore）の構築が先行
 > **関連**
 >
-> [fsxn-lakehouse-integrations クロスリポジトリ連携戦略](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/ja/cross-repo-integration-strategy.md)
+> [FSx-for-ONTAP-Lakehouse-Integrations クロスリポジトリ連携戦略](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/ja/cross-repo-integration-strategy.md)
 
 ---
 
@@ -417,5 +417,5 @@ DAIS 2026（2026-06-17）で発表された Databricks Platform Security の新�
 - [パイプライン SLO](pipeline-slo.md)
 - [データ分類ガイド](data-classification.md)
 - [セキュリティベストプラクティス](security-best-practices.md)
-- [fsxn-lakehouse-integrations: クロスリポジトリ連携戦略](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/ja/cross-repo-integration-strategy.md)
-- [fsxn-lakehouse-integrations: Omnigent 評価（可観測性設計セクション）](https://github.com/Yoshiki0705/fsxn-lakehouse-integrations/blob/main/docs/ja/omnigent-multi-agent-evaluation.md)
+- [FSx-for-ONTAP-Lakehouse-Integrations: クロスリポジトリ連携戦略](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/ja/cross-repo-integration-strategy.md)
+- [FSx-for-ONTAP-Lakehouse-Integrations: Omnigent 評価（可観測性設計セクション）](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/ja/omnigent-multi-agent-evaluation.md)

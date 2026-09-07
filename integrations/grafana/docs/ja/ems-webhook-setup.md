@@ -161,7 +161,7 @@ Grafana Cloud → Explore → Loki データソース:
 
 ## トラブルシューティング
 
-### EMS イベントが届かない
+### EMS イベントの不着
 
 1. **Lambda CloudWatch Logs を確認**:
    ```bash
