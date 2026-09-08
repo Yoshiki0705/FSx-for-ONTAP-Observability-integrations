@@ -2,6 +2,24 @@
 
 🌐 [日本語](../ja/decision-tree-management-monitoring.md) | **English** (this page)
 
+## What this tree decides, and what it does not
+
+**This tree chooses the management plane** — how you reach the file system to administer and
+inspect it: System Manager through NetApp Console, a self-hosted console, or CLI and REST
+directly. Every option below was exercised on a real file system.
+
+**It does not choose the collection route.** Whether metrics and logs should arrive via
+Amazon CloudWatch, NetApp Harvest with Prometheus, a SaaS platform, or the ONTAP REST API is
+a separate decision on a separate axis, and it is made in
+[Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md).
+The two are easy to confuse because both are described as "monitoring" decisions; reading
+only one leaves half the architecture undecided.
+
+> **The one place they touch**: the
+> [FSA Metrics → Grafana / Prometheus pattern](#fsa-metrics--grafana--prometheus-collection-pattern)
+> below is an *implementation* of the Harvest-plus-Prometheus route, not an argument for
+> choosing it. Choose the route first.
+
 ## Overview
 
 This document guides you through choosing the optimal management and monitoring architecture for FSx for ONTAP based on your requirements.
@@ -493,3 +511,7 @@ groups:
 - [Vendor Comparison](vendor-comparison.md)
 - [NetApp Console Integration](../../integrations/netapp-console/)
 - [Self-hosted Management Console](../../management-console/README.md)
+
+### Related Repositories
+
+- [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **a different decision, on a different axis.** This page chooses how you *reach* the file system to administer and inspect it (System Manager, self-hosted console, CLI/REST). The Playbook hub chooses how metrics and logs are *collected and stored* (CloudWatch, Harvest + Prometheus, SaaS, ONTAP REST). Reading only one of the two leaves half the architecture undecided.

@@ -207,6 +207,7 @@ stack, the S3 access point, the audit log bucket and the prerequisites stack. Us
 
 ## Related Documents
 
+- [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **which collection route to choose.** This page assumes the SaaS-forwarding route is already chosen; the hub covers the other three and their trade-offs
 - [Prerequisites](prerequisites.md) — FSx for ONTAP, audit logging, access point
 - [Deployment guide](deployment-guide.md) — stack catalog, VPC endpoint conflicts, cost
 - [Pipeline SLO](pipeline-slo.md) — Go/No-Go criteria between readiness levels

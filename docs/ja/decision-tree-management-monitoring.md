@@ -2,6 +2,22 @@
 
 🌐 **日本語**（このページ） | [English](../en/decision-tree-management-monitoring.md)
 
+## この Decision Tree が決めるものと決めないもの
+
+**この Decision Tree が選ぶのは管理プレーンです。** 管理・調査のためにファイルシステムへどう到達
+するか — NetApp Console 経由の System Manager、セルフホストのコンソール、CLI と REST の直接利用 —
+を選びます。以下の選択肢はすべて実機で検証しています。
+
+**収集経路は選びません。** メトリクスとログを Amazon CloudWatch、NetApp Harvest + Prometheus、
+SaaS プラットフォーム、ONTAP REST API のどれで受けるかは、軸の異なる別の判断で、
+[Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md)
+で決めます。どちらも「監視」の判断として説明されるため混同しやすく、片方だけを読むとアーキテクチャの
+半分が未決のまま残ります。
+
+> **両者が接する 1 か所**: 後述の
+> [FSA メトリクス → Grafana / Prometheus 収集パターン](#fsa-メトリクス--grafana--prometheus-収集パターン)
+> は Harvest + Prometheus 経路の*実装*であり、その経路を選ぶ根拠ではありません。経路の選択が先です。
+
 ## 概要
 
 本ドキュメントは、FSx for ONTAP の管理・監視方法について、ユーザーの要件に基づいて最適なアーキテクチャパスを案内する Decision Tree です。
@@ -497,3 +513,7 @@ groups:
 - [ベンダー比較](vendor-comparison.md)
 - [NetApp Console 統合](../../integrations/netapp-console/)
 - [セルフホスト管理コンソール](../../management-console/README.md)
+
+### 関連リポジトリ
+
+- [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **軸の異なる別の判断です。** 本ページが選ぶのは、管理・調査のためにファイルシステムへ*どう到達するか*（System Manager、セルフホストコンソール、CLI/REST）です。Playbook のハブが選ぶのは、メトリクスとログを*どう収集し保存するか*（CloudWatch、Harvest + Prometheus、SaaS、ONTAP REST）です。片方だけを読むと、アーキテクチャの半分が未決のまま残ります。
