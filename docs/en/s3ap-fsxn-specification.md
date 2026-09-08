@@ -204,7 +204,7 @@ aws s3control get-access-point-policy --account-id <account> --name <ap-name>
 
 ## 8. FSx for ONTAP S3 Access Points — Constraints & Validated Patterns
 
-For the comprehensive compatibility matrix, validated patterns, and known constraints (confirmed with AWS Support, May 2026), refer to:
+For the comprehensive compatibility matrix, validated patterns, and known constraints, refer to:
 
 📋 **[FSx for ONTAP S3 AP Compatibility Matrix](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/docs/en/compatibility-matrix.md)**
 
@@ -241,6 +241,6 @@ A re-measurement on 2026-08-05 did not reproduce the previously documented "30-8
 
 **Scope limit — larger directories are untested.** Measurement stopped at 5,000 objects. Behaviour at hundreds of thousands to millions of keys under a single prefix has not been measured. ONTAP sorts directory entries in memory to produce the lexicographic ordering `ListObjectsV2` requires, so listing cost grows with directory size. File consolidation and keyspace partitioning therefore remain the recommended design for large datasets — but base that decision on directory size and the in-memory sort, not on a small-scale latency penalty that did not reproduce.
 
-**Origin of the original figure: unexplained.** The number entered this documentation from the May 2026 AWS Support discussion referenced at the top of this section, where it was described as a product-level characteristic. No measurement record or set of conditions was retained alongside it, so there is nothing to compare the new run against and the discrepancy cannot be attributed to a specific cause. Possible contributors, listed as possibilities only: measurement through a CLI wrapper where process startup time dominates short calls; a file system in a degraded state at the time of the original observation; or platform-side changes landing between then and this run.
+**Origin of the original figure: unexplained.** The number entered this documentation in May 2026, described as a product-level characteristic. **No measurement record and no set of conditions was retained alongside it**, so there is nothing to compare the new run against and the discrepancy cannot be attributed to a specific cause. Possible contributors, listed as possibilities only: measurement through a CLI wrapper where process startup time dominates short calls; a file system in a degraded state at the time of the original observation; or platform-side changes landing between then and this run.
 
 **Secondary finding — keys returned per page differ.** With `MaxKeys=1000` requested, native S3 returned 1,000 keys in a single API call while the access point needed 2. At 5,000 objects the counts were 6 calls versus 5. Total wall time stayed comparable, so this is not a throughput bottleneck, but do not assume identical API call counts when estimating request costs or when a client caps pagination depth.
