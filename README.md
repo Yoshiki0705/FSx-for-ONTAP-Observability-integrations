@@ -11,14 +11,41 @@
 
 | I want to... | Guide | Time |
 |---|---|---|
+| **Decide how to monitor FSx for ONTAP at all** — not settled on an approach yet | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 min |
 | Validate the pipeline end-to-end (first time) | [Minimum Test Path](docs/en/quick-start-minimum.md) | 15 min |
 | Deploy a vendor integration to production | [Deployment Guide](docs/en/deployment-guide.md) | 30 min |
 | Respond to ransomware at the storage layer | [Automated Incident Response](docs/en/automated-response-guide.md) | 20 min |
 | Route logs to multiple backends with redaction | [OTel Collector](integrations/otel-collector/) | 45 min |
-| Manage FSx for ONTAP via browser GUI | [Management Console](management-console/) · [Decision Tree](docs/en/decision-tree-management-monitoring.md) | 30 min |
+| Manage FSx for ONTAP via browser GUI | [Management Console](management-console/) · [Management-plane decision tree](docs/en/decision-tree-management-monitoring.md) | 30 min |
 | Run a partner PoC with success criteria | [PoC Success Criteria](docs/en/poc-success-criteria.md) · [Solution Brief](docs/en/partner-solution-brief.md) | — |
 
 > **One-command setup** per vendor: `bash integrations/<vendor>/scripts/setup-full-observability.sh`
+
+## What this repository answers, and what it does not
+
+This is the **implementation** side of a pair. It answers *how to build and operate* a
+telemetry path, with templates, handler code and measurements from a real environment. It
+does not answer *whether this is the route you should take* — that decision has its own
+trade-offs, and putting it here would mean the repository implementing one route also
+judged the others.
+
+| Question | Where it is answered |
+|----------|----------------------|
+| How do I get audit logs, EMS events or FPolicy file operations to my platform | **Here.** [Deployment Guide](docs/en/deployment-guide.md) |
+| What breaks first, and what did it actually cost | **Here.** Measured, with environment and dates — e.g. [S3 AP throughput](docs/en/s3ap-throughput-benchmark.md), [cost model](docs/en/cost-model.md) |
+| Which collection route suits my constraints (CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST) | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) |
+| What are the limits of audit-based observability before I commit to it | Playbook — including that **a full audit destination stops client access** rather than degrading monitoring |
+| Capacity, performance, security-governance, block-storage design decisions | Playbook, by domain. This repository covers observability only |
+| Is FSx for ONTAP the right storage service at all | Playbook. Not a question this repository is positioned to answer |
+
+**Reading order if you are starting cold**: choose a route in the Playbook, then come back
+here for the one you chose. Roughly 80% of what is here only applies once that choice is
+made.
+
+> **Evidence split, stated plainly**: claims here are backed by runs in a stated
+> environment, and are labelled where they are not. The Playbook's observability module is
+> `documented` throughout — sourced to vendor and AWS documentation, with no measurement by
+> its author. Neither side has measured a **cross-site** collection topology; both say so.
 
 ## Architecture
 

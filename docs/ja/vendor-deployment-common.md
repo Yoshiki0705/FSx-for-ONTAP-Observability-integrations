@@ -201,6 +201,7 @@ S3 アクセスポイント、監査ログバケット、前提スタック）�
 
 ## 関連ドキュメント
 
+- [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **どの収集経路を選ぶか。** 本ページは SaaS 転送経路を選択済みの前提で書かれています。残り 3 経路とそのトレードオフはハブ側にあります
 - [前提条件](prerequisites.md) — FSx for ONTAP、監査ログ有効化、アクセスポイント
 - [デプロイガイド](deployment-guide.md) — スタックカタログ、VPC エンドポイント競合、コスト
 - [パイプライン SLO](pipeline-slo.md) — 成熟度レベル間の Go/No-Go 基準

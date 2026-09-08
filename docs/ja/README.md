@@ -11,14 +11,39 @@
 
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
+| **そもそも FSx for ONTAP をどう監視するか決める** — 方式が未決の場合 | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 分 |
 | パイプラインを E2E で検証（初回） | [最小テストパス](quick-start-minimum.md) | 15 分 |
 | ベンダー統合を本番デプロイ | [デプロイガイド](deployment-guide.md) | 30 分 |
 | ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
 | 複数バックエンドにリダクション付きルーティング | [OTel Collector](../../integrations/otel-collector/) | 45 分 |
-| ブラウザ GUI で FSx for ONTAP を管理 | [Management Console](../../management-console/) · [Decision Tree](decision-tree-management-monitoring.md) | 30 分 |
+| ブラウザ GUI で FSx for ONTAP を管理 | [Management Console](../../management-console/) · [管理プレーンの Decision Tree](decision-tree-management-monitoring.md) | 30 分 |
 | パートナー PoC を成功基準付きで実施 | [PoC 成功基準](poc-success-criteria.md) · [Solution Brief](partner-solution-brief.md) | — |
 
 > **ワンコマンドセットアップ**: `bash integrations/<vendor>/scripts/setup-full-observability.sh`
+
+## 本リポジトリが答えるものと答えないもの
+
+本リポジトリは 2 つで対をなす構成の**実装側**です。テレメトリ経路を*どう作り、どう運用するか*に、
+テンプレート・ハンドラ実装・実環境での実測値で答えます。*その経路を選ぶべきか*には答えません。
+選択にはトレードオフがあり、ここに置くと 1 つの経路を実装しているリポジトリが他の経路を裁定する
+形になります。
+
+| 問い | 答えのある場所 |
+|------|--------------|
+| 監査ログ / EMS イベント / FPolicy ファイル操作を自分のプラットフォームへ届ける方法 | **ここ。**[デプロイガイド](deployment-guide.md) |
+| 最初に壊れるものと、実際にかかった費用 | **ここ。**環境と日付つきの実測 — [S3 AP スループット](s3ap-throughput-benchmark.md)、[コストモデル](cost-model.md) |
+| どの収集経路が自分の制約に合うか（CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST） | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) |
+| 監査ベースの可観測性の限界（採用を決める前に知るべきもの） | Playbook。**監査ログの保存先が枯渇するとクライアントアクセスが停止する**（監視の劣化ではない）ことを含む |
+| 容量・性能・セキュリティガバナンス・ブロックストレージの設計判断 | Playbook のドメイン別。本リポジトリは可観測性のみ |
+| そもそも FSx for ONTAP が適切なストレージサービスか | Playbook。本リポジトリが答えられる立場にある問いではありません |
+
+**何も決まっていない状態から読む順序**: Playbook で経路を選び、選んだ経路の実装を取りにここへ
+戻る。ここにあるものの 8 割程度は、その選択が済んでから初めて意味を持ちます。
+
+> **根拠の分担**: ここでの主張は環境を明記した実行に基づき、そうでないものはそう明記しています。
+> Playbook の可観測性モジュールは全体が `documented` で、ベンダーおよび AWS のドキュメントを出典と
+> し、著者による実測は含みません。**拠点をまたぐ**収集構成はどちらの側でも測定しておらず、双方が
+> そう書いています。
 
 ## アーキテクチャ
 
