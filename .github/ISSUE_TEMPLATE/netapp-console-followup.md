@@ -9,7 +9,7 @@ labels: type:feature
 
 Follow-up items from the NetApp Console / System Manager / FSA verification (May 2026) and plans for Part 9 of the blog series.
 
-## Investigation Items (NetApp Support)
+## Investigation Items
 
 ### 1. VPC-external Lambda Link behavior
 - **Finding**: "Create automatically" created the Lambda function outside the VPC (SubnetIds/SecurityGroupIds = null)
