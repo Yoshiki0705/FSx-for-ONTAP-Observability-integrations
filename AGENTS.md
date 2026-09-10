@@ -538,7 +538,7 @@ Detects: internal IPs (10.x/172.16-31.x/192.168.x), AWS Account IDs, internal ho
 > CI: `.github/workflows/agent-output-audit.yml`（命名/中立性/リーク/parity）と `gitleaks.yml`（シークレット）。
 
 ### Naming (NetApp / AWS)
-- 初出は **Amazon FSx for NetApp ONTAP**、以降 **FSx for ONTAP**。`FSxN` / 単独 `FSx` / `FSx ONTAP` は不可。アクセスポイントは **S3 Access Points** と略さずに書く（`S3 AP` は AWS が認めた略称ではない）。Amazon S3 のアクセスポイントと紛れる場所では **FSx for ONTAP S3 Access Points**。
+- 初出は **Amazon FSx for NetApp ONTAP**、以降 **FSx for ONTAP**。`FSxN` / 単独 `FSx` / `FSx ONTAP` は不可。アクセスポイントは **S3 Access Points** と略さずに書く（`S3 AP` は AWS が認めた略称ではない）。Amazon S3 のアクセスポイントと紛れる場所では **FSx for ONTAP S3 Access Points**。**既存の記述は据え置きで、一括置換はしない。**
 - NetApp Workload Factory / NetApp Console / BlueXP は禁止語ではない。文脈上適切であれば言及・提案可。
 - FSxN 等の表記ゆれのみ `allow:naming` コメントでの例外運用が必要（外部引用タイトルの逐語引用時など）。
 
