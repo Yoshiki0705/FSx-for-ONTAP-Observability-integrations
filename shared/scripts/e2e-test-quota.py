@@ -25,7 +25,6 @@ import logging
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -198,7 +197,7 @@ def verify_log_content(log_message: str, volume_name: str) -> dict[str, bool]:
     checks = {
         "event_name": f"event_name={EXPECTED_EVENT_NAME}" in log_message,
         "volume_name": f"volume_name={volume_name}" in log_message
-            or f"volume_name" in log_message,
+            or "volume_name" in log_message,
         "quota_target": "quota_target" in log_message,
         "used_bytes": "used_bytes" in log_message,
         "limit_bytes": "limit_bytes" in log_message,
@@ -395,7 +394,7 @@ def run_quota_e2e_test(
     log_stream = matched_event.get("logStreamName", "unknown")
     log_timestamp = matched_event.get("timestamp", 0)
 
-    print(f"\n  ✅ Event received!")
+    print("\n  ✅ Event received!")
     print(f"  Log Stream:  {log_stream}")
     print(f"  Timestamp:   {datetime.fromtimestamp(log_timestamp / 1000, tz=timezone.utc).isoformat()}")
     print(f"  Message:     {log_message[:200]}...")

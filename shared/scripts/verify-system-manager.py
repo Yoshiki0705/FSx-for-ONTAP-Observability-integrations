@@ -118,7 +118,7 @@ def check_quotas(base_url: str, http: urllib3.PoolManager, headers: dict) -> Non
 
     print(f"  クォータルール数: {len(rules)}")
     for rule in rules:
-        print(f"\n  ルール:")
+        print("\n  ルール:")
         print(f"    タイプ: {rule.get('type', 'N/A')}")
         print(f"    ボリューム: {rule.get('volume', {}).get('name', 'N/A')}")
         print(f"    Qtree: {rule.get('qtree', {}).get('name', 'N/A')}")

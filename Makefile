@@ -72,7 +72,16 @@ CFN_TEMPLATES := \
 
 # Python source for lint and security scanning. Excludes tests: assert
 # statements in tests are bandit B101 by design.
-PY_SRC := integrations shared/python shared/lambda-layers scripts management-console
+#
+# shared/scripts was missing here while scripts and shared/python were present.
+# ruff and bandit therefore reported clean on this repository while never
+# reading 3,351 lines of it, and shared/scripts/tests -- added under
+# PYTEST_DIRS -- ran under pytest while no linter looked at it, so each new
+# test there widened the gap. First run found 13 ruff findings and 2 bandit
+# B310. scripts/tests/test_lint_scope_coverage.py now fails if a directory
+# holding Python appears in PYTEST_DIRS but not here.
+PY_SRC := integrations shared/python shared/lambda-layers scripts \
+          shared/scripts management-console
 
 # cfn-lint: W = warnings (advisory). E3006 = AWS::CloudWatch::LogAlarm is GA
 # (2026-07) but not yet in the cfn-lint resource spec; deployment is verified
@@ -241,12 +250,19 @@ hooks:
 # is nothing of that shape to review today. Re-audit by hand, not by scanner,
 # if query construction is ever added.
 #
-# The baseline records 6 pre-existing B314 findings (stdlib ElementTree parsing
+# The baseline records 8 reviewed findings: 6 B314 (stdlib ElementTree parsing
 # audit XML whose filenames and usernames originate from whoever touches the
-# volume). It suppresses exactly those 6 and nothing else: a planted shell=True
-# call still fails this target. scripts/tests/test_bandit_baseline.py fails if
-# the baseline grows or gains a different rule id, so it cannot quietly become
-# a place to hide findings.
+# volume) and 2 B310 (urllib urlopen in shared/scripts, surfaced when that
+# directory entered PY_SRC). It suppresses exactly those 8 and nothing else, and
+# scripts/tests/test_bandit_baseline.py fails if the baseline grows or gains a
+# different rule id, so it cannot quietly become a place to hide findings.
+#
+# This comment used to claim "a planted shell=True call still fails this
+# target". That is true only of the exploitable form. Measured: with a variable
+# command, B602 is High and does fail here; with a literal string it is Low and
+# passes, filtered by -ll rather than by the baseline. The first probe written
+# for this used the literal form and reported the gate as broken. State the
+# threshold, not a slogan.
 security:
 	$(BANDIT) -q -r $(PY_SRC) -x '*/tests/*,*/node_modules/*,*/.venv/*' \
 	  -ll -b $(BANDIT_BASELINE)

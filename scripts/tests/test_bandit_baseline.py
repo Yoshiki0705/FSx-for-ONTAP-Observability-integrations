@@ -31,8 +31,27 @@ BASELINE = REPO_ROOT / ".bandit-baseline.json"
 # The findings accepted at adoption. B314 = xml.etree parsing untrusted XML.
 # ElementTree does not resolve external entities, so this is an
 # entity-expansion denial-of-service exposure rather than XXE exfiltration.
-EXPECTED_RULES = {"B314"}
-EXPECTED_COUNT = 6
+#
+# B310 = urllib.request.urlopen, which accepts file: and custom schemes. Two
+# call sites in shared/scripts, surfaced when that directory entered PY_SRC
+# (#80). Reviewed individually rather than accepted as a pair:
+#
+#   create-syslog-configuration.py:56  The URL is built in the function as
+#       f"https://logs.{region}.amazonaws.com". The scheme is a literal, so no
+#       caller-supplied value can reach it. Nothing to fix.
+#   fpolicy-session-report.py          The URL came from --ontap-url, so a
+#       file: path really would have been opened and reported as an EMS
+#       response. Fixed: fetch_ems now rejects any scheme other than http and
+#       https. The finding remains because B310 flags the call site whatever
+#       guards precede it, so this entry records a mitigated exposure, not an
+#       accepted one.
+#
+# Rewriting both to urllib3 would remove the rule rather than suppress it, and
+# was considered. It was not done here: neither script can be exercised without
+# a live ONTAP or AWS account, so the change could not be verified in the same
+# commit, and fpolicy-session-report.py is itself a verification tool.
+EXPECTED_RULES = {"B314", "B310"}
+EXPECTED_COUNT = 8
 
 
 @pytest.fixture(scope="module")

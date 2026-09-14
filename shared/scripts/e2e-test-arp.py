@@ -121,7 +121,7 @@ def poll_cloudwatch_logs(
         Matching log event dict if found, None if timeout reached.
     """
     deadline = time.time() + POLL_TIMEOUT_SECONDS
-    print(f"\n[POLLING] Searching CloudWatch Logs for ARP event...")
+    print("\n[POLLING] Searching CloudWatch Logs for ARP event...")
     print(f"  Log group: {log_group}")
     print(f"  Timeout: {POLL_TIMEOUT_SECONDS}s")
     print(f"  Looking for: event_name={EXPECTED_EVENT_NAME}, volume_name={volume_name}")
@@ -287,13 +287,13 @@ def output_diagnostics(
     # Additional troubleshooting
     print("[4] Additional Troubleshooting Steps:")
     print("-" * 50)
-    print(f"  1. Verify EMS webhook destination is configured:")
+    print("  1. Verify EMS webhook destination is configured:")
     print(f"     event notification destination show -vserver {svm_name}")
-    print(f"  2. Verify event notification is active:")
+    print("  2. Verify event notification is active:")
     print(f"     event notification show -vserver {svm_name}")
-    print(f"  3. Verify ARP is enabled on the volume:")
+    print("  3. Verify ARP is enabled on the volume:")
     print(f"     security anti-ransomware volume show -vserver {svm_name} -volume {volume_name}")
-    print(f"  4. Re-run the attack simulation:")
+    print("  4. Re-run the attack simulation:")
     print(f"     security anti-ransomware volume attack simulate -vserver {svm_name} -volume {volume_name}")
     print()
 
@@ -309,7 +309,7 @@ def print_result(passed: bool, details: dict) -> None:
     status = "PASS" if passed else "FAIL"
     print(f"TEST RESULT: {status}")
     print("=" * 70)
-    print(f"  Test:        ARP Ransomware Detection E2E")
+    print("  Test:        ARP Ransomware Detection E2E")
     print(f"  Event:       {EXPECTED_EVENT_NAME}")
     print(f"  Severity:    {EXPECTED_SEVERITY}")
     print(f"  Timestamp:   {datetime.now(timezone.utc).isoformat()}")
