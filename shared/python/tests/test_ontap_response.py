@@ -10,6 +10,7 @@ Tests cover:
 """
 
 import json
+import logging
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -84,6 +85,43 @@ class TestBlockSmbUser:
         body = json.loads(post_call[1]["body"])
         assert body["direction"] == "win_unix"
         assert body["replacement"] == " "
+
+    def test_block_smb_user_reports_the_security_style_boundary(self, client, caplog):
+        """The result must not present itself as verified access denial.
+
+        The addendum used to claim this block works on every security style,
+        on an unsourced mechanism. An NTFS style volume evaluates the Windows
+        ACL directly and never consults the win->unix mapping, so the mapping
+        is created and has no effect. Nothing in this repository has ever
+        attempted SMB access after a block -- the E2E record measured a 201
+        from the API and that was read as containment.
+
+        This pins the boundary in the return value and in the log, so the
+        retracted claim cannot come back through the code while the docs stay
+        corrected.
+        """
+        client._http.request.side_effect = [
+            make_response(200, {"records": [{"uuid": "svm-uuid-123", "name": "svm-prod"}]}),
+            make_response(200, {"records": []}),
+            make_response(201, {}),
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            result = client.block_smb_user(
+                svm_name="svm-prod", domain="CORP", username="jdoe"
+            )
+
+        assert result["effective_on_security_styles"] == ["unix", "mixed"]
+        assert result["ineffective_on_security_styles"] == ["ntfs"]
+        # "blocked" is the mapping's existence. Denial is a separate question
+        # and is explicitly unanswered.
+        assert result["mapping_created"] is True
+        assert result["access_denial_verified"] is False
+
+        # The caller cannot see the volumes from here, so silence would read as
+        # "effective". The warning fires on every call.
+        assert "ntfs" in caplog.text.lower()
+        assert "has not been verified" in caplog.text
 
     def test_block_smb_user_ad_joined_svm(self, client):
         """AD-joined SVM uses 'nobody' replacement instead of space."""
