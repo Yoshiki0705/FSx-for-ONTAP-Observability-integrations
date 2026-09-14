@@ -223,18 +223,24 @@ mandatory モードで操作を遮断する設計は、この経路に対して�
 
 ### 1-8. 2 つ目のバージョンにおける構造側の再確認（9.18.1P5）
 
-1-7 のバージョンの問いは半分閉じた。姉妹検証が 1-2 の protocol 列挙を稼働中の `9.18.1P5`
-クラスタに対して再実行し、同じ結果に到達している。`protocol` が受け付けるのは `cifs` /
-`nfsv3` / `nfsv4` で、`s3` / `S3` / `object` / `http` / `smb` / `nfs` / `nfsv4.1` はいずれも
-HTTP 400（`"s3" is an invalid value for field "protocol"`）で拒否された。手順も同じで、
+1-7 のバージョンの問いは半分閉じた。姉妹検証が 1-2 の **12 候補のうち 10 件** を稼働中の
+`9.18.1P5` クラスタに対して再実行し、同じ結果に到達している。`protocol` が受け付けるのは
+`cifs` / `nfsv3` / `nfsv4` で、`s3` / `S3` / `object` / `http` / `smb` / `nfs` / `nfsv4.1` は
+いずれも HTTP 400（`"s3" is an invalid value for field "protocol"`）で拒否された。手順も同じで、
 FPolicy 設定を持たない SVM に対して候補ごとに POST し、作成できたものは削除してイベント
 0 件に戻している。
+
+`nfsv41` / `nfsv4_1` / `fcp` / `iscsi` は再実行していない。したがって「受け付けるのは 3 値だけ」
+という主張には、試した候補集合という境界がある。`9.18.1P5` でのその集合は 10 件で、12 件ではない。
+この 4 件を省かず書くのは、測定と構造の区分に適用したのと同じ規律が候補集合にも及ぶからである。
+列挙は入力リストの範囲でしか完全になりえず、その境界は書かれていなければ読者から見えない。
 
 **引き継がれるのは構造の側だけである。** この区分は文字どおりに読むこと。
 
 | 主張 | 9.18.1P5 での状態 |
 |------|------------------|
-| `protocol` が受け付けるのは `cifs` / `nfsv3` / `nfsv4` のみ | 再確認済み |
+| `protocol` が `cifs` / `nfsv3` / `nfsv4` を受け付け、試した他の 7 候補を拒否する | 再確認済み |
+| `nfsv41` / `nfsv4_1` / `fcp` / `iscsi` も拒否される | 再実行していない。`9.18.1P3D1` の結果を継承 |
 | S3 やオブジェクトアクセスに相当する `protocol` 値は存在しない | 再確認済み |
 | S3 Access Point のデータプレーン呼び出しに対して通知 0 件 | 再測定していない。`9.18.1P3D1` の測定を継承 |
 | 通知遅延 0.3 秒 | 再測定していない。継承 |
@@ -245,7 +251,8 @@ FPolicy 設定を持たない SVM に対して候補ごとに POST し、作成�
 保つためにこの記録は存在している。
 
 証拠: FSx for ONTAP Lakehouse Integrations リポジトリの
-`verification-pack/fpolicy-event-source/evidence/2026-09-14/evidence-record.yaml`
+[`evidence-record.yaml`](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/feddf8488bc664587087fcf9004d082cd4da6b08/verification-pack/fpolicy-event-source/evidence/2026-09-14/evidence-record.yaml)。
+リンクは引用時のコミットに固定してあるので、引用の下で参照先の内容が変わることはない。
 
 ---
 

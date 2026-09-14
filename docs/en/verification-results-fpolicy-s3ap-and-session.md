@@ -228,18 +228,25 @@ reached the server; they are not subject to FPolicy in the first place.
 
 ### 1-8. Second version: the structural side re-confirmed on 9.18.1P5
 
-The version question in 1-7 is now half closed. A sibling verification re-ran the protocol
-enumeration of 1-2 against a running `9.18.1P5` cluster and reached the same result: `protocol`
-accepts `cifs`, `nfsv3` and `nfsv4`, while `s3`, `S3`, `object`, `http`, `smb`, `nfs` and
-`nfsv4.1` are each rejected with HTTP 400 (`"s3" is an invalid value for field "protocol"`).
+The version question in 1-7 is now half closed. A sibling verification re-ran **10 of the 12
+candidates** from 1-2 against a running `9.18.1P5` cluster and reached the same result:
+`protocol` accepts `cifs`, `nfsv3` and `nfsv4`, while `s3`, `S3`, `object`, `http`, `smb`, `nfs`
+and `nfsv4.1` are each rejected with HTTP 400 (`"s3" is an invalid value for field "protocol"`).
 The same method was used — POST each candidate individually against an SVM holding no FPolicy
 configuration, then delete the ones that were created, leaving the event count back at 0.
+
+`nfsv41`, `nfsv4_1`, `fcp` and `iscsi` were not re-run. So "accepts exactly three values" is
+bounded by the candidate set that was tried, and on `9.18.1P5` that set is 10, not 12. The four
+are recorded here rather than passed over because the same discipline applies to the candidate
+set as to the measured-versus-structural split: an enumeration is only as complete as its input
+list, and a reader cannot see the boundary unless it is written down.
 
 **Only the structural side carries over.** Read the split literally:
 
 | Claim | On 9.18.1P5 |
 |-------|-------------|
-| `protocol` accepts exactly `cifs` / `nfsv3` / `nfsv4` | Re-confirmed |
+| `protocol` accepts `cifs` / `nfsv3` / `nfsv4` and rejects the other 7 candidates tried | Re-confirmed |
+| `nfsv41` / `nfsv4_1` / `fcp` / `iscsi` are also rejected | Not re-run. Inherited from `9.18.1P3D1` |
 | No `protocol` value corresponds to S3 or object access | Re-confirmed |
 | S3 Access Point data-plane calls produce 0 notifications | Not re-measured. Inherited from `9.18.1P3D1` |
 | Notification latency of 0.3 s | Not re-measured. Inherited |
@@ -250,8 +257,9 @@ expected to hold. That is an argument from the structure, not a second measureme
 behaviour — and the two are not interchangeable, which is the distinction this whole record
 exists to keep.
 
-Evidence: `verification-pack/fpolicy-event-source/evidence/2026-09-14/evidence-record.yaml` in
-the FSx for ONTAP Lakehouse Integrations repository.
+Evidence: [`evidence-record.yaml`](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/feddf8488bc664587087fcf9004d082cd4da6b08/verification-pack/fpolicy-event-source/evidence/2026-09-14/evidence-record.yaml)
+in the FSx for ONTAP Lakehouse Integrations repository. The link is pinned to the commit the
+record was cited from, so what it resolves to cannot change under the citation.
 
 ---
 
