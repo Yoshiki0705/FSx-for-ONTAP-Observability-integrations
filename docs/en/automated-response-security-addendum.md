@@ -12,16 +12,78 @@ This addendum addresses advanced security considerations for the automated incid
 
 ### Volume Security Style Impact on SMB Blocking
 
-The name-mapping blocking mechanism works across ALL volume security styles:
+> ### ⚠️ Retracted: this section claimed the block works on all security styles
+>
+> An earlier version of this page stated that *"the name-mapping blocking mechanism works
+> across ALL volume security styles"*, and gave `ntfs` a ✅ on the reasoning that ONTAP
+> performs SID-to-UNIX translation for internal tracking even on NTFS volumes.
+>
+> **That claim had no measurement behind it and the mechanism it cited is wrong.** It is
+> retracted rather than quietly edited, because a response runbook is where an
+> over-claimed containment costs the most: the failure is silent and it points the wrong
+> way. Someone verifies the technique on a `unix` volume, sees it work, applies the same
+> procedure to an `ntfs` volume, and concludes they have blocked access when they have not.
+>
+> The corrected table is below. See [What was and was not
+> measured](#what-was-and-was-not-measured) for the provenance.
+
+An NTFS security style volume evaluates the Windows ACL directly for the permission check,
+so it never consults the result of the win→unix mapping. `unix` and `mixed` do consult it,
+which is why the same operation has an effect there.
 
 | Volume Security Style | SMB Block Effective? | Why |
 |----------------------|---------------------|-----|
-| `ntfs` | ✅ Yes | ONTAP performs SID-to-UNIX translation for internal tracking even on NTFS volumes |
-| `unix` | ✅ Yes | SMB access requires UNIX identity resolution through name-mapping |
+| `unix` | ✅ Yes | The permission check resolves a UNIX identity through name-mapping, so a deny mapping fails the resolution |
+| `mixed` | ✅ Yes | Same path as `unix` when the file's effective style is UNIX |
+| `ntfs` | ❌ **No** | The Windows ACL is used as-is. The win→unix mapping result is not consulted, so a deny mapping does not deny access |
 
-> **Note on `mixed` security style**: The `mixed` security style is not recommended for new deployments. NetApp best practice is to explicitly choose `ntfs` (Windows-only workloads) or `unix` (Linux/NFS-primary workloads). For multiprotocol access, use `ntfs` with appropriate name-mapping, or `unix` with AD integration. The SMB blocking mechanism via name-mapping is effective regardless of which recommended style is in use.
+Sources for the NTFS behaviour: NetApp KB [How does name-mapping work when CIFS clients
+access NTFS security style
+resources](https://kb.netapp.com/on-prem/ontap/da/NAS/NAS-KBs/How_does_name-mapping_work_when_CIFS_clients_access_NTFS_security_style_resources),
+plus two independent repository records reaching the same conclusion.
 
-> **ONTAP internals**: Name-mapping (win-to-unix) is evaluated during session setup and file access for ALL security styles. Blocking via empty replacement (`" "`) causes the translation to fail, which denies SMB access regardless of the volume's security style.
+> **Note on `mixed` security style**: `mixed` is not recommended for new deployments.
+> NetApp best practice is to explicitly choose `ntfs` (Windows-only workloads) or `unix`
+> (Linux/NFS-primary workloads). It is listed above because the blocking mechanism's
+> behaviour differs by style and omitting it would leave the reader guessing.
+
+### If your volumes are NTFS security style
+
+`block_smb_user` will report success — the name-mapping is created and the API returns
+`201 Created`. **That response says the mapping exists, not that access is denied.** On an
+NTFS style volume it will not be denied.
+
+Use one of these instead, or in addition:
+
+| Action | Mechanism | Notes |
+|--------|-----------|-------|
+| Disable the AD account | Active Directory, outside ONTAP | Stops new authentication for the user everywhere, not only on this SVM. Sourced: a disabled or locked account produces `Kerberos Error: Clients credentials have been revoked` and blocks NTFS access **regardless of name-mapping or security style** — [NetApp KB](https://kb.netapp.com/on-prem/ontap/da/NAS/NAS-KBs/Denied_access_to_NTFS_volume_because_AD_Account_is_locked_or_disabled_or_expired), already cited in the [deployment guide](deployment-guide.md) |
+| Terminate CIFS sessions | `disconnect_smb_sessions` in `ontap_response.py` | Ends current access; the user can reconnect unless authentication is also stopped |
+| Modify the NTFS ACL | Windows ACL on the share or directory | Acts on the path the NTFS style volume actually consults |
+| Restrict at the network layer | Security Group / NACL | Blocks the client address rather than the identity |
+
+### What was and was not measured
+
+The distinction matters here more than the conclusion, so it is stated per item rather
+than summarised.
+
+| Claim | Status |
+|-------|--------|
+| The name-mapping API call succeeds and the entry is created | **Measured.** ONTAP 9.17.1P7D1, 2026-07-08: `block_smb_user (direct API) — PASS — 201 Created — index:99, CORP\testuser99`. See [E2E verification results](../screenshots/automated-response/e2e-verification-results.md) |
+| A deny mapping with `replacement: "nobody"` survives on an AD-joined SVM, where `" "` is auto-deleted within 30-60 s | **Measured.** ONTAP 9.17.1P7D1, July 2026. See [Automated Response Guide](automated-response-guide.md) |
+| SMB access is actually denied on a `unix` style volume | **Not measured here.** Consistent with the documented mechanism and with external records |
+| SMB access is actually denied on an `ntfs` style volume | **Measured to be false elsewhere; never measured here.** The retracted claim asserted the opposite |
+
+**No test in this repository has ever attempted SMB access after a block.** The E2E record
+tests the API call, and `201 Created` was read as containment. The security style of the
+volumes in that environment was not recorded, so even the `unix` case has no local
+evidence.
+
+> **Trap when measuring this yourself**: test with a non-administrator account. Members of
+> the administrators group bypass the permission check, which produces a false "the block
+> does not work" on `unix`. Conversely, a denial observed on `ntfs` may have come from the
+> ACL rather than from the mapping — so a control that is expected to *succeed* has to run
+> in the same session, or the result records the procedure rather than the behaviour.
 
 ### NFS Authentication Method Impact on IP Blocking
 

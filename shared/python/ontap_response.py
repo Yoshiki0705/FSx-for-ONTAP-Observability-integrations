@@ -260,8 +260,24 @@ class OntapResponseClient:
         """Block an SMB user by creating a name-mapping that maps to empty UNIX user.
 
         This is the same mechanism used by DII Storage Workload Security:
-        maps the Windows user to an empty string (" "), effectively denying
-        all file access across the SVM.
+        maps the Windows user to an empty string (" ").
+
+        **This does not deny access on an NTFS security style volume.** That
+        style evaluates the Windows ACL directly and never consults the result
+        of the win->unix mapping, so the mapping is created and has no effect.
+        `unix` and `mixed` do consult it. A returned status of "blocked" means
+        the mapping was created -- a 201 from ONTAP -- and not that access was
+        denied; nothing here attempts SMB access to confirm the effect.
+
+        The security style is per volume and this call is SVM-scoped, so it
+        cannot decide the question for the caller. It logs a warning naming the
+        limitation, and the result carries `effective_on_security_styles` so a
+        caller that acts on the return value can see the boundary. For NTFS
+        volumes, stop the authentication instead: disable the AD account, and
+        use `disconnect_smb_sessions` for sessions already established.
+
+        See docs/en/automated-response-security-addendum.md for the sources and
+        for what has and has not been measured.
 
         Args:
             svm_name: Name of the SVM where the user should be blocked.
@@ -303,12 +319,30 @@ class OntapResponseClient:
 
         self._request("POST", "/name-services/name-mappings", body=body)
 
+        # Emitted on every call, not only when NTFS is suspected: this call
+        # cannot see the volumes, so staying quiet would leave the caller to
+        # infer that silence means the block is effective.
+        logger.warning(
+            "SMB block created for %s\\%s on SVM %s. This denies access on "
+            "unix and mixed security style volumes only. On ntfs style volumes "
+            "the Windows ACL is evaluated directly and this mapping has no "
+            "effect -- disable the AD account and disconnect sessions instead. "
+            "The mapping was created; access denial has not been verified.",
+            domain, username, svm_name,
+        )
+
         return {
             "action": "block_smb_user",
             "svm": svm_name,
             "pattern": pattern,
             "position": position,
+            # "blocked" means the deny mapping exists. It is deliberately not a
+            # claim about access: see the docstring.
             "status": "blocked",
+            "mapping_created": True,
+            "access_denial_verified": False,
+            "effective_on_security_styles": ["unix", "mixed"],
+            "ineffective_on_security_styles": ["ntfs"],
             "marker": RESPONSE_MARKER,
         }
 

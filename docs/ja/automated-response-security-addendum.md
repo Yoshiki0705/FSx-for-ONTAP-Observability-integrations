@@ -12,16 +12,78 @@
 
 ### ボリュームセキュリティスタイルが SMB ブロックに与える影響
 
-name-mapping ブロック機構は全てのボリュームセキュリティスタイルで動作します:
+> ### ⚠️ 撤回: 全セキュリティスタイルで動作するという記述
+>
+> このページの旧版には「name-mapping ブロック機構は全てのボリュームセキュリティスタイルで
+> 動作します」と書かれており、`ntfs` に ✅ を付けた理由として「ONTAP は NTFS ボリュームでも
+> 内部追跡のために SID→UNIX 変換を実行」と述べていました。
+>
+> **この記述には測定の裏付けがなく、根拠として挙げた機構も誤りです。** 静かに書き換えずに
+> 撤回として残します。過大な封じ込めの主張が最も高くつくのは応答手順書であり、失敗が無音で、
+> かつ誤った方向を指すためです。`unix` ボリュームで技術を検証して動作を確認した人が、同じ
+> 手順を `ntfs` ボリュームに適用し、遮断できていないのに遮断したと結論します。
+>
+> 訂正後の表を以下に示します。来歴は[測定したことと測定していないこと](#測定したことと測定していないこと)
+> を参照してください。
+
+NTFS セキュリティスタイルのボリュームは、許可判定に Windows ACL をそのまま使用するため、
+win→unix マッピングの結果を参照しません。`unix` と `mixed` は参照するので、同じ操作が
+そちらでは効果を持ちます。
 
 | ボリュームセキュリティスタイル | SMB ブロック有効？ | 理由 |
 |---------------------------|------------------|------|
-| `ntfs` | ✅ はい | ONTAP は NTFS ボリュームでも内部追跡のために SID→UNIX 変換を実行 |
-| `unix` | ✅ はい | SMB アクセスには name-mapping による UNIX ID 解決が必要 |
+| `unix` | ✅ はい | 許可判定が name-mapping 経由で UNIX ID を解決するため、deny マッピングは解決を失敗させる |
+| `mixed` | ✅ はい | ファイルの実効スタイルが UNIX の場合は `unix` と同じ経路 |
+| `ntfs` | ❌ **いいえ** | Windows ACL がそのまま使われる。win→unix マッピングの結果は参照されないので、deny マッピングはアクセスを拒否しない |
+
+NTFS の挙動の出典: NetApp KB [How does name-mapping work when CIFS clients access NTFS
+security style
+resources](https://kb.netapp.com/on-prem/ontap/da/NAS/NAS-KBs/How_does_name-mapping_work_when_CIFS_clients_access_NTFS_security_style_resources)
+および、同じ結論に至った 2 つの独立したリポジトリの記録。
 
 > **`mixed` セキュリティスタイルについて**
 >
-> `mixed` セキュリティスタイルは新規デプロイでは推奨されません。NetApp のベストプラクティスは `ntfs`（Windows 専用ワークロード）または `unix`（Linux/NFS 主体ワークロード）を明示的に選択することです。マルチプロトコルアクセスには、`ntfs` + 適切な name-mapping、または `unix` + AD 連携を使用してください。name-mapping による SMB ブロック機構は、推奨されるどちらのスタイルでも有効です。
+> `mixed` は新規デプロイでは推奨されません。NetApp のベストプラクティスは `ntfs`
+> （Windows 専用ワークロード）または `unix`（Linux/NFS 主体ワークロード）を明示的に選択する
+> ことです。ここに記載しているのは、ブロック機構の挙動がスタイルごとに異なるためで、省くと
+> 読者が推測することになります。
+
+### ボリュームが NTFS セキュリティスタイルの場合の代替手段
+
+`block_smb_user` は成功を報告します。name-mapping は作成され、API は `201 Created` を
+返します。**このレスポンスはマッピングが存在することを示すもので、アクセスが拒否された
+ことを示すものではありません。** NTFS スタイルのボリュームでは拒否されません。
+
+代わりに、または併せて次を使用してください。
+
+| 手段 | 機構 | 補足 |
+|------|------|------|
+| AD アカウントの無効化 | Active Directory（ONTAP の外） | 当該 SVM に限らず、そのユーザーの新規認証を全体で停止する。出典あり: 無効化またはロックされたアカウントは `Kerberos Error: Clients credentials have been revoked` を発生させ、**name-mapping やセキュリティスタイルに関係なく** NTFS アクセスをブロックする — [NetApp KB](https://kb.netapp.com/on-prem/ontap/da/NAS/NAS-KBs/Denied_access_to_NTFS_volume_because_AD_Account_is_locked_or_disabled_or_expired)、[デプロイガイド](deployment-guide.md) で既に引用済み |
+| CIFS セッションの切断 | `ontap_response.py` の `disconnect_smb_sessions` | 現在のアクセスを終わらせる。認証も止めない限り再接続は可能 |
+| NTFS ACL の変更 | 共有またはディレクトリの Windows ACL | NTFS スタイルのボリュームが実際に参照する経路に作用する |
+| ネットワーク層での制限 | Security Group / NACL | ID ではなくクライアントアドレスを遮断する |
+
+### 測定したことと測定していないこと
+
+ここでは結論よりも区分が重要なので、まとめずに項目ごとに示します。
+
+| 主張 | 状態 |
+|------|------|
+| name-mapping API 呼び出しが成功し、エントリが作成される | **測定済み。** ONTAP 9.17.1P7D1、2026-07-08: `block_smb_user (direct API) — PASS — 201 Created — index:99, CORP\testuser99`。[E2E 検証結果](../screenshots/automated-response/e2e-verification-results.md) を参照 |
+| AD 参加 SVM で `replacement: "nobody"` の deny マッピングが残存する（`" "` は 30-60 秒で自動削除される） | **測定済み。** ONTAP 9.17.1P7D1、2026 年 7 月。[自動応答ガイド](automated-response-guide.md) を参照 |
+| `unix` スタイルのボリュームで SMB アクセスが実際に拒否される | **本リポジトリでは未測定。** 文書化された機構および外部の記録と整合する |
+| `ntfs` スタイルのボリュームで SMB アクセスが実際に拒否される | **他所で偽と測定済み。本リポジトリでは未測定。** 撤回した記述はこの逆を主張していた |
+
+**本リポジトリのテストは、ブロック後に SMB アクセスを試行したことが一度もありません。**
+E2E の記録は API 呼び出しを検証したもので、`201 Created` が封じ込めとして読まれていました。
+当時の環境のボリュームセキュリティスタイルは記録されていないため、`unix` の場合についても
+ローカルな証拠はありません。
+
+> **自分で測定するときの罠**: 非管理者アカウントで試験してください。administrators
+> グループのメンバーは許可判定を迂回するため、`unix` で「ブロックが効かない」という偽の結果が
+> 出ます。逆に `ntfs` で観測した拒否は、マッピングではなく ACL に由来している可能性が
+> あります。したがって、成功するはずのコントロールを同一セッションに置かないと、結果は
+> 挙動ではなく手順を記録することになります。
 
 ### NFS 認証方式が IP ブロックに与える影響
 
