@@ -41,6 +41,12 @@
       "groupName": "docker-base-images"
     },
     {
+      "description": "Hold the FPolicy server on Python 3.12. The repository runs 3.12 everywhere else -- every Lambda Runtime, and the CI test matrix -- so letting this image move alone would run fpolicy_server.py on a Python that nothing tests it against. Patch releases within 3.12 still flow, so this is a version ceiling and not a freeze. 3.12 to 3.14 is a minor bump for Renovate (major is 3), so the major-approval rule below does not catch it; that is why this ceiling is explicit. Raise it together with the Lambda runtimes and the CI matrix, not separately. Declined in #63, where the 3.14 image was verified to build and run before being turned down -- the objection is the divergence, not a defect.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "<3.13"
+    },
+    {
       "description": "Require manual approval for major version bumps",
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
