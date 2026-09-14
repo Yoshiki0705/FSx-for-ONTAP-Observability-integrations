@@ -100,7 +100,7 @@ def main():
         )
         sys.exit(1)
 
-    print(f"Creating Syslog Configuration:")
+    print("Creating Syslog Configuration:")
     print(f"  VPC Endpoint: {args.vpce_id}")
     print(f"  Log Group:    {args.log_group_arn}")
     print(f"  Region:       {args.region}")

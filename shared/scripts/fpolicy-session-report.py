@@ -34,6 +34,7 @@ import re
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
@@ -74,7 +75,21 @@ def fetch_log_events(
 def fetch_ems(
     base_url: str, secret_id: str, region: str, start: datetime, end: datetime
 ) -> list[dict] | None:
-    """Read fpolicy EMS events. Returns None when ONTAP could not be reached."""
+    """Read fpolicy EMS events. Returns None when ONTAP could not be reached.
+
+    Raises:
+        ValueError: If ``base_url`` is not http or https. It arrives from
+            ``--ontap-url``, and ``urlopen`` accepts ``file:`` -- so without
+            this check a path could be read and reported as an EMS response.
+            This is the exposure bandit's B310 names.
+    """
+    scheme = urllib.parse.urlparse(base_url).scheme
+    if scheme not in ("http", "https"):
+        raise ValueError(
+            f"--ontap-url must be http or https, got {scheme or 'no scheme'!r}: "
+            f"{base_url!r}"
+        )
+
     secrets = boto3.client("secretsmanager", region_name=region)
     creds = json.loads(secrets.get_secret_value(SecretId=secret_id)["SecretString"])
     token = b64encode(f"{creds['username']}:{creds['password']}".encode()).decode()
