@@ -12,13 +12,20 @@ Serverless observability integrations shipping Amazon FSx for NetApp ONTAP audit
 # Install dependencies
 npm install
 
-# TypeScript typecheck
+# TypeScript typecheck. The repository tracks no .ts files today, so this
+# exits 2 with TS18003 ("No inputs were found"). That is the current expected
+# result, not a failure to report or fix -- and not a reason to start treating
+# a nonzero exit as noise. CI does not run this; it runs `npm run lint` only
+# when a .ts file exists (see the TypeScript lint step in ci.yaml).
 npx tsc --noEmit
 
-# Lint
+# Lint. Exits 0 with nothing to lint while there are no .ts files. eslint.config.js
+# is present and verified to fail on an unused variable and unreachable code, so
+# this becomes a real gate the moment a .ts file is added.
 npm run lint
 
-# Run all TypeScript tests
+# Run all TypeScript tests. `jest --passWithNoTests`, so it exits 0 reporting
+# "No tests found". A pass here is not evidence that anything was tested.
 npm test
 
 # Install pinned dev + gate tooling (ruff, bandit, cfn-lint, pytest)
