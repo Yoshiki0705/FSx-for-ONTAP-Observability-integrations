@@ -4,9 +4,12 @@
 # - memory_limiter processor (before batch)
 # - sending_queue on each exporter
 # - retry_on_failure on each exporter
-# - Internal telemetry metrics enabled
+# - Internal telemetry metrics enabled, and now actually reachable: the
+#   collector previously would not start with this file at all
 #
-# Image: otel/opentelemetry-collector-contrib:0.152.0
+# Validated against the version the compose files pin. Do not restate that
+# version here -- a version in a comment is what went stale last time. See
+# docker-compose.yaml for the pinned tag.
 
 receivers:
   otlp:
@@ -62,8 +65,18 @@ service:
   extensions: [health_check]
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      # `address: 0.0.0.0:8888` was here and the collector refused to start on
+      # it: `'migration.MetricsConfigV030' has invalid keys: address`. The key
+      # was replaced by an OpenTelemetry-Go `readers` block. Verified to fail on
+      # both 0.152.0 and 0.160.0, so this file has not been startable for some
+      # time -- the CI validation could not fail, so nothing reported it.
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     logs:
       receivers: [otlp]

@@ -1,11 +1,31 @@
 name: Validate OTel Collector Configs
+
+# This job used to end its validate command with `|| true`, so it exited 0
+# whatever the collector said. It also hardcoded the collector version while the
+# compose files carried the one actually shipped, and its path filter excluded
+# those compose files -- so a version bump never triggered it. The combination
+# hid a real error: otel-collector-config-production.yaml set
+# `service.telemetry.metrics.address`, a key the collector had already removed,
+# and would not start at all. See #81.
+#
+# Three properties are load-bearing here and each is asserted rather than
+# assumed: a config error fails the job, the version validated is the version
+# shipped, and the loop actually validated something.
+
 on:
   pull_request:
     paths:
       - 'integrations/otel-collector/otel-collector-config*.yaml'
+      # The image tag lives in the compose files, so a version bump has to run
+      # this job. #62 changed the collector version without triggering it.
+      - 'integrations/otel-collector/docker-compose*.yaml'
+      # And a change to the gate itself has to run the gate.
+      - '.github/workflows/validate-otel-config.yaml'
   push:
     paths:
       - 'integrations/otel-collector/otel-collector-config*.yaml'
+      - 'integrations/otel-collector/docker-compose*.yaml'
+      - '.github/workflows/validate-otel-config.yaml'
 
 permissions:
   contents: read
@@ -18,14 +38,87 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate all OTel Collector configs
+      - name: Resolve the collector version from the compose files
+        id: version
         run: |
+          set -euo pipefail
+          # Anchored on `image:` so the stale version numbers sitting in the
+          # comments of those same files are not picked up.
+          versions=$(grep -h -oE '^[[:space:]]*image:[[:space:]]*otel/opentelemetry-collector-contrib:[^[:space:]]+' \
+            integrations/otel-collector/docker-compose*.yaml \
+            | sed 's/.*contrib://' | sort -u)
+
+          if [ -z "$versions" ]; then
+            echo "::error::No collector image tag found in the compose files. This job derives the version it validates against from them, so it cannot continue." >&2
+            exit 1
+          fi
+          if [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
+            echo "::error::The compose files pin more than one collector version:" >&2
+            printf '%s\n' "$versions" >&2
+            echo "Validating against one of them would leave the others unchecked." >&2
+            exit 1
+          fi
+
+          echo "version=$versions" >> "$GITHUB_OUTPUT"
+          echo "Validating against otel/opentelemetry-collector-contrib:$versions"
+
+      - name: Validate all OTel Collector configs
+        env:
+          # Passed through the environment rather than interpolated into the
+          # script body. The value comes from a file a pull request can edit, so
+          # `${{ }}` inside `run:` would let a crafted `image:` line inject
+          # shell. zizmor flags exactly this.
+          COLLECTOR_VERSION: ${{ steps.version.outputs.version }}
+          # Dummy values for every ${env:...} the configs reference. Without
+          # these, unresolved variables are a validation error, which is the
+          # reason the job previously swallowed all errors with `|| true` -- and
+          # swallowing them meant a schema error could not fail either. Stubbing
+          # the inputs is what makes the remaining failures meaningful.
+          #
+          # A config that adds an eighth variable will fail here until it is
+          # added to this list. That failure is loud and self-correcting, which
+          # is the point: the previous arrangement was silent.
+          DD_API_KEY: dummy
+          DD_SITE: datadoghq.com
+          GRAFANA_BASIC_AUTH: dummy
+          GRAFANA_OTLP_ENDPOINT: https://example.invalid
+          HONEYCOMB_API_KEY: dummy
+          HONEYCOMB_DATASET: dummy
+          MACKEREL_APIKEY: dummy
+        run: |
+          set -uo pipefail
+          version="$COLLECTOR_VERSION"
+          checked=0
+          failed=0
+
           for config in integrations/otel-collector/otel-collector-config*.yaml; do
-            echo "Validating: $config"
-            # Note: validate may report errors for unresolved ${env:...} variables
-            # This is expected in CI without runtime secrets
-            docker run --rm \
+            # An unmatched glob would otherwise leave the literal pattern here
+            # and the loop would "succeed" having validated nothing.
+            [ -e "$config" ] || continue
+            checked=$((checked + 1))
+            echo "--- Validating: $config"
+
+            if docker run --rm \
               -v "$(pwd)/integrations/otel-collector:/config" \
-              otel/opentelemetry-collector-contrib:0.152.0 \
-              validate --config "/config/$(basename "$config")" 2>&1 || true
+              -e DD_API_KEY -e DD_SITE \
+              -e GRAFANA_BASIC_AUTH -e GRAFANA_OTLP_ENDPOINT \
+              -e HONEYCOMB_API_KEY -e HONEYCOMB_DATASET \
+              -e MACKEREL_APIKEY \
+              "otel/opentelemetry-collector-contrib:$version" \
+              validate --config "/config/$(basename "$config")"; then
+              echo "    ok"
+            else
+              echo "::error file=$config::Collector validation failed against $version" >&2
+              failed=$((failed + 1))
+            fi
           done
+
+          # Guard the guard. Zero configs checked is the failure mode that looks
+          # exactly like success.
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::No collector configs were found to validate. Either they moved or the glob no longer matches." >&2
+            exit 1
+          fi
+
+          echo "Checked $checked config(s), $failed failed."
+          [ "$failed" -eq 0 ]
