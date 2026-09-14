@@ -64,7 +64,7 @@ The conclusion rests on two independent grounds.
 
 | Ground | Content |
 |--------|---------|
-| Structural | An FPolicy event on ONTAP 9.18.1P3D1 accepts exactly three `protocol` values — `cifs`, `nfsv3`, `nfsv4`. There is no value corresponding to S3 or object access |
+| Structural | An FPolicy event on ONTAP 9.18.1P3D1 accepts exactly three `protocol` values — `cifs`, `nfsv3`, `nfsv4`. There is no value corresponding to S3 or object access. Re-confirmed on 9.18.1P5; see 1-8 |
 | Measured | S3 Access Point data-plane calls produced 0 notifications; file-protocol operations against the same volume immediately after produced notifications |
 
 ### 1-2. Enumerating the accepted protocol values
@@ -222,9 +222,36 @@ reached the server; they are not subject to FPolicy in the first place.
 
 | Question | State |
 |----------|-------|
-| Does the same hold on other ONTAP versions? | Not measured. `9.18.1P3D1` only |
+| Does the same hold on other ONTAP versions? | The structural side was re-confirmed on `9.18.1P5`; the measured side was not re-run. See 1-8 |
 | Does the same hold for ONTAP native S3, as opposed to an FSx S3 Access Point? | Not measured |
 | Does it fire on the FlexCache cache side? | Not measured. FlexCache is not part of this verification |
+
+### 1-8. Second version: the structural side re-confirmed on 9.18.1P5
+
+The version question in 1-7 is now half closed. A sibling verification re-ran the protocol
+enumeration of 1-2 against a running `9.18.1P5` cluster and reached the same result: `protocol`
+accepts `cifs`, `nfsv3` and `nfsv4`, while `s3`, `S3`, `object`, `http`, `smb`, `nfs` and
+`nfsv4.1` are each rejected with HTTP 400 (`"s3" is an invalid value for field "protocol"`).
+The same method was used — POST each candidate individually against an SVM holding no FPolicy
+configuration, then delete the ones that were created, leaving the event count back at 0.
+
+**Only the structural side carries over.** Read the split literally:
+
+| Claim | On 9.18.1P5 |
+|-------|-------------|
+| `protocol` accepts exactly `cifs` / `nfsv3` / `nfsv4` | Re-confirmed |
+| No `protocol` value corresponds to S3 or object access | Re-confirmed |
+| S3 Access Point data-plane calls produce 0 notifications | Not re-measured. Inherited from `9.18.1P3D1` |
+| Notification latency of 0.3 s | Not re-measured. Inherited |
+| An operation can be blocked in `mandatory` mode | Not re-measured. Inherited |
+
+So on `9.18.1P5` the configuration still cannot be made to cover S3, which is why the gap is
+expected to hold. That is an argument from the structure, not a second measurement of the
+behaviour — and the two are not interchangeable, which is the distinction this whole record
+exists to keep.
+
+Evidence: `verification-pack/fpolicy-event-source/evidence/2026-09-14/evidence-record.yaml` in
+the FSx for ONTAP Lakehouse Integrations repository.
 
 ---
 
