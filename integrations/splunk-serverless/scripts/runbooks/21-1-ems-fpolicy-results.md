@@ -43,7 +43,7 @@
 | 20.2-1 | FPolicy Lambda デプロイ | `aws lambda get-function-configuration ...` | python3.12, 設定正常 | ... | PASS/FAIL |
 | 20.3-1 | FPolicy 外部エンジン作成 | `vserver fpolicy policy external-engine create ...` | 作成成功 | ... | PASS/FAIL |
 | 20.3-2 | FPolicy ポリシー有効化 | `vserver fpolicy enable ...` | sequence-number 1, on | ... | PASS/FAIL |
-| 20.3-3 | KeepAlive 確認 | ECS CloudWatch Logs | ~6秒間隔で受信 | ... | PASS/FAIL |
+| 20.3-3 | KeepAlive 確認 | ECS CloudWatch Logs | 120 秒間隔で受信（検索窓は 300 秒以上）| ... | PASS/FAIL |
 | 20.4-1 | ファイル作成 (CIFS) | SMB 経由ファイル作成 | ファイル作成成功 | ... | PASS/FAIL |
 | 20.4-2 | SQS 送信確認 | ECS Logs: `[SQS] Sent: ...` | ファイル名 (create) | ... | PASS/FAIL |
 | 20.4-3 | Splunk 到着確認 (30s以内) | SPL: `index=fsxn_audit ...` | 1件以上 | ... | PASS/FAIL |

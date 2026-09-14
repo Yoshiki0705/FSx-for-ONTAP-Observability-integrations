@@ -136,7 +136,11 @@ vserver fpolicy enable -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Event arrives in Datadog Logs within 30 seconds
@@ -230,7 +234,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Event arrives in Dynatrace within 30 seconds
@@ -318,7 +326,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Document appears in Elasticsearch within 30 seconds
@@ -405,7 +417,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Log entry appears in Loki within 30 seconds
@@ -493,7 +509,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Event appears in Honeycomb dataset `fsxn-fpolicy` within 30 seconds
@@ -582,7 +602,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Log appears in New Relic within 30 seconds
@@ -670,7 +694,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: LogRecord appears in collector within 30 seconds
@@ -758,7 +786,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Event appears in Splunk within 30 seconds
@@ -848,7 +880,11 @@ vserver fpolicy policy external-engine create -vserver FPolicySMB \
 
 5. **FPolicy File Operation Test**:
    - Verify ECS Fargate task is running and healthy
-   - Verify ONTAP KeepAlive messages in ECS logs (every ~6 seconds)
+   - Verify ONTAP KeepAlive messages in ECS logs (every 120 seconds, per the
+     engine's `keep_alive_interval`; query a window of 300 s or more. A 30 s
+     window shows nothing on a healthy connection about three runs in four.
+     STATUS_REQ arrives every ~10 s, is logged at DEBUG, and is a different
+     message — it does not stand in for a KeepAlive)
    - Trigger: Create a file via CIFS/SMB
    - Verify: `[SQS] Sent: <filename> (create)` appears in ECS CloudWatch logs
    - Verify: Log appears in Sumo Logic within 30 seconds

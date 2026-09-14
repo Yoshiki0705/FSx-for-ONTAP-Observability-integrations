@@ -82,7 +82,7 @@ aws lambda get-function-configuration \
 
 - [ ] **FPolicy ファイル操作テストが PASS**
   - ECS Fargate タスクが Running かつ Healthy
-  - ONTAP KeepAlive メッセージが ECS ログに表示（約6秒間隔）
+  - ONTAP KeepAlive メッセージが ECS ログに表示（120 秒間隔。検索窓は 300 秒以上取る）
   - CIFS/SMB ファイル作成 → `[SQS] Sent: <filename> (create)` がログに表示
   - Splunk にイベントが 30 秒以内に到着
   - `operation`, `file_path`, `user`, `client_ip` フィールドが含まれる

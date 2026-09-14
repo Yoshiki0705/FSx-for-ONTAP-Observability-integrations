@@ -81,29 +81,58 @@ vserver fpolicy show-engine -vserver FPolicySMB -engine-name fpolicy_lambda_engi
 
 ## KeepAlive メッセージ
 
-ONTAP は FPolicy サーバーに対して約 6 秒間隔で KeepAlive メッセージを送信します。
+ONTAP は FPolicy サーバーに対して 120 秒間隔で KeepAlive メッセージを送信します。
+これはエンジンの `keep_alive_interval`（ONTAP の既定は `PT2M`）に一致します。
 これは接続が正常であることの指標です。
+
+このページの旧版には「約 6 秒間隔」と書かれていました。この数値は再現せず、撤回済みです。
+[FPolicy S3 Access Point とセッションの検証結果](verification-results-fpolicy-s3ap-and-session.md)
+を参照してください。
+
+### KeepAlive と STATUS_REQ の別物性
+
+同じ接続上に 2 種類のメッセージが届きます。両者の混同は、別経路で同じ誤診を生みます。
+
+| メッセージ | 間隔 | ログレベル | 既定で ECS ログに出るか |
+|-----------|------|-----------|----------------------|
+| `KEEP_ALIVE` | `keep_alive_interval`、既定 `PT2M`（120 秒） | INFO | 出る（`[KeepAlive] seq=N \| since_prev=Xs`） |
+| `STATUS_REQ` | `status_request_interval`、既定 `PT10S` | DEBUG | 出ない |
+
+`LOG_LEVEL` を `DEBUG` に上げると、約 10 秒間隔で `[StatusReq]` の行が見えます。これは
+KeepAlive ではなく、KeepAlive の健全性を示すものでもありません。撤回された「約 6 秒」は
+この 10 秒周期が出所です。
 
 ### 確認方法
 
+検索窓は `keep_alive_interval` より広く取る必要があります。狭いと、正常な接続が異常として
+報告されます。300 秒あれば既定の 120 秒を余裕をもって覆えます。
+
 ```bash
-# Check KeepAlive in ECS logs
+# Check KeepAlive in ECS logs.
+# The window must exceed keep_alive_interval (default PT2M); at 30 seconds a
+# healthy connection shows nothing on roughly three runs in four.
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server \
   --filter-pattern "KeepAlive" \
-  --start-time $(date -d '30 seconds ago' +%s000) \
+  --start-time $(date -d '300 seconds ago' +%s000) \
   --limit 5
 ```
 
 ### 期待される出力
 ```
-KeepAlive from 10.0.x.x (session: xxx)
+[KeepAlive] seq=42 | since_prev=120.1s
 ```
 
-KeepAlive が見えない場合:
-1. ONTAP が Fargate タスク IP に接続できていない
-2. セキュリティグループが TCP 9898 をブロックしている
-3. Fargate タスクが再起動して IP が変わった
+ここに書かれた間隔を信用するのではなく、`since_prev` を読んでください。これは実測値なので、
+エンジンを再設定しても正しさが保たれます。
+
+KeepAlive が見えない場合、それだけでは ONTAP が切断されている証拠になりません。
+次の順で確認してください。
+1. 検索窓がエンジンの `keep_alive_interval` より狭い
+   （`vserver fpolicy policy external-engine show -fields keep-alive-interval`）
+2. ONTAP が Fargate タスク IP に接続できていない
+3. セキュリティグループが TCP 9898 をブロックしている
+4. Fargate タスクが再起動して IP が変わった
 
 ---
 
@@ -228,11 +257,11 @@ aws logs filter-log-events \
   --filter-pattern "[SQS] Sent:" \
   --start-time $(date -d '5 minutes ago' +%s000)
 
-# Check KeepAlive
+# Check KeepAlive (window must exceed keep_alive_interval, default PT2M)
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server \
   --filter-pattern "KeepAlive" \
-  --start-time $(date -d '30 seconds ago' +%s000) \
+  --start-time $(date -d '300 seconds ago' +%s000) \
   --limit 5
 
 # Check Bridge Lambda errors
@@ -307,6 +336,6 @@ FPolicy イベントが届かない
 ## 関連リソース
 
 - テンプレート: `shared/templates/fpolicy-apigw.yaml`
-- E2E テスト: `shared/scripts/e2e-test-fpolicy.py`
+- E2E テスト: `shared/scripts/e2e_test_fpolicy.py`
 - イベントソースガイド: `docs/ja/event-sources.md`
 - 検証結果: `docs/ja/verification-results-ems-fpolicy.md`

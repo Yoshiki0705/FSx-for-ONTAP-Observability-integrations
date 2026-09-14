@@ -2,7 +2,7 @@
 
 ## 概要
 
-ONTAP CLI を使用して FPolicy 外部エンジン、イベント、ポリシーを作成・有効化し、ECS Fargate タスクとの接続を確立する手順書。ONTAP が Fargate タスク IP の TCP:9898 に非同期で接続し、KeepAlive メッセージが約6秒間隔で送信されることを確認する。
+ONTAP CLI を使用して FPolicy 外部エンジン、イベント、ポリシーを作成・有効化し、ECS Fargate タスクとの接続を確立する手順書。ONTAP が Fargate タスク IP の TCP:9898 に非同期で接続し、KeepAlive メッセージが 120 秒間隔（エンジンの `keep_alive_interval`、ONTAP 既定 `PT2M`）で送信されることを確認する。
 
 ## 前提条件
 
@@ -18,7 +18,7 @@ ONTAP CLI を使用して FPolicy 外部エンジン、イベント、ポリシ�
 ONTAP SVM (FPolicy Engine)
     ↓ TCP:9898 (async, no TLS)
 ECS Fargate Task (FPolicy Server)
-    ↓ KeepAlive (~6 seconds)
+    ↓ KeepAlive (120 seconds)
     ↓ File Operation Events
 SQS Queue → EventBridge
 ```
@@ -26,7 +26,8 @@ SQS Queue → EventBridge
 **重要な設計ポイント:**
 - 接続は非同期（asynchronous）モード — ファイル操作をブロックしない
 - TLS なし（Fargate タスクは VPC 内プライベートサブネット）
-- KeepAlive メッセージは約6秒間隔で ONTAP から送信される
+- KeepAlive メッセージは 120 秒間隔で ONTAP から送信される（`keep_alive_interval`、既定 `PT2M`）
+- STATUS_REQ は別のメッセージで、`status_request_interval`（既定 `PT10S`）により約 10 秒間隔で届く。DEBUG レベルなので既定ではログに出ない
 - Fargate タスク IP が変更された場合、外部エンジンの更新が必要
 
 ## 手順
@@ -149,20 +150,20 @@ Vserver    Policy Name         Sequence  Status   Engine
 # ECS Fargate タスクのログを確認
 aws logs tail \
   /ecs/fsxn-fpolicy-server \
-  --since 1m \
+  --since 5m \
   --region ap-northeast-1 \
   --format short
 ```
 
-**期待される出力（約6秒間隔）:**
+**期待される出力（120 秒間隔）:**
 ```
-[KeepAlive] Received from ONTAP (session: <session-id>)
-[KeepAlive] Received from ONTAP (session: <session-id>)
-[KeepAlive] Received from ONTAP (session: <session-id>)
+[KeepAlive] seq=40 | since_prev=120.1s
+[KeepAlive] seq=41 | since_prev=120.0s
+[KeepAlive] seq=42 | since_prev=120.2s
 ```
 
 **確認ポイント:**
-- KeepAlive メッセージが約6秒間隔で表示されること
+- KeepAlive メッセージが表示されること。間隔は本文の数値ではなく `since_prev` を読む（実測値なので、エンジンを再設定しても正しさが保たれる）
 - セッション ID が一定であること（接続が安定していること）
 - エラーメッセージがないこと
 
@@ -185,7 +186,7 @@ vserver fpolicy policy external-engine show-connected \
 - [ ] FPolicy イベントが作成された（CIFS: create, write, rename, delete）
 - [ ] FPolicy ポリシーが作成された
 - [ ] FPolicy ポリシーが有効化された（sequence-number 1）
-- [ ] ECS CloudWatch Logs で KeepAlive メッセージが確認できた（約6秒間隔）
+- [ ] ECS CloudWatch Logs で KeepAlive メッセージが確認できた（120 秒間隔）
 - [ ] ONTAP から Fargate タスクへの接続が確立されている
 
 ## トラブルシューティング
@@ -197,10 +198,13 @@ vserver fpolicy policy external-engine show-connected \
 
 ### KeepAlive メッセージの未表示
 
-1. **ネットワーク接続を確認**: ONTAP SVM から Fargate タスク IP:9898 への TCP 接続が可能か
-2. **セキュリティグループを確認**: Fargate タスクの SG で TCP:9898 インバウンドが許可されているか
-3. **Fargate タスク状態を確認**: タスクが Running かつ Healthy か
-4. **外部エンジン接続状態を確認**: `vserver fpolicy policy external-engine show-connected`
+表示されないこと自体は、ONTAP が切断されている証拠になりません。次の順で確認してください。
+
+1. **検索窓の幅を確認**: `--since` がエンジンの `keep_alive_interval`（既定 `PT2M` = 120 秒）より狭くないか。`--since 1m` では正常な接続でも何も出ない。設定値は `vserver fpolicy policy external-engine show -fields keep-alive-interval` で確認する
+2. **ネットワーク接続を確認**: ONTAP SVM から Fargate タスク IP:9898 への TCP 接続が可能か
+3. **セキュリティグループを確認**: Fargate タスクの SG で TCP:9898 インバウンドが許可されているか
+4. **Fargate タスク状態を確認**: タスクが Running かつ Healthy か
+5. **外部エンジン接続状態を確認**: `vserver fpolicy policy external-engine show-connected`
 
 ### 接続の切断
 

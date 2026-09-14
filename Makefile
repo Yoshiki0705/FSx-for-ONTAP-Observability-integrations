@@ -58,7 +58,8 @@ SHARED_TEST_DIRS := \
   scripts/verification/tests \
   shared/lambda-layers/ems-parser/tests \
   shared/lambda-layers/log-parser/tests \
-  shared/python/tests
+  shared/python/tests \
+  shared/scripts/tests
 
 PYTEST_DIRS := $(VENDOR_TEST_DIRS) $(SHARED_TEST_DIRS)
 

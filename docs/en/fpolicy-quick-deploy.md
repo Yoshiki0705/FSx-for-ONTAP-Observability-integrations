@@ -144,6 +144,9 @@ vserver fpolicy enable -vserver <svm-name> \
 aws logs tail /ecs/fsxn-fpolicy-server --follow
 ```
 
+   KeepAlive arrives every 120 seconds (`keep_alive_interval`, default `PT2M`), so wait
+   at least that long before concluding it is absent.
+
 2. Create a test file on the SMB share
 
 3. Check Datadog: `source:fsxn-fpolicy`

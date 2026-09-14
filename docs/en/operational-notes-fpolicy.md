@@ -81,29 +81,59 @@ vserver fpolicy show-engine -vserver FPolicySMB -engine-name fpolicy_lambda_engi
 
 ## KeepAlive Messages
 
-ONTAP sends KeepAlive messages to the FPolicy server approximately every 6 seconds.
-This is an indicator that the connection is healthy.
+ONTAP sends KeepAlive messages to the FPolicy server every 120 seconds, matching the
+engine's `keep_alive_interval` (ONTAP's default is `PT2M`). This is an indicator that
+the connection is healthy.
+
+An earlier version of this page said "approximately every 6 seconds". That figure did
+not reproduce and has been retracted; see
+[FPolicy S3 Access Point and session verification](verification-results-fpolicy-s3ap-and-session.md).
+
+### KeepAlive is not STATUS_REQ
+
+Two different messages arrive on the same connection, and confusing them produces the
+same misdiagnosis by another route.
+
+| Message | Interval | Log level | Appears in ECS logs by default |
+|---------|----------|-----------|-------------------------------|
+| `KEEP_ALIVE` | `keep_alive_interval`, default `PT2M` (120 s) | INFO | Yes, as `[KeepAlive] seq=N \| since_prev=Xs` |
+| `STATUS_REQ` | `status_request_interval`, default `PT10S` | DEBUG | No |
+
+If you raise `LOG_LEVEL` to `DEBUG` you will see `[StatusReq]` lines about every 10
+seconds. Those are not KeepAlives and say nothing about KeepAlive health. The 10-second
+cadence is the origin of the retracted 6-second figure.
 
 ### Verification
 
+The query window has to be wider than `keep_alive_interval`, or a healthy connection
+reports as a broken one. 300 seconds covers the 120-second default with margin.
+
 ```bash
-# Check KeepAlive in ECS logs
+# Check KeepAlive in ECS logs.
+# The window must exceed keep_alive_interval (default PT2M); at 30 seconds a
+# healthy connection shows nothing on roughly three runs in four.
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server \
   --filter-pattern "KeepAlive" \
-  --start-time $(date -d '30 seconds ago' +%s000) \
+  --start-time $(date -d '300 seconds ago' +%s000) \
   --limit 5
 ```
 
 ### Expected Output
 ```
-KeepAlive from 10.0.x.x (session: xxx)
+[KeepAlive] seq=42 | since_prev=120.1s
 ```
 
-If KeepAlive messages are not visible:
-1. ONTAP cannot connect to the Fargate task IP
-2. Security group is blocking TCP 9898
-3. Fargate task restarted and IP changed
+Read `since_prev` rather than trusting the interval quoted here. It is the observed
+interval, so it stays correct if the engine is reconfigured.
+
+If KeepAlive messages are not visible, this is not by itself evidence that ONTAP is
+disconnected. Check in this order:
+1. The query window is narrower than the engine's `keep_alive_interval`
+   (`vserver fpolicy policy external-engine show -fields keep-alive-interval`)
+2. ONTAP cannot connect to the Fargate task IP
+3. Security group is blocking TCP 9898
+4. Fargate task restarted and IP changed
 
 ---
 
@@ -226,11 +256,11 @@ aws logs filter-log-events \
   --filter-pattern "[SQS] Sent:" \
   --start-time $(date -d '5 minutes ago' +%s000)
 
-# Check KeepAlive
+# Check KeepAlive (window must exceed keep_alive_interval, default PT2M)
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server \
   --filter-pattern "KeepAlive" \
-  --start-time $(date -d '30 seconds ago' +%s000) \
+  --start-time $(date -d '300 seconds ago' +%s000) \
   --limit 5
 
 # Check Bridge Lambda errors
@@ -305,6 +335,6 @@ FPolicy events not arriving
 ## Related Resources
 
 - Template: `shared/templates/fpolicy-apigw.yaml`
-- E2E Test: `shared/scripts/e2e-test-fpolicy.py`
+- E2E Test: `shared/scripts/e2e_test_fpolicy.py`
 - Event Sources Guide: `docs/en/event-sources.md`
 - Verification Results: `docs/ja/verification-results-ems-fpolicy.md`

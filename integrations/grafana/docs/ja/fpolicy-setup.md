@@ -174,15 +174,22 @@ Vserver    Policy Name              Sequence  Status   Engine
 ```bash
 aws logs tail \
   /ecs/fsxn-fp-srv-fpolicy-server \
-  --since 1m \
+  --since 5m \
   --region ap-northeast-1 \
   --format short
 ```
 
-**期待される出力（約6秒間隔）:**
+`--since` はエンジンの `keep_alive_interval`（ONTAP の既定は `PT2M`、つまり 120 秒）より
+広く取る必要があります。`--since 1m` では正常な接続でも何も表示されません。
+
+**期待される出力（120 秒間隔）:**
 ```
-[KeepAlive] Received from ONTAP (session: <session-id>)
+[KeepAlive] seq=42 | since_prev=120.1s
 ```
+
+ここに書かれた間隔ではなく `since_prev` を読んでください。これが実測値です。何も出ないこと
+は、それだけでは ONTAP が切断されている証拠になりません。エンジン IP を調べる前に `--since`
+を広げ、`keep_alive_interval` を確認してください。
 
 ### 4.2 ONTAP 接続状態の確認
 

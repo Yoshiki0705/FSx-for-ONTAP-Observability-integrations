@@ -43,7 +43,9 @@ The FPolicy pipeline has four health layers. Monitor all four for production rea
 1. Check ECS service events: `aws ecs describe-services --cluster <cluster> --services <service>`
 2. Get new task IP: `aws ecs describe-tasks --cluster <cluster> --tasks <task-arn>`
 3. Update ONTAP engine: `bash shared/scripts/fpolicy-update-engine-ip.sh --auto`
-4. Verify KeepAlive in ECS logs within 60 seconds
+4. Verify KeepAlive in ECS logs, allowing up to 5 minutes. The first KeepAlive
+   after a handshake can take a full `keep_alive_interval` (120 s by default), so a
+   60-second check reports a healthy reconnection as a failed one
 
 ### ONTAP Engine Disconnected
 

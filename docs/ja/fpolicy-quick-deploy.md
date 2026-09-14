@@ -143,6 +143,9 @@ vserver fpolicy enable -vserver <svm-name> \
 aws logs tail /ecs/fsxn-fpolicy-server --follow
 ```
 
+   KeepAlive は 120 秒間隔（`keep_alive_interval`、既定 `PT2M`）で届きます。届いていない
+   と判断する前に、少なくともその時間は待ってください。
+
 2. SMB 共有にテストファイルを作成
 
 3. Datadog で確認: `source:fsxn-fpolicy`
