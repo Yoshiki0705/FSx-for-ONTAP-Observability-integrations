@@ -180,7 +180,7 @@ Based on lessons learned from the Datadog integration (3-part blog series) E2E v
 
 - [ ] **FPolicy stack deployed** (`shared/templates/fpolicy-apigw.yaml`)
 - [ ] **ECS Fargate task RUNNING** and healthy
-- [ ] **KeepAlive messages** visible in ECS CloudWatch Logs (~6 second interval)
+- [ ] **KeepAlive messages** visible in ECS CloudWatch Logs (120 second interval, matching the engine's `keep_alive_interval`; query a window of 300 s or more, since a 30 s window shows nothing on a healthy connection roughly three runs in four)
 - [ ] **File operation test** (create file via CIFS/SMB)
 - [ ] **SQS message confirmed**: `[SQS] Sent: <filename> (create)` in ECS logs
 - [ ] **FPolicy event arrives in vendor UI** within 30 seconds

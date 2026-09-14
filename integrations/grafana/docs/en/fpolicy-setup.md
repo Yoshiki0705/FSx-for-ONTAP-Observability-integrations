@@ -174,15 +174,22 @@ Vserver    Policy Name              Sequence  Status   Engine
 ```bash
 aws logs tail \
   /ecs/fsxn-fp-srv-fpolicy-server \
-  --since 1m \
+  --since 5m \
   --region ap-northeast-1 \
   --format short
 ```
 
-**Expected output (approximately every 6 seconds):**
+`--since` has to exceed the engine's `keep_alive_interval` (ONTAP's default is `PT2M`,
+so 120 seconds). At `--since 1m` a healthy connection shows nothing.
+
+**Expected output (every 120 seconds):**
 ```
-[KeepAlive] Received from ONTAP (session: <session-id>)
+[KeepAlive] seq=42 | since_prev=120.1s
 ```
+
+Read `since_prev` rather than the interval quoted here — it is the observed value. An
+empty result is not by itself evidence that ONTAP is disconnected; widen `--since` and
+confirm `keep_alive_interval` before investigating the engine IP.
 
 ### 4.2 Verify ONTAP Connection Status
 

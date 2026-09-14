@@ -268,20 +268,21 @@ aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <task ARN> \
 **Command:**
 
 ```bash
-# Check KeepAlive messages in ECS logs (sent at ~6 second intervals)
+# Check KeepAlive messages in ECS logs (sent at 120 second intervals)
+# The window must exceed the engine's keep_alive_interval (default PT2M).
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server-fsxn-fp-srv \
   --filter-pattern "KeepAlive" \
-  --start-time $(date -d '30 seconds ago' +%s000) \
+  --start-time $(date -d '300 seconds ago' +%s000) \
   --limit 5 \
   --region ap-northeast-1
 ```
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | `KeepAlive from <IP>` messages recorded in ECS logs within 30 seconds, indicating ONTAP is connected to the FPolicy server |
-| **Actual Result** | KeepAlive messages received from ONTAP at ~6 second intervals. Source IP: `10.0.x.x` |
-| **Judgment** | ✅ PASS |
+| **Expected Result** | `KeepAlive from <IP>` messages recorded in ECS logs within 300 seconds, indicating ONTAP is connected to the FPolicy server |
+| **Actual Result** | ~~KeepAlive messages received from ONTAP at ~6 second intervals.~~ **Retracted.** The 6-second interval did not reproduce. A later session measured 4,694 KeepAlive lines with a widest gap of 120.4 s, against an engine configured `keep_alive_interval=PT2M`. What arrives about every 10 seconds is the `STATUS_REQ` from `status_request_interval=PT10S`, which is a different message and is logged at DEBUG — that cadence is the likely origin of the figure recorded here. Corrected interval: **120 seconds**. Source IP: `10.0.x.x`. See [FPolicy S3 Access Point and session verification](verification-results-fpolicy-s3ap-and-session.md) |
+| **Judgment** | ✅ PASS (connection confirmed; the interval figure is retracted, not the result) |
 
 ---
 

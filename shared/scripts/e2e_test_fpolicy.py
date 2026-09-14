@@ -14,7 +14,7 @@ Prerequisites:
     - AWS credentials with CloudWatch Logs, ECS, and SQS read access
 
 Usage:
-    python e2e-test-fpolicy.py \
+    python e2e_test_fpolicy.py \
         --region ap-northeast-1 \
         --ecs-log-group /ecs/fsxn-fpolicy-server \
         --cluster-name fsxn-fpolicy \
@@ -23,7 +23,7 @@ Usage:
 """
 
 import argparse
-import json
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -39,6 +39,11 @@ from botocore.exceptions import ClientError
 CONNECTION_TIMEOUT_SECONDS = 60
 LOG_POLL_TIMEOUT_SECONDS = 30
 LOG_POLL_INTERVAL_SECONDS = 5
+
+# ONTAP's default keep_alive_interval is PT2M. The measured interval on
+# 9.18.1P3D1 was 120 s (4,694 KeepAlive lines, widest gap 120.4 s):
+# docs/en/verification-results-fpolicy-s3ap-and-session.md
+DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 120
 
 # =============================================================================
 # ONTAP CLI Commands (documented for manual execution)
@@ -209,7 +214,7 @@ def diagnose_ecs_task_health(
         desired_count = service.get("desiredCount", 0)
 
         lines = [
-            f"ECS Service Health:",
+            "ECS Service Health:",
             f"  Service: {service_name}",
             f"  Cluster: {cluster_name}",
             f"  Running/Desired: {running_count}/{desired_count}",
@@ -252,21 +257,74 @@ def diagnose_ecs_task_health(
         return f"Failed to describe ECS service: {e.response['Error']['Message']}"
 
 
-def diagnose_keepalive_messages(
-    logs_client: Any, log_group: str, lookback_seconds: int = 30
-) -> str:
-    """Check for ONTAP KeepAlive messages in ECS logs.
+def keepalive_lookback_seconds(keepalive_interval_seconds: int) -> int:
+    """Derive the log query window from the engine's keep_alive_interval.
 
-    ONTAP sends KeepAlive messages every ~6 seconds when connected.
+    The window has to be wider than the interval, or a healthy pipeline reports
+    as unhealthy. The previous default was a fixed 30 s, chosen when the
+    interval was believed to be about 6 seconds. Against the measured 120 s
+    interval that window contains a KeepAlive on roughly one run in four, so
+    three runs in four reported a working pipeline as "ONTAP is NOT connected"
+    and sent the reader to investigate the engine IP and the security group.
+
+    The factor is above 2 deliberately. At exactly 2 an execution whose window
+    lands between two KeepAlives can still contain none of them; 2.5 leaves
+    room for the jitter between ONTAP's send and the log ingestion timestamp.
+
+    Args:
+        keepalive_interval_seconds: The engine's ``keep_alive_interval``, in
+            seconds. ONTAP's default is ``PT2M``.
+
+    Returns:
+        Lookback window in seconds.
+    """
+    return max(int(2.5 * keepalive_interval_seconds), 60)
+
+
+def _observed_keepalive_intervals(messages: list[str]) -> list[float]:
+    """Pull the ``since_prev=<n>s`` values the FPolicy server logs.
+
+    Reading the interval out of the log rather than off a documented constant
+    is the point: the constant is what went stale. See ``_log_keepalive`` in
+    ``shared/fpolicy-server/fpolicy_server.py``.
+
+    Args:
+        messages: Raw log message strings.
+
+    Returns:
+        Observed intervals in seconds, in the order they appear.
+    """
+    intervals = []
+    for message in messages:
+        match = re.search(r"since_prev=([0-9]+(?:\.[0-9]+)?)s", message)
+        if match:
+            intervals.append(float(match.group(1)))
+    return intervals
+
+
+def diagnose_keepalive_messages(
+    logs_client: Any,
+    log_group: str,
+    keepalive_interval_seconds: int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
+    lookback_seconds: int | None = None,
+) -> tuple[bool, str]:
+    """Check for ONTAP KeepAlive messages in ECS logs.
 
     Args:
         logs_client: CloudWatch Logs boto3 client.
         log_group: ECS task log group name.
-        lookback_seconds: How far back to look for KeepAlive messages.
+        keepalive_interval_seconds: The engine's configured
+            ``keep_alive_interval``, used to derive the query window.
+        lookback_seconds: Explicit window, overriding the derived one. Present
+            so the window can be driven directly in tests.
 
     Returns:
-        Formatted KeepAlive status.
+        ``(found, report)``. The caller branches on ``found`` rather than
+        matching on the text, so rewording the report cannot change the
+        verdict.
     """
+    if lookback_seconds is None:
+        lookback_seconds = keepalive_lookback_seconds(keepalive_interval_seconds)
     start_time_ms = int((time.time() - lookback_seconds) * 1000)
     try:
         response = logs_client.filter_log_events(
@@ -277,18 +335,41 @@ def diagnose_keepalive_messages(
         )
         events = response.get("events", [])
         if events:
-            lines = [f"KeepAlive messages found ({len(events)} in last {lookback_seconds}s):"]
-            for event in events[-3:]:
-                lines.append(f"  {event.get('message', '').strip()}")
-            return "\n".join(lines)
-        else:
-            return (
-                f"No KeepAlive messages found in last {lookback_seconds}s.\n"
-                "  This indicates ONTAP is NOT connected to the FPolicy server.\n"
-                "  Check: Is the Fargate task IP registered in ONTAP external engine?"
-            )
+            messages = [event.get("message", "").strip() for event in events]
+            lines = [
+                f"KeepAlive messages found ({len(events)} in last {lookback_seconds}s):"
+            ]
+            for message in messages[-3:]:
+                lines.append(f"  {message}")
+            intervals = _observed_keepalive_intervals(messages)
+            if intervals:
+                rendered = ", ".join(f"{value:.1f}s" for value in intervals)
+                lines.append(
+                    f"  Observed interval: {rendered} | "
+                    f"configured keep_alive_interval: {keepalive_interval_seconds}s"
+                )
+            else:
+                lines.append(
+                    "  Observed interval: not reported by the server log "
+                    "(no since_prev= field; the first KeepAlive after a "
+                    "handshake has no predecessor)"
+                )
+            return True, "\n".join(lines)
+        return False, (
+            f"No KeepAlive messages were observed in the last {lookback_seconds}s.\n"
+            "  This is not by itself evidence that ONTAP is disconnected.\n"
+            "  Check, in this order:\n"
+            "    1. The engine's keep_alive_interval. If it exceeds "
+            f"{keepalive_interval_seconds}s, pass the real value via "
+            "--keepalive-interval; the window is derived from it.\n"
+            "    2. Whether the Fargate task IP is registered in the ONTAP "
+            "external engine, and whether TCP 9898 is open.\n"
+            "  Note: STATUS_REQ (status_request_interval, default PT10S) is a "
+            "different message and is logged at DEBUG, so it neither appears "
+            "here nor stands in for a KeepAlive."
+        )
     except ClientError as e:
-        return f"Failed to query logs: {e.response['Error']['Message']}"
+        return False, f"Failed to query logs: {e.response['Error']['Message']}"
 
 
 # =============================================================================
@@ -326,6 +407,7 @@ def step_verify_ecs_health(
     cluster_name: str,
     service_name: str,
     ecs_log_group: str,
+    keepalive_interval_seconds: int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
 ) -> bool:
     """Verify ECS Fargate task is running and receiving KeepAlive.
 
@@ -335,6 +417,7 @@ def step_verify_ecs_health(
         cluster_name: ECS cluster name.
         service_name: ECS service name.
         ecs_log_group: ECS task CloudWatch log group.
+        keepalive_interval_seconds: The engine's ``keep_alive_interval``.
 
     Returns:
         True if task is healthy and KeepAlive messages are present.
@@ -348,7 +431,11 @@ def step_verify_ecs_health(
 
     # Check for KeepAlive messages (indicates ONTAP is connected)
     print("--- ONTAP KeepAlive Check ---")
-    keepalive_info = diagnose_keepalive_messages(logs_client, ecs_log_group)
+    keepalive_found, keepalive_info = diagnose_keepalive_messages(
+        logs_client,
+        ecs_log_group,
+        keepalive_interval_seconds=keepalive_interval_seconds,
+    )
     print(keepalive_info)
     print()
 
@@ -361,12 +448,14 @@ def step_verify_ecs_health(
         )
         return False
 
-    if "No KeepAlive" in keepalive_info:
+    if not keepalive_found:
         print_result(
             "ECS task health",
             "FAIL",
-            "Task is running but ONTAP is not connected (no KeepAlive).\n"
-            "Verify ONTAP FPolicy external engine points to the correct Fargate task IP.",
+            "Task is running, but no KeepAlive was observed in the query window.\n"
+            "This step cannot distinguish a disconnected engine from a window "
+            "narrower than the engine's keep_alive_interval. Confirm the "
+            "interval before treating this as a connection fault.",
         )
         return False
 
@@ -399,7 +488,7 @@ def step_verify_sqs_event(
     print_section("Step 3: Verify FPolicy Event in ECS Logs")
     print(f"Log group: {ecs_log_group}")
     print(f"Timeout: {LOG_POLL_TIMEOUT_SECONDS} seconds")
-    print(f"Filter: '[SQS] Sent:'")
+    print("Filter: '[SQS] Sent:'")
     print()
 
     events = poll_cloudwatch_logs(
@@ -440,6 +529,7 @@ def step_diagnose_connection_failure(
     cluster_name: str,
     service_name: str,
     ecs_log_group: str,
+    keepalive_interval_seconds: int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
 ) -> None:
     """Output diagnostic information on connection failure.
 
@@ -449,6 +539,7 @@ def step_diagnose_connection_failure(
         cluster_name: ECS cluster name.
         service_name: ECS service name.
         ecs_log_group: ECS task log group.
+        keepalive_interval_seconds: The engine's ``keep_alive_interval``.
     """
     print_section("Diagnostics: Connection Failure")
 
@@ -458,9 +549,16 @@ def step_diagnose_connection_failure(
     print(health_info)
     print()
 
-    # KeepAlive check
-    print("--- ONTAP KeepAlive Messages (last 60s) ---")
-    keepalive_info = diagnose_keepalive_messages(logs_client, ecs_log_group, 60)
+    # KeepAlive check. The window is derived, so the heading reports the value
+    # actually used rather than a literal -- a hardcoded figure in the heading
+    # is the same defect this function is here to diagnose.
+    window_seconds = keepalive_lookback_seconds(keepalive_interval_seconds)
+    print(f"--- ONTAP KeepAlive Messages (last {window_seconds}s) ---")
+    _, keepalive_info = diagnose_keepalive_messages(
+        logs_client,
+        ecs_log_group,
+        keepalive_interval_seconds=keepalive_interval_seconds,
+    )
     print(keepalive_info)
     print()
 
@@ -513,16 +611,16 @@ def step_cleanup(svm_name: str) -> bool:
     print_section("Step 4: Cleanup")
     print("Execute the following commands on ONTAP CLI to clean up:")
     print()
-    print(f"    # Disable FPolicy policy")
+    print("    # Disable FPolicy policy")
     print(f"    vserver fpolicy disable -vserver {svm_name} \\")
-    print(f"        -policy-name fpolicy_lambda_policy")
+    print("        -policy-name fpolicy_lambda_policy")
     print()
-    print(f"    # Delete test files (adjust path as needed)")
-    print(f"    # Example: delete test file created during verification")
+    print("    # Delete test files (adjust path as needed)")
+    print("    # Example: delete test file created during verification")
     print()
-    print(f"    # Verify policy is disabled")
+    print("    # Verify policy is disabled")
     print(f"    vserver fpolicy show -vserver {svm_name} \\")
-    print(f"        -policy-name fpolicy_lambda_policy")
+    print("        -policy-name fpolicy_lambda_policy")
     print()
     print("Expected: Policy status shows 'disabled', test files do not exist.")
     print()
@@ -594,6 +692,7 @@ def run_fpolicy_e2e_test(args: argparse.Namespace) -> int:
         cluster_name=args.cluster_name,
         service_name=args.service_name,
         ecs_log_group=args.ecs_log_group,
+        keepalive_interval_seconds=args.keepalive_interval,
     )
     results.append(ecs_health)
 
@@ -603,11 +702,11 @@ def run_fpolicy_e2e_test(args: argparse.Namespace) -> int:
     print("Trigger a file creation operation on the monitored CIFS/SMB share.")
     print("Example (from a Windows client or smbclient):")
     print()
-    print(f"    # Using smbclient:")
-    print(f"    smbclient //{{server}}/{{share}} -U {{user}} -c 'put testfile.txt'")
+    print("    # Using smbclient:")
+    print("    smbclient //{server}/{share} -U {user} -c 'put testfile.txt'")
     print()
-    print(f"    # Or from Windows Explorer:")
-    print(f"    # Create a new file in the monitored share")
+    print("    # Or from Windows Explorer:")
+    print("    # Create a new file in the monitored share")
     print()
     print("Waiting for '[SQS] Sent:' message in ECS logs...")
     print()
@@ -625,6 +724,7 @@ def run_fpolicy_e2e_test(args: argparse.Namespace) -> int:
             cluster_name=args.cluster_name,
             service_name=args.service_name,
             ecs_log_group=args.ecs_log_group,
+            keepalive_interval_seconds=args.keepalive_interval,
         )
 
     # Step 4: Cleanup
@@ -673,7 +773,7 @@ Architecture:
 
 Examples:
     # Run with all required arguments
-    python e2e-test-fpolicy.py \\
+    python e2e_test_fpolicy.py \\
         --region ap-northeast-1 \\
         --ecs-log-group /ecs/fsxn-fpolicy-server \\
         --cluster-name fsxn-fpolicy \\
@@ -681,7 +781,7 @@ Examples:
         --svm-name FPolicySMB
 
     # With custom log group
-    python e2e-test-fpolicy.py \\
+    python e2e_test_fpolicy.py \\
         --region ap-northeast-1 \\
         --ecs-log-group /ecs/my-stack-fpolicy-server \\
         --cluster-name my-stack-fpolicy \\
@@ -714,6 +814,19 @@ Examples:
         "--svm-name",
         required=True,
         help="FSx for ONTAP SVM name (e.g., FPolicySMB)",
+    )
+    parser.add_argument(
+        "--keepalive-interval",
+        type=int,
+        default=DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
+        help=(
+            "The engine's keep_alive_interval in seconds (default: "
+            f"{DEFAULT_KEEPALIVE_INTERVAL_SECONDS}, matching ONTAP's PT2M). "
+            "The KeepAlive log query window is derived from this value, so set "
+            "it to the real interval if the engine is configured differently. "
+            "Check with: vserver fpolicy policy external-engine show "
+            "-fields keep-alive-interval"
+        ),
     )
 
     return parser.parse_args()

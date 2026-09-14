@@ -60,15 +60,19 @@ aws ecs describe-tasks \
 # ECS CloudWatch Logs で KeepAlive メッセージを確認
 aws logs tail \
   /ecs/fsxn-fpolicy-server \
-  --since 30s \
+  --since 5m \
   --region ap-northeast-1 \
   --format short
 ```
 
-**期待される出力（約6秒間隔）:**
+**期待される出力（120 秒間隔）:**
 ```
-[KeepAlive] Received from ONTAP (session: <session-id>)
+[KeepAlive] seq=42 | since_prev=120.1s
 ```
+
+`--since` はエンジンの `keep_alive_interval`（既定 `PT2M` = 120 秒）より広く取ります。
+`--since 30s` では正常な接続でも約 4 回に 3 回は何も出ません。間隔は本文の数値ではなく
+`since_prev` を読んでください。
 
 ### Step 4: CIFS/SMB 経由でファイルを作成
 

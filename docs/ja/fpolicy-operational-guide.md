@@ -43,7 +43,9 @@ FPolicy パイプラインには 4 つのヘルスレイヤーがあります。
 1. ECS サービスイベントを確認: `aws ecs describe-services --cluster <cluster> --services <service>`
 2. 新しいタスク IP を取得: `aws ecs describe-tasks --cluster <cluster> --tasks <task-arn>`
 3. ONTAP エンジンを更新: `bash shared/scripts/fpolicy-update-engine-ip.sh --auto`
-4. 60 秒以内に ECS ログで KeepAlive を確認
+4. ECS ログで KeepAlive を確認する。最大 5 分まで待つ。ハンドシェイク後の最初の
+   KeepAlive は `keep_alive_interval`（既定 120 秒）ぶん待つことがあるため、60 秒で
+   打ち切ると正常な再接続を失敗として報告することになる
 
 ### ONTAP エンジンが切断された場合
 

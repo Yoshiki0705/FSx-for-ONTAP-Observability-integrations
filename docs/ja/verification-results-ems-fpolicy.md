@@ -272,20 +272,21 @@ aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <task ARN> \
 **実行コマンド:**
 
 ```bash
-# Check KeepAlive messages in ECS logs (sent at ~6 second intervals)
+# Check KeepAlive messages in ECS logs (sent at 120 second intervals)
+# The window must exceed the engine's keep_alive_interval (default PT2M).
 aws logs filter-log-events \
   --log-group-name /ecs/fsxn-fpolicy-server-fsxn-fp-srv \
   --filter-pattern "KeepAlive" \
-  --start-time $(date -d '30 seconds ago' +%s000) \
+  --start-time $(date -d '300 seconds ago' +%s000) \
   --limit 5 \
   --region ap-northeast-1
 ```
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | 30 秒以内に `KeepAlive from <IP>` メッセージが ECS ログに記録されていること。これは ONTAP が FPolicy サーバーに正常に接続していることを示す |
-| **実際の結果** | ONTAP から約6秒間隔で KeepAlive メッセージ受信確認。送信元 IP: `10.0.x.x` |
-| **判定** | ✅ PASS |
+| **期待結果** | 300 秒以内に `KeepAlive from <IP>` メッセージが ECS ログに記録されていること。これは ONTAP が FPolicy サーバーに正常に接続していることを示す |
+| **実際の結果** | ~~ONTAP から約6秒間隔で KeepAlive メッセージ受信確認。~~ **撤回します。** 6 秒間隔は再現しませんでした。後続のセッションで KeepAlive 4,694 行・最大間隔 120.4 秒を実測しており、エンジンの設定は `keep_alive_interval=PT2M` です。約 10 秒間隔で届くのは `status_request_interval=PT10S` による `STATUS_REQ` で、これは別のメッセージかつ DEBUG レベルの出力です。ここに記録された数値はこの 10 秒周期を見たものと考えられます。訂正後の間隔: **120 秒**。送信元 IP: `10.0.x.x`。[FPolicy S3 Access Point とセッションの検証結果](verification-results-fpolicy-s3ap-and-session.md) を参照 |
+| **判定** | ✅ PASS（接続は確認済み。撤回したのは間隔の数値であり、判定そのものではありません） |
 
 ---
 

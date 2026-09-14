@@ -347,7 +347,7 @@ fi
 # =============================================================================
 print_header "4" "FPolicy External Engine E2E Test"
 
-FPOLICY_SCRIPT="${SCRIPT_DIR}/e2e-test-fpolicy.py"
+FPOLICY_SCRIPT="${SCRIPT_DIR}/e2e_test_fpolicy.py"
 
 if [[ ! -f "$FPOLICY_SCRIPT" ]]; then
   echo "  ERROR: FPolicy test script not found: ${FPOLICY_SCRIPT}"
