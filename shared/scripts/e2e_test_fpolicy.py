@@ -529,6 +529,7 @@ def step_diagnose_connection_failure(
     cluster_name: str,
     service_name: str,
     ecs_log_group: str,
+    keepalive_interval_seconds: int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
 ) -> None:
     """Output diagnostic information on connection failure.
 
@@ -538,6 +539,7 @@ def step_diagnose_connection_failure(
         cluster_name: ECS cluster name.
         service_name: ECS service name.
         ecs_log_group: ECS task log group.
+        keepalive_interval_seconds: The engine's ``keep_alive_interval``.
     """
     print_section("Diagnostics: Connection Failure")
 
@@ -547,9 +549,16 @@ def step_diagnose_connection_failure(
     print(health_info)
     print()
 
-    # KeepAlive check
-    print("--- ONTAP KeepAlive Messages (last 60s) ---")
-    keepalive_info = diagnose_keepalive_messages(logs_client, ecs_log_group, 60)
+    # KeepAlive check. The window is derived, so the heading reports the value
+    # actually used rather than a literal -- a hardcoded figure in the heading
+    # is the same defect this function is here to diagnose.
+    window_seconds = keepalive_lookback_seconds(keepalive_interval_seconds)
+    print(f"--- ONTAP KeepAlive Messages (last {window_seconds}s) ---")
+    _, keepalive_info = diagnose_keepalive_messages(
+        logs_client,
+        ecs_log_group,
+        keepalive_interval_seconds=keepalive_interval_seconds,
+    )
     print(keepalive_info)
     print()
 
@@ -715,6 +724,7 @@ def run_fpolicy_e2e_test(args: argparse.Namespace) -> int:
             cluster_name=args.cluster_name,
             service_name=args.service_name,
             ecs_log_group=args.ecs_log_group,
+            keepalive_interval_seconds=args.keepalive_interval,
         )
 
     # Step 4: Cleanup

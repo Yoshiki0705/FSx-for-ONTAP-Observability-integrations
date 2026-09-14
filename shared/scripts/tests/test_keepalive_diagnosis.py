@@ -28,6 +28,7 @@ arithmetic tests stay green.
 
 from __future__ import annotations
 
+import ast
 import sys
 import time
 from pathlib import Path
@@ -35,8 +36,11 @@ from typing import Any
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent
+MODULE_PATH = SCRIPTS_DIR / "e2e_test_fpolicy.py"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
+import e2e_test_fpolicy as e2e  # noqa: E402
 from e2e_test_fpolicy import (  # noqa: E402
     DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
     diagnose_keepalive_messages,
@@ -102,6 +106,32 @@ class EmptyLogsClient:
     ) -> dict[str, Any]:
         self.requested_start_times.append(startTime)
         return {"events": []}
+
+
+class StubEcsClient:
+    """The minimum ECS surface the diagnostics path touches."""
+
+    def describe_services(self, cluster: str, services: list[str]) -> dict[str, Any]:
+        return {
+            "services": [
+                {"runningCount": 1, "desiredCount": 1, "status": "ACTIVE"}
+            ]
+        }
+
+    def list_tasks(self, cluster: str, serviceName: str) -> dict[str, Any]:
+        return {"taskArns": ["arn:aws:ecs:us-east-1:123456789012:task/stub/abc123"]}
+
+    def describe_tasks(self, cluster: str, tasks: list[str]) -> dict[str, Any]:
+        return {
+            "tasks": [
+                {
+                    "taskArn": tasks[0],
+                    "lastStatus": "RUNNING",
+                    "healthStatus": "HEALTHY",
+                    "attachments": [],
+                }
+            ]
+        }
 
 
 def test_narrow_window_misses_a_healthy_stream() -> None:
@@ -211,3 +241,145 @@ def test_default_interval_matches_the_measured_value() -> None:
     ~6 s was the figure in an earlier record; it did not reproduce.
     """
     assert DEFAULT_KEEPALIVE_INTERVAL_SECONDS == MEASURED_INTERVAL_SECONDS
+
+
+# =============================================================================
+# The consumers of diagnose_keepalive_messages
+#
+# The tests above pin the function's contract. They cannot catch a caller that
+# fails to follow it, and that is what happened: diagnose_keepalive_messages
+# was changed to return (found, report), step_verify_ecs_health was updated,
+# and step_diagnose_connection_failure was not. It printed the tuple repr, and
+# it passed 60 positionally into what had become keepalive_interval_seconds --
+# so the window silently became 150 s while the heading still said 60 s.
+#
+# That path only runs when something else has already failed, which is the
+# worst place for garbled output. These tests exercise the callers, so a
+# contract change that the callers do not follow fails here.
+# =============================================================================
+
+
+def test_diagnostics_path_prints_the_report_not_the_tuple(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The failure-diagnostics step must print the report, not a tuple repr."""
+    e2e.step_diagnose_connection_failure(
+        ecs_client=StubEcsClient(),
+        logs_client=StubLogsClient(interval_seconds=MEASURED_INTERVAL_SECONDS),
+        cluster_name="fsxn-fpolicy",
+        service_name="fsxn-fpolicy-server",
+        ecs_log_group="/ecs/fsxn-fpolicy-server",
+        keepalive_interval_seconds=MEASURED_INTERVAL_SECONDS,
+    )
+    out = capsys.readouterr().out
+
+    assert "KeepAlive messages found" in out
+    assert "since_prev=" in out
+    # The tuple repr, in either polarity.
+    assert "(True," not in out
+    assert "(False," not in out
+
+
+def test_diagnostics_heading_matches_the_window_actually_used(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A literal in the heading is the same defect in miniature.
+
+    The heading said "(last 60s)" while the query used 150 s. Deriving it from
+    the same function the query uses means the two cannot drift.
+    """
+    interval = MEASURED_INTERVAL_SECONDS
+    expected_window = keepalive_lookback_seconds(interval)
+
+    e2e.step_diagnose_connection_failure(
+        ecs_client=StubEcsClient(),
+        logs_client=StubLogsClient(interval_seconds=interval),
+        cluster_name="fsxn-fpolicy",
+        service_name="fsxn-fpolicy-server",
+        ecs_log_group="/ecs/fsxn-fpolicy-server",
+        keepalive_interval_seconds=interval,
+    )
+    out = capsys.readouterr().out
+
+    assert f"(last {expected_window}s) ---" in out
+    # The window the report states has to be the window the heading states.
+    assert f"in last {expected_window}s" in out
+    # 60 was the stale literal, and is also what was passed positionally.
+    assert "(last 60s)" not in out
+
+
+def test_health_step_fails_when_no_keepalive_is_observed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The health step must branch on the flag, not on the report wording.
+
+    It previously decided by ``"No KeepAlive" in keepalive_info``, which made
+    the phrasing load-bearing: rewording the report changed the verdict.
+    """
+    result = e2e.step_verify_ecs_health(
+        ecs_client=StubEcsClient(),
+        logs_client=EmptyLogsClient(),
+        cluster_name="fsxn-fpolicy",
+        service_name="fsxn-fpolicy-server",
+        ecs_log_group="/ecs/fsxn-fpolicy-server",
+        keepalive_interval_seconds=MEASURED_INTERVAL_SECONDS,
+    )
+    out = capsys.readouterr().out
+
+    assert result is False
+    assert "(False," not in out
+    # Failing the step is correct; concluding a disconnection is not.
+    assert "not by itself evidence that ONTAP is disconnected" in out
+    assert "NOT connected" not in out
+
+
+def test_health_step_passes_when_keepalive_is_observed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The same stub stream that the narrow window misses must pass here."""
+    result = e2e.step_verify_ecs_health(
+        ecs_client=StubEcsClient(),
+        logs_client=StubLogsClient(interval_seconds=MEASURED_INTERVAL_SECONDS),
+        cluster_name="fsxn-fpolicy",
+        service_name="fsxn-fpolicy-server",
+        ecs_log_group="/ecs/fsxn-fpolicy-server",
+        keepalive_interval_seconds=MEASURED_INTERVAL_SECONDS,
+    )
+    out = capsys.readouterr().out
+
+    assert result is True
+    assert "(True," not in out
+    assert "since_prev=" in out
+
+
+def test_every_caller_passes_the_interval_by_keyword() -> None:
+    """Positional passing is what turned 60 s of window into 150 s.
+
+    ``lookback_seconds`` became ``keepalive_interval_seconds`` in the same
+    position. A keyword makes that class of change fail loudly at the call
+    site instead of silently changing the meaning of a number.
+    """
+    # Parsed rather than matched with a regex. A regex over the source text
+    # cannot reliably tell the def from a call, and the first version of this
+    # test reported the def as a positional call site.
+    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+    call_sites = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "diagnose_keepalive_messages"
+    ]
+    assert call_sites, "expected to find call sites to check"
+
+    for call in call_sites:
+        keywords = {kw.arg for kw in call.keywords}
+        # log_group and logs_client stay positional; the interval must not.
+        assert len(call.args) <= 2, (
+            f"line {call.lineno}: more than two positional arguments. The "
+            "third position changed meaning from lookback_seconds to "
+            "keepalive_interval_seconds -- pass it by keyword"
+        )
+        assert "keepalive_interval_seconds" in keywords, (
+            f"line {call.lineno}: pass keepalive_interval_seconds by keyword"
+        )
