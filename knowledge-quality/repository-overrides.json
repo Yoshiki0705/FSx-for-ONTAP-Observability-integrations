@@ -1,0 +1,50 @@
+{
+  "schema": "knowledge-quality/repository-overrides/v1",
+  "overrides": [
+    {
+      "category": "scan-root",
+      "value": "docs",
+      "reason": "Bilingual documentation tree (docs/ja primary, docs/en translation); the primary surface for the naming, neutrality, and public-output audit in this repository."
+    },
+    {
+      "category": "scan-root",
+      "value": "integrations",
+      "reason": "Per-vendor observability integration directories (Datadog, Grafana, Dynatrace, and others); their READMEs and configuration prose carry service and vendor names, so they are in scope for naming and neutrality."
+    },
+    {
+      "category": "scan-root",
+      "value": "examples",
+      "reason": "Runnable example configurations with explanatory prose; in scope for naming and public-output safety."
+    },
+    {
+      "category": "scan-root",
+      "value": "management-console",
+      "reason": "A repository directory holding a self-hosted management console app and its docs. Its prose is in scope for the naming and neutrality audit; the directory name is a local identifier, not a product reference."
+    },
+    {
+      "category": "scan-root",
+      "value": "scripts",
+      "reason": "Python and TypeScript helpers; comments and messages are subject to the naming and neutrality rules."
+    },
+    {
+      "category": "scan-root",
+      "value": "guard",
+      "reason": "cfn-guard rules and policy prose; in scope for naming and neutrality."
+    },
+    {
+      "category": "scan-root",
+      "value": "shared",
+      "reason": "Shared code referenced by multiple integrations; in scope for naming and neutrality."
+    },
+    {
+      "category": "exclusion",
+      "value": ".private",
+      "reason": "Gitignored. Holds review provenance and any support-case references that must never reach public output; excluded from the public-facing audit surface by design."
+    },
+    {
+      "category": "localization-tier",
+      "value": "bilingual-ja-primary",
+      "reason": "Japanese under docs/ja is authoritative; docs/en is the translation and must keep matching section structure. Same tier model as the Hub, declared here as this repository's own configuration rather than copied rule text."
+    }
+  ]
+}
