@@ -13,7 +13,7 @@ MQTT ブローカー(Mosquitto、EMQX、HiveMQ)がエッジデバイスやパブ
 ## ホットパスがローカルに留まる理由
 
 - **InfluxDB v1/v2(TSM ストレージエンジン)には文書化された NFS ロック障害があります。** [influxdata/influxdb#9047](https://github.com/influxdata/influxdb/issues/9047) は、TSM データディレクトリを NFS 上で運用した際の "stale NFS file handle" エラーを報告しています。
-- **InfluxDB 3(Core/Enterprise)は、カタログに対して条件付き PUT セマンティクスを持つ S3 互換オブジェクトストアを要求します。** [InfluxData 公式ドキュメント](https://docs.influxdata.com/influxdb3/core/object-storage/s3/)がこれを明示しています。FSx for ONTAP S3 Access Points は条件付き書き込み(`If-None-Match`)に対応していません([S3 AP の仕様と制約](../../en/s3ap-fsxn-specification.md#8-fsx-for-ontap-s3-access-points--constraints--validated-patterns)参照)。そのため InfluxDB 3 のカタログはそれに対して正しく動作しません。
+- **InfluxDB 3(Core/Enterprise)は、カタログに対して条件付き PUT セマンティクスを持つ S3 互換オブジェクトストアを要求します。** [InfluxData 公式ドキュメント](https://docs.influxdata.com/influxdb3/core/object-storage/s3/)がこれを明示しています。FSx for ONTAP S3 Access Points は条件付き書き込み(`If-None-Match`)に対応していません([S3 AP の仕様と制約](../../ja/s3ap-fsxn-specification.md#8-fsx-for-ontap-s3-access-points--constraints--validated-patterns)参照)。そのため InfluxDB 3 のカタログはそれに対して正しく動作しません。
 - **Grafana 自身のダッシュボード/メタデータストア(SQLite)は、NFS 上での運用が安全でないと文書化されています。** [Grafana Community フォーラム](https://community.grafana.com/t/two-grafana-servers-with-single-sqlite3-databse-on-nfs/2734): 「NOT SAFE — SQLite DB を NFS 共有から使うべきではない。破損/データ整合性の問題が生じる」。
 - **Amazon ECS Fargate には FSx for ONTAP のネイティブなマウント経路がありません。** デコーダー/Telegraf/Grafana の層が ECS 上で動く場合に関係します。AWS ドキュメントの出典は[概要の除外セクション](README.md#除外-リアルタイム配信経路)を参照してください。ECS on EC2 は FSx for ONTAP をマウントできますが、Fargate はできません。
 
@@ -37,4 +37,4 @@ MQTT ブローカー(Mosquitto、EMQX、HiveMQ)がエッジデバイスやパブ
 
 - [概要: FSx for ONTAP によるオブザーバビリティ基盤ストレージの統合](README.md)
 - [オンプレミス/マルチクラウド ONTAP 事例集](onprem-and-fsxn-case-studies.md)
-- [S3 AP の仕様と制約](../../en/s3ap-fsxn-specification.md)
+- [S3 AP の仕様と制約](../../ja/s3ap-fsxn-specification.md)

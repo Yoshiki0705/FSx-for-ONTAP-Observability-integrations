@@ -44,9 +44,9 @@ distributed database designed to run effectively on local disks. However, many
 organizations have deployed NetApp ONTAP storage in AWS, Azure, or Google Cloud." The post
 walks through deploying OpenSearch (explicitly named as "search, analytics, and
 observability" software) on NFS or iSCSI volumes across **Cloud Volumes ONTAP, Azure
-NetApp Files, Google Cloud NetApp Volumes, and on-premises NetApp AFF systems**, and states
-that FSx for ONTAP was included in its own benchmark: "From our observations, NetApp LUNs
-(iSCSI), NFS (FSx for ONTAP) storage volumes give better performance than others."
+NetApp Files, Google Cloud NetApp Volumes, and on-premises NetApp AFF systems**. FSx for
+ONTAP was included in the article's benchmark, which reports a favorable performance result
+for NetApp LUN (iSCSI) and NFS (FSx for ONTAP) storage volumes among the options measured.
 
 This is the strongest single piece of public evidence found for this document set that
 **both NFS and iSCSI**, across **all major ONTAP delivery models including FSx for ONTAP**,

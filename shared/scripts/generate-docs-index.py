@@ -132,6 +132,19 @@ CATEGORIES: list[tuple[str, str, list[str]]] = [
         ],
     ),
     (
+        "Storage Consolidation Patterns",
+        "ストレージ統合パターン",
+        [
+            "observability-storage-patterns/README",
+            "observability-storage-patterns/pattern-1-mqtt-tsdb-live-dashboard",
+            "observability-storage-patterns/pattern-2-prometheus-remote-write",
+            "observability-storage-patterns/pattern-3-managed-iot-timestream",
+            "observability-storage-patterns/pattern-4-kafka-otel-collector",
+            "observability-storage-patterns/pattern-5-embedded-columnar-tsdb",
+            "observability-storage-patterns/onprem-and-fsxn-case-studies",
+        ],
+    ),
+    (
         "Choosing an Approach",
         "アプローチの選択",
         [

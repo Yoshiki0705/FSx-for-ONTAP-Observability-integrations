@@ -253,6 +253,16 @@ English and Japanese indexes always list the same set.
 - [Lakehouse Long-Term Retention for FSx for ONTAP Audit Logs](lakehouse-long-term-retention.md)
 - [Lakehouse Monitoring Patterns](lakehouse-monitoring-patterns.md)
 
+**Storage Consolidation Patterns**
+
+- [Consolidating Observability Storage on FSx for ONTAP](observability-storage-patterns/README.md)
+- [Pattern 1: MQTT → TSDB → Live Dashboard](observability-storage-patterns/pattern-1-mqtt-tsdb-live-dashboard.md)
+- [Pattern 2: Prometheus + Remote-Write](observability-storage-patterns/pattern-2-prometheus-remote-write.md)
+- [Pattern 3: Managed IoT → Timestream](observability-storage-patterns/pattern-3-managed-iot-timestream.md)
+- [Pattern 4: Kafka + OTel Collector + TSDB](observability-storage-patterns/pattern-4-kafka-otel-collector.md)
+- [Pattern 5: Embedded/Columnar TSDB (QuestDB, ClickHouse, TimescaleDB)](observability-storage-patterns/pattern-5-embedded-columnar-tsdb.md)
+- [On-Premises and Multi-Cloud ONTAP Case Studies for Observability Storage](observability-storage-patterns/onprem-and-fsxn-case-studies.md)
+
 **Choosing an Approach**
 
 - [FSx for ONTAP Management & Monitoring Decision Tree](decision-tree-management-monitoring.md)

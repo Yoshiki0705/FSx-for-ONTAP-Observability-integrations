@@ -18,7 +18,7 @@
 
 ## FSx for ONTAP 上の OpenSearch — クロスプラットフォーム(AWS、Azure、Google Cloud、オンプレミス)
 
-[NetApp のブログ記事](https://www.netapp.com/blog/opensearch-on-netapp-ontap-in-the-cloud/) は、OpenSearch について本ドキュメントの中心的な問いに明示的に答えています。「OpenSearch はローカルディスク上で効果的に動作するように設計された分散データベースです。しかし、多くの組織が AWS、Azure、Google Cloud に NetApp ONTAP ストレージを展開しています」。この記事は、**Cloud Volumes ONTAP、Azure NetApp Files、Google Cloud NetApp Volumes、オンプレミスの NetApp AFF システム**にわたって、OpenSearch(「検索・分析・オブザーバビリティ」ソフトウェアと明示的に呼ばれています)を NFS または iSCSI ボリューム上に構築する手順を説明し、FSx for ONTAP を自身のベンチマークに含めたと述べています。「私たちの観測では、NetApp LUN(iSCSI)、NFS(FSx for ONTAP)のストレージボリュームは、他のものより優れた性能を示しました」。
+[NetApp のブログ記事](https://www.netapp.com/blog/opensearch-on-netapp-ontap-in-the-cloud/) は、OpenSearch について本ドキュメントの中心的な問いに明示的に答えています。「OpenSearch はローカルディスク上で効果的に動作するように設計された分散データベースです。しかし、多くの組織が AWS、Azure、Google Cloud に NetApp ONTAP ストレージを展開しています」。この記事は、**Cloud Volumes ONTAP、Azure NetApp Files、Google Cloud NetApp Volumes、オンプレミスの NetApp AFF システム**にわたって、OpenSearch(「検索・分析・オブザーバビリティ」ソフトウェアと明示的に呼ばれています)を NFS または iSCSI ボリューム上に構築する手順を説明しています。FSx for ONTAP はこの記事のベンチマークに含まれており、NetApp LUN(iSCSI)と NFS(FSx for ONTAP)のストレージボリュームについて、比較対象の中で良好な性能結果を観測したと報告しています。
 
 これは、本ドキュメント群がこれまでに見つけた最も強力な単一の公開エビデンスです。**NFS と iSCSI の両方**が、**FSx for ONTAP を含む主要な ONTAP 提供形態のすべて**にわたって、NetApp 自身によってオブザーバビリティワークロード(OpenSearch)向けにベンチマークされているというもので、無関係な文書からの推論ではありません。これは、ネットワーク接続の ONTAP ストレージが、ドキュメントストア型のオブザーバビリティエンジン(本ドキュメントの5パターンが主に対象とする時系列 DB エンジンとは異なる)にとって選択可能であるという(未検証の推論ではなく)推論を直接裏付けます。同記事のサイジングに関する指針: シャードサイズは 10〜50GB に保つこと、ネットワークストレージの無停止ボリューム拡張により、OpenSearch が本来必要とするローカル SSD のリバランシング操作が減ること。
 
@@ -44,4 +44,4 @@
 - [概要: FSx for ONTAP によるオブザーバビリティ基盤ストレージの統合](README.md)
 - [パターン1: MQTT → 時系列 DB → ライブダッシュボード](pattern-1-mqtt-tsdb-live-dashboard.md)
 - [パターン4: Kafka + OTel Collector + 時系列 DB](pattern-4-kafka-otel-collector.md)
-- [AWS ネイティブ代替マトリクス](../../en/native-alternative-matrix.md)
+- [AWS ネイティブ代替マトリクス](../../ja/native-alternative-matrix.md)

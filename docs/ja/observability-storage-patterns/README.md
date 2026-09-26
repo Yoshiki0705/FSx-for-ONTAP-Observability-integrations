@@ -68,9 +68,9 @@
 
 **課題**: 上記5パターンのすべてのホットストレージエンジンは、何らかの保持期間の制約を持つか、すべてを永久に保持することがコスト的に見合いません。根本原因分析、コンプライアンス、またはホットストア へのクエリ権限を持たないチームがそのウィンドウより古いデータを必要とする場合、あるいはチームごとにコピーを持たずに生データを共有する必要がある場合、ホットストアの保持期間が切れるとデータは失われます(あるいはチームごとに断片化したエクスポートとしてのみ存在します)。
 
-**パターン**: パイプラインが既にホットストアへ書き込む取り込み用 Lambda・コンシューマー・エクスポートジョブを持っている箇所であれば、同じペイロードを [S3 Access Point](../../en/s3ap-fsxn-specification.md) 経由で FSx for ONTAP ボリュームにも書き込むことができます。これは[AWS が公式に文書化している Lambda ファイル処理パターン](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/tutorial-process-files-with-lambda.html)と同じ仕組みで、NFS/SMB でバックアップされたボリュームに対して S3 API 経由でファイルを読み書きします。アーカイブされたデータは、どのチームからも NFS/SMB で同時に参照可能になり、チームごとのコピーも同期対象の二重データストアも不要です。
+**パターン**: パイプラインが既にホットストアへ書き込む取り込み用 Lambda・コンシューマー・エクスポートジョブを持っている箇所であれば、同じペイロードを [S3 Access Point](../../ja/s3ap-fsxn-specification.md) 経由で FSx for ONTAP ボリュームにも書き込むことができます。これは[AWS が公式に文書化している Lambda ファイル処理パターン](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/tutorial-process-files-with-lambda.html)と同じ仕組みで、NFS/SMB でバックアップされたボリュームに対して S3 API 経由でファイルを読み書きします。アーカイブされたデータは、どのチームからも NFS/SMB で同時に参照可能になり、チームごとのコピーも同期対象の二重データストアも不要です。
 
-**ここで関係する制約**: FSx for ONTAP S3 Access Points は条件付き書き込み(`If-None-Match`)に対応していません。これは [s3ap-fsxn-specification.md](../../en/s3ap-fsxn-specification.md#8-fsx-for-ontap-s3-access-points--constraints--validated-patterns) に既に記録されています。これにより、条件付き PUT のセマンティクスに基づくトランザクショナルなテーブル形式(Delta Lake、Iceberg、Hudi)をこのアーカイブ上に直接構築することはできません。つまりこのアーカイブは書き込み専用(write-once-per-object)の追記・アーカイブ対象であり、トランザクショナルなデータレイクではありません。生 JSON/バイナリテレメトリペイロードに対してはこの制約は問題になりませんが、アーカイブされたファイルの上に直接トランザクショナルなテーブル形式を構築する場合は、AWS が検証済み回避策として文書化している中間ステップ(例: DataSync による native S3 への転送、またはバッチ ETL ジョブ)が必要です。
+**ここで関係する制約**: FSx for ONTAP S3 Access Points は条件付き書き込み(`If-None-Match`)に対応していません。これは [s3ap-fsxn-specification.md](../../ja/s3ap-fsxn-specification.md#8-fsx-for-ontap-s3-access-points--constraints--validated-patterns) に既に記録されています。これにより、条件付き PUT のセマンティクスに基づくトランザクショナルなテーブル形式(Delta Lake、Iceberg、Hudi)をこのアーカイブ上に直接構築することはできません。つまりこのアーカイブは書き込み専用(write-once-per-object)の追記・アーカイブ対象であり、トランザクショナルなデータレイクではありません。生 JSON/バイナリテレメトリペイロードに対してはこの制約は問題になりませんが、アーカイブされたファイルの上に直接トランザクショナルなテーブル形式を構築する場合は、AWS が検証済み回避策として文書化している中間ステップ(例: DataSync による native S3 への転送、またはバッチ ETL ジョブ)が必要です。
 
 ## パターン B: FlexClone による開発/テストの高速化
 
@@ -82,9 +82,9 @@
 
 **課題**: 異常発生後の根本原因分析は、上記5パターンの大半で挙げられている用途です。その分析の根拠となるアーカイブ済みテレメトリが(誤操作や侵害された認証情報によって)改変・削除可能であれば、フォレンジックの記録自体の信頼性が損なわれます。
 
-**パターン**: ONTAP の [Snapshot](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/using-backups.html) はボリュームの読み取り専用のポイントインタイムコピーを提供します。ポイントインタイムリカバリだけでなく不変性(immutability)がコンプライアンス・ガバナンス要件として求められる場合、[SnapLock](../../en/governance-and-compliance.md) がその上に write-once-read-many(WORM)保持を強制します。本リポジトリの既存の[自動対応ガイド](../../en/automated-response-guide.md)と[ARP インシデント対応ガイド](../../en/arp-incident-response-guide.md)は、FSx for ONTAP ボリュームに対する自動対応とランサムウェア対策の仕組みを既にカバーしているため、本ドキュメントではその内容を重複させません。本ドキュメントが追加するのは、テレメトリアーカイブ特有の位置づけのみです。パターン A のアーカイブボリュームに同じスナップショット/SnapLock 保護を適用し、根本原因分析が依拠するデータが黙って改変されないようにします。
+**パターン**: ONTAP の [Snapshot](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/using-backups.html) はボリュームの読み取り専用のポイントインタイムコピーを提供します。ポイントインタイムリカバリだけでなく不変性(immutability)がコンプライアンス・ガバナンス要件として求められる場合、[SnapLock](../../ja/governance-and-compliance.md) がその上に write-once-read-many(WORM)保持を強制します。本リポジトリの既存の[自動対応ガイド](../../ja/automated-response-guide.md)と[ARP インシデント対応ガイド](../../ja/arp-incident-response-guide.md)は、FSx for ONTAP ボリュームに対する自動対応とランサムウェア対策の仕組みを既にカバーしているため、本ドキュメントではその内容を重複させません。本ドキュメントが追加するのは、テレメトリアーカイブ特有の位置づけのみです。パターン A のアーカイブボリュームに同じスナップショット/SnapLock 保護を適用し、根本原因分析が依拠するデータが黙って改変されないようにします。
 
-> **不可逆性に関する補足**: SnapLock の保持ロックは、選択したロックモードによっては保持期間満了前に取り消せません(Compliance モードは設計上取り消し不可)。ボリュームに SnapLock を適用する前に、保持期間、影響範囲(どのボリューム、どのデータ)、選択した期間中そのデータが削除不能であることのコストを確認してください。Compliance モードと Enterprise モードの区別については[ガバナンスとコンプライアンス](../../en/governance-and-compliance.md)を参照し、その区別を読まずに進める判断ではありません。
+> **不可逆性に関する補足**: SnapLock の保持ロックは、選択したロックモードによっては保持期間満了前に取り消せません(Compliance モードは設計上取り消し不可)。ボリュームに SnapLock を適用する前に、保持期間、影響範囲(どのボリューム、どのデータ)、選択した期間中そのデータが削除不能であることのコストを確認してください。Compliance モードと Enterprise モードの区別については[ガバナンスとコンプライアンス](../../ja/governance-and-compliance.md)を参照し、その区別を読まずに進める判断ではありません。
 
 ## 除外: リアルタイム配信経路
 
@@ -188,8 +188,8 @@ A: これらのシステムのコールド/カタログ経路は条件付き PUT
 - [パターン4: Kafka + OTel Collector + 時系列 DB](pattern-4-kafka-otel-collector.md)
 - [パターン5: 組み込み/列指向 時系列 DB](pattern-5-embedded-columnar-tsdb.md)
 - [オンプレミス/マルチクラウド ONTAP 事例集](onprem-and-fsxn-case-studies.md)
-- [S3 AP の仕様と制約](../../en/s3ap-fsxn-specification.md) — パターン A とオブジェクトストア除外の両方が依拠する条件付き書き込みなどの制約
-- [ガバナンスとコンプライアンス](../../en/governance-and-compliance.md) — パターン C で参照する SnapLock の Compliance モードと Enterprise モードの区別
-- [自動対応ガイド](../../en/automated-response-guide.md) / [ARP インシデント対応ガイド](../../en/arp-incident-response-guide.md) — パターン C が重複させずに前提とする既存のランサムウェア対策の仕組み
+- [S3 AP の仕様と制約](../../ja/s3ap-fsxn-specification.md) — パターン A とオブジェクトストア除外の両方が依拠する条件付き書き込みなどの制約
+- [ガバナンスとコンプライアンス](../../ja/governance-and-compliance.md) — パターン C で参照する SnapLock の Compliance モードと Enterprise モードの区別
+- [自動対応ガイド](../../ja/automated-response-guide.md) / [ARP インシデント対応ガイド](../../ja/arp-incident-response-guide.md) — パターン C が重複させずに前提とする既存のランサムウェア対策の仕組み
 - [レイクハウス監視パターン](../lakehouse-monitoring-patterns.md) — レイクハウス統合において FSx for ONTAP 自体を監視する、関連するが別個のパターン群
-- [AWS ネイティブ代替マトリクス](../../en/native-alternative-matrix.md) — Kubernetes/Trident 経路の運用ツールを評価する際に関係する、プロプライエタリな管理ツールに対する AWS ネイティブな代替
+- [AWS ネイティブ代替マトリクス](../../ja/native-alternative-matrix.md) — Kubernetes/Trident 経路の運用ツールを評価する際に関係する、プロプライエタリな管理ツールに対する AWS ネイティブな代替

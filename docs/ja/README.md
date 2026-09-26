@@ -247,6 +247,16 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [FSx for ONTAP 監査ログの Lakehouse 長期保管パターン](lakehouse-long-term-retention.md)
 - [レイクハウス監視パターン](lakehouse-monitoring-patterns.md)
 
+**ストレージ統合パターン**
+
+- [FSx for ONTAP によるオブザーバビリティ基盤ストレージの統合](observability-storage-patterns/README.md)
+- [パターン1: MQTT → 時系列 DB → ライブダッシュボード](observability-storage-patterns/pattern-1-mqtt-tsdb-live-dashboard.md)
+- [パターン2: Prometheus + remote-write](observability-storage-patterns/pattern-2-prometheus-remote-write.md)
+- [パターン3: マネージド IoT → Timestream](observability-storage-patterns/pattern-3-managed-iot-timestream.md)
+- [パターン4: Kafka + OTel Collector + 時系列 DB](observability-storage-patterns/pattern-4-kafka-otel-collector.md)
+- [パターン5: 組み込み/列指向 時系列 DB(QuestDB、ClickHouse、TimescaleDB)](observability-storage-patterns/pattern-5-embedded-columnar-tsdb.md)
+- [オブザーバビリティ基盤ストレージのためのオンプレミス/マルチクラウド ONTAP 事例集](observability-storage-patterns/onprem-and-fsxn-case-studies.md)
+
 **アプローチの選択**
 
 - [FSx for ONTAP 管理・監視 Decision Tree](decision-tree-management-monitoring.md)

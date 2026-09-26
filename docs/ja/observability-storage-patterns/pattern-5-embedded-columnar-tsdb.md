@@ -36,4 +36,4 @@
 
 - [概要: FSx for ONTAP によるオブザーバビリティ基盤ストレージの統合](README.md)
 - [オンプレミス/マルチクラウド ONTAP 事例集](onprem-and-fsxn-case-studies.md)
-- [S3 AP の仕様と制約](../../en/s3ap-fsxn-specification.md)
+- [S3 AP の仕様と制約](../../ja/s3ap-fsxn-specification.md)
