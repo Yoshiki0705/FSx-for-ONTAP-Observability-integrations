@@ -1,0 +1,455 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Pattern 4 verification environment - Kafka broker fleet with AutoMQ
+  diskless-Kafka, using an FSx for ONTAP Generation 2 volume as a Multi-AZ shared
+  write-ahead log (WAL) in front of S3. Net-new: the broker fleet and the Gen2
+  high-throughput WAL config. AutoMQ is one BYOC-dependent, vendor-neutral option;
+  traditional three-replica Multi-AZ Kafka is the documented alternative (see the
+  setup guide's how-to-choose). The OTel Collector layer and the ClickHouse
+  consumer DDL are reused as documentation pointers, not copied; VPC endpoints are
+  a nested-stack reuse. Guardrail: a Kafka log directory on FSx for ONTAP NFS
+  depends on the silly-rename fix (-is-preserve-unlink-enabled=true, ONTAP
+  9.12.1+); FSx for ONTAP meets the version prerequisite from 9.18.1, but a
+  specific volume set and validated end-to-end is NOT asserted here. Verification
+  environment only. See docs/{ja,en}/setup-guide.md.
+
+Metadata:
+  # Console create-stack form grouping (additive first-run usability affordance).
+  # Groups parameters into logical sets so the form reads by concern instead of
+  # alphabetically. See
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-cloudformation-interface.html
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network placement
+        Parameters:
+          - VpcId
+          - SubnetIds
+      - Label:
+          default: FSx for ONTAP foundation (reused)
+        Parameters:
+          - FileSystemId
+          - OntapMgmtIp
+          - SvmId
+      - Label:
+          default: VPC endpoints reuse (nested stack)
+        Parameters:
+          - ReuseArchiveStackName
+          - VpcEndpointsTemplateUrl
+      - Label:
+          default: This pattern's net-new Kafka broker fleet
+        Parameters:
+          - KafkaMode
+          - BrokerInstanceType
+          - BrokerCount
+          - BrokerAmiId
+      - Label:
+          default: FSx for ONTAP Gen2 WAL configuration
+        Parameters:
+          - Gen2HighThroughput
+          - WalMountPath
+    ParameterLabels:
+      VpcId:
+        default: VPC ID for the broker fleet
+      SubnetIds:
+        default: Private subnet IDs in >=2 AZs (Multi-AZ WAL)
+      FileSystemId:
+        default: FSx for ONTAP Gen2 file system ID (reused foundation)
+      OntapMgmtIp:
+        default: ONTAP management endpoint IP
+      SvmId:
+        default: SVM identifier (optional)
+      ReuseArchiveStackName:
+        default: Nested VPC endpoints stack name
+      VpcEndpointsTemplateUrl:
+        default: Packaged S3 URL of the shared VPC endpoints template (empty to reuse existing)
+      KafkaMode:
+        default: Kafka storage model (automq-wal or traditional)
+      BrokerInstanceType:
+        default: Kafka broker EC2 instance type
+      BrokerCount:
+        default: Intended broker fleet size
+      BrokerAmiId:
+        default: Amazon Linux 2023 arm64 AMI (SSM public parameter)
+      Gen2HighThroughput:
+        default: Gen2 high-throughput WAL intent (cost driver)
+      WalMountPath:
+        default: Broker WAL mount path
+
+Parameters:
+  # --- Common parameter skeleton (shared across all pattern verification
+  # environments), following the AllowedPattern conventions from
+  # shared/templates/restore-verification.yaml and pattern-2 / pattern-5. -----
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where the Kafka broker fleet is placed (private subnets reachable to the FSx for ONTAP SVM).
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Private subnet IDs. AutoMQ's WAL layer is a Multi-AZ construct, so pass at
+      least two subnets in distinct AZs; brokers are spread across the list.
+
+  FileSystemId:
+    Type: String
+    Description: >-
+      FSx for ONTAP Generation 2 file system ID that owns the WAL volume. This
+      stack does not create the file system (it is a shared foundation reused
+      across patterns); the ID is recorded on the brokers for operator reference
+      and used to name the WAL mount target.
+    AllowedPattern: '^fs-[0-9a-f]{17}$'
+    ConstraintDescription: must be a valid FSx file system ID like fs-0123456789abcdef0 (fs- followed by 17 hex characters).
+
+  OntapMgmtIp:
+    Type: String
+    Description: FSx for ONTAP management endpoint IP address (recorded for operator reference).
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+    ConstraintDescription: must be a dotted-quad IPv4 address like 198.51.100.10.
+
+  SvmId:
+    Type: String
+    Description: SVM identifier that fronts the WAL volume (recorded for operator reference).
+    Default: ''
+
+  ReuseArchiveStackName:
+    Type: String
+    Description: >-
+      Name to give the nested VPC endpoints stack
+      (shared/templates/vpc-endpoints.yaml) when created. Kept as a common
+      parameter across patterns; here it names the reused-endpoints nested stack
+      rather than an archive stack.
+    Default: fsxn-pattern-4-vpc-endpoints
+    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]{0,127}$'
+    ConstraintDescription: must start with a letter and contain only letters, digits, and hyphens (1-128 characters), like fsxn-pattern-4-vpc-endpoints.
+
+  # --- Reuse mechanism: nested stack pointing at the shared VPC endpoints ----
+  VpcEndpointsTemplateUrl:
+    Type: String
+    Description: >-
+      S3 URL of the packaged shared/templates/vpc-endpoints.yaml. deploy.sh
+      uploads the shared template and fills this in. This is how the VPC
+      endpoints are REUSED (nested stack), not copied — the S3 Gateway and
+      Secrets Manager Interface endpoints are defined only in the shared
+      template. Left empty to skip (when the VPC already has the endpoints).
+    Default: ''
+
+  # --- Kafka broker fleet (net-new) -----------------------------------------
+  KafkaMode:
+    Type: String
+    Description: >-
+      Which Kafka storage model to provision. "automq-wal" runs AutoMQ
+      diskless-Kafka with the FSx for ONTAP Gen2 shared WAL (the net-new focus of
+      this pattern). "traditional" runs classic brokers with local log storage as
+      the documented alternative; choose per the setup guide's how-to-choose.
+    Default: automq-wal
+    AllowedValues: [automq-wal, traditional]
+
+  BrokerInstanceType:
+    Type: String
+    Description: >-
+      EC2 instance type for each Kafka broker (ephemeral verification sizing).
+      The AWS public benchmark cited in the setup guide used m7g.4xlarge; the
+      default here is smaller because this is a functional verification
+      environment, not a performance reproduction.
+    Default: m7g.large
+    AllowedValues: [m7g.large, m7g.xlarge, m7g.2xlarge, m7g.4xlarge]
+
+  BrokerCount:
+    Type: Number
+    Description: Number of Kafka brokers in the verification fleet (kept small for verification).
+    Default: 3
+    MinValue: 1
+    MaxValue: 3
+
+  BrokerAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: >-
+      Amazon Linux 2023 arm64 AMI (matching the m7g Graviton default), resolved
+      from the public SSM public-parameter path so no AMI ID is hardcoded and the
+      value is region-correct.
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+
+  # --- FSx for ONTAP Gen2 WAL configuration (net-new) -----------------------
+  Gen2HighThroughput:
+    Type: String
+    Description: >-
+      Whether the WAL volume relies on FSx for ONTAP Generation 2 HIGH-THROUGHPUT
+      provisioning. This is the cost driver called out in the setup guide: Gen2
+      high-throughput costs more than the standard configuration. "true" records
+      the intent on the brokers and in the WAL config so teardown warns before
+      dropping it; the actual throughput provisioning is a property of the reused
+      file system, not created by this stack.
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+
+  WalMountPath:
+    Type: String
+    Description: >-
+      Directory on each broker where the FSx for ONTAP Gen2 WAL volume is mounted
+      (AutoMQ WAL). Recorded in the broker config; the actual NFS mount is
+      performed by the operator per the setup guide (the silly-rename volume
+      setting must be validated first, see the guardrail).
+    Default: /var/lib/automq/wal
+    AllowedPattern: '^/[A-Za-z0-9._/-]+$'
+    ConstraintDescription: must be an absolute path beginning with / using letters, digits, dots, underscores, hyphens, and slashes, like /var/lib/automq/wal.
+
+Conditions:
+  HasVpcEndpointsUrl: !Not [!Equals [!Ref VpcEndpointsTemplateUrl, '']]
+  HasSvmId: !Not [!Equals [!Ref SvmId, '']]
+  IsAutoMqWal: !Equals [!Ref KafkaMode, 'automq-wal']
+
+Resources:
+  # ================================================================
+  # Reused VPC endpoints — nested stack over shared/templates/vpc-endpoints.yaml.
+  # The S3 Gateway and Secrets Manager Interface endpoints live ONLY in that
+  # shared template; this stack references it, it does not redefine them. Created
+  # only when deploy.sh has packaged and supplied its URL (skip when the VPC
+  # already has the endpoints — preflight detects a conflict).
+  # ================================================================
+  VpcEndpointsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasVpcEndpointsUrl
+    Properties:
+      TemplateURL: !Ref VpcEndpointsTemplateUrl
+      Parameters:
+        VpcId: !Ref VpcId
+        SubnetIds: !Join [',', !Ref SubnetIds]
+        SecurityGroupId: !Ref BrokerSecurityGroup
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-4-endpoints
+
+  # ================================================================
+  # Security group for the Kafka broker fleet. Intra-fleet broker replication and
+  # the client/producer path stay inside this SG (self-referencing ingress on the
+  # Kafka listener port); egress covers HTTPS to S3 (AutoMQ's durable tier),
+  # Secrets Manager, and SSM.
+  # ================================================================
+  BrokerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Kafka broker fleet - intra-fleet replication + egress to S3/Secrets Manager/SSM
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS out to S3 (AutoMQ durable tier), Secrets Manager, and SSM
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-4
+
+  # Self-referencing ingress for broker-to-broker and producer/consumer traffic
+  # on the Kafka listener port. Defined as a separate resource so the SG can
+  # reference its own ID. No CIDR ingress from outside the fleet.
+  BrokerIntraFleetIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref BrokerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9092
+      ToPort: 9093
+      SourceSecurityGroupId: !Ref BrokerSecurityGroup
+      Description: Kafka listener (broker replication + producer/consumer) within the fleet only
+
+  # ================================================================
+  # Broker instance role — least privilege, no wildcard actions (the cfn-guard
+  # critical rule blocks wildcards). SSM managed-instance access for keyless
+  # operator login; explicit inline read/write of the AutoMQ S3 durable tier
+  # scoped to this stack's bucket prefix; Secrets Manager read scoped to this
+  # stack's secret name prefix.
+  # ================================================================
+  BrokerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-broker-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: AutoMqDurableTierS3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AutoMqS3DurableTier
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                  - s3:AbortMultipartUpload
+                Resource:
+                  - !Sub 'arn:aws:s3:::${AWS::StackName}-automq-durable'
+                  - !Sub 'arn:aws:s3:::${AWS::StackName}-automq-durable/*'
+        - PolicyName: BrokerSecretRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BrokerSecretRead
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}-*'
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-4
+
+  BrokerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BrokerInstanceRole
+
+  # ================================================================
+  # Kafka broker (net-new). A single launch-template-backed instance stands in
+  # for the fleet in this verification environment (BrokerCount documents the
+  # intended fleet size). AutoMQ mode mounts the FSx for ONTAP Gen2 WAL volume at
+  # WalMountPath and keeps S3 as the durable tier; traditional mode keeps a local
+  # log dir. The NFS silly-rename guardrail is enforced in UserData: the WAL/log
+  # mount is only performed after the operator has set and validated
+  # -is-preserve-unlink-enabled on the volume (see the setup guide).
+  # ================================================================
+  KafkaBroker:
+    Type: AWS::EC2::Instance
+    Metadata:
+      guard:
+        # No CIDR inbound by design; brokers are reached via SSM Session Manager,
+        # and intra-fleet traffic uses the self-referencing SG ingress above.
+        # Documented so a reviewer does not read the missing external ingress as
+        # an omission.
+        ingress_exempt: >-
+          Reached via SSM Session Manager; broker/producer traffic is confined to
+          the self-referencing security group. No external CIDR ingress is
+          intentional for this ephemeral verification broker.
+    Properties:
+      InstanceType: !Ref BrokerInstanceType
+      ImageId: !Ref BrokerAmiId
+      IamInstanceProfile: !Ref BrokerInstanceProfile
+      SubnetId: !Select [0, !Ref SubnetIds]
+      SecurityGroupIds:
+        - !Ref BrokerSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          MODE=${KafkaMode}
+          WAL_DIR=${WalMountPath}
+          GEN2_HT=${Gen2HighThroughput}
+
+          mkdir -p /etc/automq
+          cat > /etc/automq/wal.env <<AUTOMQENV
+          # Kafka storage mode: automq-wal (FSx for ONTAP Gen2 shared WAL + S3
+          # durable tier) or traditional (local log storage). See the setup guide.
+          KAFKA_MODE=${KafkaMode}
+          # AutoMQ WAL mount path. The actual FSx for ONTAP NFS mount is performed
+          # by the operator AFTER validating the silly-rename volume setting
+          # (-is-preserve-unlink-enabled=true), per the guardrail in the setup
+          # guide. This stack does not mount NFS automatically, precisely because
+          # that volume setting has not been confirmed end-to-end on FSx for ONTAP.
+          WAL_MOUNT_PATH=${WalMountPath}
+          # FSx for ONTAP Gen2 high-throughput provisioning intent. "true" costs
+          # more than the standard configuration (see Cost_Driver in the guide);
+          # teardown warns before dropping it.
+          GEN2_HIGH_THROUGHPUT=${Gen2HighThroughput}
+          FILE_SYSTEM_ID=${FileSystemId}
+          ONTAP_MGMT_IP=${OntapMgmtIp}
+          AUTOMQENV
+
+          # GUARDRAIL (silly-rename): do NOT auto-mount the Kafka log/WAL
+          # directory on FSx for ONTAP NFS. A broker log directory on NFS crashes
+          # during partition reassignment unless the volume has
+          # -is-preserve-unlink-enabled=true (introduced in ONTAP 9.12.1). FSx for
+          # ONTAP meets the ONTAP-version prerequisite from 9.18.1 (direct field
+          # confirmation, not a public version number — readers cannot verify this
+          # from public FSx for ONTAP docs), but a specific volume being set and
+          # validated end-to-end is NOT confirmed. The operator sets and validates
+          # the volume setting per the setup guide before mounting.
+          mkdir -p "${!WAL_DIR}"
+
+          echo "Kafka mode ${KafkaMode}; WAL path ${WalMountPath}; Gen2 high-throughput ${Gen2HighThroughput}." \
+            > /var/log/pattern-4-broker-provision.log
+          echo "FS ${FileSystemId} / mgmt ${OntapMgmtIp} recorded; NFS WAL NOT auto-mounted (silly-rename guardrail)." \
+            >> /var/log/pattern-4-broker-provision.log
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-broker'
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-4
+        - Key: KafkaMode
+          Value: !Ref KafkaMode
+        - Key: Gen2HighThroughput
+          Value: !Ref Gen2HighThroughput
+        - Key: FileSystemId
+          Value: !Ref FileSystemId
+        - Key: SvmId
+          Value: !If [HasSvmId, !Ref SvmId, 'n/a']
+
+Outputs:
+  KafkaBrokerInstanceId:
+    Description: EC2 instance ID of the Kafka broker (reach it via SSM Session Manager).
+    Value: !Ref KafkaBroker
+
+  KafkaModeDeployed:
+    Description: Kafka storage mode provisioned (automq-wal or traditional).
+    Value: !Ref KafkaMode
+
+  IntendedBrokerCount:
+    Description: Intended broker fleet size recorded for this verification environment.
+    Value: !Ref BrokerCount
+
+  BrokerSecurityGroupId:
+    Description: Security group ID of the broker fleet (intra-fleet ingress + egress to S3/Secrets Manager/SSM).
+    Value: !Ref BrokerSecurityGroup
+
+  Gen2HighThroughputWal:
+    Description: >-
+      Whether the WAL relies on FSx for ONTAP Gen2 high-throughput provisioning
+      (a cost driver: higher than the standard configuration).
+    Value: !Ref Gen2HighThroughput
+
+  VpcEndpointsReused:
+    Description: >-
+      Whether the shared VPC endpoints nested stack was created (reused from
+      shared/templates/vpc-endpoints.yaml, not copied). 'not-deployed' when the
+      VPC already had the endpoints.
+    Value: !If
+      - HasVpcEndpointsUrl
+      - !GetAtt VpcEndpointsStack.Outputs.S3EndpointId
+      - 'not-deployed'
+
+  SillyRenameGuardrail:
+    Description: Reminder that the NFS WAL/log mount is not auto-performed; the silly-rename volume setting must be validated first.
+    Value: >-
+      Kafka log/WAL on FSx for ONTAP NFS depends on -is-preserve-unlink-enabled=true
+      (ONTAP 9.12.1+). FSx for ONTAP meets the version prerequisite from 9.18.1, but
+      a specific volume set and validated end-to-end is a Hot_Tier/silly-rename
+      hypothesis until the live sample run (spec task 16). AutoMQ WAL is a fixed-size
+      circular buffer and may not exercise that code path.
+
+  CollectorReusePointer:
+    Description: The OTel Collector layer is reused as a documentation pointer, not created by this stack.
+    Value: 'integrations/otel-collector/ (doc pointer). ClickHouse consumer DDL: ontap-edge-to-cloud-ai:cloud/clickhouse/ddl/ (doc pointer).'

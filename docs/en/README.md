@@ -263,6 +263,15 @@ English and Japanese indexes always list the same set.
 - [Pattern 5: Embedded/Columnar TSDB (QuestDB, ClickHouse, TimescaleDB)](observability-storage-patterns/pattern-5-embedded-columnar-tsdb.md)
 - [On-Premises and Multi-Cloud ONTAP Case Studies for Observability Storage](observability-storage-patterns/onprem-and-fsxn-case-studies.md)
 
+**Pipeline Verification Records**
+
+- [Verification Record Template (Pipeline Patterns)](observability-storage-patterns/verification/verification-record-template.md)
+- [Verification Record: Pattern 1 (MQTT → InfluxDB → Grafana Live)](observability-storage-patterns/verification/verification-results-pattern-1.md)
+- [Verification Record: Pattern 2 (Prometheus + remote_write)](observability-storage-patterns/verification/verification-results-pattern-2.md)
+- [Verification Record: Pattern 3 (Managed IoT → S3/Analytics Tail)](observability-storage-patterns/verification/verification-results-pattern-3.md)
+- [Verification Record: Pattern 4 (Kafka + AutoMQ WAL-on-FSx-for-ONTAP)](observability-storage-patterns/verification/verification-results-pattern-4.md)
+- [Verification Record: Pattern 5 (QuestDB / TimescaleDB)](observability-storage-patterns/verification/verification-results-pattern-5.md)
+
 **Choosing an Approach**
 
 - [FSx for ONTAP Management & Monitoring Decision Tree](decision-tree-management-monitoring.md)

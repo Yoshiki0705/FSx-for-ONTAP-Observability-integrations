@@ -1,0 +1,217 @@
+# Reuse references for the pipeline verification environments.
+#
+# This file is the single, structured declaration of the existing assets each
+# pattern builds on, and the allowlist of legitimate net-new files. It is the
+# only input to the Duplication_Check gate
+# (scripts/tests/test_reuse_references.py). Prose mentions elsewhere do not
+# count as a reuse reference; this file does.
+#
+# Schema
+# ------
+# patterns:
+#   <pattern-id>:
+#     reuse:
+#       - ref: <path or "sibling-repo:relative/path">
+#         kind: same-repo-path | sibling-repo-path
+#         mechanism: nested-stack | cross-stack-import | sam-include
+#                    | stack-reference | doc-pointer
+#         note: <optional human note>
+#     net_new:
+#       - path: <new file this pattern creates>
+#         rationale: <why this is net-new and not a degraded copy of an
+#                     existing asset — required for the Duplication_Check
+#                     allowlist>
+#
+# Resolution rules (enforced by the gate)
+# ---------------------------------------
+# - kind: same-repo-path        MUST resolve to a real path in
+#                               fsxn-observability-integrations, always. A
+#                               CloudFormation logical-ID / stack reference is
+#                               also accepted where the mechanism is an IaC
+#                               reference; express it as
+#                               "<template-path>#<LogicalId>".
+# - kind: sibling-repo-path     A documentation pointer into
+#                               ontap-edge-to-cloud-ai. Existence is checked
+#                               ONLY when the sibling checkout is present; the
+#                               gate does not fail when it is absent.
+# - mechanism                   How the reuse is expressed. Same-repo
+#                               CloudFormation assets use an IaC-level
+#                               reference; non-CloudFormation assets
+#                               (integrations/*/) and cross-repository assets
+#                               use doc-pointer.
+#
+# Sibling repository
+# ------------------
+# The design and tasks name the sibling by its GitHub name,
+# "ontap-edge-to-cloud-ai". The local checkout directory is "edge-to-cloud-ai".
+# The gate resolves sibling paths against a set of candidate directory names so
+# both spellings work, and treats sibling existence as optional (requirement
+# 2-15).
+
+sibling_repo:
+  # GitHub name (as referenced in the spec) first, local checkout name second.
+  # The gate tries each as a sibling directory of the repository root.
+  candidate_dirs:
+    - ontap-edge-to-cloud-ai
+    - edge-to-cloud-ai
+
+patterns:
+  pattern-1:
+    reuse:
+      - ref: integrations/grafana/
+        kind: same-repo-path
+        mechanism: doc-pointer
+        note: Grafana visualization layer (mandatory reference, requirement 2-9)
+      - ref: shared/templates/s3-access-point.yaml
+        kind: same-repo-path
+        mechanism: nested-stack
+        note: Archive target
+      - ref: ontap-edge-to-cloud-ai:cloud/iot_ingestion/
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: Ingestion example
+      - ref: ontap-edge-to-cloud-ai:cloud/fsxn/template.yaml
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: FSx for ONTAP file system + SVM foundation (requirement 2-7)
+    net_new:
+      - path: integrations/pipeline-verification/pattern-1-mqtt-influxdb/template.yaml
+        rationale: >-
+          Net-new MQTT broker + InfluxDB v1/v2 server layer (broker + InfluxDB
+          EC2 with a local EBS hot tier, its security group and self-referencing
+          MQTT ingress, its instance role/profile). No existing asset covers a
+          message broker or a time-series database server: the repository has a
+          Grafana integration and a generic archive layer but neither a broker
+          nor a TSDB server. The archive is reused from s3-access-point.yaml as a
+          nested stack (ArchiveStack), not copied. The Grafana visualization
+          layer is reused as a documentation pointer (requirement 2-9), not
+          rebuilt, and the ontap-edge-to-cloud-ai cloud/iot_ingestion/ example is
+          reused as a sibling-repo documentation pointer, not copied. The
+          server's own resources (EC2 instance, security group, MQTT ingress,
+          instance role/profile) share no resource shapes with any existing
+          template.
+
+  pattern-2:
+    reuse:
+      - ref: shared/templates/s3-access-point.yaml
+        kind: same-repo-path
+        mechanism: nested-stack
+        note: remote_write archive target
+      - ref: shared/templates/restore-verification.yaml
+        kind: same-repo-path
+        mechanism: doc-pointer
+        note: >-
+          FSxN_Application_Pattern B/C harness (requirement 2-13). Referenced as
+          a doc-pointer: the setup guide points at this template for the
+          verified-clean recovery-point workflow; pattern 2 does not nest or
+          import a specific logical ID from it, so stack-reference would overstate
+          the binding.
+      - ref: integrations/grafana/
+        kind: same-repo-path
+        mechanism: doc-pointer
+        note: Visualization
+      - ref: ontap-edge-to-cloud-ai:cloud/fsxn/template.yaml
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: FSx for ONTAP file system + SVM foundation (requirement 2-7)
+    net_new:
+      - path: integrations/pipeline-verification/pattern-2-prometheus/template.yaml
+        rationale: >-
+          Net-new Prometheus server layer (EC2 with a local EBS TSDB). The
+          repository provides the generic archive layer (s3-access-point.yaml)
+          but no Prometheus layer, so there is no existing asset to reference for
+          this resource set. The archive target is reused from
+          s3-access-point.yaml as a nested stack (RemoteWriteArchiveStack), not
+          copied. Its own resources (EC2 instance, security group, instance
+          role/profile) share no resource shapes with any existing template.
+
+  pattern-3:
+    reuse:
+      - ref: integrations/lakehouse-retention/
+        kind: same-repo-path
+        mechanism: doc-pointer
+        note: Firehose -> S3 Parquet -> Glue -> Athena/Snowflake (E2E verified)
+      - ref: ontap-edge-to-cloud-ai:cloud/iot_ingestion/
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: IoT Core -> Lambda -> FSx for ONTAP S3 Access Point
+      - ref: ontap-edge-to-cloud-ai:cloud/fsxn/template.yaml
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: FSx for ONTAP file system + SVM foundation (requirement 2-7)
+    # Pattern 3 is reuse-and-record only; net_new stays empty (requirement 9-4).
+    net_new: []
+
+  pattern-4:
+    reuse:
+      - ref: integrations/otel-collector/
+        kind: same-repo-path
+        mechanism: doc-pointer
+        note: Collector layer (requirement 2-10)
+      - ref: shared/templates/vpc-endpoints.yaml
+        kind: same-repo-path
+        mechanism: nested-stack
+        note: VPC endpoints
+      - ref: shared/templates/iam-base-roles.yaml
+        kind: same-repo-path
+        mechanism: doc-pointer
+        note: >-
+          IAM least-privilege base pattern. iam-base-roles.yaml documents itself
+          as a copy-paste reference (not deployed standalone, not nested by any
+          stack); the pattern-4 template implements its broker IAM role inline
+          the same way every other stack in this repo does. Referenced as a doc
+          pointer, not a nested stack.
+      - ref: ontap-edge-to-cloud-ai:cloud/clickhouse/ddl/
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: ClickHouse consumer DDL (requirement 2-12)
+      - ref: ontap-edge-to-cloud-ai:cloud/fsxn/template.yaml
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: FSx for ONTAP file system + SVM foundation (requirement 2-7)
+    net_new:
+      - path: integrations/pipeline-verification/pattern-4-kafka-automq/template.yaml
+        rationale: >-
+          Net-new Kafka broker fleet with an AutoMQ diskless-Kafka
+          WAL-on-FSx-for-ONTAP Generation 2 configuration (broker EC2, its
+          security group and self-referencing intra-fleet ingress, its instance
+          role/profile, and a conditional nested VPC endpoints stack). No existing
+          asset covers a Kafka broker layer: the repository has an OTel Collector
+          integration and a generic archive layer but no broker. The VPC
+          endpoints are reused from shared/templates/vpc-endpoints.yaml as a
+          nested stack (VpcEndpointsStack), not copied; the OTel Collector layer
+          and the ClickHouse consumer DDL are reused as documentation pointers,
+          not copied. The broker's own resources (EC2 instance, security group,
+          intra-fleet ingress, instance role/profile) share no resource shapes
+          with any existing template.
+
+  pattern-5:
+    reuse:
+      - ref: shared/templates/s3-access-point.yaml
+        kind: same-repo-path
+        mechanism: nested-stack
+        note: Cold tier archive target
+      - ref: shared/templates/prerequisites.yaml
+        kind: same-repo-path
+        mechanism: nested-stack
+        note: S3 Access Point + checkpoint prerequisites
+      - ref: ontap-edge-to-cloud-ai:cloud/clickhouse/ddl/
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: ClickHouse DDL when ClickHouse is used (requirement 2-12)
+      - ref: ontap-edge-to-cloud-ai:cloud/fsxn/template.yaml
+        kind: sibling-repo-path
+        mechanism: doc-pointer
+        note: FSx for ONTAP file system + SVM foundation (requirement 2-7)
+    net_new:
+      - path: integrations/pipeline-verification/pattern-5-questdb-timescaledb/template.yaml
+        rationale: >-
+          Net-new single-node time-series database server layer (EC2 with a local
+          EBS hot tier; QuestDB by default, TimescaleDB as the documented
+          alternative). No existing asset covers a TSDB server: the repository
+          provides the generic archive layer (s3-access-point.yaml) but no
+          time-series database. The cold tier is reused from s3-access-point.yaml
+          as a nested stack (ColdTierArchiveStack), not copied, and the ClickHouse
+          DDL is referenced as a sibling-repo doc pointer, not copied. The
+          server's own resources (EC2 instance, security group, instance
+          role/profile) share no resource shapes with any existing template.

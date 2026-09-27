@@ -67,6 +67,7 @@ PYTEST_DIRS := $(VENDOR_TEST_DIRS) $(SHARED_TEST_DIRS)
 # FPolicy, Firehose and remediation stacks are covered too.
 CFN_TEMPLATES := \
   $(wildcard integrations/*/template*.yaml) \
+  $(wildcard integrations/pipeline-verification/pattern-*/template*.yaml) \
   $(wildcard shared/templates/*.yaml) \
   $(wildcard management-console/templates/*.yaml)
 

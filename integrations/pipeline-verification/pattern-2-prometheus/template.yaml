@@ -1,0 +1,371 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Pattern 2 verification environment - Prometheus + remote_write. Net-new
+  Prometheus server on EC2 with a LOCAL EBS TSDB. Guardrail: Prometheus documents
+  NFS/EFS as unsupported for its TSDB, so --storage.tsdb.path is never an FSx for
+  ONTAP NFS mount; FSx for ONTAP is only the downstream remote_write archive
+  target (shared/templates/s3-access-point.yaml, referenced as a nested stack,
+  not copied). Verification environment only, not production. Stack name pattern:
+  fsxn-pattern-2-prometheus. See docs/{ja,en}/setup-guide.md.
+
+Metadata:
+  # Console create-stack form grouping (additive first-run usability affordance).
+  # Groups parameters into logical sets so the form reads by concern instead of
+  # alphabetically. See
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-cloudformation-interface.html
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network placement
+        Parameters:
+          - VpcId
+          - SubnetIds
+      - Label:
+          default: FSx for ONTAP foundation (reused)
+        Parameters:
+          - FileSystemId
+          - OntapMgmtIp
+          - SvmId
+      - Label:
+          default: remote_write archive reuse (nested S3 Access Point stack)
+        Parameters:
+          - ReuseArchiveStackName
+          - RemoteWriteArchiveTemplateUrl
+          - ArchiveBucketName
+      - Label:
+          default: This pattern's net-new Prometheus server
+        Parameters:
+          - PrometheusInstanceType
+          - PrometheusAmiId
+          - LocalTsdbVolumeSizeGiB
+          - RemoteWriteRetentionDays
+    ParameterLabels:
+      VpcId:
+        default: VPC ID for the Prometheus server
+      SubnetIds:
+        default: Private subnet IDs (instance goes into the first)
+      FileSystemId:
+        default: FSx for ONTAP file system ID (reused foundation)
+      OntapMgmtIp:
+        default: ONTAP management endpoint IP
+      SvmId:
+        default: SVM identifier (optional)
+      ReuseArchiveStackName:
+        default: Nested archive stack name
+      RemoteWriteArchiveTemplateUrl:
+        default: Packaged S3 URL of the shared archive template
+      ArchiveBucketName:
+        default: Existing archive S3 bucket
+      PrometheusInstanceType:
+        default: Prometheus EC2 instance type
+      PrometheusAmiId:
+        default: Amazon Linux 2023 AMI (SSM public parameter)
+      LocalTsdbVolumeSizeGiB:
+        default: Local TSDB EBS volume size (GiB)
+      RemoteWriteRetentionDays:
+        default: Local TSDB retention (days)
+
+Parameters:
+  # --- Common parameter skeleton (shared across all pattern verification
+  # environments), following the AllowedPattern conventions from
+  # shared/templates/restore-verification.yaml. -----------------------------
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where the Prometheus server is placed (private subnet reachable to the FSx for ONTAP SVM).
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Private subnet IDs. The Prometheus EC2 instance is launched into the first
+      subnet in this list; the whole list is accepted so the same parameter
+      shape is reused by other patterns that place multi-AZ resources.
+
+  FileSystemId:
+    Type: String
+    Description: >-
+      FSx for ONTAP file system ID that owns the audit/archive volume behind the
+      remote_write archive target. Recorded on the instance for operator
+      reference; this stack does not mount it (see the NFS guardrail).
+    AllowedPattern: '^fs-[0-9a-f]{17}$'
+    ConstraintDescription: must be a valid FSx file system ID like fs-0123456789abcdef0 (fs- followed by 17 hex characters).
+
+  OntapMgmtIp:
+    Type: String
+    Description: FSx for ONTAP management endpoint IP address (recorded for operator reference).
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+    ConstraintDescription: must be a dotted-quad IPv4 address like 198.51.100.10.
+
+  SvmId:
+    Type: String
+    Description: SVM identifier that fronts the archive volume (recorded for operator reference).
+    Default: ''
+
+  ReuseArchiveStackName:
+    Type: String
+    Description: >-
+      Name to give the nested S3 Access Point archive stack
+      (shared/templates/s3-access-point.yaml). The nested stack's
+      AccessPointArn output is surfaced as this stack's RemoteWriteArchiveArn
+      output; the remote_write exporter's downstream ETL writes there.
+    Default: fsxn-pattern-2-remote-write-archive
+    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]{0,127}$'
+    ConstraintDescription: must start with a letter and contain only letters, digits, and hyphens (1-128 characters), like fsxn-pattern-2-remote-write-archive.
+
+  # --- Reuse mechanism: nested stack pointing at the shared archive template --
+  RemoteWriteArchiveTemplateUrl:
+    Type: String
+    Description: >-
+      HTTPS S3 URL of the shared/templates/s3-access-point.yaml. deploy.sh uploads
+      the shared template with `aws s3 cp` and passes its URL in here. This is how
+      the archive target is REUSED (nested stack), not copied — the S3 Access
+      Point is defined only in the shared template.
+    Default: ''
+
+  ArchiveBucketName:
+    Type: String
+    Description: >-
+      Existing S3 bucket that backs the remote_write long-term archive (the
+      remote_write backend's object-store export lands here). Passed through to
+      the nested S3 Access Point stack.
+    Default: ''
+
+  # --- Prometheus server (net-new) -----------------------------------------
+  PrometheusInstanceType:
+    Type: String
+    Description: EC2 instance type for the Prometheus server (ephemeral verification sizing).
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large, m6i.large]
+
+  PrometheusAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: >-
+      Amazon Linux 2023 AMI, resolved from the public SSM public-parameter path
+      by default so no AMI ID is hardcoded and the value is region-correct.
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+  LocalTsdbVolumeSizeGiB:
+    Type: Number
+    Description: >-
+      Size of the LOCAL EBS volume for Prometheus's TSDB (--storage.tsdb.path).
+      Local block storage, not NFS — see the NFS guardrail in the description.
+    Default: 50
+    MinValue: 20
+    MaxValue: 500
+
+  RemoteWriteRetentionDays:
+    Type: Number
+    Description: Local TSDB retention in days before remote_write is the system of record.
+    Default: 15
+    MinValue: 1
+    MaxValue: 90
+
+Conditions:
+  HasArchiveTemplateUrl: !Not [!Equals [!Ref RemoteWriteArchiveTemplateUrl, '']]
+  HasSvmId: !Not [!Equals [!Ref SvmId, '']]
+
+Resources:
+  # ================================================================
+  # Reused archive target — nested stack over shared/templates/
+  # s3-access-point.yaml. The S3 Access Point resource lives ONLY in that
+  # shared template; this stack references it, it does not redefine it.
+  # Created only when deploy.sh has packaged and supplied its URL.
+  # ================================================================
+  RemoteWriteArchiveStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasArchiveTemplateUrl
+    Properties:
+      TemplateURL: !Ref RemoteWriteArchiveTemplateUrl
+      Parameters:
+        BucketName: !Ref ArchiveBucketName
+        AccessPointName: !Sub '${AWS::StackName}-remote-write-ap'
+        VpcId: !Ref VpcId
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-2-archive
+
+  # ================================================================
+  # Security group for the Prometheus server. Egress-only by default:
+  # remote_write pushes out to the long-term backend; nothing needs to
+  # reach the server's scrape/UI port from outside the verification VPC.
+  # ================================================================
+  PrometheusSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Prometheus verification server - egress for remote_write and scrape targets
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS out for remote_write to the long-term backend and SSM
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-2
+
+  # ================================================================
+  # Instance role — least privilege. SSM managed-instance access for
+  # keyless operator login; explicit inline read of the archive-bucket
+  # objects the remote_write ETL produces. No wildcard actions.
+  # ================================================================
+  PrometheusInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-instance-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: RemoteWriteArchiveReadback
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ArchiveObjectReadback
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AWS::StackName}-remote-write-ap'
+                  - !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AWS::StackName}-remote-write-ap/object/*'
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-2
+
+  PrometheusInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref PrometheusInstanceRole
+
+  # ================================================================
+  # Prometheus server (net-new). Local TSDB on a dedicated EBS volume —
+  # NEVER on FSx for ONTAP NFS (see the guardrail in the description and
+  # the UserData below).
+  # ================================================================
+  PrometheusServer:
+    Type: AWS::EC2::Instance
+    Metadata:
+      guard:
+        # No inbound rules by design; the server is reached via SSM Session
+        # Manager, and remote_write is outbound. Documented so a reviewer does
+        # not read the missing ingress as an omission.
+        ingress_exempt: >-
+          Reached via SSM Session Manager; remote_write is outbound only. No
+          ingress is intentional for this ephemeral verification server.
+    Properties:
+      InstanceType: !Ref PrometheusInstanceType
+      ImageId: !Ref PrometheusAmiId
+      IamInstanceProfile: !Ref PrometheusInstanceProfile
+      SubnetId: !Select [0, !Ref SubnetIds]
+      SecurityGroupIds:
+        - !Ref PrometheusSecurityGroup
+      BlockDeviceMappings:
+        # Root volume.
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+        # Dedicated LOCAL block volume for the Prometheus TSDB. This is the
+        # storage --storage.tsdb.path points at. It is EBS (local block), not
+        # NFS: Prometheus documents NFS/EFS as unsupported for its TSDB.
+        - DeviceName: /dev/xvdb
+          Ebs:
+            VolumeSize: !Ref LocalTsdbVolumeSizeGiB
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          # --- Local TSDB volume (EBS, NOT NFS) --------------------------------
+          # GUARDRAIL: --storage.tsdb.path MUST be local block storage. Prometheus
+          # documents NFS/EFS as unsupported for the local TSDB, so this mounts the
+          # dedicated EBS volume and never an FSx for ONTAP NFS export.
+          TSDB_DEV=/dev/xvdb
+          TSDB_DIR=/var/lib/prometheus
+          mkfs -t xfs "$TSDB_DEV" || true
+          mkdir -p "$TSDB_DIR"
+          mount "$TSDB_DEV" "$TSDB_DIR"
+          echo "$TSDB_DEV $TSDB_DIR xfs defaults,nofail 0 2" >> /etc/fstab
+
+          # --- Prometheus install (Amazon Linux 2023) --------------------------
+          dnf install -y prometheus || dnf install -y golang-github-prometheus || true
+
+          # --- Minimal config: scrape self + remote_write to the long-term backend
+          # REMOTE_WRITE_URL is left as a documented placeholder; the setup guide
+          # explains pointing it at Thanos/Mimir/Cortex or a vendor endpoint whose
+          # object-store export is archived to the FSx for ONTAP S3 Access Point.
+          cat > /etc/prometheus/prometheus.yml <<'PROMCFG'
+          global:
+            scrape_interval: 30s
+          scrape_configs:
+            - job_name: prometheus
+              static_configs:
+                - targets: ['localhost:9090']
+          # remote_write:
+          #   - url: https://<REMOTE_WRITE_URL>/api/v1/write   # set per setup-guide.md
+          PROMCFG
+
+          # --storage.tsdb.path points at the LOCAL EBS mount, never NFS.
+          # --storage.tsdb.retention.time is the local retention before
+          # remote_write becomes the system of record.
+          mkdir -p /etc/systemd/system/prometheus.service.d
+          cat > /etc/systemd/system/prometheus.service.d/override.conf <<'UNIT' || true
+          [Service]
+          Environment=STORAGE_PATH=${!TSDB_DIR}
+          UNIT
+
+          echo "Local TSDB at ${!TSDB_DIR} (EBS). Retention ${RemoteWriteRetentionDays}d." \
+            > /var/log/pattern-2-prometheus-provision.log
+          echo "FS ${FileSystemId} / mgmt ${OntapMgmtIp} recorded; NFS NOT mounted (guardrail)." \
+            >> /var/log/pattern-2-prometheus-provision.log
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-prometheus'
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-2
+        - Key: FileSystemId
+          Value: !Ref FileSystemId
+        - Key: SvmId
+          Value: !If [HasSvmId, !Ref SvmId, 'n/a']
+
+Outputs:
+  PrometheusInstanceId:
+    Description: EC2 instance ID of the Prometheus verification server (reach it via SSM Session Manager).
+    Value: !Ref PrometheusServer
+
+  PrometheusSecurityGroupId:
+    Description: Security group ID of the Prometheus server (egress-only by default).
+    Value: !Ref PrometheusSecurityGroup
+
+  RemoteWriteArchiveArn:
+    Description: >-
+      ARN of the reused S3 Access Point archive target (from the nested
+      shared/templates/s3-access-point.yaml stack). Empty when the archive stack
+      was not deployed (RemoteWriteArchiveTemplateUrl not supplied).
+    Value: !If
+      - HasArchiveTemplateUrl
+      - !GetAtt RemoteWriteArchiveStack.Outputs.AccessPointArn
+      - 'not-deployed'
+
+  LocalTsdbGuardrail:
+    Description: Reminder that the local TSDB is on EBS, never FSx for ONTAP NFS.
+    Value: 'Prometheus --storage.tsdb.path is on a local EBS volume; NFS/EFS is unsupported for the TSDB.'

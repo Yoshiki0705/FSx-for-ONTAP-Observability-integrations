@@ -257,6 +257,15 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [パターン5: 組み込み/列指向 時系列 DB(QuestDB、ClickHouse、TimescaleDB)](observability-storage-patterns/pattern-5-embedded-columnar-tsdb.md)
 - [オブザーバビリティ基盤ストレージのためのオンプレミス/マルチクラウド ONTAP 事例集](observability-storage-patterns/onprem-and-fsxn-case-studies.md)
 
+**パイプライン検証記録**
+
+- [検証記録テンプレート(パイプラインパターン)](observability-storage-patterns/verification/verification-record-template.md)
+- [検証記録: パターン 1(MQTT → InfluxDB → Grafana Live)](observability-storage-patterns/verification/verification-results-pattern-1.md)
+- [検証記録: パターン 2(Prometheus + remote_write)](observability-storage-patterns/verification/verification-results-pattern-2.md)
+- [検証記録: パターン 3(マネージド IoT → S3/分析テール)](observability-storage-patterns/verification/verification-results-pattern-3.md)
+- [検証記録: パターン 4(Kafka + AutoMQ WAL-on-FSx-for-ONTAP)](observability-storage-patterns/verification/verification-results-pattern-4.md)
+- [検証記録: パターン 5(QuestDB / TimescaleDB)](observability-storage-patterns/verification/verification-results-pattern-5.md)
+
 **アプローチの選択**
 
 - [FSx for ONTAP 管理・監視 Decision Tree](decision-tree-management-monitoring.md)
