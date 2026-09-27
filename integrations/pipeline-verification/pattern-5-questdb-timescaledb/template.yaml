@@ -1,0 +1,401 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Pattern 5 verification environment - QuestDB / TimescaleDB single-node server.
+  Net-new single-node time-series database server on EC2 with a LOCAL EBS hot
+  tier. QuestDB is the default engine; TimescaleDB is the documented alternative
+  (choose per the setup guide, not a vendor contest). Guardrail: the hot tier is
+  documented as unsupported on NFS/EFS, so the data directory is never an FSx for
+  ONTAP NFS mount; it is a local EBS block volume by default. The iSCSI-LUN hot
+  tier is tracked as a Hot_Tier_Storage_Hypothesis (distinguished, not asserted)
+  and is exercised only by the live sample run (spec task 13). The cold tier is
+  the reused shared/templates/s3-access-point.yaml, referenced as a nested stack,
+  not copied. Verification environment only, not production. Stack name pattern:
+  fsxn-pattern-5-questdb-timescaledb. See docs/{ja,en}/setup-guide.md.
+
+Metadata:
+  # Console create-stack form grouping (additive first-run usability affordance).
+  # Groups parameters into logical sets so the form reads by concern instead of
+  # alphabetically. See
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-cloudformation-interface.html
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network placement
+        Parameters:
+          - VpcId
+          - SubnetIds
+      - Label:
+          default: FSx for ONTAP foundation (reused)
+        Parameters:
+          - FileSystemId
+          - OntapMgmtIp
+          - SvmId
+      - Label:
+          default: Cold-tier archive reuse (nested S3 Access Point stack)
+        Parameters:
+          - ReuseArchiveStackName
+          - ColdTierArchiveTemplateUrl
+          - ArchiveBucketName
+      - Label:
+          default: This pattern's net-new TSDB server
+        Parameters:
+          - TsdbEngine
+          - TsdbInstanceType
+          - TsdbAmiId
+          - LocalHotTierVolumeSizeGiB
+          - HotTierRetentionDays
+    ParameterLabels:
+      VpcId:
+        default: VPC ID for the TSDB server
+      SubnetIds:
+        default: Private subnet IDs (instance goes into the first)
+      FileSystemId:
+        default: FSx for ONTAP file system ID (reused foundation)
+      OntapMgmtIp:
+        default: ONTAP management endpoint IP
+      SvmId:
+        default: SVM identifier (optional)
+      ReuseArchiveStackName:
+        default: Nested cold-tier archive stack name
+      ColdTierArchiveTemplateUrl:
+        default: Packaged S3 URL of the shared archive template
+      ArchiveBucketName:
+        default: Existing cold-tier archive S3 bucket
+      TsdbEngine:
+        default: Time-series engine (questdb or timescaledb)
+      TsdbInstanceType:
+        default: TSDB EC2 instance type
+      TsdbAmiId:
+        default: Amazon Linux 2023 AMI (SSM public parameter)
+      LocalHotTierVolumeSizeGiB:
+        default: Local hot-tier EBS volume size (GiB)
+      HotTierRetentionDays:
+        default: Local hot-tier retention (days)
+
+Parameters:
+  # --- Common parameter skeleton (shared across all pattern verification
+  # environments), following the AllowedPattern conventions from
+  # shared/templates/restore-verification.yaml and pattern-2. ---------------
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where the TSDB server is placed (private subnet reachable to the FSx for ONTAP SVM).
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Private subnet IDs. The TSDB EC2 instance is launched into the first subnet
+      in this list; the whole list is accepted so the same parameter shape is
+      reused by other patterns that place multi-AZ resources.
+
+  FileSystemId:
+    Type: String
+    Description: >-
+      FSx for ONTAP file system ID that owns the volume behind the cold-tier
+      archive target. Recorded on the instance for operator reference; this stack
+      does not mount it as the hot tier (see the NFS guardrail).
+    AllowedPattern: '^fs-[0-9a-f]{17}$'
+    ConstraintDescription: must be a valid FSx file system ID like fs-0123456789abcdef0 (fs- followed by 17 hex characters).
+
+  OntapMgmtIp:
+    Type: String
+    Description: FSx for ONTAP management endpoint IP address (recorded for operator reference).
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+    ConstraintDescription: must be a dotted-quad IPv4 address like 198.51.100.10.
+
+  SvmId:
+    Type: String
+    Description: SVM identifier that fronts the archive volume (recorded for operator reference).
+    Default: ''
+
+  ReuseArchiveStackName:
+    Type: String
+    Description: >-
+      Name to give the nested S3 Access Point cold-tier archive stack
+      (shared/templates/s3-access-point.yaml). The nested stack's AccessPointArn
+      output is surfaced as this stack's ColdTierArchiveArn output; the TSDB's
+      cold-tier export writes there.
+    Default: fsxn-pattern-5-cold-tier-archive
+    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]{0,127}$'
+    ConstraintDescription: must start with a letter and contain only letters, digits, and hyphens (1-128 characters), like fsxn-pattern-5-cold-tier-archive.
+
+  # --- Reuse mechanism: nested stack pointing at the shared archive template --
+  ColdTierArchiveTemplateUrl:
+    Type: String
+    Description: >-
+      S3 URL of the packaged shared/templates/s3-access-point.yaml. deploy.sh
+      uploads the shared template and fills this in. This is how the cold tier is
+      REUSED (nested stack), not copied — the S3 Access Point is defined only in
+      the shared template.
+    Default: ''
+
+  ArchiveBucketName:
+    Type: String
+    Description: >-
+      Existing S3 bucket that backs the cold-tier long-term archive (the TSDB's
+      object-store export lands here). Passed through to the nested S3 Access
+      Point stack.
+    Default: ''
+
+  # --- TSDB server (net-new) ------------------------------------------------
+  TsdbEngine:
+    Type: String
+    Description: >-
+      Time-series database engine to provision. QuestDB is the default;
+      TimescaleDB is the documented alternative. Both run single-node on the same
+      local-EBS hot tier here; pick per the setup guide's how-to-choose, not as a
+      vendor contest.
+    Default: questdb
+    AllowedValues: [questdb, timescaledb]
+
+  TsdbInstanceType:
+    Type: String
+    Description: EC2 instance type for the TSDB server (ephemeral verification sizing).
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large, m6i.large]
+
+  TsdbAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: >-
+      Amazon Linux 2023 AMI, resolved from the public SSM public-parameter path
+      by default so no AMI ID is hardcoded and the value is region-correct.
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+  LocalHotTierVolumeSizeGiB:
+    Type: Number
+    Description: >-
+      Size of the LOCAL EBS volume for the TSDB hot tier (the engine's data
+      directory). Local block storage, not NFS — see the NFS guardrail in the
+      description. The iSCSI-LUN variant is the tracked hypothesis, not this
+      default.
+    Default: 50
+    MinValue: 20
+    MaxValue: 500
+
+  HotTierRetentionDays:
+    Type: Number
+    Description: Local hot-tier retention in days before the cold-tier archive is the system of record.
+    Default: 15
+    MinValue: 1
+    MaxValue: 90
+
+Conditions:
+  HasArchiveTemplateUrl: !Not [!Equals [!Ref ColdTierArchiveTemplateUrl, '']]
+  HasSvmId: !Not [!Equals [!Ref SvmId, '']]
+
+Resources:
+  # ================================================================
+  # Reused cold-tier archive target — nested stack over
+  # shared/templates/s3-access-point.yaml. The S3 Access Point resource lives
+  # ONLY in that shared template; this stack references it, it does not redefine
+  # it. Created only when deploy.sh has packaged and supplied its URL.
+  # ================================================================
+  ColdTierArchiveStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasArchiveTemplateUrl
+    Properties:
+      TemplateURL: !Ref ColdTierArchiveTemplateUrl
+      Parameters:
+        BucketName: !Ref ArchiveBucketName
+        AccessPointName: !Sub '${AWS::StackName}-cold-tier-ap'
+        VpcId: !Ref VpcId
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-5-archive
+
+  # ================================================================
+  # Security group for the TSDB server. Egress-only by default: the cold-tier
+  # export pushes out to the archive backend and SSM; nothing needs to reach the
+  # engine's query/ingest port from outside the verification VPC.
+  # ================================================================
+  TsdbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: QuestDB/TimescaleDB verification server - egress for cold-tier export and SSM
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS out for cold-tier export to the archive backend and SSM
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-5
+
+  # ================================================================
+  # Instance role — least privilege. SSM managed-instance access for keyless
+  # operator login; explicit inline read of the cold-tier archive objects the
+  # TSDB export produces. No wildcard actions.
+  # ================================================================
+  TsdbInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-instance-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ColdTierArchiveReadback
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ArchiveObjectReadback
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AWS::StackName}-cold-tier-ap'
+                  - !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AWS::StackName}-cold-tier-ap/object/*'
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-5
+
+  TsdbInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref TsdbInstanceRole
+
+  # ================================================================
+  # TSDB server (net-new). Hot tier on a dedicated LOCAL EBS volume — NEVER on
+  # FSx for ONTAP NFS (see the guardrail in the description and the UserData
+  # below). The iSCSI-LUN hot tier is the tracked hypothesis, not this default.
+  # ================================================================
+  TsdbServer:
+    Type: AWS::EC2::Instance
+    Metadata:
+      guard:
+        # No inbound rules by design; the server is reached via SSM Session
+        # Manager, and the cold-tier export is outbound. Documented so a reviewer
+        # does not read the missing ingress as an omission.
+        ingress_exempt: >-
+          Reached via SSM Session Manager; the cold-tier export is outbound only.
+          No ingress is intentional for this ephemeral verification server.
+    Properties:
+      InstanceType: !Ref TsdbInstanceType
+      ImageId: !Ref TsdbAmiId
+      IamInstanceProfile: !Ref TsdbInstanceProfile
+      SubnetId: !Select [0, !Ref SubnetIds]
+      SecurityGroupIds:
+        - !Ref TsdbSecurityGroup
+      BlockDeviceMappings:
+        # Root volume.
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+        # Dedicated LOCAL block volume for the TSDB hot tier (the engine's data
+        # directory). It is EBS (local block), not NFS: QuestDB, TimescaleDB and
+        # ClickHouse document NFS/EFS as unsupported for the hot data directory.
+        # The iSCSI-LUN-as-local-disk variant is the Hot_Tier_Storage_Hypothesis
+        # verified only by the live sample run (spec task 13), not this default.
+        - DeviceName: /dev/xvdb
+          Ebs:
+            VolumeSize: !Ref LocalHotTierVolumeSizeGiB
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          # --- Local hot-tier volume (EBS, NOT NFS) ---------------------------
+          # GUARDRAIL: the TSDB data directory MUST be local block storage.
+          # QuestDB/TimescaleDB/ClickHouse document NFS/EFS as unsupported for the
+          # hot data directory, so this mounts the dedicated EBS volume and never
+          # an FSx for ONTAP NFS export. The iSCSI-LUN hot tier is the tracked
+          # hypothesis (see the setup guide and the Verification_Record), not this
+          # default provisioning.
+          HOT_DEV=/dev/xvdb
+          HOT_DIR=/var/lib/tsdb
+          mkfs -t xfs "$HOT_DEV" || true
+          mkdir -p "$HOT_DIR"
+          mount "$HOT_DEV" "$HOT_DIR"
+          echo "$HOT_DEV $HOT_DIR xfs defaults,nofail 0 2" >> /etc/fstab
+
+          # --- TSDB install (Amazon Linux 2023) -------------------------------
+          # Engine selected by the TsdbEngine parameter. QuestDB is the default;
+          # TimescaleDB is the documented alternative. Both keep their hot data
+          # directory on the local EBS mount above. Package availability varies by
+          # AMI/repo, so failures are tolerated here — the setup guide covers the
+          # authoritative install steps.
+          ENGINE=${TsdbEngine}
+          case "$ENGINE" in
+            questdb)
+              dnf install -y java-17-amazon-corretto-headless || true
+              # QuestDB runs from its own tarball; the setup guide covers the
+              # download and -d (data root) pointing at the local mount.
+              ;;
+            timescaledb)
+              dnf install -y postgresql15-server || true
+              # TimescaleDB is a PostgreSQL extension; the setup guide covers the
+              # extension install and the data directory on the local mount.
+              ;;
+          esac
+
+          # QUESTDB_DATA_ROOT / PGDATA points at the LOCAL EBS mount, never NFS.
+          mkdir -p /etc/tsdb
+          cat > /etc/tsdb/hot-tier.env <<'TSDBENV'
+          # Hot tier data directory is the LOCAL EBS mount (never FSx for ONTAP NFS).
+          HOT_TIER_DIR=/var/lib/tsdb
+          TSDBENV
+
+          echo "Engine ${TsdbEngine}. Local hot tier at ${!HOT_DIR} (EBS). Retention ${HotTierRetentionDays}d." \
+            > /var/log/pattern-5-tsdb-provision.log
+          echo "FS ${FileSystemId} / mgmt ${OntapMgmtIp} recorded; NFS NOT mounted as hot tier (guardrail)." \
+            >> /var/log/pattern-5-tsdb-provision.log
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-tsdb'
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-5
+        - Key: TsdbEngine
+          Value: !Ref TsdbEngine
+        - Key: FileSystemId
+          Value: !Ref FileSystemId
+        - Key: SvmId
+          Value: !If [HasSvmId, !Ref SvmId, 'n/a']
+
+Outputs:
+  TsdbInstanceId:
+    Description: EC2 instance ID of the TSDB verification server (reach it via SSM Session Manager).
+    Value: !Ref TsdbServer
+
+  TsdbEngineDeployed:
+    Description: Time-series engine provisioned on the server (questdb or timescaledb).
+    Value: !Ref TsdbEngine
+
+  TsdbSecurityGroupId:
+    Description: Security group ID of the TSDB server (egress-only by default).
+    Value: !Ref TsdbSecurityGroup
+
+  ColdTierArchiveArn:
+    Description: >-
+      ARN of the reused S3 Access Point cold-tier archive target (from the nested
+      shared/templates/s3-access-point.yaml stack). Empty when the archive stack
+      was not deployed (ColdTierArchiveTemplateUrl not supplied).
+    Value: !If
+      - HasArchiveTemplateUrl
+      - !GetAtt ColdTierArchiveStack.Outputs.AccessPointArn
+      - 'not-deployed'
+
+  HotTierGuardrail:
+    Description: Reminder that the hot tier is on local EBS, never FSx for ONTAP NFS; iSCSI LUN is a tracked hypothesis.
+    Value: 'TSDB hot data directory is on a local EBS volume; NFS/EFS is unsupported. The iSCSI-LUN hot tier is a Hot_Tier_Storage_Hypothesis, verified only by the live sample run.'

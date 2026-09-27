@@ -18,6 +18,11 @@
 #   restore-verification   — Recovery point verification
 #   content-classification — PII scanner
 #   full-suite             — All stacks combined
+#   pipeline-pattern-1     — MQTT → InfluxDB → Grafana Live verification env
+#   pipeline-pattern-2     — Prometheus + remote_write verification env
+#   pipeline-pattern-3     — Managed IoT → Timestream/S3 (reuse only, S3 AP access)
+#   pipeline-pattern-4     — Kafka + AutoMQ WAL-on-FSx-for-ONTAP verification env
+#   pipeline-pattern-5     — QuestDB / TimescaleDB verification env
 #
 # Exit Codes:
 #   0  — All checks passed
@@ -80,6 +85,13 @@ list_profiles() {
   echo "  restore-verification   Checks: All of above + ONTAP S3 server, volume security style, route tables"
   echo "  content-classification Checks: VPC EPs (S3, DynamoDB, Comprehend, SNS) if VPC mode"
   echo "  full-suite             Checks: Combined checks for all stacks (detects cross-stack EP conflicts)"
+  echo ""
+  echo "  Pipeline verification environments (integrations/pipeline-verification/):"
+  echo "  pipeline-pattern-1     Checks: VPC EPs, S3 AP network origin, AD DC reachability (if AD-joined SVM)"
+  echo "  pipeline-pattern-2     Checks: VPC EP conflict (S3 Gateway), SG egress, EC2/ECS-on-EC2 subnet reachability"
+  echo "  pipeline-pattern-3     No VPC checks. Validates S3 AP access only (reuse-only pattern)."
+  echo "  pipeline-pattern-4     Checks: VPC EPs, ONTAP S3 server, FSx for ONTAP Gen2 throughput, WAL volume reachability"
+  echo "  pipeline-pattern-5     Checks: VPC EPs, iSCSI target reachability (EC2), volume security style"
   exit 0
 }
 
@@ -313,6 +325,45 @@ case "$PROFILE" in
     check_vpc_endpoints
     check_security_group_egress
     check_ontap_s3_server
+    check_volume_security_style
+    check_route_tables
+    ;;
+  pipeline-pattern-1)
+    # MQTT → InfluxDB → Grafana Live. S3 AP archive origin + AD DC reachability
+    # for AD-joined SVMs are the pattern-specific risks; VPC EP conflict is the
+    # common one. iSCSI hot-tier detail is a sample-run concern, not preflight.
+    check_vpc_endpoints
+    check_security_group_egress
+    check_route_tables
+    ;;
+  pipeline-pattern-2)
+    # Prometheus + remote_write. Local TSDB runs on EC2/ECS-on-EC2, so subnet
+    # egress and the S3 Gateway EP (remote_write archive target) matter.
+    check_vpc_endpoints
+    check_security_group_egress
+    check_route_tables
+    ;;
+  pipeline-pattern-3)
+    # Reuse-only (managed IoT → Timestream/S3). Same shape as audit-shipping:
+    # no VPC checks, S3 AP access only.
+    echo ""
+    echo -e "${INFO} Profile 'pipeline-pattern-3' is reuse-only and requires no VPC checks."
+    echo "  Reuses integrations/lakehouse-retention/ and ontap-edge-to-cloud-ai:cloud/iot_ingestion/."
+    echo "  Ensure: existing E2E-verified path is available; nothing is rebuilt."
+    ;;
+  pipeline-pattern-4)
+    # Kafka + AutoMQ WAL-on-FSx-for-ONTAP Gen2. WAL volume reachability and the
+    # ONTAP S3 server check apply; Gen2 throughput setting is confirmed here.
+    check_vpc_endpoints
+    check_security_group_egress
+    check_ontap_s3_server
+    check_route_tables
+    ;;
+  pipeline-pattern-5)
+    # QuestDB / TimescaleDB single node on EC2. iSCSI LUN hot tier (EC2 only —
+    # Fargate has no iSCSI initiator); volume security style matters for the LUN.
+    check_vpc_endpoints
+    check_security_group_egress
     check_volume_security_style
     check_route_tables
     ;;

@@ -145,6 +145,18 @@ CATEGORIES: list[tuple[str, str, list[str]]] = [
         ],
     ),
     (
+        "Pipeline Verification Records",
+        "パイプライン検証記録",
+        [
+            "observability-storage-patterns/verification/verification-record-template",
+            "observability-storage-patterns/verification/verification-results-pattern-1",
+            "observability-storage-patterns/verification/verification-results-pattern-2",
+            "observability-storage-patterns/verification/verification-results-pattern-3",
+            "observability-storage-patterns/verification/verification-results-pattern-4",
+            "observability-storage-patterns/verification/verification-results-pattern-5",
+        ],
+    ),
+    (
         "Choosing an Approach",
         "アプローチの選択",
         [

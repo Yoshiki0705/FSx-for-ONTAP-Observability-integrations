@@ -15,6 +15,21 @@ NC='\033[0m'
 ERRORS=0
 WARNINGS=0
 
+# JA-only files that are intentionally not mirrored to EN. Matched by basename.
+# Keep this list tiny and each entry justified — a blanket exclusion would
+# reopen the parity hole this gate exists to close.
+#
+#   netapp-doc-feedback.md — a Japanese-language record of where NetApp's own
+#   public documentation was unclear during setup. It is feedback authored in
+#   Japanese for a Japanese-language readership, not a bilingual deliverable of
+#   this repository, so it has no EN mirror by design.
+is_ja_only_by_design() {
+  case "$1" in
+    netapp-doc-feedback.md) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Markdown headings, excluding anything inside a fenced code block. A `#` at the
 # start of a line inside a bash block is a shell comment, not a heading.
 count_headings() {
@@ -51,6 +66,9 @@ check_directory_pair() {
       local basename
       basename=$(basename "$ja_file")
       if [ ! -f "$en_dir/$basename" ]; then
+        if is_ja_only_by_design "$basename"; then
+          continue
+        fi
         echo -e "  ${RED}MISSING EN${NC}: $en_dir/$basename (exists in ja/)"
         ERRORS=$((ERRORS + 1))
       fi
@@ -136,6 +154,30 @@ for vendor_dir in "$PROJECT_ROOT"/integrations/*/; do
     "$vendor_dir/docs/en" \
     "integrations/${local_vendor}/docs/"
 done
+
+# Check NESTED bilingual docs under integrations/ (deeper than one level).
+#
+# The vendor loop above only reaches integrations/<vendor>/docs/. Some
+# integrations nest bilingual docs deeper -- integrations/pipeline-verification/
+# pattern-N/docs/{ja,en}/ is two levels down -- and those setup guides were
+# therefore never gated for JA/EN parity, exactly the silent-scope gap the
+# CFN_TEMPLATES glob had. Discover every docs/ja directory under integrations/
+# and pair it with its sibling docs/en, skipping the one-level vendor dirs the
+# loop above already covered so each pair is checked once.
+while IFS= read -r ja_dir; do
+  [ -d "$ja_dir" ] || continue
+  docs_dir=$(dirname "$ja_dir")            # .../docs
+  parent_dir=$(dirname "$docs_dir")        # .../<owner of docs>
+  # Already covered by the vendor loop: integrations/<vendor>/docs.
+  if [ "$(dirname "$parent_dir")" = "$PROJECT_ROOT/integrations" ]; then
+    continue
+  fi
+  rel_label="${docs_dir#"$PROJECT_ROOT"/}/"
+  check_directory_pair \
+    "$ja_dir" \
+    "$docs_dir/en" \
+    "$rel_label"
+done < <(find "$PROJECT_ROOT/integrations" -type d -path '*/docs/ja' | sort)
 
 # Summary
 echo "=== Summary ==="

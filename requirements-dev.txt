@@ -27,3 +27,10 @@ urllib3==2.7.0
 ruff==0.16.7
 bandit==1.9.4
 cfn-lint==1.56.3
+
+# PyYAML arrives transitively via cfn-lint, but scripts/tests/test_reuse_references.py
+# imports it directly (the Duplication_Check gate parses reuse-references.yaml and
+# CloudFormation templates). Pinned explicitly so a direct dependency is not left to a
+# transitive resolution that a future cfn-lint could drop. Matches the version already
+# resolved in .venv, so adopting this pin does not change local behavior.
+pyyaml==6.0.3

@@ -1,0 +1,444 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Pattern 1 verification environment - MQTT broker + InfluxDB v1/v2 minimal
+  net-new. An MQTT broker (Mosquitto by default) and a single-node InfluxDB
+  server with a LOCAL EBS hot tier are the only net-new layer here. Visualization
+  is REUSED from integrations/grafana/ as a mandatory documentation pointer
+  (requirement 2-9), not rebuilt. Guardrail: InfluxDB v1/v2 (TSM engine) has a
+  documented NFS locking failure, so the InfluxDB data directory is never an FSx
+  for ONTAP NFS mount; it is a local EBS block volume by default. The iSCSI-LUN
+  hot tier is tracked as a Hot_Tier_Storage_Hypothesis (distinguished, not
+  asserted) and is exercised only by the live sample run (spec task 19). The
+  archive is the reused shared/templates/s3-access-point.yaml, referenced as a
+  nested stack, not copied. The ingestion example is a documentation pointer to
+  ontap-edge-to-cloud-ai cloud/iot_ingestion/, not copied. Verification
+  environment only. See docs/{ja,en}/setup-guide.md.
+
+Metadata:
+  # Console create-stack form grouping (additive first-run usability affordance).
+  # Groups parameters into logical sets so the form reads by concern instead of
+  # alphabetically. See
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-cloudformation-interface.html
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network placement
+        Parameters:
+          - VpcId
+          - SubnetIds
+      - Label:
+          default: FSx for ONTAP foundation (reused)
+        Parameters:
+          - FileSystemId
+          - OntapMgmtIp
+          - SvmId
+      - Label:
+          default: Archive reuse (nested S3 Access Point stack)
+        Parameters:
+          - ReuseArchiveStackName
+          - ArchiveTemplateUrl
+          - ArchiveBucketName
+      - Label:
+          default: This pattern's net-new broker + InfluxDB server
+        Parameters:
+          - InfluxDbLine
+          - InfluxDbInstanceType
+          - InfluxDbAmiId
+          - LocalHotTierVolumeSizeGiB
+          - HotTierRetentionDays
+          - MqttBrokerPort
+    ParameterLabels:
+      VpcId:
+        default: VPC ID for the broker + InfluxDB server
+      SubnetIds:
+        default: Private subnet IDs (instance goes into the first)
+      FileSystemId:
+        default: FSx for ONTAP file system ID (reused foundation)
+      OntapMgmtIp:
+        default: ONTAP management endpoint IP
+      SvmId:
+        default: SVM identifier (optional)
+      ReuseArchiveStackName:
+        default: Nested archive stack name
+      ArchiveTemplateUrl:
+        default: Packaged S3 URL of the shared archive template
+      ArchiveBucketName:
+        default: Existing archive S3 bucket
+      InfluxDbLine:
+        default: InfluxDB line (v1 or v2)
+      InfluxDbInstanceType:
+        default: InfluxDB EC2 instance type
+      InfluxDbAmiId:
+        default: Amazon Linux 2023 AMI (SSM public parameter)
+      LocalHotTierVolumeSizeGiB:
+        default: Local hot-tier EBS volume size (GiB)
+      HotTierRetentionDays:
+        default: Local hot-tier retention (days)
+      MqttBrokerPort:
+        default: MQTT broker listener port
+
+Parameters:
+  # --- Common parameter skeleton (shared across all pattern verification
+  # environments), following the AllowedPattern conventions from
+  # shared/templates/restore-verification.yaml and pattern-2/5. --------------
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where the broker and InfluxDB server are placed (private subnet reachable to the FSx for ONTAP SVM).
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Private subnet IDs. The InfluxDB EC2 instance is launched into the first
+      subnet in this list; the whole list is accepted so the same parameter shape
+      is reused by other patterns that place multi-AZ resources.
+
+  FileSystemId:
+    Type: String
+    Description: >-
+      FSx for ONTAP file system ID that owns the volume behind the archive
+      target. Recorded on the instance for operator reference; this stack does
+      not mount it as the hot tier (see the NFS guardrail).
+    AllowedPattern: '^fs-[0-9a-f]{17}$'
+    ConstraintDescription: must be a valid FSx file system ID like fs-0123456789abcdef0 (fs- followed by 17 hex characters).
+
+  OntapMgmtIp:
+    Type: String
+    Description: FSx for ONTAP management endpoint IP address (recorded for operator reference).
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+    ConstraintDescription: must be a dotted-quad IPv4 address like 198.51.100.10.
+
+  SvmId:
+    Type: String
+    Description: SVM identifier that fronts the archive volume (recorded for operator reference).
+    Default: ''
+
+  ReuseArchiveStackName:
+    Type: String
+    Description: >-
+      Name to give the nested S3 Access Point archive stack
+      (shared/templates/s3-access-point.yaml). The nested stack's AccessPointArn
+      output is surfaced as this stack's ArchiveAccessPointArn output; the
+      parallel archive path writes there.
+    Default: fsxn-pattern-1-archive
+    AllowedPattern: '^[a-zA-Z][-a-zA-Z0-9]{0,127}$'
+    ConstraintDescription: must start with a letter and contain only letters, digits, and hyphens (1-128 characters), like fsxn-pattern-1-archive.
+
+  # --- Reuse mechanism: nested stack pointing at the shared archive template --
+  ArchiveTemplateUrl:
+    Type: String
+    Description: >-
+      S3 URL of the packaged shared/templates/s3-access-point.yaml. deploy.sh
+      uploads the shared template and fills this in. This is how the archive is
+      REUSED (nested stack), not copied - the S3 Access Point is defined only in
+      the shared template.
+    Default: ''
+
+  ArchiveBucketName:
+    Type: String
+    Description: >-
+      Existing S3 bucket that backs the long-term archive (the parallel archive
+      path lands here). Passed through to the nested S3 Access Point stack.
+    Default: ''
+
+  # --- InfluxDB server (net-new) --------------------------------------------
+  InfluxDbLine:
+    Type: String
+    Description: >-
+      InfluxDB line to provision. v1 and v2 are stated neutrally as alternatives
+      (both use the TSM storage engine with the documented NFS lock failure);
+      pick per the setup guide's how-to-choose, not as a version contest.
+    Default: v2
+    AllowedValues: [v1, v2]
+
+  InfluxDbInstanceType:
+    Type: String
+    Description: EC2 instance type for the InfluxDB server (ephemeral verification sizing).
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large, m6i.large]
+
+  InfluxDbAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: >-
+      Amazon Linux 2023 AMI, resolved from the public SSM public-parameter path
+      by default so no AMI ID is hardcoded and the value is region-correct.
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+  LocalHotTierVolumeSizeGiB:
+    Type: Number
+    Description: >-
+      Size of the LOCAL EBS volume for the InfluxDB hot tier (the TSM data
+      directory). Local block storage, not NFS - see the NFS guardrail in the
+      description. The iSCSI-LUN variant is the tracked hypothesis, not this
+      default.
+    Default: 50
+    MinValue: 20
+    MaxValue: 500
+
+  HotTierRetentionDays:
+    Type: Number
+    Description: Local hot-tier retention in days before the archive is the system of record.
+    Default: 15
+    MinValue: 1
+    MaxValue: 90
+
+  MqttBrokerPort:
+    Type: Number
+    Description: >-
+      MQTT listener port the Mosquitto broker binds on the InfluxDB server host.
+      Intra-VPC publishers reach it; there is no external ingress by design.
+    Default: 1883
+    MinValue: 1
+    MaxValue: 65535
+
+Conditions:
+  HasArchiveTemplateUrl: !Not [!Equals [!Ref ArchiveTemplateUrl, '']]
+  HasSvmId: !Not [!Equals [!Ref SvmId, '']]
+
+Resources:
+  # ================================================================
+  # Reused archive target - nested stack over
+  # shared/templates/s3-access-point.yaml. The S3 Access Point resource lives
+  # ONLY in that shared template; this stack references it, it does not redefine
+  # it. Created only when deploy.sh has packaged and supplied its URL.
+  # ================================================================
+  ArchiveStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasArchiveTemplateUrl
+    Properties:
+      TemplateURL: !Ref ArchiveTemplateUrl
+      Parameters:
+        BucketName: !Ref ArchiveBucketName
+        AccessPointName: !Sub '${AWS::StackName}-archive-ap'
+        VpcId: !Ref VpcId
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-1-archive
+
+  # ================================================================
+  # Security group for the broker + InfluxDB server. The MQTT listener and the
+  # InfluxDB HTTP API are reachable only from within this VPC (intra-VPC
+  # publishers and the reused Grafana visualization layer); egress covers the
+  # archive export and SSM.
+  # ================================================================
+  InfluxDbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MQTT broker + InfluxDB verification server - intra-VPC ingress, egress for archive export and SSM
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS out for archive export to the archive backend and SSM
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-1
+
+  # Intra-VPC ingress to the MQTT listener. Self-referencing plus VPC-scoped so
+  # publishers and the Grafana layer inside the VPC can reach the broker and the
+  # InfluxDB HTTP API without any Internet-facing ingress.
+  MqttIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref InfluxDbSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref MqttBrokerPort
+      ToPort: !Ref MqttBrokerPort
+      SourceSecurityGroupId: !Ref InfluxDbSecurityGroup
+      Description: MQTT listener reachable from members of this security group only
+
+  # ================================================================
+  # Instance role - least privilege. SSM managed-instance access for keyless
+  # operator login; explicit inline read of the archive objects the parallel
+  # archive path produces. No wildcard actions.
+  # ================================================================
+  InfluxDbInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-instance-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ArchiveReadback
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ArchiveObjectReadback
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AWS::StackName}-archive-ap'
+                  - !Sub 'arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/${AWS::StackName}-archive-ap/object/*'
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-1
+
+  InfluxDbInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InfluxDbInstanceRole
+
+  # ================================================================
+  # MQTT broker + InfluxDB server (net-new). Hot tier on a dedicated LOCAL EBS
+  # volume - NEVER on FSx for ONTAP NFS (InfluxDB v1/v2 TSM has a documented NFS
+  # lock failure; see the guardrail in the description and the UserData below).
+  # The iSCSI-LUN hot tier is the tracked hypothesis, not this default.
+  # ================================================================
+  InfluxDbServer:
+    Type: AWS::EC2::Instance
+    Metadata:
+      guard:
+        # No Internet-facing inbound rules by design; the server is reached via
+        # SSM Session Manager, the MQTT listener accepts intra-VPC publishers via
+        # the self-referencing group ingress only, and the archive export is
+        # outbound. Documented so a reviewer does not read the missing external
+        # ingress as an omission.
+        ingress_exempt: >-
+          Reached via SSM Session Manager; the MQTT listener accepts intra-VPC
+          publishers via a self-referencing security-group ingress only, and the
+          archive export is outbound. No external ingress is intentional for this
+          ephemeral verification server.
+    Properties:
+      InstanceType: !Ref InfluxDbInstanceType
+      ImageId: !Ref InfluxDbAmiId
+      IamInstanceProfile: !Ref InfluxDbInstanceProfile
+      SubnetId: !Select [0, !Ref SubnetIds]
+      SecurityGroupIds:
+        - !Ref InfluxDbSecurityGroup
+      BlockDeviceMappings:
+        # Root volume.
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+        # Dedicated LOCAL block volume for the InfluxDB hot tier (the TSM data
+        # directory). It is EBS (local block), not NFS: InfluxDB v1/v2 document a
+        # TSM NFS locking failure (stale NFS file handle), so the data directory
+        # must be local. The iSCSI-LUN-as-local-disk variant is the
+        # Hot_Tier_Storage_Hypothesis verified only by the live sample run (spec
+        # task 19), not this default.
+        - DeviceName: /dev/xvdb
+          Ebs:
+            VolumeSize: !Ref LocalHotTierVolumeSizeGiB
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          # --- Local hot-tier volume (EBS, NOT NFS) ---------------------------
+          # GUARDRAIL: the InfluxDB TSM data directory MUST be local block
+          # storage. InfluxDB v1/v2 (TSM) document an NFS locking failure (stale
+          # NFS file handle), so this mounts the dedicated EBS volume and never an
+          # FSx for ONTAP NFS export. The iSCSI-LUN hot tier is the tracked
+          # hypothesis (see the setup guide and the Verification_Record), not this
+          # default provisioning.
+          HOT_DEV=/dev/xvdb
+          HOT_DIR=/var/lib/influxdb
+          mkfs -t xfs "$HOT_DEV" || true
+          mkdir -p "$HOT_DIR"
+          mount "$HOT_DEV" "$HOT_DIR"
+          echo "$HOT_DEV $HOT_DIR xfs defaults,nofail 0 2" >> /etc/fstab
+
+          # --- MQTT broker (Mosquitto) ----------------------------------------
+          # Minimal broker on the same host. It binds the intra-VPC listener; the
+          # setup guide covers the authoritative config (auth, TLS). Package
+          # availability varies by AMI/repo, so failures are tolerated here.
+          dnf install -y mosquitto || true
+          cat > /etc/mosquitto/conf.d/pattern-1.conf <<MQTTCONF
+          listener ${MqttBrokerPort}
+          allow_anonymous true
+          MQTTCONF
+
+          # --- InfluxDB install (Amazon Linux 2023) ---------------------------
+          # Line selected by the InfluxDbLine parameter. v1 and v2 both use the
+          # TSM storage engine and keep their data directory on the local EBS
+          # mount above. Package availability varies, so failures are tolerated;
+          # the setup guide covers the authoritative install steps.
+          LINE=${InfluxDbLine}
+          case "$LINE" in
+            v1)
+              dnf install -y influxdb || true
+              # v1 data/wal directories point at the LOCAL EBS mount, never NFS.
+              ;;
+            v2)
+              dnf install -y influxdb2 || true
+              # v2 engine-path points at the LOCAL EBS mount, never NFS.
+              ;;
+          esac
+
+          # INFLUXDB data/engine path points at the LOCAL EBS mount, never NFS.
+          mkdir -p /etc/influxdb-verify
+          cat > /etc/influxdb-verify/hot-tier.env <<'INFLUXENV'
+          # Hot tier data directory is the LOCAL EBS mount (never FSx for ONTAP NFS).
+          HOT_TIER_DIR=/var/lib/influxdb
+          INFLUXENV
+
+          echo "Line ${InfluxDbLine}. Local hot tier at ${!HOT_DIR} (EBS). Retention ${HotTierRetentionDays}d. MQTT on ${MqttBrokerPort}." \
+            > /var/log/pattern-1-influxdb-provision.log
+          echo "FS ${FileSystemId} / mgmt ${OntapMgmtIp} recorded; NFS NOT mounted as hot tier (TSM lock guardrail)." \
+            >> /var/log/pattern-1-influxdb-provision.log
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-influxdb'
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Purpose
+          Value: pipeline-verification-pattern-1
+        - Key: InfluxDbLine
+          Value: !Ref InfluxDbLine
+        - Key: FileSystemId
+          Value: !Ref FileSystemId
+        - Key: SvmId
+          Value: !If [HasSvmId, !Ref SvmId, 'n/a']
+
+Outputs:
+  InfluxDbInstanceId:
+    Description: EC2 instance ID of the MQTT broker + InfluxDB verification server (reach it via SSM Session Manager).
+    Value: !Ref InfluxDbServer
+
+  InfluxDbLineDeployed:
+    Description: InfluxDB line provisioned on the server (v1 or v2).
+    Value: !Ref InfluxDbLine
+
+  InfluxDbSecurityGroupId:
+    Description: Security group ID of the broker + InfluxDB server (intra-VPC ingress, egress-only otherwise).
+    Value: !Ref InfluxDbSecurityGroup
+
+  ArchiveAccessPointArn:
+    Description: >-
+      ARN of the reused S3 Access Point archive target (from the nested
+      shared/templates/s3-access-point.yaml stack). Empty when the archive stack
+      was not deployed (ArchiveTemplateUrl not supplied).
+    Value: !If
+      - HasArchiveTemplateUrl
+      - !GetAtt ArchiveStack.Outputs.AccessPointArn
+      - 'not-deployed'
+
+  VisualizationPointer:
+    Description: Grafana visualization is reused as a mandatory doc pointer, not rebuilt here (requirement 2-9).
+    Value: 'Visualization layer is REUSED from integrations/grafana/ as a documentation pointer; see docs/{ja,en}/setup-guide.md.'
+
+  HotTierGuardrail:
+    Description: Reminder that the hot tier is on local EBS, never FSx for ONTAP NFS; iSCSI LUN is a tracked hypothesis.
+    Value: 'InfluxDB v1/v2 TSM data directory is on a local EBS volume; NFS locking is documented as failing. The iSCSI-LUN hot tier is a Hot_Tier_Storage_Hypothesis, verified only by the live sample run.'
