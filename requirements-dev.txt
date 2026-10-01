@@ -19,7 +19,7 @@ hypothesis==6.168.0
 # --- Lambda runtime libraries (present in the AWS Python 3.12 runtime) -----
 # urllib3 rather than requests: requests is not in the Lambda runtime.
 boto3==1.43.93
-urllib3==2.7.0
+urllib3==2.8.0
 
 # --- Gates ----------------------------------------------------------------
 # These three were absent from the venv entirely. bandit was not installed
