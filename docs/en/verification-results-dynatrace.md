@@ -4,8 +4,12 @@
 
 ## Overview
 
-- **Verification Date**: 2026-05-24T11:47:00+09:00
-- **Verification Environment**: Test environment (ap-northeast-1)
+All 7 steps passed; the audit log path is judged production-ready (see [Overall Judgment](#overall-judgment)).
+
+| Item | Value |
+|------|-------|
+| Verification Date | 2026-05-24T11:47:00+09:00 |
+| Verification Environment | Test environment (ap-northeast-1) |
 
 ---
 
@@ -14,14 +18,14 @@
 | Item | Value |
 |------|-------|
 | AWS Region | ap-northeast-1 |
-| AWS Account ID | ****6981 |
+| AWS Account ID | `****6981` |
 | CloudFormation Stack Name | fsxn-dynatrace-integration |
 | Lambda Function Name | fsxn-dynatrace-integration-shipper |
-| Dynatrace Environment ID | ****9111 |
+| Dynatrace Environment ID | `****9111` |
 | Dynatrace API Endpoint | https://<env-id>.live.dynatrace.com/api/v2/logs/ingest |
 | API Token Scope | logs.ingest |
 | Trial Days Remaining | 14 days |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 
@@ -43,23 +47,27 @@
 
 ### Step 1: Dynatrace Trial Account Creation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Method**: Registered via email at https://www.dynatrace.com/trial/ (Playwright automation)
-- **Cloud Provider**: AWS
-- **Deployment Region**: Asia Pacific (Tokyo)
-- **Trial Period**: 14 days
+| Item | Value |
+|------|-------|
+| Method | Registered via email at https://www.dynatrace.com/trial/ (Playwright automation) |
+| Cloud Provider | AWS |
+| Deployment Region | Asia Pacific (Tokyo) |
+| Trial Period | 14 days |
 
 ---
 
 ### Step 2: API Token Generation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Method**: Auto-generated via Playwright on the Access Tokens page (inside iframe)
-- **Token Name**: fsxn-log-ingest
-- **Scope**: `logs.ingest` (Ingest logs)
-- **Token Format**: `dt0c01.<ID>.<SECRET>`
+| Item | Value |
+|------|-------|
+| Method | Auto-generated via Playwright on the Access Tokens page (inside iframe) |
+| Token Name | fsxn-log-ingest |
+| Scope | `logs.ingest` (Ingest logs) |
+| Token Format | `dt0c01.<ID>.<SECRET>` |
 
 ```bash
 # Register Token in Secrets Manager
@@ -69,13 +77,13 @@ aws secretsmanager create-secret \
   --region ap-northeast-1
 ```
 
-- **Note**: The Access Tokens page operates inside an iframe on the `live.dynatrace.com` domain. Accessible via Playwright's `frameLocator('iframe[src*="live.dynatrace.com"]')`.
+Note: the Access Tokens page operates inside an iframe on the `live.dynatrace.com` domain, so it is reached via Playwright's `frameLocator('iframe[src*="live.dynatrace.com"]')`.
 
 ---
 
 ### Step 3: CloudFormation Stack Deployment
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 ```bash
 aws cloudformation deploy \
@@ -90,8 +98,7 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-- **Stack Status**: CREATE_COMPLETE
-- **Created Resources**:
+Stack Status: CREATE_COMPLETE. Created resources:
   - [x] Lambda Function
   - [x] IAM Role
   - [x] EventBridge Rule
@@ -103,7 +110,7 @@ aws cloudformation deploy \
 
 ### Step 4: Lambda Test Event Invocation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 ```bash
 aws lambda invoke \
@@ -114,7 +121,7 @@ aws lambda invoke \
   response.json
 ```
 
-- **Response**:
+Response:
 ```json
 {
   "statusCode": 200,
@@ -131,7 +138,8 @@ aws lambda invoke \
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (empty)
-- **Dynatrace API Response**: HTTP 204 (success, no body)
+
+Dynatrace API Response: HTTP 204 (success, no body)
 
 #### Direct curl Test
 
@@ -148,18 +156,20 @@ curl -s -w "\nHTTP:%{http_code}" \
 
 ### Step 5: Dynatrace Logs Viewer Log Arrival Confirmation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Method**: Dynatrace Platform → Logs app → View logs → Run query
-- **Arrived Records**: 1 (displayed after ingestion lag)
-- **Time to Arrival**: Approximately 1–2 minutes (ingestion lag in trial environment)
+| Item | Value |
+|------|-------|
+| Method | Dynatrace Platform → Logs app → View logs → Run query |
+| Arrived Records | 1 (displayed after ingestion lag) |
+| Time to Arrival | Approximately 1–2 minutes (ingestion lag in trial environment) |
 
-- **Displayed Log Entry**:
+Displayed Log Entry:
   - timestamp: May 24, 12:32:13.000
   - status: INFO
   - Log message: "Direct curl test from fsxn pipeline"
 
-- **Logs Viewer Access**:
+Logs Viewer Access:
   - Dynatrace Platform → Left menu "Logs" → "View logs" → "Run query"
   - Time range: Last 30 minutes (wait 1–2 minutes after log submission)
 
@@ -169,16 +179,13 @@ curl -s -w "\nHTTP:%{http_code}" \
 
 ### Step 6: Setup Guide Bilingual Verification
 
-- **Result**: ✅ PASS
-
-- **Japanese**: `integrations/dynatrace/docs/ja/setup-guide.md` — Confirmed
-- **English**: `integrations/dynatrace/docs/en/setup-guide.md` — Confirmed
+Result: ✅ PASS. Confirmed that both `integrations/dynatrace/docs/ja/setup-guide.md` and `integrations/dynatrace/docs/en/setup-guide.md` exist.
 
 ---
 
 ### Step 7: Screenshot Verification
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 | # | Filename | Content | Result |
 |---|----------|---------|--------|
@@ -202,9 +209,11 @@ curl -s -w "\nHTTP:%{http_code}" \
 
 ## Overall Judgment
 
-- **Judgment**: ✅ Audit log path production-ready
-- **Passing Criteria**: 7 / 7
-- **Failing Criteria**: None
+| Item | Value |
+|------|-------|
+| Judgment | ✅ Audit log path production-ready |
+| Passing Criteria | 7 / 7 |
+| Failing Criteria | None |
 
 ---
 

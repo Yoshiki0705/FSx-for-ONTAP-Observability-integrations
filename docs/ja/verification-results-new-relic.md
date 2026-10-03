@@ -14,13 +14,13 @@
 | 項目 | 値 |
 |------|-----|
 | AWS リージョン | ap-northeast-1 |
-| AWS アカウント ID | ****6981 |
+| AWS アカウント ID | `****6981` |
 | CloudFormation スタック名 | fsxn-new-relic-integration |
 | Lambda 関数名 | fsxn-new-relic-integration-shipper |
 | New Relic リージョン | US |
-| New Relic アカウント ID | ****4184 |
+| New Relic アカウント ID | `****4184` |
 | New Relic Log API エンドポイント | https://log-api.newrelic.com/log/v1 |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 | S3 バケット名 | fsxn-audit-logs-observability-test |
 
 ---

@@ -4,8 +4,12 @@
 
 ## 実施概要
 
-- **検証日時** — 2026-05-24T10:51:00+09:00
-- **検証環境** — 検証環境（ap-northeast-1）
+6 ステップすべてが PASS し、監査ログ経路は本番環境で利用可能と判定しました（詳細は[総合判定](#総合判定)）。
+
+| 項目 | 値 |
+|------|-----|
+| 検証日時 | 2026-05-24T10:51:00+09:00 |
+| 検証環境 | 検証環境（ap-northeast-1） |
 
 ---
 
@@ -14,15 +18,15 @@
 | 項目 | 値 |
 |------|-----|
 | AWS リージョン | ap-northeast-1 |
-| AWS アカウント ID | ****6981 |
+| AWS アカウント ID | `****6981` |
 | CloudFormation スタック名 | fsxn-elastic-integration |
 | Lambda 関数名 | fsxn-elastic-integration-shipper |
 | Elastic Cloud プロジェクト | My Elasticsearch project |
 | Elastic Cloud タイプ | Serverless |
 | Elastic Cloud リージョン | ap-northeast-1 (Tokyo, AWS) |
-| Elasticsearch エンドポイント | https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443 |
-| Kibana URL | https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| Elasticsearch エンドポイント | `https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443` |
+| Kibana URL | `https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud` |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 
@@ -43,13 +47,15 @@
 
 ### ステップ 1: Elastic Cloud アカウント作成
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **作成方法** — Google OAuth（Playwright 自動操作）
-- **プロジェクトタイプ** — Elasticsearch Serverless
-- **Cloud Provider** — AWS
-- **リージョン** — ap-northeast-1 (Tokyo)
-- **API Key 作成** — Kibana → Stack Management → Security → API Keys → Create
+| 項目 | 値 |
+|------|-----|
+| 作成方法 | Google OAuth（Playwright 自動操作） |
+| プロジェクトタイプ | Elasticsearch Serverless |
+| Cloud Provider | AWS |
+| リージョン | ap-northeast-1 (Tokyo) |
+| API Key 作成 | Kibana → Stack Management → Security → API Keys → Create |
 
 ```bash
 # Register API Key in Secrets Manager
@@ -63,7 +69,7 @@ aws secretsmanager create-secret \
 
 ### ステップ 2: CloudFormation スタックデプロイ
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 ```bash
 aws cloudformation deploy \
@@ -78,8 +84,7 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-- **スタックステータス** — CREATE_COMPLETE
-- **作成されたリソース**:
+スタックステータス: CREATE_COMPLETE。作成されたリソース:
   - [x] Lambda 関数
   - [x] IAM ロール
   - [x] EventBridge Rule
@@ -91,7 +96,7 @@ aws cloudformation deploy \
 
 ### ステップ 3: Lambda テストイベント送信
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 ```bash
 aws lambda invoke \
@@ -102,7 +107,7 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス**:
+レスポンス:
 ```json
 {
   "statusCode": 200,
@@ -119,29 +124,35 @@ aws lambda invoke \
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (空)
-- **Elasticsearch Bulk API レスポンス** — HTTP 200
+
+Elasticsearch Bulk API レスポンス: HTTP 200
 
 ---
 
 ### ステップ 4: Kibana Discover でログ到着確認
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **確認方法** — Kibana → Discover → データが表示されていることを確認
-- **到着ドキュメント数** — 2件
-- **到着までの時間** — 即時（数秒以内）
-- **インデックスパターン** — `fsxn-audit-YYYY.MM.DD`（日次インデックス）
+| 項目 | 値 |
+|------|-----|
+| 確認方法 | Kibana → Discover → データが表示されていることを確認 |
+| 到着ドキュメント数 | 2件 |
+| 到着までの時間 | 即時（数秒以内） |
+| インデックスパターン | `fsxn-audit-YYYY.MM.DD`（日次インデックス） |
 
-- **ECS フィールドマッピング確認**:
-  - [x] `@timestamp` — ISO 8601 形式
-  - [x] `event.type` — イベント ID
-  - [x] `user.name` — ユーザー名
-  - [x] `fsxn.operation` — 操作タイプ
-  - [x] `fsxn.path` — ファイルパス
-  - [x] `fsxn.result` — 結果（Success/Failure）
-  - [x] `fsxn.svm` — SVM 名
-  - [x] `cloud.provider` — aws
-  - [x] `cloud.service.name` — fsx-ontap
+ECS フィールドマッピング確認（すべて確認済み）:
+
+| フィールド | 内容 |
+|-----------|------|
+| `@timestamp` | ISO 8601 形式 |
+| `event.type` | イベント ID |
+| `user.name` | ユーザー名 |
+| `fsxn.operation` | 操作タイプ |
+| `fsxn.path` | ファイルパス |
+| `fsxn.result` | 結果（Success/Failure） |
+| `fsxn.svm` | SVM 名 |
+| `cloud.provider` | aws |
+| `cloud.service.name` | fsx-ontap |
 
 ![Kibana Discover — ログ到着確認](../screenshots/elastic/kibana-discover.png)
 
@@ -149,16 +160,13 @@ aws lambda invoke \
 
 ### ステップ 5: セットアップガイド日英対応確認
 
-- **結果** — ✅ PASS
-
-- **日本語** — `integrations/elastic/docs/ja/setup-guide.md` — 存在確認済み
-- **英語** — `integrations/elastic/docs/en/setup-guide.md` — 存在確認済み
+結果: ✅ PASS。日本語 `integrations/elastic/docs/ja/setup-guide.md` と英語 `integrations/elastic/docs/en/setup-guide.md` の存在を確認しました。
 
 ---
 
 ### ステップ 6: スクリーンショット検証
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 | # | ファイル名 | 内容 | 判定 |
 |---|-----------|------|------|
@@ -177,9 +185,11 @@ aws lambda invoke \
 
 ## 総合判定
 
-- **判定** — ✅ 監査ログパス本番環境利用可能
-- **合格基準数** — 6 / 6
-- **不合格基準** — なし
+| 項目 | 値 |
+|------|-----|
+| 判定 | ✅ 監査ログパス本番環境利用可能 |
+| 合格基準数 | 6 / 6 |
+| 不合格基準 | なし |
 
 ---
 

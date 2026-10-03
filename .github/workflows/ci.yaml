@@ -103,6 +103,14 @@ jobs:
       - name: Python lint (blocking tier)
         run: make lint-py
 
+      # AI writing-style signals over the bilingual prose. Gating: the make
+      # target carries --fail, so a reintroduced fail-tier finding (D1/D2/D5/D14)
+      # fails this step. Warning-tier rules still only count. CI runs targets
+      # individually rather than `make all`, so the gate only appears in CI if it
+      # is named here.
+      - name: AI writing-style (gating)
+        run: make ai-style
+
       # bandit. Had never run against this repo before: the first execution
       # reported 6 Medium findings, all B314 (stdlib ElementTree parsing audit
       # XML whose content originates from whoever touches the volume). Those 6
