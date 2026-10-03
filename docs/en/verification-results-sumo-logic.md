@@ -14,7 +14,7 @@
 | Item | Value |
 |------|-------|
 | AWS Region | ap-northeast-1 |
-| AWS Account ID | ****6981 |
+| AWS Account ID | `****6981` |
 | CloudFormation Stack Name | fsxn-sumo-logic-integration |
 | Lambda Function Name | fsxn-sumo-logic-integration-shipper |
 | Sumo Logic Region | JP (Tokyo) |
@@ -24,7 +24,7 @@
 | Source Host | fsxn-ontap |
 | Collector Name | fsxn-audit-collector |
 | Trial Days Remaining | 29 days |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 
 ---

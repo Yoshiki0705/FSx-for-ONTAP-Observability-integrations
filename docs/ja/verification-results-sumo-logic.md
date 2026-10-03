@@ -14,7 +14,7 @@
 | 項目 | 値 |
 |------|-----|
 | AWS リージョン | ap-northeast-1 |
-| AWS アカウント ID | ****6981 |
+| AWS アカウント ID | `****6981` |
 | CloudFormation スタック名 | fsxn-sumo-logic-integration |
 | Lambda 関数名 | fsxn-sumo-logic-integration-shipper |
 | Sumo Logic リージョン | JP (Tokyo) |
@@ -24,7 +24,7 @@
 | Source Host | fsxn-ontap |
 | Collector 名 | fsxn-audit-collector |
 | トライアル残日数 | 29日 |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 

@@ -154,5 +154,42 @@ class CopyableCli(unittest.TestCase):
         self.assertEqual(self.run_cli("--selftest").returncode, 0)
 
 
+class TheGateIsWiredToFail(unittest.TestCase):
+    """The flip from report-only to gating must not silently regress.
+
+    `make ai-style` and the CI step only gate while the recipe carries `--fail`.
+    Dropping it would leave the detector running and printing but unable to fail,
+    which looks identical to a clean run -- the same silent-skip failure the
+    ai-style-selftest guards against. These assertions pin the flip in place.
+    """
+
+    def _ai_style_recipe(self) -> str:
+        text = (ROOT / "Makefile").read_text(encoding="utf-8").splitlines()
+        start = next(
+            i for i, line in enumerate(text) if line.startswith("ai-style:")
+        )
+        recipe = []
+        for line in text[start + 1 :]:
+            if line.startswith("\t"):
+                recipe.append(line)
+            elif line.strip() == "":
+                recipe.append(line)
+            else:
+                break
+        return "\n".join(recipe)
+
+    def test_make_recipe_carries_fail(self) -> None:
+        recipe = self._ai_style_recipe()
+        self.assertIn("ai_style_rules.py", recipe)
+        self.assertIn("--fail", recipe)
+
+    def test_ci_step_is_named_gating(self) -> None:
+        ci = (ROOT / ".github" / "workflows" / "ci.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("AI writing-style (gating)", ci)
+        self.assertNotIn("AI writing-style (report-only)", ci)
+
+
 if __name__ == "__main__":
     unittest.main()

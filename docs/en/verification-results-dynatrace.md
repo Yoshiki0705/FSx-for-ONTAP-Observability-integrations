@@ -14,14 +14,14 @@
 | Item | Value |
 |------|-------|
 | AWS Region | ap-northeast-1 |
-| AWS Account ID | ****6981 |
+| AWS Account ID | `****6981` |
 | CloudFormation Stack Name | fsxn-dynatrace-integration |
 | Lambda Function Name | fsxn-dynatrace-integration-shipper |
-| Dynatrace Environment ID | ****9111 |
+| Dynatrace Environment ID | `****9111` |
 | Dynatrace API Endpoint | https://<env-id>.live.dynatrace.com/api/v2/logs/ingest |
 | API Token Scope | logs.ingest |
 | Trial Days Remaining | 14 days |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 

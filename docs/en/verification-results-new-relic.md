@@ -14,13 +14,13 @@
 | Item | Value |
 |------|-------|
 | AWS Region | ap-northeast-1 |
-| AWS Account ID | ****6981 |
+| AWS Account ID | `****6981` |
 | CloudFormation Stack Name | fsxn-new-relic-integration |
 | Lambda Function Name | fsxn-new-relic-integration-shipper |
 | New Relic Region | US |
-| New Relic Account ID | ****4184 |
+| New Relic Account ID | `****4184` |
 | New Relic Log API Endpoint | https://log-api.newrelic.com/log/v1 |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 | S3 Bucket Name | fsxn-audit-logs-observability-test |
 
 ---

@@ -14,14 +14,14 @@
 | Item | Value |
 |------|-------|
 | AWS Region | ap-northeast-1 |
-| AWS Account ID | ****6981 |
+| AWS Account ID | `****6981` |
 | CloudFormation Stack Name | fsxn-honeycomb-integration |
 | Lambda Function Name | fsxn-honeycomb-integration-shipper |
 | Honeycomb Team | wisteria-field-japan |
 | Honeycomb Environment | test |
 | Honeycomb Dataset | fsxn-audit |
 | Honeycomb API Endpoint | https://api.honeycomb.io |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 

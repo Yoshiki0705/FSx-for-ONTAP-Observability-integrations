@@ -201,12 +201,12 @@ headings: headings-selftest
 headings-selftest:
 	@$(PY) scripts/check_heading_style.py --selftest >/dev/null
 
-# AI writing-style signals over the bilingual prose. Report-only for now: it
-# counts findings and prints a table, and the absence of --fail means it cannot
-# fail the build. Flipping it to a gate is one flag (`--fail`) once the corpus
-# is clean; FEAT-003 does that after fixing the fail-tier findings this count
-# surfaces. --exclude 'blog/*' keeps the author-voice blog prose out, where the
-# style exceptions (closing lines, deliberate bullet lists) do not apply.
+# AI writing-style signals over the bilingual prose. Gating: --fail makes the
+# fail-tier rules (D1/D2/D5/D14) exit non-zero, so a reintroduced broken `**`,
+# closing catchphrase, chat-style sign-off, or bold-in-heading fails the build.
+# The warning-tier rules still only count. --exclude 'blog/*' keeps the
+# author-voice blog prose out, where the style exceptions (closing lines,
+# deliberate bullet lists) do not apply.
 #
 # The self-test runs first and is blocking, mirroring headings: the detector
 # exits 0 on a clean tree, so a rule that stopped matching or a file walk that
@@ -217,7 +217,7 @@ headings-selftest:
 # the same logic under pytest, so `make test-py` and `make drift` enforce it in
 # CI without a workflow change.
 ai-style: ai-style-selftest
-	$(PY) scripts/ai_style_rules.py docs/ja docs/en README.md --summary --exclude 'blog/*'
+	$(PY) scripts/ai_style_rules.py docs/ja docs/en README.md --summary --fail --exclude 'blog/*'
 ai-style-selftest:
 	@$(PY) scripts/ai_style_rules.py --selftest >/dev/null
 

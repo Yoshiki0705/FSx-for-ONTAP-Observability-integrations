@@ -103,12 +103,12 @@ jobs:
       - name: Python lint (blocking tier)
         run: make lint-py
 
-      # AI writing-style signals over the bilingual prose. Report-only: the
-      # make target carries no --fail, so this step counts findings and prints a
-      # table but cannot fail the build. CI runs targets individually rather
-      # than `make all`, so the gate only appears in CI if it is named here.
-      # FEAT-003 flips it to blocking after the fail-tier findings are fixed.
-      - name: AI writing-style (report-only)
+      # AI writing-style signals over the bilingual prose. Gating: the make
+      # target carries --fail, so a reintroduced fail-tier finding (D1/D2/D5/D14)
+      # fails this step. Warning-tier rules still only count. CI runs targets
+      # individually rather than `make all`, so the gate only appears in CI if it
+      # is named here.
+      - name: AI writing-style (gating)
         run: make ai-style
 
       # bandit. Had never run against this repo before: the first execution

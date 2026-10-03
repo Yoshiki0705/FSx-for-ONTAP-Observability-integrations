@@ -14,14 +14,14 @@
 | 項目 | 値 |
 |------|-----|
 | AWS リージョン | ap-northeast-1 |
-| AWS アカウント ID | ****6981 |
+| AWS アカウント ID | `****6981` |
 | CloudFormation スタック名 | fsxn-honeycomb-integration |
 | Lambda 関数名 | fsxn-honeycomb-integration-shipper |
 | Honeycomb チーム | wisteria-field-japan |
 | Honeycomb 環境 | test |
 | Honeycomb データセット | fsxn-audit |
 | Honeycomb API エンドポイント | https://api.honeycomb.io |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 

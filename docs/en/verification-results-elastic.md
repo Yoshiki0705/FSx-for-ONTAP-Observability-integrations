@@ -14,15 +14,15 @@
 | Item | Value |
 |------|-------|
 | AWS Region | ap-northeast-1 |
-| AWS Account ID | ****6981 |
+| AWS Account ID | `****6981` |
 | CloudFormation Stack Name | fsxn-elastic-integration |
 | Lambda Function Name | fsxn-elastic-integration-shipper |
 | Elastic Cloud Project | My Elasticsearch project |
 | Elastic Cloud Type | Serverless |
 | Elastic Cloud Region | ap-northeast-1 (Tokyo, AWS) |
-| Elasticsearch Endpoint | https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443 |
-| Kibana URL | https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| Elasticsearch Endpoint | `https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443` |
+| Kibana URL | `https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud` |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 

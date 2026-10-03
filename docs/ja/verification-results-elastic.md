@@ -14,15 +14,15 @@
 | 項目 | 値 |
 |------|-----|
 | AWS リージョン | ap-northeast-1 |
-| AWS アカウント ID | ****6981 |
+| AWS アカウント ID | `****6981` |
 | CloudFormation スタック名 | fsxn-elastic-integration |
 | Lambda 関数名 | fsxn-elastic-integration-shipper |
 | Elastic Cloud プロジェクト | My Elasticsearch project |
 | Elastic Cloud タイプ | Serverless |
 | Elastic Cloud リージョン | ap-northeast-1 (Tokyo, AWS) |
-| Elasticsearch エンドポイント | https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443 |
-| Kibana URL | https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| Elasticsearch エンドポイント | `https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443` |
+| Kibana URL | `https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud` |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 

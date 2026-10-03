@@ -14,14 +14,14 @@
 | 項目 | 値 |
 |------|-----|
 | AWS リージョン | ap-northeast-1 |
-| AWS アカウント ID | ****6981 |
+| AWS アカウント ID | `****6981` |
 | CloudFormation スタック名 | fsxn-dynatrace-integration |
 | Lambda 関数名 | fsxn-dynatrace-integration-shipper |
-| Dynatrace 環境 ID | ****9111 |
+| Dynatrace 環境 ID | `****9111` |
 | Dynatrace API エンドポイント | https://<env-id>.live.dynatrace.com/api/v2/logs/ingest |
 | API Token スコープ | logs.ingest |
 | トライアル残日数 | 14日 |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 
