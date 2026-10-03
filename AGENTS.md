@@ -567,6 +567,9 @@ Detects: internal IPs (10.x/172.16-31.x/192.168.x), AWS Account IDs, internal ho
 - ゲート: `make headings`（本検査の前に `--selftest` が走る）。CI は `scripts/tests/test_heading_style.py` 経由で `make test-py` / `make drift` から強制する。
 - 叙述・助言・抱負の見出しだけが例外。見出し行に `<!-- allow:heading-style -->` を付け、なぜ叙述なのかを本文に書く。
 
+### 文章スタイルの判定基準（Hub）
+- 散文の AI 調を直す / ai-style の指摘を読む / 目視レビュー対象を選ぶとき、判定基準と検出器の規則は Hub の criteria doc を参照（本文はここに複製しない）: https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/agent/writing-quality.md
+
 ### Technical reference / guide docs
 - 必須要素: エグゼクティブサマリの結論、FAQ/よくある誤解、選択フローチャート（mermaid 可）、OT/IT セキュリティ考慮（該当時）、段階的導入ステップ、Related Documents（逆リンク）、≥10 の inline トピック別ノート（役職名ではなく `**XXXに関する補足**` 形式のラベル）。
 
