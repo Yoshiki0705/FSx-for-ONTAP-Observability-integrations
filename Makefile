@@ -167,7 +167,7 @@ test-ts:
 
 # --- Lint and security ----------------------------------------------------
 
-lint: lint-py lint-ts headings
+lint: lint-py lint-ts headings ai-style
 
 # Blocking tier: ruff.toml [lint] select is restricted to rules that only fire
 # on a definite defect, and it is clean today. See ruff.toml for why the
@@ -200,6 +200,26 @@ headings: headings-selftest
 	$(PY) scripts/check_heading_style.py
 headings-selftest:
 	@$(PY) scripts/check_heading_style.py --selftest >/dev/null
+
+# AI writing-style signals over the bilingual prose. Report-only for now: it
+# counts findings and prints a table, and the absence of --fail means it cannot
+# fail the build. Flipping it to a gate is one flag (`--fail`) once the corpus
+# is clean; FEAT-003 does that after fixing the fail-tier findings this count
+# surfaces. --exclude 'blog/*' keeps the author-voice blog prose out, where the
+# style exceptions (closing lines, deliberate bullet lists) do not apply.
+#
+# The self-test runs first and is blocking, mirroring headings: the detector
+# exits 0 on a clean tree, so a rule that stopped matching or a file walk that
+# returned nothing would look identical to a clean run. --selftest asserts both
+# directions and fails loudly if either breaks.
+#
+# scripts/tests/test_ai_style_rules.py and test_ai_style_strong_fixtures.py run
+# the same logic under pytest, so `make test-py` and `make drift` enforce it in
+# CI without a workflow change.
+ai-style: ai-style-selftest
+	$(PY) scripts/ai_style_rules.py docs/ja docs/en README.md --summary --exclude 'blog/*'
+ai-style-selftest:
+	@$(PY) scripts/ai_style_rules.py --selftest >/dev/null
 
 # Repository names that only still resolve because GitHub redirects them.
 #
@@ -338,7 +358,8 @@ clean:
 # dangerous ones: without .PHONY make finds the directory, decides the target
 # is up to date, and runs nothing while exiting 0.
 .PHONY: help all install test test-py test-ts lint lint-py lint-py-full \
-        lint-ts headings headings-selftest security security-full \
+        lint-ts headings headings-selftest ai-style ai-style-selftest \
+        security security-full \
         cfn cfn-lint cfn-guard \
         cfn-guard-selftest gitleaks drift agent-config bilingual \
         repo-names repo-names-selftest hooks sibling-drift clean
