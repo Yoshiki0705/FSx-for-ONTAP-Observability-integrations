@@ -21,7 +21,7 @@ Playwright MCP（`--allow-unrestricted-file-access` 付き）を使用して以�
 
 1. Datadog にログイン（AP1 サイト: https://ap1.datadoghq.com）
    - Email: Yoshiki.Fujiwara@netapp.com
-   - Password: Wisteria1735!
+   - Password: (認証情報はここに記録しないこと。使い捨てのデモアカウントかシークレットマネージャーを使用する / do not record credentials here; use a disposable demo account or a secrets manager)
    - reCAPTCHA が出たら手動で突破してください
 
 2. 以下のスクリーンショットを撮影:
