@@ -4,8 +4,12 @@
 
 ## Overview
 
-- **Verification Date**: 2026-05-24T13:13:00+09:00
-- **Verification Environment**: Test environment (ap-northeast-1)
+All 8 steps passed; the audit log path is judged production-ready (see [Overall Judgment](#overall-judgment)).
+
+| Item | Value |
+|------|-------|
+| Verification Date | 2026-05-24T13:13:00+09:00 |
+| Verification Environment | Test environment (ap-northeast-1) |
 
 ---
 
@@ -48,24 +52,28 @@
 
 ### Step 1: Sumo Logic Account Creation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Method**: Google OAuth + manual form submission
-- **Region**: APAC: Tokyo (JP)
-- **Plan**: Free Tier (Cloud Flex Credits: 1.25 credits/day, 7-day retention)
-- **URL**: https://service.jp.sumologic.com
+| Item | Value |
+|------|-------|
+| Method | Google OAuth + manual form submission |
+| Region | APAC: Tokyo (JP) |
+| Plan | Free Tier (Cloud Flex Credits: 1.25 credits/day, 7-day retention) |
+| URL | https://service.jp.sumologic.com |
 
 ---
 
 ### Step 2: Hosted Collector + HTTP Source Creation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Collector Name**: fsxn-audit-collector (Hosted Collector)
-- **Source Type**: HTTP Logs & Metrics
-- **Source Name**: fsxn-ontap-audit
-- **Source Category**: aws/fsxn/audit
-- **Generated URL**: `https://collectors.jp.sumologic.com/receiver/v1/http/<TOKEN>`
+| Item | Value |
+|------|-------|
+| Collector Name | fsxn-audit-collector (Hosted Collector) |
+| Source Type | HTTP Logs & Metrics |
+| Source Name | fsxn-ontap-audit |
+| Source Category | aws/fsxn/audit |
+| Generated URL | `https://collectors.jp.sumologic.com/receiver/v1/http/<TOKEN>` |
 
 ```bash
 # Register HTTP Source URL in Secrets Manager
@@ -80,7 +88,7 @@ aws secretsmanager create-secret \
 
 ### Step 3: CloudFormation Stack Deployment
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 ```bash
 aws cloudformation deploy \
@@ -94,8 +102,7 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-- **Stack Status**: CREATE_COMPLETE
-- **Created Resources**:
+Stack Status: CREATE_COMPLETE. Created resources:
   - [x] Lambda Function
   - [x] IAM Role
   - [x] EventBridge Rule
@@ -107,7 +114,7 @@ aws cloudformation deploy \
 
 ### Step 4: Lambda Test Event Invocation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 ```bash
 aws lambda invoke \
@@ -118,7 +125,7 @@ aws lambda invoke \
   response.json
 ```
 
-- **Response**:
+Response:
 ```json
 {
   "statusCode": 200,
@@ -135,20 +142,23 @@ aws lambda invoke \
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (empty)
-- **Sumo Logic HTTP Source Response**: HTTP 200
+
+Sumo Logic HTTP Source Response: HTTP 200
 
 
 ---
 
 ### Step 5: Sumo Logic Search Log Arrival Confirmation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Search Query**: `_sourceCategory=aws/fsxn/audit`
-- **Arrived Logs**: 1 (displayed after initial indexing)
-- **Time to Arrival**: Approximately 10 minutes (initial indexing lag for new accounts in JP region)
+| Item | Value |
+|------|-------|
+| Search Query | `_sourceCategory=aws/fsxn/audit` |
+| Arrived Logs | 1 (displayed after initial indexing) |
+| Time to Arrival | Approximately 10 minutes (initial indexing lag for new accounts in JP region) |
 
-- **Search Result Metadata**:
+Search Result Metadata:
   - HOST: `fsxn-ontap`
   - NAME: `fsxn-ontap-audit`
   - CATEGORY: `aws/fsxn/audit`
@@ -160,7 +170,7 @@ aws lambda invoke \
 
 ### Step 6: Field Mapping Verification
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 Fields confirmed in Sumo Logic search results:
 
@@ -183,16 +193,13 @@ Fields confirmed in Sumo Logic search results:
 
 ### Step 7: Setup Guide Bilingual Verification
 
-- **Result**: ✅ PASS
-
-- **Japanese**: `integrations/sumo-logic/docs/ja/setup-guide.md` — Confirmed
-- **English**: `integrations/sumo-logic/docs/en/setup-guide.md` — Confirmed
+Result: ✅ PASS. Confirmed that both `integrations/sumo-logic/docs/ja/setup-guide.md` and `integrations/sumo-logic/docs/en/setup-guide.md` exist.
 
 ---
 
 ### Step 8: Screenshot Verification
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 | # | Filename | Content | Result |
 |---|----------|---------|--------|
@@ -214,9 +221,11 @@ Fields confirmed in Sumo Logic search results:
 
 ## Overall Judgment
 
-- **Judgment**: ✅ Audit log path production-ready
-- **Passing Criteria**: 8 / 8
-- **Failing Criteria**: None
+| Item | Value |
+|------|-------|
+| Judgment | ✅ Audit log path production-ready |
+| Passing Criteria | 8 / 8 |
+| Failing Criteria | None |
 
 ---
 

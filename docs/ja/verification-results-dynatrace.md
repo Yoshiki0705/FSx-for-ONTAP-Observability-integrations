@@ -4,8 +4,12 @@
 
 ## 実施概要
 
-- **検証日時** — 2026-05-24T11:47:00+09:00
-- **検証環境** — 検証環境（ap-northeast-1）
+7 ステップすべてが PASS し、監査ログ経路は本番環境で利用可能と判定しました（詳細は[総合判定](#総合判定)）。
+
+| 項目 | 値 |
+|------|-----|
+| 検証日時 | 2026-05-24T11:47:00+09:00 |
+| 検証環境 | 検証環境（ap-northeast-1） |
 
 ---
 
@@ -43,23 +47,27 @@
 
 ### ステップ 1: Dynatrace トライアルアカウント作成
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **作成方法** — https://www.dynatrace.com/trial/ からメールアドレスで登録（Playwright 自動操作）
-- **Cloud Provider** — AWS
-- **Deployment Region** — Asia Pacific (Tokyo)
-- **トライアル期間** — 14日間
+| 項目 | 値 |
+|------|-----|
+| 作成方法 | https://www.dynatrace.com/trial/ からメールアドレスで登録（Playwright 自動操作） |
+| Cloud Provider | AWS |
+| Deployment Region | Asia Pacific (Tokyo) |
+| トライアル期間 | 14日間 |
 
 ---
 
 ### ステップ 2: API Token 生成
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **作成方法** — Access Tokens ページ（iframe 内）で Playwright 経由で自動生成
-- **Token 名** — fsxn-log-ingest
-- **スコープ** — `logs.ingest`（Ingest logs）
-- **Token 形式** — `dt0c01.<ID>.<SECRET>`
+| 項目 | 値 |
+|------|-----|
+| 作成方法 | Access Tokens ページ（iframe 内）で Playwright 経由で自動生成 |
+| Token 名 | fsxn-log-ingest |
+| スコープ | `logs.ingest`（Ingest logs） |
+| Token 形式 | `dt0c01.<ID>.<SECRET>` |
 
 ```bash
 # Register Token in Secrets Manager
@@ -69,13 +77,13 @@ aws secretsmanager create-secret \
   --region ap-northeast-1
 ```
 
-- **注意** — Access Tokens ページは `live.dynatrace.com` ドメインの iframe 内で動作。Playwright の `frameLocator('iframe[src*="live.dynatrace.com"]')` でアクセス可能。
+注意: Access Tokens ページは `live.dynatrace.com` ドメインの iframe 内で動作するため、Playwright の `frameLocator('iframe[src*="live.dynatrace.com"]')` でアクセスします。
 
 ---
 
 ### ステップ 3: CloudFormation スタックデプロイ
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 ```bash
 aws cloudformation deploy \
@@ -90,8 +98,7 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-- **スタックステータス** — CREATE_COMPLETE
-- **作成されたリソース**:
+スタックステータス: CREATE_COMPLETE。作成されたリソース:
   - [x] Lambda 関数
   - [x] IAM ロール
   - [x] EventBridge Rule
@@ -103,7 +110,7 @@ aws cloudformation deploy \
 
 ### ステップ 4: Lambda テストイベント送信
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 ```bash
 aws lambda invoke \
@@ -114,7 +121,7 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス**:
+レスポンス:
 ```json
 {
   "statusCode": 200,
@@ -131,7 +138,8 @@ aws lambda invoke \
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (空)
-- **Dynatrace API レスポンス** — HTTP 204（成功、ボディなし）
+
+Dynatrace API レスポンス: HTTP 204（成功、ボディなし）
 
 #### 直接 curl テスト
 
@@ -148,18 +156,20 @@ curl -s -w "\nHTTP:%{http_code}" \
 
 ### ステップ 5: Dynatrace Logs Viewer でログ到着確認
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **確認方法** — Dynatrace Platform → Logs アプリ → View logs → Run query
-- **到着レコード数** — 1件（取り込みラグ後に表示）
-- **到着までの時間** — 約1-2分（トライアル環境の取り込みラグ）
+| 項目 | 値 |
+|------|-----|
+| 確認方法 | Dynatrace Platform → Logs アプリ → View logs → Run query |
+| 到着レコード数 | 1件（取り込みラグ後に表示） |
+| 到着までの時間 | 約1-2分（トライアル環境の取り込みラグ） |
 
-- **表示されたログエントリ**:
+表示されたログエントリ:
   - timestamp: May 24, 12:32:13.000
   - status: INFO
   - Log message: "Direct curl test from fsxn pipeline"
 
-- **Logs Viewer アクセス方法**:
+Logs Viewer アクセス方法:
   - Dynatrace Platform → 左メニュー「Logs」→「View logs」→「Run query」
   - 時間範囲: Last 30 minutes（ログ送信後1-2分待機が必要）
 
@@ -169,16 +179,13 @@ curl -s -w "\nHTTP:%{http_code}" \
 
 ### ステップ 6: セットアップガイド日英対応確認
 
-- **結果** — ✅ PASS
-
-- **日本語** — `integrations/dynatrace/docs/ja/setup-guide.md` — 存在確認済み
-- **英語** — `integrations/dynatrace/docs/en/setup-guide.md` — 存在確認済み
+結果: ✅ PASS。日本語 `integrations/dynatrace/docs/ja/setup-guide.md` と英語 `integrations/dynatrace/docs/en/setup-guide.md` の存在を確認しました。
 
 ---
 
 ### ステップ 7: スクリーンショット検証
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 | # | ファイル名 | 内容 | 判定 |
 |---|-----------|------|------|
@@ -202,9 +209,11 @@ curl -s -w "\nHTTP:%{http_code}" \
 
 ## 総合判定
 
-- **判定** — ✅ 監査ログパス本番環境利用可能
-- **合格基準数** — 7 / 7
-- **不合格基準** — なし
+| 項目 | 値 |
+|------|-----|
+| 判定 | ✅ 監査ログパス本番環境利用可能 |
+| 合格基準数 | 7 / 7 |
+| 不合格基準 | なし |
 
 ---
 
