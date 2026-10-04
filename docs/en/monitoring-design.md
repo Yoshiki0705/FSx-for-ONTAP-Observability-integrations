@@ -1,4 +1,4 @@
-# FSx for ONTAP Monitoring Design
+# Amazon FSx for NetApp ONTAP Monitoring Design
 
 🌐 [日本語](../ja/monitoring-design.md) | **English** (this page)
 
@@ -60,7 +60,7 @@ AWS primary sources for the metrics and alarms used below:
 
 **How**: Deploy with four parameters — `FileSystemId`, `FileSystemName`, `CapacityThresholdPercent` (default 80), and an optional `NotificationEmail` that provisions an Amazon Simple Notification Service (Amazon SNS) topic and subscription. The dashboard draws IOPS (`DataReadOperations` + `DataWriteOperations`), throughput (`DataReadBytes` + `DataWriteBytes`), network utilization (`NetworkThroughputUtilization`), and capacity (`StorageUsed` + `StorageCapacityUtilization`). The stack always creates two alarms: `StorageCapacityAlarm` on `StorageCapacityUtilization` at `CapacityThresholdPercent`, and `ThroughputUtilizationAlarm` on `NetworkThroughputUtilization` at a fixed 80%. When `NotificationEmail` is set, the SNS topic is attached to both alarms.
 
-The **latency widget is not yet implemented** (confidence: `code-inspected`, `fsxn-monitoring-dashboard.yaml` renders no latency widget). The underlying metrics `DataReadOperationTime` and `DataWriteOperationTime` exist, and period-average latency can be derived as `OperationTime * 1000 / Operations` (confidence: `documented`, [file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)), but the dashboard template does not yet render that widget. This is the one explicit gap recorded in [native-alternative-matrix.md](native-alternative-matrix.md).
+The **latency widget is not yet implemented** (confidence: `code-inspected`, `fsxn-monitoring-dashboard.yaml` renders no latency widget). The underlying metrics `DataReadOperationTime` and `DataWriteOperationTime` exist, and period-average latency can be derived as `OperationTime * 1000 / Operations` (confidence: `documented`, [file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)), but the dashboard template does not yet render that widget. [native-alternative-matrix.md](native-alternative-matrix.md) records this as a partial row for the dashboard template.
 
 > **Latency note**: The AWS metric pairs `DataReadOperationTime`/`DataWriteOperationTime` divided by the corresponding operation counts can derive period-average latency (summed over the period, so the result is an average, not p99); this template does not currently render that widget. For tail latency, source it from request-level telemetry rather than these aggregate metric pairs.
 

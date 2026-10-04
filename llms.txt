@@ -1,4 +1,4 @@
-# FSx for ONTAP Observability Integrations
+# Amazon FSx for NetApp ONTAP Observability Integrations
 
 > Serverless implementation (Spoke) that ships Amazon FSx for NetApp ONTAP audit, EMS, and FPolicy events to observability vendors, and builds CloudWatch-native monitoring from CloudFormation templates. The "which collection route" decision is made in the Hub (Adoption Playbook — Observability), not here; this repository is where a chosen route is implemented.
 
@@ -15,7 +15,7 @@
 
 ## CloudWatch templates
 
-- [Performance and capacity dashboard](shared/templates/fsxn-monitoring-dashboard.yaml): CloudFormation dashboard for IOPS, throughput, network, and capacity, with a capacity threshold alarm.
+- [Performance and capacity dashboard](shared/templates/fsxn-monitoring-dashboard.yaml): CloudFormation dashboard for IOPS, throughput, network, and capacity, with capacity and throughput-utilization alarms.
 - [Per-qtree quota monitor](shared/templates/qtree-quota-monitor.yaml): Lambda polls the ONTAP REST API and publishes a per-qtree quota custom metric (code-inspected, not yet verified by a live run); the shipped threshold alarm is not usable as-is — see the alarm and coverage notes in monitoring-design.md.
 - [Log-based alarm](shared/templates/cloudwatch-log-alarm.yaml): Alarms directly from CloudWatch Logs content using the AWS::CloudWatch::LogAlarm resource.
 

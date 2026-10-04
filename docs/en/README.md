@@ -274,7 +274,7 @@ English and Japanese indexes always list the same set.
 
 **Choosing an Approach**
 
-- [FSx for ONTAP Monitoring Design](monitoring-design.md)
+- [Amazon FSx for NetApp ONTAP Monitoring Design](monitoring-design.md)
 - [FSx for ONTAP Management & Monitoring Decision Tree](decision-tree-management-monitoring.md)
 - [AWS-Native Alternative Matrix — System Manager / Workload Factory / DII](native-alternative-matrix.md)
 - [Vendor Comparison](vendor-comparison.md)

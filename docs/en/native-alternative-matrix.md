@@ -104,11 +104,11 @@ All vendors that receive audit/EMS/FPolicy logs can build equivalent forensics v
 
 | Product | Features Mapped | ✅ Covered | ⚠️ Partial | ❌ Out of Scope |
 |---------|:--------------:|:----------:|:----------:|:--------------:|
-| System Manager | 21 | 13 | 6 | 2 |
+| System Manager | 21 | 11 | 8 | 2 |
 | Workload Factory | 9 | 5 | 2 | 2 |
 | DII SWS | 13 | 13 | 0 | 0 |
 
-**Key insight**: Security/incident-response features (DII equivalent) are **100% covered**. Operations monitoring (System Manager equivalent) is **62% fully covered + 29% partial** (13/21 and 6/21 of the mapped features, respectively) — partial items are security-blocking-only implementations of export/share management, and demo-only volume templates. The remaining **10%** (QoS, LIF/DNS) are infrastructure-management tasks suited to the FSx Console.
+**Key insight**: Security/incident-response features (DII equivalent) are **100% covered**. Operations monitoring (System Manager equivalent) is **52% fully covered + 38% partial** (11/21 and 8/21 of the mapped features, respectively) — partial items are the latency widget not yet in the dashboard, qtree quota management (API only), qtree quota monitoring and alerts (template implemented, operational publication unverified, shipped alarm not usable as shipped), security-blocking-only implementations of export/share management, demo-only volume templates, and manual-only SnapMirror procedures. The remaining **10%** (QoS, LIF/DNS) are infrastructure-management tasks suited to the FSx Console.
 
 > **Reading this table correctly**: "100% covered" describes feature-level parity for the specific containment/detection-response actions this repository implements — it is not a claim that this approach is a superior or complete substitute for DII. DII's ML detection, agent-based collection, and vendor-managed operations are capabilities this repository doesn't build from scratch; the coverage number reflects that this repository's narrower, AWS-native mechanism reaches the same *containment actions* via a different path. See [How to Choose](#how-to-choose) below for which context favors which approach.
 
