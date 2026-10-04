@@ -21,7 +21,7 @@
 | **容量: ストレージ使用量** | CloudWatch `StorageUsed` + `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
 | **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ✅ |
 | **Qtree: クォータ管理** | ONTAP REST API `/storage/quota/rules` | CLI スクリプト / 手動 | ⚠️ API経由の管理、GUIなし |
-| **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ |
+| **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ⚠️ テンプレートは実装済み、運用上の公開は未確認 |
 | **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ⚠️ メトリクスを公開する経路は実装済み（コード確認済み。運用上の公開は未確認）。出荷アラームは出荷状態のままでは使えない（下記 Qtree 補足を参照） |
 | **ボリューム: 作成/削除/リサイズ** | FSx コンソール + ONTAP REST API | デモテンプレート + FSx コンソール（汎用ボリューム管理テンプレートはなし） | ⚠️ |
 | **Snapshot: 作成/スケジュール** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx ネイティブ | ✅ |
