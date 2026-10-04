@@ -14,7 +14,7 @@ Concretely, three CloudFormation templates in `shared/templates/` cover the Clou
 
 ## What this page decides vs what the Hub decides
 
-**This page covers the CloudWatch-native implementation**: which template builds which view, what each one can and cannot reach, and how to add Terraform equivalents later. Every template referenced here exists in the repository today.
+**This page covers the CloudWatch-native implementation**: which template builds which view, what each one can and cannot reach, and where the Terraform module for the dashboard (T1) and the remaining planned Terraform equivalents fit. Every template referenced here exists in the repository today.
 
 **It does not choose the collection route.** Whether metrics and logs should arrive via CloudWatch, Harvest with Prometheus, a SaaS platform, or the ONTAP REST API is a separate decision on a separate axis, and it is made in the [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md). This mirrors how [decision-tree-management-monitoring.md](decision-tree-management-monitoring.md) separates the management-plane choice from the collection-route choice: reading only one of the two leaves half the architecture undecided.
 
@@ -130,7 +130,7 @@ The sources below were read during this repository's IaC survey (investigation d
 
 **The honest gap stands.** No turnkey public Terraform *monitoring* module for FSx for ONTAP was found in the sources checked (confidence: `unverified` that one exists). The construction references above are construction, not monitoring. The one direct monitoring precedent — のんピ's `aws-cdk-fsxn-resources` — is CDK, not Terraform, and carries no visible license, so it informs the alarm set to replicate but is not code to copy.
 
-The direction that follows from this: keep the shipped AWS-native path on CloudFormation, and add Terraform `.tf` equivalents of the CloudWatch monitoring by porting のんピ's CDK alarm set — file-system capacity / network-throughput / file-server-disk-throughput / disk-IOPS / CPU; per-volume capacity + inode; backup-jobs-failed — onto `aws_cloudwatch_metric_alarm` + `aws_cloudwatch_dashboard` + `aws_sns_topic`, with the `aws_fsx_ontap_file_system` data source for an existing file system and the NetApp provider available for any ONTAP-internal metric the AWS plane does not expose. The skeleton and phased plan that follow carry this forward; it is tracked under Phase 4 in [ROADMAP.md](../../ROADMAP.md) and the Terraform priority item in [CONTRIBUTING.md](../../CONTRIBUTING.md).
+The direction that follows from this: keep the shipped AWS-native path on CloudFormation, and add Terraform `.tf` equivalents of the CloudWatch monitoring by porting のんピ's CDK alarm set — file-system capacity / network-throughput / file-server-disk-throughput / disk-IOPS / CPU; per-volume capacity + inode; backup-jobs-failed — onto `aws_cloudwatch_metric_alarm` + `aws_cloudwatch_dashboard` + `aws_sns_topic`, with the `aws_fsx_ontap_file_system` data source for an existing file system and the NetApp provider available for any ONTAP-internal metric the AWS plane does not expose. The skeleton and phased plan that follow carry this forward; it is tracked under Phase 4 in [ROADMAP.md](../../ROADMAP.md) and the Terraform priority item in [CONTRIBUTING.md](../../CONTRIBUTING.md). The first phase (T1) is now implemented at `terraform/fsxn-monitoring-dashboard/` and takes the file system ID as an input rather than looking it up with the data source (see [T1 module usage and scope](#t1-module-usage-and-scope)). Backup-jobs-failed (`AWS/Backup`) is outside T1.
 
 > **Licensing note**: のんピ's `aws-cdk-fsxn-resources` repository shows no license in its About panel or top-level tree (confidence: `documented`, from the repository page read 2026-10-04). Absent a license, reuse defaults to all-rights-reserved; treat it as a design reference for which alarms to create, not as code to lift into this repository.
 
@@ -138,7 +138,7 @@ The direction that follows from this: keep the shipped AWS-native path on CloudF
 
 ### Current state (honest gap)
 
-No `.tf` files exist in this repository today. The AWS-native path is standardized on CloudFormation. For Terraform users, the building blocks below are confirmed to exist from their documentation pages (confidence: `documented`; none has been run here):
+One Terraform module exists in this repository: `terraform/fsxn-monitoring-dashboard/`, the T1 equivalent of the dashboard template. It has passed offline checks only and has not been applied to any account. The shipped AWS-native path stays on CloudFormation, and the qtree and log-alarm templates have no Terraform equivalent yet. The honest gap remains on the external side: no turnkey public monitoring module was found (below). The building blocks below are confirmed to exist from their documentation pages (confidence: `documented`; none has been run here):
 
 - The AWS provider resource [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system) for the file system, with CloudWatch assembled from the generic [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) and [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) resources.
 - The NetApp official ONTAP Terraform provider, [terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap), for ONTAP-side configuration.
@@ -150,29 +150,76 @@ Searching the sources above (the HashiCorp AWS provider registry, the NetApp pro
 
 ### Direction and skeleton
 
-The repository intends to add Terraform `.tf` equivalents of the CloudWatch monitoring templates, so the AWS-native path can be expressed in either IaC tool. The planned layout mirrors the CloudFormation parameters one-to-one:
+The repository is adding Terraform `.tf` equivalents of the CloudWatch monitoring templates, so the AWS-native path can be expressed in either IaC tool. The T1 module is in place with this layout:
 
 ```
 terraform/
   fsxn-monitoring-dashboard/
-    main.tf        # aws_cloudwatch_dashboard, aws_cloudwatch_metric_alarm, aws_sns_topic
-    variables.tf   # file_system_id, file_system_name, capacity_threshold_percent, notification_email
-    outputs.tf     # dashboard_arn, alarm_arn, sns_topic_arn
+    versions.tf          # Terraform >= 1.11.0, hashicorp/aws = 6.67.0 (exact pin)
+    variables.tf         # file_system_id, file_system_name, capacity_threshold_percent, notification_email, opt-in alarm inputs
+    main.tf              # aws_cloudwatch_dashboard, aws_cloudwatch_metric_alarm, aws_sns_topic (+ subscription)
+    outputs.tf           # dashboard_name/arn/url, alarm ARNs, sns_topic_arn
+    README.md            # inputs, outputs, deliberate differences from the template
+    .terraform.lock.hcl  # provider hashes for linux/darwin, amd64/arm64
+    tests/               # offline terraform test files (mock provider, command = plan)
 ```
 
-The variables mirror the dashboard template's parameters (`FileSystemId` → `file_system_id`, `FileSystemName` → `file_system_name`, `CapacityThresholdPercent` → `capacity_threshold_percent`, `NotificationEmail` → `notification_email`), and the resources are `aws_cloudwatch_dashboard`, `aws_cloudwatch_metric_alarm`, and `aws_sns_topic`.
+The variables mirror the dashboard template's parameters (`FileSystemId` → `file_system_id`, `FileSystemName` → `file_system_name`, `CapacityThresholdPercent` → `capacity_threshold_percent`, `NotificationEmail` → `notification_email`), and the resources are `aws_cloudwatch_dashboard`, `aws_cloudwatch_metric_alarm`, `aws_sns_topic`, and `aws_sns_topic_subscription`.
 
-**No `.tf` files are created now.** Shipping unverified infrastructure code would violate this repository's evidence discipline. The actual `.tf` files are a later, separately-verified phase: authored, `terraform validate`/`plan` run against a real file system, and reviewed before they land. This direction is tracked as the "Terraform module equivalents" item under Phase 4 in [ROADMAP.md](../../ROADMAP.md) and the "Terraform equivalents of CloudFormation templates" priority item in [CONTRIBUTING.md](../../CONTRIBUTING.md).
+**The module is offline-verified, not environment-verified.** `make terraform` runs `terraform fmt -check`, `terraform init -lockfile=readonly`, `terraform validate`, and `terraform test` with a mock provider and `command = plan`, locally and in the CI job `terraform`. Nothing has been planned against a real account or applied (confidence for real-environment behavior: `unverified`). The real-environment criterion for T1 in the phase table below is still open. This direction is tracked as the "Terraform module equivalents" item under Phase 4 in [ROADMAP.md](../../ROADMAP.md) and the "Terraform equivalents of CloudFormation templates" priority item in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
-> **IaC note**: The skeleton above is a target shape, not working code. Treat it as the contract a future contribution should satisfy, not as something you can `terraform apply`. It covers the first phase only; the qtree and log-alarm equivalents are phased below.
+> **IaC note**: The T1 module is working code that has passed offline checks, so it can be planned and applied, but no one has yet confirmed that its alarms leave INSUFFICIENT_DATA against a real file system. Run `terraform plan` in a non-production account first. It covers the first phase only; the qtree and log-alarm equivalents are phased below.
+
+### T1 module usage and scope
+
+Call the module from your own root configuration, which supplies the AWS provider and Region. Pin `ref` to a commit:
+
+```hcl
+module "fsx_ontap_monitoring" {
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
+
+  file_system_id             = "fs-0123456789abcdef0"
+  file_system_name           = "fsx-for-ontap-prod"
+  capacity_threshold_percent = 80
+  notification_email         = "ops@example.com"
+
+  # Opt-in alarms (all off by default)
+  enable_cpu_utilization_alarm = true
+  volume_ids                   = ["fsvol-0123456789abcdef0"]
+}
+```
+
+By default the module creates the dashboard (the template's seven widgets) and the two alarms the template has: storage capacity utilization at `capacity_threshold_percent` and network throughput utilization at `throughput_threshold_percent` (default 80). The SNS topic and email subscription are created only when `notification_email` is not empty, and then both alarms notify on ALARM and on OK. Every alarm below is off until you enable it. All use namespace `AWS/FSx` and are taken from the AWS metric pages ([file system, first generation](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html), [file system, second generation](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html), [volume](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html); confidence: `documented`):
+
+| Opt-in alarm | Enable with | Metric | Dimensions |
+|---|---|---|---|
+| CPU utilization | `enable_cpu_utilization_alarm` | `CPUUtilization` (Average) | `FileSystemId`; with `file_server_names`, `FileSystemId` + `FileServer`, one alarm per file server |
+| Disk IOPS utilization | `enable_disk_iops_utilization_alarm` | `FileServerDiskIopsUtilization` (Average) | Same as CPU utilization |
+| Disk throughput utilization | `enable_disk_throughput_utilization_alarm` | `FileServerDiskThroughputUtilization` (Average) | Same as CPU utilization |
+| Volume capacity | `volume_ids` (one per volume) | `StorageCapacityUtilization` (Average) | `FileSystemId` + `VolumeId` |
+| Volume inode utilization | `volume_ids` (one per volume) | Metric math `100 * FilesUsed / FilesCapacity` (`FilesUsed` Average, `FilesCapacity` Maximum); no `InodeUtilization` metric exists | `FileSystemId` + `VolumeId` |
+
+The module differs from `fsxn-monitoring-dashboard.yaml` in these deliberate ways:
+
+- The capacity alarm and the capacity widget use `StorageCapacityUtilization` with `FileSystemId` + `StorageTier=SSD` + `DataType=All`, the dimension set AWS documents for this detailed metric. The template uses `FileSystemId` alone, which is not a documented dimension set for this metric (confidence: `documented` for the doc; live behavior of either form `unverified`). Correcting the template is a separate follow-up.
+- `throughput_threshold_percent` exposes the throughput threshold that the template hardcodes at 80. The default is the same.
+- `ok_actions` is set alongside `alarm_actions`. The template sets only `AlarmActions`.
+- `capacity_threshold_percent` keeps the template's 50–95 range. Every other threshold accepts 1–100.
+- The default `file_system_name` is `fsx-for-ontap`. The SNS topic is unencrypted, as in the template.
+
+> **Dimension note**: On second-generation file systems the file-server metrics are documented with `FileSystemId` + `FileServer`, and the AWS page also says the single-HA-pair metrics can be used for multi-HA-pair file systems. Whether the series these alarms read exist there is `unverified`: network throughput with `FileSystemId` only, capacity without the `Aggregate` dimension, and the opt-in file-server alarms when `file_server_names` is empty. Set `file_server_names` (for example `FsxId0123456789abcdef0-01`) on second-generation file systems so the opt-in alarms target a documented dimension set.
+
+> **Cost note**: Per-alarm and per-dashboard rates are in the dashboard Cost note above. Each enabled file-server alarm adds one standard metric alarm, or one per file server when `file_server_names` is set, and each entry in `volume_ids` adds two alarms, one of which evaluates metric math over two metrics. Check how the pricing page counts metric-math alarms before estimating. No new dollar figure is given here.
+
+> **Notification note**: An email subscription stays pending until the recipient confirms it from the message SNS sends. Until then, alarms change state in CloudWatch but no email arrives.
 
 ### Terraform implementation phases
 
-The Terraform work is split into three phases, one per CloudWatch template. Each phase has a static validation step and a completion criterion that requires a real environment. None of the phases has been started, so nothing here is `verified`. The task list stays in [ROADMAP.md](../../ROADMAP.md) (Phase 4) and [CONTRIBUTING.md](../../CONTRIBUTING.md); this section gives only the order and the exit conditions.
+The Terraform work is split into three phases, one per CloudWatch template. Each phase has a static validation step and a completion criterion that requires a real environment. T1 is implemented and offline-verified; its real-environment criterion is still open. T2 and T3 have not been started. Nothing here is `verified`. The task list stays in [ROADMAP.md](../../ROADMAP.md) (Phase 4) and [CONTRIBUTING.md](../../CONTRIBUTING.md); this section gives only the order and the exit conditions.
 
 | Phase | Scope | Validation | Done when |
 |---|---|---|---|
-| T1 — dashboard + alarms | Port `fsxn-monitoring-dashboard.yaml` (dashboard, `StorageCapacityAlarm`, `ThroughputUtilizationAlarm`, optional SNS) and add のんピ's CDK alarm set as a pattern reference, on `aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` | `terraform validate` and `terraform plan` against an account that has an FSx for ONTAP file system | `terraform apply` creates the dashboard and every alarm, and each alarm leaves INSUFFICIENT_DATA and reaches OK against a real file system |
+| T1 — dashboard + alarms | Port `fsxn-monitoring-dashboard.yaml` (dashboard, `StorageCapacityAlarm`, `ThroughputUtilizationAlarm`, optional SNS) and add のんピ's CDK alarm set as a pattern reference, on `aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` | Done: offline `terraform fmt`/`validate`/`test` with a mock provider (`make terraform`, CI job `terraform`). Open: `terraform plan` against an account that has an FSx for ONTAP file system | `terraform apply` creates the dashboard and every alarm, and each alarm leaves INSUFFICIENT_DATA and reaches OK against a real file system |
 | T2 — qtree polling | Port `qtree-quota-monitor.yaml`: Lambda in the VPC, Secrets Manager for ONTAP credentials, a route for `cloudwatch:PutMetricData` (NAT gateway or a `com.amazonaws.<region>.monitoring` interface endpoint), the EventBridge schedule, and the DLQ. Carry over the 50-page pagination with its `QtreeQuotaReportTruncated` signal and the `QtreeQuotaAlarm` on `QtreeQuotaUsedPercentMax` | `terraform validate` and `terraform plan`. The CloudFormation template is covered by `make cfn-lint` and `make cfn-guard` (`CFN_TEMPLATES` in the `Makefile`), and its inline Lambda handler is unit-tested by `shared/python/tests/test_qtree_quota_monitor.py` against mocked ONTAP responses; the port keeps equivalent tests | Per-qtree `FSxONTAP/Qtree` series (all three metric names, full `SvmName`/`VolumeName`/`QtreeName` identity) plus `QtreeQuotaUsedPercentMax` are observed in CloudWatch from a real SVM, and `QtreeQuotaAlarm` changes state on real data |
 | T3 — log-alarm equivalent | An equivalent of `cloudwatch-log-alarm.yaml`. Gated: start only after AWS-provider support for log alarms is confirmed, or use the documented metric-filter alternative | `terraform validate` and `terraform plan` | Against real admin audit logs in CloudWatch Logs, the alarm evaluates (INSUFFICIENT_DATA → OK) and reaches ALARM on a matching event |
 
@@ -201,7 +248,7 @@ A: No. The route choice (CloudWatch vs Harvest + Prometheus vs SaaS vs ONTAP RES
 A: Not from this dashboard, which does not render a latency widget (confidence: `code-inspected`). The AWS metric pairs `DataReadOperationTime`/`DataWriteOperationTime` divided by their operation counts can derive period-average latency, but that is a period average, not p99, and this template does not compute it. For tail latency, use request-level telemetry.
 
 **Q: Is there a Terraform module I can `terraform apply` today?**
-A: The sources checked (the HashiCorp AWS provider registry, the NetApp provider repository, and the community example) did not surface a turnkey module (confidence: `unverified` that one exists). Within those sources, Terraform CloudWatch monitoring for FSx for ONTAP is composed from the generic `aws_cloudwatch_*` resources plus the `aws_fsx_ontap_file_system` resource. The repository's direction is to add `.tf` equivalents of the CloudWatch templates in a later, separately-verified phase.
+A: Yes, the T1 module in this repository, `terraform/fsxn-monitoring-dashboard/` (see [T1 module usage and scope](#t1-module-usage-and-scope)). It is offline-verified only: fmt, validate, and `terraform test` with a mock provider pass, and a real-environment `apply` is `unverified` because nothing has been applied. Outside this repository, the sources checked (the HashiCorp AWS provider registry, the NetApp provider repository, and the community example) still did not surface a turnkey monitoring module (confidence: `unverified` that one exists). The qtree and log-alarm equivalents (T2, T3) are not started.
 
 **Q: Why does CloudWatch not show per-qtree quota usage directly?**
 A: The native FSx for ONTAP CloudWatch metrics carry only the `FileSystemId` dimension (plus `StorageTier`/`DataType` for the detailed metrics); there is no native qtree or per-user dimension. Per-qtree quota usage is reached by polling the ONTAP REST API and publishing a custom metric — that is what `qtree-quota-monitor.yaml` does. Its threshold alarm reads the SVM-level `QtreeQuotaUsedPercentMax` series (unit-tested against mocked ONTAP responses; live alarm firing unverified, see the alarm note in the qtree section). The alarm says that some qtree crossed the threshold; use the per-qtree metrics to find which one.
@@ -215,5 +262,6 @@ A: Not for deployment. The E2E record of 2026-07-02 saw E3006 because that cfn-l
 - [AWS-Native Alternative Matrix](native-alternative-matrix.md) — the System Manager view → CloudWatch metric → template mapping behind this page.
 - [System Manager GUI Guide](system-manager-gui-guide.md) — the GUI path and its own smaller decision flowchart.
 - [CloudWatch Log Alarm](cloudwatch-log-alarm.md) — the `cloudwatch-log-alarm.yaml` template in detail.
+- [Terraform module: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md) — inputs, outputs, and verification status of the T1 module.
 - [Self-hosted Management Console](../../management-console/README.md) — the NetApp Harvest implementation for the Harvest route.
 - [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — where the collection-route decision is made.

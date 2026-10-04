@@ -31,7 +31,7 @@
 | 問い | 答えのある場所 |
 |------|--------------|
 | 監査ログ / EMS イベント / FPolicy ファイル操作を自分のプラットフォームへ届ける方法 | **ここ。**[デプロイガイド](deployment-guide.md) |
-| 最初に壊れるものと、実際にかかった費用 | **ここ。**環境と日付つきの実測 — [S3 AP スループット](s3ap-throughput-benchmark.md)、[コストモデル](cost-model.md) |
+| 最初に壊れるものと、実際にかかった費用 | **ここ**。環境と日付つきの実測 — [S3 AP スループット](s3ap-throughput-benchmark.md)、[コストモデル](cost-model.md) |
 | どの収集経路が自分の制約に合うか（CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST） | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) |
 | 監査ベースの可観測性の限界（採用を決める前に知るべきもの） | Playbook。**監査ログの保存先が枯渇するとクライアントアクセスが停止する**（監視の劣化ではない）ことを含む |
 | 容量・性能・セキュリティガバナンス・ブロックストレージの設計判断 | Playbook のドメイン別。本リポジトリは可観測性のみ |

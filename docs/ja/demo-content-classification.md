@@ -30,7 +30,7 @@
 
 ## Phase 1: スキャナースタックのデプロイ
 
-本手順書は、[コンテンツ分類スキャナー § デプロイ](content-classification-scanner.md#デプロイ) に記載されている2つのモードのうち、より簡易な**デプロイモード1（スタンドアロン、インターネット起点 Access Point）**を使用します。Access Point が VPC 限定の場合（例: [検証済みクリーン復旧ポイントガイド](verified-recovery-point-guide.md) の `AttachAccessPoint` ステップが作成したもの）は、デプロイモード2を使用してください — そのガイド自身のデプロイパラメータを参照してください。
+本手順書は、[コンテンツ分類スキャナー § デプロイ](content-classification-scanner.md#デプロイ) に記載されている2つのモードのうち、より簡易な**デプロイモード1**（スタンドアロン、インターネット起点 Access Point）を使用します。Access Point が VPC 限定の場合（例: [検証済みクリーン復旧ポイントガイド](verified-recovery-point-guide.md) の `AttachAccessPoint` ステップが作成したもの）は、デプロイモード2を使用してください — そのガイド自身のデプロイパラメータを参照してください。
 
 ### ステップ 1.1: Access Point のネットワーク起点を確認
 

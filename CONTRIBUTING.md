@@ -49,11 +49,19 @@ Thank you for your interest in contributing to FSx for ONTAP Observability Integ
 - PascalCase resource logical IDs
 - Always include: IAM least-privilege, DLQ, CloudWatch Alarms
 
+### Terraform
+
+- One module per `terraform/<module>/` with a `versions.tf`; `terraform fmt` clean
+- Exact provider pin (`version = "= X.Y.Z"`); track `.terraform.lock.hcl` and regenerate it with `terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=darwin_amd64`
+- Offline tests in `tests/*.tftest.hcl`: `mock_provider "aws"` and `command = plan`, no AWS credentials
+- Run `make terraform` (fmt, init, validate, test). It fails when `terraform` is not on PATH instead of skipping
+
 ### Documentation
 
 - Bilingual: Japanese (primary) + English
 - Same heading structure in both languages
 - Code examples identical across languages
+- Prose style criteria and `make ai-style` rules live in the Hub: [docs/agent/writing-quality.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/agent/writing-quality.md)
 
 ### Japanese section headings are noun phrases (体言止め)
 

@@ -71,6 +71,11 @@ CFN_TEMPLATES := \
   $(wildcard shared/templates/*.yaml) \
   $(wildcard management-console/templates/*.yaml)
 
+# Terraform modules: every terraform/<module>/ that has a versions.tf. One
+# level deep on purpose; scripts/tests/test_terraform_module_coverage.py fails
+# if a directory holding .tf files at any depth is missing from this list.
+TF_MODULE_DIRS := $(patsubst %/versions.tf,%,$(wildcard terraform/*/versions.tf))
+
 # Python source for lint and security scanning. Excludes tests: assert
 # statements in tests are bandit B101 by design.
 #
@@ -109,11 +114,12 @@ help:
 	@echo "  lint           ruff + eslint + Japanese heading style"
 	@echo "  security       bandit over PY_SRC"
 	@echo "  cfn            cfn-lint + cfn-guard over CFN_TEMPLATES"
+	@echo "  terraform      fmt + validate + offline tests (mock provider) for terraform/*"
 	@echo "  gitleaks       Secret scan, including the vendor-credential rules"
 	@echo "  drift          Guards that fail when config and reality diverge"
 	@echo "  repo-names     Resolve linked repository names (network; weekly in CI)"
 	@echo "  hooks          Enable the tracked pre-commit hook (once per clone)"
-	@echo "  all            test + lint + security + cfn + drift"
+	@echo "  all            test + lint + security + cfn + drift + terraform"
 	@echo ""
 	@echo "Each gate whose failure mode is silence has a test that breaks it"
 	@echo "deliberately and requires a failure; those live in scripts/tests/."
@@ -125,7 +131,7 @@ help:
 print-%:
 	@echo "$($*)"
 
-all: test lint security cfn drift
+all: test lint security cfn drift terraform
 
 # The venv is uv-created and has no pip module, so `python -m pip` fails here.
 # Prefer uv when present and fall back to pip for environments without it.
@@ -167,7 +173,7 @@ test-ts:
 
 # --- Lint and security ----------------------------------------------------
 
-lint: lint-py lint-ts headings
+lint: lint-py lint-ts headings ai-style
 
 # Blocking tier: ruff.toml [lint] select is restricted to rules that only fire
 # on a definite defect, and it is clean today. See ruff.toml for why the
@@ -200,6 +206,26 @@ headings: headings-selftest
 	$(PY) scripts/check_heading_style.py
 headings-selftest:
 	@$(PY) scripts/check_heading_style.py --selftest >/dev/null
+
+# AI writing-style signals over the bilingual prose. Gating: --fail makes the
+# fail-tier rules (D1/D2/D5/D14) exit non-zero, so a reintroduced broken `**`,
+# closing catchphrase, chat-style sign-off, or bold-in-heading fails the build.
+# The warning-tier rules still only count. --exclude 'blog/*' keeps the
+# author-voice blog prose out, where the style exceptions (closing lines,
+# deliberate bullet lists) do not apply.
+#
+# The self-test runs first and is blocking, mirroring headings: the detector
+# exits 0 on a clean tree, so a rule that stopped matching or a file walk that
+# returned nothing would look identical to a clean run. --selftest asserts both
+# directions and fails loudly if either breaks.
+#
+# scripts/tests/test_ai_style_rules.py and test_ai_style_strong_fixtures.py run
+# the same logic under pytest, so `make test-py` and `make drift` enforce it in
+# CI without a workflow change.
+ai-style: ai-style-selftest
+	$(PY) scripts/ai_style_rules.py docs/ja docs/en README.md --summary --fail --exclude 'blog/*'
+ai-style-selftest:
+	@$(PY) scripts/ai_style_rules.py --selftest >/dev/null
 
 # Repository names that only still resolve because GitHub redirects them.
 #
@@ -296,6 +322,26 @@ cfn-guard: cfn-guard-selftest
 cfn-guard-selftest:
 	bash guard/tests/run-guard-selftest.sh
 
+# --- Terraform ------------------------------------------------------------
+
+# Offline only: `terraform test` runs every module's tests/*.tftest.hcl with a
+# mock provider and `command = plan`, so no AWS credentials are needed and
+# nothing is applied. A missing terraform binary fails this target instead of
+# skipping it: a skipped gate exits 0 and reads exactly like a passing one.
+# terraform/ is a real directory, so this target must stay in .PHONY or make
+# reports it up to date and runs nothing.
+terraform:
+	@command -v terraform >/dev/null 2>&1 || { echo "terraform not found on PATH. Install Terraform >= 1.11.0 (CI pins 1.15.8); this gate does not skip."; exit 1; }
+	@test -n "$(TF_MODULE_DIRS)" || { echo "No Terraform modules found under terraform/ (expected terraform/*/versions.tf)."; exit 1; }
+	terraform fmt -check -recursive terraform
+	@for d in $(TF_MODULE_DIRS); do \
+	  echo "::group::$$d"; \
+	  terraform -chdir="$$d" init -backend=false -input=false -lockfile=readonly || exit 1; \
+	  terraform -chdir="$$d" validate || exit 1; \
+	  terraform -chdir="$$d" test || exit 1; \
+	  echo "::endgroup::"; \
+	done
+
 # --- Secrets --------------------------------------------------------------
 
 gitleaks:
@@ -338,7 +384,8 @@ clean:
 # dangerous ones: without .PHONY make finds the directory, decides the target
 # is up to date, and runs nothing while exiting 0.
 .PHONY: help all install test test-py test-ts lint lint-py lint-py-full \
-        lint-ts headings headings-selftest security security-full \
-        cfn cfn-lint cfn-guard \
+        lint-ts headings headings-selftest ai-style ai-style-selftest \
+        security security-full \
+        cfn cfn-lint cfn-guard terraform \
         cfn-guard-selftest gitleaks drift agent-config bilingual \
         repo-names repo-names-selftest hooks sibling-drift clean

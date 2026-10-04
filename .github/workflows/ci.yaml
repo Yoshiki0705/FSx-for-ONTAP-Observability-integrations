@@ -103,6 +103,14 @@ jobs:
       - name: Python lint (blocking tier)
         run: make lint-py
 
+      # AI writing-style signals over the bilingual prose. Gating: the make
+      # target carries --fail, so a reintroduced fail-tier finding (D1/D2/D5/D14)
+      # fails this step. Warning-tier rules still only count. CI runs targets
+      # individually rather than `make all`, so the gate only appears in CI if it
+      # is named here.
+      - name: AI writing-style (gating)
+        run: make ai-style
+
       # bandit. Had never run against this repo before: the first execution
       # reported 6 Medium findings, all B314 (stdlib ElementTree parsing audit
       # XML whose content originates from whoever touches the volume). Those 6
@@ -238,6 +246,28 @@ jobs:
               cfn-guard validate -d "$template" -r guard/rules/secrets-management.guard --show-summary fail
             fi
           done
+
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Offline only: `terraform test` uses a mock provider with
+      # `command = plan`, so this job has no AWS credentials and applies
+      # nothing. The wrapper is off so exit codes are terraform's own, and the
+      # version is pinned to the one the module was verified with locally.
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Terraform fmt, validate, and offline tests
+        run: make terraform
 
   security-scan:
     runs-on: ubuntu-latest

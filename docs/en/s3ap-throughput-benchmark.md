@@ -18,8 +18,8 @@ This document provides a benchmark methodology and reference results for reading
 | Lambda memory | 256 MB |
 | Lambda placement | Outside VPC (no VPC config) |
 | AWS Region | ap-northeast-1 |
-| Benchmark date | 2026-05 |
-| Benchmark run ID | `bench-s3ap-2026-05` |
+| Intended benchmark period | 2026-05 |
+| Benchmark run ID (planned) | `bench-s3ap-2026-05` (no measurement record committed for this ID) |
 
 ## Methodology
 
@@ -92,7 +92,7 @@ def benchmark_get_object(keys: list[str], iterations: int = 5) -> dict:
 
 ## Reference Results
 
-> **Sizing reference only** — measured in the specific test environment above. Not a service limit or guarantee.
+> **Unverified estimate** — the tables below are order-of-magnitude sizing figures for the test environment above; no reproducible measurement record (raw data or run logs) is committed to this repository. The benchmark Lambda in the methodology above is also not provided, so there is no record of these numbers being reproduced with the stated procedure. Not a service limit or guarantee, and not to be treated as a measured result. Re-measurement in a real environment is tracked in an issue.
 
 ### ListObjectsV2 (100 keys)
 
