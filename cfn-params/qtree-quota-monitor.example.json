@@ -8,5 +8,7 @@
   {"ParameterKey": "PollIntervalMinutes", "ParameterValue": "5"},
   {"ParameterKey": "QuotaThresholdPercent", "ParameterValue": "85"},
   {"ParameterKey": "NotificationEmail", "ParameterValue": "storage-team@example.com"},
-  {"ParameterKey": "CreateSecretsManagerEndpoint", "ParameterValue": "false"}
+  {"ParameterKey": "CreateSecretsManagerEndpoint", "ParameterValue": "false"},
+  {"ParameterKey": "CaCertPath", "ParameterValue": ""},
+  {"ParameterKey": "CaCertLayerArn", "ParameterValue": ""}
 ]

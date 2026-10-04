@@ -2,8 +2,10 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: |
   FSx for ONTAP Qtree Quota Monitoring.
 
-  Polls ONTAP REST API for quota usage reports and publishes CloudWatch
-  custom metrics per qtree. Fires alarms when usage exceeds thresholds.
+  Polls ONTAP REST API for quota usage reports (paginated, up to 50 pages of
+  200 records) and publishes CloudWatch custom metrics per qtree, plus an
+  SVM-level maximum (QtreeQuotaUsedPercentMax) that the threshold alarm reads.
+  TLS verification of the ONTAP endpoint is opt-in via CaCertPath.
   Replaces System Manager's quota monitoring view.
 
   Requires VPC access to ONTAP management endpoint.
@@ -24,6 +26,10 @@ Parameters:
     Type: String
     Description: SVM name to monitor qtree quotas for
     Default: 'svm-prod-01'
+    # 66 comes from the SNS DisplayName budget (100 characters) minus the 34
+    # fixed characters of 'FSx for ONTAP Qtree Quota Alert ()'. It is not an
+    # ONTAP SVM name limit.
+    MaxLength: 66
 
   VpcId:
     Type: AWS::EC2::VPC::Id
@@ -62,9 +68,26 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
 
+  CaCertPath:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Path to the ONTAP CA certificate inside an attached Lambda
+      Layer, e.g. /opt/certs/ontap-ca.pem. When empty the poller falls back to
+      CERT_NONE, which is acceptable for a PoC but should be set for
+      production.
+
+  CaCertLayerArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Lambda Layer ARN containing the CA certificate referenced by
+      CaCertPath.
+
 Conditions:
   HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, '']]
   ShouldCreateSmEndpoint: !Equals [!Ref CreateSecretsManagerEndpoint, 'true']
+  HasCaCertLayer: !Not [!Equals [!Ref CaCertLayerArn, '']]
 
 Resources:
   # ================================================================
@@ -89,7 +112,7 @@ Resources:
     Type: AWS::SNS::Topic
     Condition: HasNotificationEmail
     Properties:
-      DisplayName: !Sub 'FSx ONTAP Qtree Quota Alert (${SvmName})'
+      DisplayName: !Sub 'FSx for ONTAP Qtree Quota Alert (${SvmName})'
 
   QuotaAlarmSubscription:
     Type: AWS::SNS::Subscription
@@ -103,9 +126,9 @@ Resources:
   # Dead Letter Queue
   # QuotaPollSchedule invokes the poller asynchronously, so a failing
   # invocation is retried twice by Lambda and then discarded. Without this
-  # queue the quota metric simply stops updating and the qtree alarm keeps
-  # evaluating the last value it saw, which looks identical to "quotas are
-  # fine".
+  # queue the quota metric simply stops updating and the qtree alarm drops
+  # to INSUFFICIENT_DATA without notifying anyone, which is easy to read as
+  # "quotas are fine".
   # ================================================================
   QuotaMonitorDeadLetterQueue:
     Type: AWS::SQS::Queue
@@ -175,10 +198,19 @@ Resources:
       Runtime: python3.12
       Handler: index.lambda_handler
       MemorySize: 256
-      Timeout: 60
+      # Worst normal case: 50 sequential report pages plus
+      # ceil((3 x 10,000 + 2) / 20) = 1,501 sequential PutMetricData calls.
+      # 60 s cannot finish that for a large SVM. Each ONTAP request keeps a
+      # 30 s timeout, so a run with many slow pages can still exceed 300 s; it
+      # then fails, is retried twice, and lands in the DLQ (DLQ-depth alarm).
+      Timeout: 300
       Role: !GetAtt QuotaMonitorRole.Arn
       DeadLetterConfig:
         TargetArn: !GetAtt QuotaMonitorDeadLetterQueue.Arn
+      Layers: !If
+        - HasCaCertLayer
+        - - !Ref CaCertLayerArn
+        - !Ref AWS::NoValue
       VpcConfig:
         SubnetIds: !Ref SubnetIds
         SecurityGroupIds:
@@ -189,20 +221,27 @@ Resources:
           ONTAP_CREDENTIALS_SECRET_ARN: !Ref OntapCredentialsSecretArn
           SVM_NAME: !Ref SvmName
           METRIC_NAMESPACE: FSxONTAP/Qtree
+          CA_CERT_PATH: !Ref CaCertPath
       Code:
         ZipFile: |
           """Qtree Quota Monitor — polls ONTAP REST API and publishes CloudWatch metrics.
 
-          Publishes:
-            - QtreeQuotaUsedPercent (per qtree, per volume)
+          Per qtree (dimensions SvmName, VolumeName, QtreeName):
+            - QtreeQuotaUsedPercent
             - QtreeQuotaUsedBytes
             - QtreeQuotaLimitBytes
 
-          Dimensions: SvmName, VolumeName, QtreeName
+          Per SVM, once per run (dimension SvmName only):
+            - QtreeQuotaUsedPercentMax: max QtreeQuotaUsedPercent across the
+              qtrees read this run. QtreeQuotaAlarm reads this series. Not
+              published when no qtree has a usable hard limit (see below).
+            - QtreeQuotaReportTruncated: 1 when the page cap stopped the read
+              before the report ended, else 0.
           """
           import json
           import logging
           import os
+          import urllib.parse
           from typing import Any
 
           import boto3
@@ -211,12 +250,32 @@ Resources:
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
 
-          http = urllib3.PoolManager(cert_reqs="CERT_NONE")
+          MAX_RECORDS = 200  # records per ONTAP page
+          MAX_PAGES = 50  # hard cap: 50 x 200 = 10,000 records per run
+          PUT_BATCH_SIZE = 20  # datums per PutMetricData call
+
+
+          def _build_http() -> urllib3.PoolManager:
+              ca_cert_path = os.environ.get("CA_CERT_PATH", "")
+              if ca_cert_path:
+                  return urllib3.PoolManager(cert_reqs="CERT_REQUIRED", ca_certs=ca_cert_path)
+              logger.warning(
+                  "TLS certificate verification DISABLED (cert_reqs=CERT_NONE). "
+                  "Acceptable for a PoC only. For production, set the CaCertPath "
+                  "(and CaCertLayerArn) stack parameters to the FSx for ONTAP CA "
+                  "certificate. Retrieve it via: security certificate show -type "
+                  "root-ca -vserver <svm> (ONTAP CLI) or AWS console > FSx > File "
+                  "system > Administration > Certificate."
+              )
+              return urllib3.PoolManager(cert_reqs="CERT_NONE")
+
+
+          http = _build_http()
           cw = boto3.client("cloudwatch")
-          _creds_cache = None
+          _creds_cache: dict[str, Any] | None = None
 
 
-          def _get_credentials():
+          def _get_credentials() -> dict[str, Any]:
               global _creds_cache
               if _creds_cache is None:
                   sm = boto3.client("secretsmanager")
@@ -225,36 +284,60 @@ Resources:
               return _creds_cache
 
 
-          def _ontap_get(path):
+          def _ontap_get(api_path: str) -> dict[str, Any]:
+              # Only relative ONTAP API paths are accepted, so a next link can
+              # never redirect the request (and the credentials) to another host.
+              if not api_path.startswith("/api/"):
+                  raise RuntimeError(f"Refusing non-ONTAP API path: {api_path!r}")
               creds = _get_credentials()
               mgmt_ip = os.environ["ONTAP_MGMT_IP"]
               auth = urllib3.util.make_headers(
                   basic_auth=f"{creds['username']}:{creds['password']}"
               )
               headers = {**auth, "Accept": "application/json"}
-              url = f"https://{mgmt_ip}/api{path}"
+              url = f"https://{mgmt_ip}{api_path}"
               resp = http.request("GET", url, headers=headers, timeout=30.0)
               if resp.status >= 400:
-                  raise RuntimeError(f"ONTAP API GET {path}: HTTP {resp.status}")
+                  raise RuntimeError(f"ONTAP API GET {api_path}: HTTP {resp.status}")
               return json.loads(resp.data) if resp.data else {}
 
 
-          def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-              svm_name = os.environ["SVM_NAME"]
-              namespace = os.environ["METRIC_NAMESPACE"]
+          def _fetch_quota_records(svm_name: str) -> tuple[list[dict[str, Any]], int, bool]:
+              """Read the tree quota report, following _links.next.href.
 
-              # Get quota reports for the SVM
-              data = _ontap_get(
-                  f"/storage/quota/reports?svm.name={svm_name}"
+              Returns (records, pages_read, truncated). truncated is True only
+              when a next link is still present after MAX_PAGES pages.
+              """
+              next_href: str | None = (
+                  "/api/storage/quota/reports"
+                  f"?svm.name={urllib.parse.quote(svm_name, safe='')}"
                   "&type=tree"
                   "&fields=space.used.total,space.hard_limit,qtree.name,volume.name"
-                  "&max_records=200"
+                  f"&max_records={MAX_RECORDS}"
               )
+              records: list[dict[str, Any]] = []
+              pages = 0
+              while next_href is not None and pages < MAX_PAGES:
+                  data = _ontap_get(next_href)
+                  pages += 1
+                  records.extend(data.get("records", []))
+                  next_href = data.get("_links", {}).get("next", {}).get("href")
+              truncated = next_href is not None
+              if truncated:
+                  logger.warning(
+                      "Quota report for SVM %s truncated: stopped after %d pages "
+                      "(%d records) at the %d-page cap; qtrees beyond it are not "
+                      "monitored this run",
+                      svm_name, pages, len(records), MAX_PAGES,
+                  )
+              return records, pages, truncated
 
-              records = data.get("records", [])
-              logger.info("Found %d qtree quota reports for SVM %s", len(records), svm_name)
 
-              metric_data = []
+          def _build_metric_data(
+              records: list[dict[str, Any]], svm_name: str
+          ) -> tuple[list[dict[str, Any]], float | None]:
+              metric_data: list[dict[str, Any]] = []
+              max_percent: float | None = None
               for record in records:
                   qtree_name = record.get("qtree", {}).get("name", "")
                   volume_name = record.get("volume", {}).get("name", "")
@@ -265,6 +348,8 @@ Resources:
                       continue  # Skip qtrees without quotas or unnamed
 
                   used_percent = (used / limit * 100) if limit > 0 else 0
+                  if max_percent is None or used_percent > max_percent:
+                      max_percent = used_percent
 
                   dimensions = [
                       {"Name": "SvmName", "Value": svm_name},
@@ -292,16 +377,55 @@ Resources:
                           "Unit": "Bytes",
                       },
                   ])
+              return metric_data, max_percent
 
-              # CloudWatch PutMetricData (max 1000 per call, batch by 20)
+
+          def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+              svm_name = os.environ["SVM_NAME"]
+              namespace = os.environ["METRIC_NAMESPACE"]
+
+              records, pages, truncated = _fetch_quota_records(svm_name)
+              logger.info(
+                  "Found %d qtree quota reports for SVM %s in %d page(s)",
+                  len(records), svm_name, pages,
+              )
+
+              metric_data, max_percent = _build_metric_data(records, svm_name)
+              svm_dimensions = [{"Name": "SvmName", "Value": svm_name}]
+
+              # With no usable record there is nothing to take the max of. A 0
+              # datum would read as "every quota is healthy" for an SVM this run
+              # could not measure, so publish nothing; QtreeQuotaAlarm then goes
+              # to INSUFFICIENT_DATA (TreatMissingData: missing). A failed run
+              # surfaces through the DLQ-depth alarm instead.
+              if max_percent is not None:
+                  metric_data.append({
+                      "MetricName": "QtreeQuotaUsedPercentMax",
+                      "Dimensions": svm_dimensions,
+                      "Value": max_percent,
+                      "Unit": "Percent",
+                  })
+              metric_data.append({
+                  "MetricName": "QtreeQuotaReportTruncated",
+                  "Dimensions": svm_dimensions,
+                  "Value": 1.0 if truncated else 0.0,
+                  "Unit": "Count",
+              })
+
               published = 0
-              for i in range(0, len(metric_data), 20):
-                  batch = metric_data[i:i+20]
+              for i in range(0, len(metric_data), PUT_BATCH_SIZE):
+                  batch = metric_data[i:i + PUT_BATCH_SIZE]
                   cw.put_metric_data(Namespace=namespace, MetricData=batch)
                   published += len(batch)
 
               logger.info("Published %d metric data points", published)
-              return {"qtrees_monitored": len(records), "metrics_published": published}
+              return {
+                  "qtrees_monitored": len(records),
+                  "pages_read": pages,
+                  "truncated": truncated,
+                  "max_used_percent": max_percent,
+                  "metrics_published": published,
+              }
 
   # ================================================================
   # EventBridge Schedule
@@ -327,9 +451,14 @@ Resources:
 
   # ================================================================
   # CloudWatch Alarm — Qtree Quota Usage
-  # Note: This alarm uses a metric math expression to find the MAX
-  # usage across all qtrees. For per-qtree alarms, create additional
-  # alarms with specific QtreeName dimensions after deployment.
+  # Reads QtreeQuotaUsedPercentMax, the SVM-level maximum the poller
+  # publishes once per run with only the SvmName dimension. It tells you
+  # that some qtree crossed the threshold, not which one; find it from the
+  # per-qtree QtreeQuotaUsedPercent series (see
+  # docs/en/native-alternative-matrix.md). TreatMissingData: missing is
+  # deliberate: with no datapoints the alarm goes to INSUFFICIENT_DATA, not
+  # OK, so silence does not look healthy. breaching was rejected because an
+  # SVM with no tree quotas would alarm permanently.
   # ================================================================
   QtreeQuotaAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -337,12 +466,13 @@ Resources:
       AlarmName: !Sub '${AWS::StackName}-quota-high'
       AlarmDescription: !Sub >-
         One or more qtrees on SVM ${SvmName} exceeded
-        ${QuotaThresholdPercent}% quota usage. Check CloudWatch metrics
-        (namespace: FSxONTAP/Qtree) to identify which qtree(s).
+        ${QuotaThresholdPercent}% quota usage. Identify which qtree(s) from
+        the per-qtree QtreeQuotaUsedPercent metric (namespace:
+        FSxONTAP/Qtree, dimensions SvmName, VolumeName, QtreeName).
         Consider expanding the quota, archiving data, or enabling
         FabricPool tiering for cold data.
       Namespace: FSxONTAP/Qtree
-      MetricName: QtreeQuotaUsedPercent
+      MetricName: QtreeQuotaUsedPercentMax
       Dimensions:
         - Name: SvmName
           Value: !Ref SvmName
@@ -358,9 +488,9 @@ Resources:
         - !Ref 'AWS::NoValue'
 
   # A message here means the poller failed every retry, so the quota metric is
-  # stale. QtreeQuotaAlarm cannot tell you that: it uses TreatMissingData
-  # missing, so a poller that stops reporting looks the same as a poller
-  # reporting healthy usage.
+  # stale. QtreeQuotaAlarm cannot tell you that: with TreatMissingData
+  # missing it only moves to INSUFFICIENT_DATA, and it has AlarmActions only,
+  # so a poller that stops reporting sends no notification from it.
   QuotaMonitorDlqDepthAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
