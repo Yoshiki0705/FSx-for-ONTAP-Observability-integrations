@@ -538,7 +538,7 @@ Domain Admins（または`FileSystemAdministratorsGroup`のメンバー）は na
 
 **なぜこうなるか**（NetApp ドキュメントより）:
 
-NTFSセキュリティスタイルのボリュームでは、ONTAPは内部資格情報構築（UID/GID取得）のためにwin→unix name-mappingを実行しますが、最終的なアクセス判定は**Windows資格情報（NTFS ACL）**で行います。deny mapping（`" "`）はUNIX ID解決を阻止しますが、ONTAPは`default-unix-user`（`pcuser`, UID 65534）にフォールバックし、元のWindowsトークンでNTFS ACL評価を続行します。
+NTFSセキュリティスタイルのボリュームでは、ONTAPは内部資格情報構築（UID/GID取得）のためにwin→unix name-mappingを実行しますが、最終的なアクセス判定は**Windows資格情報**（NTFS ACL）で行います。deny mapping（`" "`）はUNIX ID解決を阻止しますが、ONTAPは`default-unix-user`（`pcuser`, UID 65534）にフォールバックし、元のWindowsトークンでNTFS ACL評価を続行します。
 
 UNIX/MIXEDスタイルのボリュームでは、アクセスは**マッピングされたUNIX UID/GID**で制御されます。deny mappingがUNIX ID解決を完全にブロックし、アクセスが拒否されます。
 

@@ -54,6 +54,7 @@ Thank you for your interest in contributing to FSx for ONTAP Observability Integ
 - Bilingual: Japanese (primary) + English
 - Same heading structure in both languages
 - Code examples identical across languages
+- Prose style criteria and `make ai-style` rules live in the Hub: [docs/agent/writing-quality.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/agent/writing-quality.md)
 
 ### Japanese section headings are noun phrases (体言止め)
 
