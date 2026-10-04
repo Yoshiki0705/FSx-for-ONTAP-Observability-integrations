@@ -73,3 +73,14 @@ shared/python/dist/
 cfn-params/*.json
 !cfn-params/*.example.json
 !cfn-params/README.md
+# Terraform working files. .terraform.lock.hcl is deliberately tracked (it pins
+# provider hashes), so there is no rule for it. *.tfvars does not match
+# *.tfvars.example, so example variable files stay trackable.
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
