@@ -160,6 +160,7 @@ CATEGORIES: list[tuple[str, str, list[str]]] = [
         "Choosing an Approach",
         "アプローチの選択",
         [
+            "monitoring-design",
             "decision-tree-management-monitoring",
             "native-alternative-matrix",
             "vendor-comparison",
