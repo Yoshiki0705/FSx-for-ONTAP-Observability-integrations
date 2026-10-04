@@ -4,8 +4,12 @@
 
 ## Overview
 
-- **Verification Date**: 2026-05-24T10:51:00+09:00
-- **Verification Environment**: Test environment (ap-northeast-1)
+All 6 steps passed; the audit log path is judged production-ready (see [Overall Judgment](#overall-judgment)).
+
+| Item | Value |
+|------|-------|
+| Verification Date | 2026-05-24T10:51:00+09:00 |
+| Verification Environment | Test environment (ap-northeast-1) |
 
 ---
 
@@ -14,15 +18,15 @@
 | Item | Value |
 |------|-------|
 | AWS Region | ap-northeast-1 |
-| AWS Account ID | ****6981 |
+| AWS Account ID | `****6981` |
 | CloudFormation Stack Name | fsxn-elastic-integration |
 | Lambda Function Name | fsxn-elastic-integration-shipper |
 | Elastic Cloud Project | My Elasticsearch project |
 | Elastic Cloud Type | Serverless |
 | Elastic Cloud Region | ap-northeast-1 (Tokyo, AWS) |
-| Elasticsearch Endpoint | https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443 |
-| Kibana URL | https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| Elasticsearch Endpoint | `https://my-elasticsearch-project-****45.es.ap-northeast-1.aws.elastic.cloud:443` |
+| Kibana URL | `https://my-elasticsearch-project-****45.kb.ap-northeast-1.aws.elastic.cloud` |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 
@@ -43,13 +47,15 @@
 
 ### Step 1: Elastic Cloud Account Creation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Method**: Google OAuth (Playwright automation)
-- **Project Type**: Elasticsearch Serverless
-- **Cloud Provider**: AWS
-- **Region**: ap-northeast-1 (Tokyo)
-- **API Key Creation**: Kibana → Stack Management → Security → API Keys → Create
+| Item | Value |
+|------|-------|
+| Method | Google OAuth (Playwright automation) |
+| Project Type | Elasticsearch Serverless |
+| Cloud Provider | AWS |
+| Region | ap-northeast-1 (Tokyo) |
+| API Key Creation | Kibana → Stack Management → Security → API Keys → Create |
 
 ```bash
 # Register API Key in Secrets Manager
@@ -63,7 +69,7 @@ aws secretsmanager create-secret \
 
 ### Step 2: CloudFormation Stack Deployment
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 ```bash
 aws cloudformation deploy \
@@ -78,8 +84,7 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-- **Stack Status**: CREATE_COMPLETE
-- **Created Resources**:
+Stack Status: CREATE_COMPLETE. Created resources:
   - [x] Lambda Function
   - [x] IAM Role
   - [x] EventBridge Rule
@@ -91,7 +96,7 @@ aws cloudformation deploy \
 
 ### Step 3: Lambda Test Event Invocation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 ```bash
 aws lambda invoke \
@@ -102,7 +107,7 @@ aws lambda invoke \
   response.json
 ```
 
-- **Response**:
+Response:
 ```json
 {
   "statusCode": 200,
@@ -119,29 +124,35 @@ aws lambda invoke \
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (empty)
-- **Elasticsearch Bulk API Response**: HTTP 200
+
+Elasticsearch Bulk API Response: HTTP 200
 
 ---
 
 ### Step 4: Kibana Discover Log Arrival Confirmation
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
-- **Method**: Kibana → Discover → Confirmed data is displayed
-- **Arrived Documents**: 2
-- **Time to Arrival**: Immediate (within seconds)
-- **Index Pattern**: `fsxn-audit-YYYY.MM.DD` (daily index)
+| Item | Value |
+|------|-------|
+| Method | Kibana → Discover → Confirmed data is displayed |
+| Arrived Documents | 2 |
+| Time to Arrival | Immediate (within seconds) |
+| Index Pattern | `fsxn-audit-YYYY.MM.DD` (daily index) |
 
-- **ECS Field Mapping Verification**:
-  - [x] `@timestamp` — ISO 8601 format
-  - [x] `event.type` — Event ID
-  - [x] `user.name` — Username
-  - [x] `fsxn.operation` — Operation type
-  - [x] `fsxn.path` — File path
-  - [x] `fsxn.result` — Result (Success/Failure)
-  - [x] `fsxn.svm` — SVM name
-  - [x] `cloud.provider` — aws
-  - [x] `cloud.service.name` — fsx-ontap
+ECS Field Mapping Verification (all confirmed):
+
+| Field | Content |
+|-------|---------|
+| `@timestamp` | ISO 8601 format |
+| `event.type` | Event ID |
+| `user.name` | Username |
+| `fsxn.operation` | Operation type |
+| `fsxn.path` | File path |
+| `fsxn.result` | Result (Success/Failure) |
+| `fsxn.svm` | SVM name |
+| `cloud.provider` | aws |
+| `cloud.service.name` | fsx-ontap |
 
 ![Kibana Discover — Log Arrival Confirmation](../screenshots/elastic/kibana-discover.png)
 
@@ -149,16 +160,13 @@ aws lambda invoke \
 
 ### Step 5: Setup Guide Bilingual Verification
 
-- **Result**: ✅ PASS
-
-- **Japanese**: `integrations/elastic/docs/ja/setup-guide.md` — Confirmed
-- **English**: `integrations/elastic/docs/en/setup-guide.md` — Confirmed
+Result: ✅ PASS. Confirmed that both `integrations/elastic/docs/ja/setup-guide.md` and `integrations/elastic/docs/en/setup-guide.md` exist.
 
 ---
 
 ### Step 6: Screenshot Verification
 
-- **Result**: ✅ PASS
+Result: ✅ PASS
 
 | # | Filename | Content | Result |
 |---|----------|---------|--------|
@@ -177,9 +185,11 @@ aws lambda invoke \
 
 ## Overall Judgment
 
-- **Judgment**: ✅ Audit log path production-ready
-- **Passing Criteria**: 6 / 6
-- **Failing Criteria**: None
+| Item | Value |
+|------|-------|
+| Judgment | ✅ Audit log path production-ready |
+| Passing Criteria | 6 / 6 |
+| Failing Criteria | None |
 
 ---
 

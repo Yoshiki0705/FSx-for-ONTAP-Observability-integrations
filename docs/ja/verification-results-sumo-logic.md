@@ -4,8 +4,12 @@
 
 ## 実施概要
 
-- **検証日時** — 2026-05-24T13:13:00+09:00
-- **検証環境** — 検証環境（ap-northeast-1）
+8 ステップすべてが PASS し、監査ログ経路は本番環境で利用可能と判定しました（詳細は[総合判定](#総合判定)）。
+
+| 項目 | 値 |
+|------|-----|
+| 検証日時 | 2026-05-24T13:13:00+09:00 |
+| 検証環境 | 検証環境（ap-northeast-1） |
 
 ---
 
@@ -14,7 +18,7 @@
 | 項目 | 値 |
 |------|-----|
 | AWS リージョン | ap-northeast-1 |
-| AWS アカウント ID | ****6981 |
+| AWS アカウント ID | `****6981` |
 | CloudFormation スタック名 | fsxn-sumo-logic-integration |
 | Lambda 関数名 | fsxn-sumo-logic-integration-shipper |
 | Sumo Logic リージョン | JP (Tokyo) |
@@ -24,7 +28,7 @@
 | Source Host | fsxn-ontap |
 | Collector 名 | fsxn-audit-collector |
 | トライアル残日数 | 29日 |
-| S3 Access Point ARN | arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap |
+| S3 Access Point ARN | `arn:aws:s3:ap-northeast-1:****6981:accesspoint/fsxn-audit-logs-ap` |
 
 ---
 
@@ -47,24 +51,28 @@
 
 ### ステップ 1: Sumo Logic アカウント作成
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **作成方法** — Google OAuth + 手動フォーム送信
-- **リージョン** — APAC: Tokyo (JP)
-- **プラン** — Free Tier（Cloud Flex Credits: 1.25 credits/日、7 日保持）
-- **URL** — https://service.jp.sumologic.com
+| 項目 | 値 |
+|------|-----|
+| 作成方法 | Google OAuth + 手動フォーム送信 |
+| リージョン | APAC: Tokyo (JP) |
+| プラン | Free Tier（Cloud Flex Credits: 1.25 credits/日、7 日保持） |
+| URL | https://service.jp.sumologic.com |
 
 ---
 
 ### ステップ 2: Hosted Collector + HTTP Source 作成
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **Collector 名** — fsxn-audit-collector（Hosted Collector）
-- **Source タイプ** — HTTP Logs & Metrics
-- **Source 名** — fsxn-ontap-audit
-- **Source Category** — aws/fsxn/audit
-- **生成された URL** — `https://collectors.jp.sumologic.com/receiver/v1/http/<TOKEN>`
+| 項目 | 値 |
+|------|-----|
+| Collector 名 | fsxn-audit-collector（Hosted Collector） |
+| Source タイプ | HTTP Logs & Metrics |
+| Source 名 | fsxn-ontap-audit |
+| Source Category | aws/fsxn/audit |
+| 生成された URL | `https://collectors.jp.sumologic.com/receiver/v1/http/<TOKEN>` |
 
 ```bash
 # Register HTTP Source URL in Secrets Manager
@@ -78,7 +86,7 @@ aws secretsmanager create-secret \
 
 ### ステップ 3: CloudFormation スタックデプロイ
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 ```bash
 aws cloudformation deploy \
@@ -92,8 +100,7 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-- **スタックステータス** — CREATE_COMPLETE
-- **作成されたリソース**:
+スタックステータス: CREATE_COMPLETE。作成されたリソース:
   - [x] Lambda 関数
   - [x] IAM ロール
   - [x] EventBridge Rule
@@ -105,7 +112,7 @@ aws cloudformation deploy \
 
 ### ステップ 4: Lambda テストイベント送信
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 ```bash
 aws lambda invoke \
@@ -116,7 +123,7 @@ aws lambda invoke \
   response.json
 ```
 
-- **レスポンス**:
+レスポンス:
 ```json
 {
   "statusCode": 200,
@@ -133,19 +140,22 @@ aws lambda invoke \
   - [x] total_logs: 2
   - [x] total_shipped: 2
   - [x] errors: [] (空)
-- **Sumo Logic HTTP Source レスポンス** — HTTP 200
+
+Sumo Logic HTTP Source レスポンス: HTTP 200
 
 ---
 
 ### ステップ 5: Sumo Logic 検索でログ到着確認
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
-- **検索クエリ** — `_sourceCategory=aws/fsxn/audit`
-- **到着ログ数** — 1件（初回インデックス後に表示）
-- **到着までの時間** — 約10分（JP リージョン新規アカウントの初回インデックスラグ）
+| 項目 | 値 |
+|------|-----|
+| 検索クエリ | `_sourceCategory=aws/fsxn/audit` |
+| 到着ログ数 | 1件（初回インデックス後に表示） |
+| 到着までの時間 | 約10分（JP リージョン新規アカウントの初回インデックスラグ） |
 
-- **検索結果メタデータ**:
+検索結果メタデータ:
   - HOST: `fsxn-ontap`
   - NAME: `fsxn-ontap-audit`
   - CATEGORY: `aws/fsxn/audit`
@@ -157,7 +167,7 @@ aws lambda invoke \
 
 ### ステップ 6: フィールドマッピング確認
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 Sumo Logic の検索結果で確認されたフィールド:
 
@@ -180,16 +190,13 @@ Sumo Logic の検索結果で確認されたフィールド:
 
 ### ステップ 7: セットアップガイド日英対応確認
 
-- **結果** — ✅ PASS
-
-- **日本語** — `integrations/sumo-logic/docs/ja/setup-guide.md` — 存在確認済み
-- **英語** — `integrations/sumo-logic/docs/en/setup-guide.md` — 存在確認済み
+結果: ✅ PASS。日本語 `integrations/sumo-logic/docs/ja/setup-guide.md` と英語 `integrations/sumo-logic/docs/en/setup-guide.md` の存在を確認しました。
 
 ---
 
 ### ステップ 8: スクリーンショット検証
 
-- **結果** — ✅ PASS
+結果: ✅ PASS
 
 | # | ファイル名 | 内容 | 判定 |
 |---|-----------|------|------|
@@ -210,9 +217,11 @@ Sumo Logic の検索結果で確認されたフィールド:
 
 ## 総合判定
 
-- **判定** — ✅ 監査ログパス本番環境利用可能
-- **合格基準数** — 8 / 8
-- **不合格基準** — なし
+| 項目 | 値 |
+|------|-----|
+| 判定 | ✅ 監査ログパス本番環境利用可能 |
+| 合格基準数 | 8 / 8 |
+| 不合格基準 | なし |
 
 ---
 
