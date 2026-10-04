@@ -16,7 +16,7 @@
 ## CloudWatch templates
 
 - [Performance and capacity dashboard](shared/templates/fsxn-monitoring-dashboard.yaml): CloudFormation dashboard for IOPS, throughput, network, and capacity, with a capacity threshold alarm.
-- [Per-qtree quota monitor](shared/templates/qtree-quota-monitor.yaml): Lambda polls the ONTAP REST API and publishes a per-qtree quota custom metric and alarm.
+- [Per-qtree quota monitor](shared/templates/qtree-quota-monitor.yaml): Lambda polls the ONTAP REST API and publishes a per-qtree quota custom metric (code-inspected, not yet verified by a live run); the shipped threshold alarm is not usable as-is — see the alarm and coverage notes in monitoring-design.md.
 - [Log-based alarm](shared/templates/cloudwatch-log-alarm.yaml): Alarms directly from CloudWatch Logs content using the AWS::CloudWatch::LogAlarm resource.
 
 ## Forwarding routes

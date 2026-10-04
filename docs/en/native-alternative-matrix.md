@@ -126,7 +126,20 @@ All vendors that receive audit/EMS/FPolicy logs can build equivalent forensics v
 
 ### Qtree Quota Alarm — Identifying the Offending Qtree
 
-When the Qtree quota alarm fires, it indicates that **at least one** qtree on the SVM exceeded the threshold. The alarm uses `Statistic: Maximum` across all qtrees, so the alarm itself does not tell you which qtree. Run this command to identify it:
+When the Qtree quota alarm fires, it indicates that **at least one** qtree on the SVM exceeded the threshold, but the alarm itself does not tell you which qtree. The Lambda publishes `QtreeQuotaUsedPercent` with the full dimension set `SvmName` + `VolumeName` + `QtreeName`, and CloudWatch identifies a metric by its complete dimension set — so a query scoped to `SvmName` alone matches none of the emitted series. Enumerate the complete identities first, then query each one.
+
+Step 1 — list every emitted qtree identity (full `SvmName`/`VolumeName`/`QtreeName` dimensions):
+
+```bash
+aws cloudwatch list-metrics \
+  --namespace "FSxONTAP/Qtree" \
+  --metric-name "QtreeQuotaUsedPercent" \
+  --dimensions Name=SvmName,Value=<your-svm-name> \
+  --query 'Metrics[].Dimensions' \
+  --output json
+```
+
+Step 2 — query each complete identity for its recent usage (substitute the `VolumeName`/`QtreeName` pairs from Step 1; add one query object per qtree):
 
 ```bash
 aws cloudwatch get-metric-data \
@@ -136,7 +149,11 @@ aws cloudwatch get-metric-data \
       "Metric": {
         "Namespace": "FSxONTAP/Qtree",
         "MetricName": "QtreeQuotaUsedPercent",
-        "Dimensions": [{"Name": "SvmName", "Value": "<your-svm-name>"}]
+        "Dimensions": [
+          {"Name": "SvmName", "Value": "<your-svm-name>"},
+          {"Name": "VolumeName", "Value": "<volume-name>"},
+          {"Name": "QtreeName", "Value": "<qtree-name>"}
+        ]
       },
       "Period": 300,
       "Stat": "Maximum"
@@ -144,17 +161,6 @@ aws cloudwatch get-metric-data \
   }]' \
   --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%S)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)"
-```
-
-Or query per-qtree metrics directly:
-
-```bash
-aws cloudwatch list-metrics \
-  --namespace "FSxONTAP/Qtree" \
-  --metric-name "QtreeQuotaUsedPercent" \
-  --dimensions Name=SvmName,Value=<your-svm-name> \
-  --query 'Metrics[].Dimensions[?Name==`QtreeName`].Value' \
-  --output text
 ```
 
 ---

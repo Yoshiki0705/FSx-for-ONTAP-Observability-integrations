@@ -142,7 +142,20 @@
 
 ### Qtree クォータアラーム — 問題の Qtree を特定する方法
 
-Qtree クォータアラームが発火した場合、SVM 上の**少なくとも1つの** qtree が閾値を超えたことを示します。アラームは全 qtree の `Maximum` を使用するため、アラーム自体はどの qtree かを教えてくれません。以下のコマンドで特定してください:
+Qtree クォータアラームが発火した場合、SVM 上の**少なくとも1つの** qtree が閾値を超えたことを示しますが、アラーム自体はどの qtree かを教えてくれません。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開し、CloudWatch はメトリクスを完全なディメンション集合で識別します — そのため `SvmName` だけに絞った照会は、出力されるどの系列にも一致しません。まず完全な識別子を列挙し、次に各識別子を照会してください。
+
+手順 1 — 出力される各 qtree の識別子（完全な `SvmName`/`VolumeName`/`QtreeName` ディメンション）を列挙する:
+
+```bash
+aws cloudwatch list-metrics \
+  --namespace "FSxONTAP/Qtree" \
+  --metric-name "QtreeQuotaUsedPercent" \
+  --dimensions Name=SvmName,Value=<your-svm-name> \
+  --query 'Metrics[].Dimensions' \
+  --output json
+```
+
+手順 2 — 各完全識別子の直近の使用量を照会する（手順 1 で得た `VolumeName`/`QtreeName` の組を代入し、qtree ごとに照会オブジェクトを 1 つ追加する）:
 
 ```bash
 aws cloudwatch get-metric-data \
@@ -152,7 +165,11 @@ aws cloudwatch get-metric-data \
       "Metric": {
         "Namespace": "FSxONTAP/Qtree",
         "MetricName": "QtreeQuotaUsedPercent",
-        "Dimensions": [{"Name": "SvmName", "Value": "<your-svm-name>"}]
+        "Dimensions": [
+          {"Name": "SvmName", "Value": "<your-svm-name>"},
+          {"Name": "VolumeName", "Value": "<volume-name>"},
+          {"Name": "QtreeName", "Value": "<qtree-name>"}
+        ]
       },
       "Period": 300,
       "Stat": "Maximum"
@@ -160,17 +177,6 @@ aws cloudwatch get-metric-data \
   }]' \
   --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%S)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)"
-```
-
-または、個別 qtree メトリクスを直接確認:
-
-```bash
-aws cloudwatch list-metrics \
-  --namespace "FSxONTAP/Qtree" \
-  --metric-name "QtreeQuotaUsedPercent" \
-  --dimensions Name=SvmName,Value=<your-svm-name> \
-  --query 'Metrics[].Dimensions[?Name==`QtreeName`].Value' \
-  --output text
 ```
 
 ---
