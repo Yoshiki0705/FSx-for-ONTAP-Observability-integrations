@@ -106,9 +106,33 @@ NetApp は [github.com/NetApp/FSx-ONTAP-monitoring](https://github.com/NetApp/FS
 
 Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内することがある経路）については、同等の NetApp 公開ツールは [NetApp Harvest](https://github.com/NetApp/harvest) で、本リポジトリでは [management-console/](../../management-console/README.md) に実装されています。Harvest は ONTAP の全メトリクス集合（プロトコル・アグリゲート・ノードの各レベル）が必要なチームに適し、CloudWatch はコレクターを運用せず AWS ネイティブの監視プレーンでメトリクスが欲しいチームに適します。
 
-> **中立性に関する補足**: トレードオフは対称です。NetApp リファレンスリポジトリは、リージョン単位の 1 スタックで ONTAP をより広くカバーし（ボリューム・LUN・SnapMirror・EMS）、README の免責どおりアラームの後片付けは運用者に委ねます。ここのテンプレートは範囲が狭く固定で複数スタックに分割され、Qtree アラームは出荷状態では未確認です（上記のアラームに関する補足を参照）。どちらが適するかは、必要なメトリクスの広さとスタックの管理方法の好みで決まるものであり、優劣の問題ではありません。
+> **中立性に関する補足**: トレードオフは対称です。NetApp リファレンスリポジトリは、リージョン単位の 1 スタックで ONTAP をより広くカバーし（ボリューム・LUN・SnapMirror・EMS）、README の免責どおりアラームの後片付けは運用者に委ねます。ここのテンプレートは範囲が狭く固定で複数スタックに分割され、Qtree アラームは出荷状態では未確認です（上記のアラームに関する補足を参照）。どちらが適するかは、必要なメトリクスの広さとスタックの管理方法の好みで決まるものであり、どちらかが上位という話ではありません。
 
 ## Terraform の方針
+
+### IaC 参考実装
+
+以下のソースは、本リポジトリの IaC 調査（調査日 2026-10-04）で読んだものです。カタログを正しく読めるよう、それぞれに範囲ラベルを付けています。**monitoring** は CloudWatch アラーム集合を構築するもの、**construction** はファイルシステム（SVM/ボリューム/バックアップ）を構築するが監視は含まないもの、**building-block** は監視モジュールが組み立てるプロバイダーまたはリソースです。すべて `文書化済み` として引用します — ページを読んだものであり、実行はしていません。フレーミングは right-tool-for-the-job です。各項目は異なる起点に適し、トレードオフは順位付けではなく対称に記載します。
+
+| ソース | 範囲 | URL | 中立な一行説明 |
+|---|---|---|---|
+| のんピ (non-97) `aws-cdk-fsxn-resources` | monitoring | [github.com/non-97/aws-cdk-fsxn-resources](https://github.com/non-97/aws-cdk-fsxn-resources) | AWS CDK（TypeScript）プロジェクト。monitoring construct が SNS トピックと CloudWatch アラーム集合（ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗）を作成します。CloudFormation ではなく CDK のリファレンスで、リポジトリにライセンス表示がありません — パターンを参照し、コードは複製しないでください。 |
+| NetApp `FSx-ONTAP-samples-scripts`（Terraform） | construction | [github.com/NetApp/FSx-ONTAP-samples-scripts/.../Terraform](https://github.com/NetApp/FSx-ONTAP-samples-scripts/tree/main/Infrastructure_as_Code/Terraform) | Apache-2.0 の Terraform 例（File Share / SQL Server / ファイルシステムデプロイ / DR レプリケーション）。ファイルシステムを構築するもので、CloudWatch 監視ではありません。 |
+| JManzur `terraform-aws-fsx-netapp-ontap` | construction | [github.com/JManzur/terraform-aws-fsx-netapp-ontap](https://github.com/JManzur/terraform-aws-fsx-netapp-ontap) | ファイルシステム・SVM・ボリューム・管理されたセキュリティグループ・オンデマンドボリュームバックアップ用の Terraform モジュール。create-or-lookup モードを持ちます。監視リソースはありません。 |
+| aws-samples `genai-bedrock-fsxontap`（terraform） | construction | [github.com/aws-samples/genai-bedrock-fsxontap/.../terraform](https://github.com/aws-samples/genai-bedrock-fsxontap/tree/main/terraform) | 多数の `.tf` ファイルのなかに `fsx.tf` を含む Bedrock + FSx for ONTAP の GenAI スタック。GenAI ワークロードの構築であり、監視モジュールではありません。 |
+| shikazuki Zenn 記事 | construction | [zenn.dev/shikazuki/articles/5f925edb148c85](https://zenn.dev/shikazuki/articles/5f925edb148c85) | FSx for ONTAP を Terraform で構築し、SMB/NFS のマルチプロトコル共有を設定します。CloudWatch 監視はありません。 |
+| AWS Storage Blog（Terraform） | construction | [aws.amazon.com/blogs/storage/deploying-amazon-fsx-for-netapp-ontap-hashicorp-terraform](https://aws.amazon.com/blogs/storage/deploying-amazon-fsx-for-netapp-ontap-hashicorp-terraform) | HashiCorp Terraform で FSx for ONTAP をデプロイするウォークスルー。構築であり、監視ではありません。 |
+| Yoshiki0705 `FSx-for-ONTAP-Agentic-Access-Aware-RAG` | construction | [github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | FSx for ONTAP を構築する CDK リファレンス。その CloudWatch 監視は RAG アプリケーション（Lambda / CloudFront / DynamoDB）を対象としており、FSx for ONTAP のファイルシステムメトリクスではありません。 |
+| NetApp `terraform-provider-netapp-ontap` | building-block | [github.com/NetApp/terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap) | NetApp 公式の ONTAP Terraform プロバイダー — AWS プレーンが公開しないメトリクス向けの、ONTAP 内部プレーンの構成要素です。 |
+| AWS プロバイダーリソース | building-block | [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system) · [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) · [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) · [`aws_sns_topic`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sns_topic) | Terraform 監視モジュールが組み立てる AWS プロバイダーのプリミティブ。 |
+
+**正直なギャップは残ります。** 調べたソースの範囲では、FSx for ONTAP 向けのターンキーな公開 Terraform *監視* モジュールは見つかりませんでした（確信度: 存在することは `未確認`）。上記の construction リファレンスは構築であって監視ではありません。唯一の直接的な監視の先例 — のんピの `aws-cdk-fsxn-resources` — は Terraform ではなく CDK で、ライセンス表示が無いため、複製すべきアラーム集合を示す参考であって、複製するコードではありません。
+
+ここから導かれる方針: 出荷済みの AWS ネイティブ経路は CloudFormation のままとし、のんピの CDK アラーム集合 — ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗 — を `aws_cloudwatch_metric_alarm` + `aws_cloudwatch_dashboard` + `aws_sns_topic` に移植した Terraform `.tf` 同等物を、CloudWatch 監視について追加します。既存ファイルシステムには `aws_fsx_ontap_file_system` データソースを使い、AWS プレーンが公開しない ONTAP 内部メトリクスには NetApp プロバイダーを構成要素として利用できます。後続のスケルトンと段階的計画がこれを引き継ぎます。これは [ROADMAP.md](../../ROADMAP.md) の Phase 4 と [CONTRIBUTING.md](../../CONTRIBUTING.md) の Terraform 優先項目として追跡しています。
+
+> **ライセンスに関する補足**: のんピの `aws-cdk-fsxn-resources` リポジトリは、About パネルにもトップレベルのツリーにもライセンス表示がありません（確信度: `文書化済み`、2026-10-04 に読んだリポジトリページより）。ライセンスが無い場合、再利用は既定で all-rights-reserved になります。どのアラームを作成するかの設計参考として扱い、本リポジトリに取り込むコードとしては扱わないでください。
+
+> **範囲に関する補足**: のんピによる classmethod のインライン CloudFormation 記事（[AWS CDK で FSx for ONTAP リソースをデプロイする](https://dev.classmethod.jp/articles/deploy-amazon-fsx-for-netapp-ontap-resources-with-aws-cdk/)）は、上記で引用した CDK プロジェクトの解説記事であり、監視リファレンスです。別の classmethod インライン CloudFormation 記事は FSx for ONTAP 周辺の環境（ネットワーク/EC2）を構築し、リポジトリを提供しないため、監視ソースではなく構築の how-to です。ログ転送（Syslog → CloudWatch Logs）の資料は別のテーマに属し、IaC リファレンスではありません。
 
 ### 現状（正直なギャップ）
 
