@@ -138,7 +138,7 @@ The direction that follows from this: keep the shipped AWS-native path on CloudF
 
 ### Current state (honest gap)
 
-No `.tf` files exist in this repository today. The AWS-native path is standardized on CloudFormation. For Terraform users, the verified building blocks are:
+No `.tf` files exist in this repository today. The AWS-native path is standardized on CloudFormation. For Terraform users, the building blocks below are confirmed to exist from their documentation pages (confidence: `documented`; none has been run here):
 
 - The AWS provider resource [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system) for the file system, with CloudWatch assembled from the generic [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) and [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) resources.
 - The NetApp official ONTAP Terraform provider, [terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap), for ONTAP-side configuration.

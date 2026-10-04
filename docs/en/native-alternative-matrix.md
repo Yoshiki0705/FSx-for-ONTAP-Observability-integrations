@@ -124,7 +124,7 @@ All vendors that receive audit/EMS/FPolicy logs can build equivalent forensics v
 | Recovery Verification | `restore-verification.yaml` | After Tier 2 |
 | Forensics | Per-vendor dashboard JSON/queries (see table above) | After log pipeline |
 
-### Qtree Quota Alarm — Identifying the Offending Qtree
+### Qtree Quota Metrics — Identifying the Offending Qtree
 
 The threshold alarm shipped in `qtree-quota-monitor.yaml` is scoped to the `SvmName` dimension alone, so it matches none of the three-dimension series the Lambda emits and is not usable as shipped (see the alarm note in [monitoring-design.md](monitoring-design.md)). Until it is corrected, find an over-quota qtree by reading the `FSxONTAP/Qtree` metrics directly. The Lambda publishes `QtreeQuotaUsedPercent` with the full dimension set `SvmName` + `VolumeName` + `QtreeName`, and CloudWatch identifies a metric by its complete dimension set — so a query scoped to `SvmName` alone matches none of the emitted series. Enumerate the complete identities first, then query each one.
 

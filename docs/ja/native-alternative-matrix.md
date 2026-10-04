@@ -140,7 +140,7 @@
 | 復旧検証 | `restore-verification.yaml` | Tier 2 の後 |
 | フォレンジクス | ベンダー別ダッシュボード JSON/クエリ（上表参照） | ログパイプライン後 |
 
-### Qtree クォータアラーム — 問題の Qtree を特定する方法
+### Qtree クォータメトリクス — 問題の Qtree を特定する方法
 
 `qtree-quota-monitor.yaml` に同梱される閾値アラームは `SvmName` ディメンションのみに絞られているため、Lambda が出す 3 ディメンションのどの系列にも一致せず、出荷状態では使えません（[monitoring-design.md](monitoring-design.md) のアラームに関する補足を参照）。修正されるまでは、クォータ超過の qtree を `FSxONTAP/Qtree` メトリクスを直接読んで特定してください。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開し、CloudWatch はメトリクスを完全なディメンション集合で識別します — そのため `SvmName` だけに絞った照会は、出力されるどの系列にも一致しません。まず完全な識別子を列挙し、次に各識別子を照会してください。
 
