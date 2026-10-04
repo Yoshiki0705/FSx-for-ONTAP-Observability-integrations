@@ -264,8 +264,9 @@ Resources:
                   "Acceptable for a PoC only. For production, set the CaCertPath "
                   "(and CaCertLayerArn) stack parameters to the FSx for ONTAP CA "
                   "certificate. Retrieve it via: security certificate show -type "
-                  "root-ca -vserver <svm> (ONTAP CLI) or AWS console > FSx > File "
-                  "system > Administration > Certificate."
+                  "root-ca -vserver <svm> (ONTAP CLI), or in the AWS Management "
+                  "Console open the FSx for ONTAP file system, then "
+                  "Administration > Certificate."
               )
               return urllib3.PoolManager(cert_reqs="CERT_NONE")
 
