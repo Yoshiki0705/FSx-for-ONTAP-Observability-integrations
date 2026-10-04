@@ -21,8 +21,8 @@
 | **容量: ストレージ使用量** | CloudWatch `StorageUsed` + `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
 | **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ✅ |
 | **Qtree: クォータ管理** | ONTAP REST API `/storage/quota/rules` | CLI スクリプト / 手動 | ⚠️ API経由の管理、GUIなし |
-| **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ |
-| **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ✅ |
+| **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ⚠️ テンプレートは実装済み、運用上の公開は未確認 |
+| **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ⚠️ メトリクスを公開する経路は実装済み（コード確認済み。運用上の公開は未確認）。出荷アラームは出荷状態のままでは使えない（下記 Qtree 補足を参照） |
 | **ボリューム: 作成/削除/リサイズ** | FSx コンソール + ONTAP REST API | デモテンプレート + FSx コンソール（汎用ボリューム管理テンプレートはなし） | ⚠️ |
 | **Snapshot: 作成/スケジュール** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx ネイティブ | ✅ |
 | **Snapshot: リストア** | FSx コンソール + ONTAP REST API | `restore-verification.yaml`（リストア前検証） | ✅ |
@@ -104,11 +104,11 @@
 
 | プロダクト | マッピング機能数 | ✅ 対応済み | ⚠️ 部分対応 | ❌ 対象外 |
 |----------|:-------------:|:---------:|:---------:|:--------:|
-| System Manager | 21 | 13 | 6 | 2 |
+| System Manager | 21 | 11 | 8 | 2 |
 | Workload Factory | 9 | 5 | 2 | 2 |
 | DII SWS | 13 | 13 | 0 | 0 |
 
-**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **62% 完全対応 + 29% 部分対応**（マッピングした機能のうちそれぞれ21件中13件・6件）— 部分対応はセキュリティブロック専用のエクスポート/共有管理実装とデモ用ボリュームテンプレートです。残る **10%**（QoS、LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。
+**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **52% 完全対応 + 38% 部分対応**（マッピングした機能のうちそれぞれ21件中11件・8件）— 部分対応は、ダッシュボード未実装のレイテンシウィジェット、qtree クォータ管理（API のみ）、qtree クォータ監視とアラート（テンプレートは実装済み・運用上の公開は未確認・同梱アラームは出荷状態のままでは使えない）、セキュリティブロック専用のエクスポート/共有管理実装、デモ用ボリュームテンプレート、手動手順のみの SnapMirror です。残る **10%**（QoS、LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。
 
 > **この表の正しい読み方**: 「100% カバー」は、本リポジトリが実装している封じ込め/検知対応アクションに限定した機能レベルの対応範囲を示すものであり、本アプローチが DII の完全な代替であるという主張ではなく、両者を単純に比較して一方を推奨する趣旨のものでもありません。DII の ML 検知、エージェントベースの収集、ベンダー管理による運用は、本リポジトリがゼロから構築していない機能です。このカバー率は、本リポジトリのより狭い範囲の AWS ネイティブな仕組みが、別の経路で同じ*封じ込めアクション*に到達していることを表しています。どちらの状況にどちらが適するかは、下記の[選び方ガイド](#選び方ガイド)を参照してください。
 
@@ -140,9 +140,22 @@
 | 復旧検証 | `restore-verification.yaml` | Tier 2 の後 |
 | フォレンジクス | ベンダー別ダッシュボード JSON/クエリ（上表参照） | ログパイプライン後 |
 
-### Qtree クォータアラーム — 問題の Qtree を特定する方法
+### Qtree クォータメトリクス — 問題の Qtree を特定する方法
 
-Qtree クォータアラームが発火した場合、SVM 上の**少なくとも1つの** qtree が閾値を超えたことを示します。アラームは全 qtree の `Maximum` を使用するため、アラーム自体はどの qtree かを教えてくれません。以下のコマンドで特定してください:
+`qtree-quota-monitor.yaml` に同梱される閾値アラームは `SvmName` ディメンションのみに絞られているため、Lambda が出す 3 ディメンションのどの系列にも一致せず、出荷状態では使えません（[monitoring-design.md](monitoring-design.md) のアラームに関する補足を参照）。修正されるまでは、クォータ超過の qtree を `FSxONTAP/Qtree` メトリクスを直接読んで特定してください。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開し、CloudWatch はメトリクスを完全なディメンション集合で識別します — そのため `SvmName` だけに絞った照会は、出力されるどの系列にも一致しません。まず完全な識別子を列挙し、次に各識別子を照会してください。
+
+手順 1 — 出力される各 qtree の識別子（完全な `SvmName`/`VolumeName`/`QtreeName` ディメンション）を列挙する:
+
+```bash
+aws cloudwatch list-metrics \
+  --namespace "FSxONTAP/Qtree" \
+  --metric-name "QtreeQuotaUsedPercent" \
+  --dimensions Name=SvmName,Value=<your-svm-name> \
+  --query 'Metrics[].Dimensions' \
+  --output json
+```
+
+手順 2 — 各完全識別子の直近の使用量を照会する（手順 1 で得た `VolumeName`/`QtreeName` の組を代入し、qtree ごとに照会オブジェクトを 1 つ追加する）:
 
 ```bash
 aws cloudwatch get-metric-data \
@@ -152,7 +165,11 @@ aws cloudwatch get-metric-data \
       "Metric": {
         "Namespace": "FSxONTAP/Qtree",
         "MetricName": "QtreeQuotaUsedPercent",
-        "Dimensions": [{"Name": "SvmName", "Value": "<your-svm-name>"}]
+        "Dimensions": [
+          {"Name": "SvmName", "Value": "<your-svm-name>"},
+          {"Name": "VolumeName", "Value": "<volume-name>"},
+          {"Name": "QtreeName", "Value": "<qtree-name>"}
+        ]
       },
       "Period": 300,
       "Stat": "Maximum"
@@ -162,22 +179,12 @@ aws cloudwatch get-metric-data \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)"
 ```
 
-または、個別 qtree メトリクスを直接確認:
-
-```bash
-aws cloudwatch list-metrics \
-  --namespace "FSxONTAP/Qtree" \
-  --metric-name "QtreeQuotaUsedPercent" \
-  --dimensions Name=SvmName,Value=<your-svm-name> \
-  --query 'Metrics[].Dimensions[?Name==`QtreeName`].Value' \
-  --output text
-```
-
 ---
 
 ## 関連ドキュメント
 
 - [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **経路の選択と、この対応表が扱う範囲の限界。** 本表が答えるのは「その機能を AWS ネイティブで到達できるか」で、ハブが答えるのは「収集経路をこれにすべきか」です。Harvest 経路では `ONTAP: Qtree` が既に対応対象であることもハブ側に記録されています
+- [NetApp FSx-ONTAP-monitoring（CloudWatch-Monitoring-FSx サブツリー）](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx) — FSx for ONTAP の CloudWatch 監視に関する NetApp 公開リファレンス。上記のテンプレートと同様に CloudFormation ベースの serverless ソリューションです。NetApp Harvest と並び、NetApp リファレンスはリージョン単位の 1 スタックで広い範囲（ボリューム/LUN/SnapMirror/EMS）をカバーし、本リポジトリのテンプレートは範囲が狭く固定で複数スタックに分割されています — どちらも他方の置き換えではありません。
 - [デプロイメントガイド](deployment-guide.md) — 全スタックのデプロイパスと VPC Endpoint 管理
 - [サイバーレジリエンス機能マップ](cyber-resilience-capability-map.md) — NIST CSF 2.0 マッピング
 - [自動応答ガイド](automated-response-guide.md) — DII 相当の封じ込めアクション

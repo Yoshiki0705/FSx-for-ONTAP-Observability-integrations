@@ -1,0 +1,45 @@
+# Amazon FSx for NetApp ONTAP Observability Integrations
+
+> Serverless implementation (Spoke) that ships Amazon FSx for NetApp ONTAP audit, EMS, and FPolicy events to observability vendors, and builds CloudWatch-native monitoring from CloudFormation templates. The "which collection route" decision is made in the Hub (Adoption Playbook — Observability), not here; this repository is where a chosen route is implemented.
+
+## Entry points
+
+- [README](README.md): Repository hub with the task-oriented "Get Started" table.
+- [Documentation index (English)](docs/en/README.md): Every document by category, generated from one category map.
+- [ドキュメント索引 (Japanese)](docs/ja/README.md): The same index in Japanese, same set of documents.
+- [AGENTS.md](AGENTS.md): Conventions, commands, boundaries, and output standards for coding agents.
+
+## Monitoring design hub
+
+- [Monitoring design](docs/en/monitoring-design.md): In-repo implementation index for CloudWatch-native monitoring of FSx for ONTAP; the collection-route choice is deferred to the Hub.
+
+## CloudWatch templates
+
+- [Performance and capacity dashboard](shared/templates/fsxn-monitoring-dashboard.yaml): CloudFormation dashboard for IOPS, throughput, network, and capacity, with capacity and throughput-utilization alarms.
+- [Per-qtree quota monitor](shared/templates/qtree-quota-monitor.yaml): Lambda polls the ONTAP REST API and publishes a per-qtree quota custom metric (code-inspected, not yet verified by a live run); the shipped threshold alarm is not usable as-is — see the alarm and coverage notes in monitoring-design.md.
+- [Log-based alarm](shared/templates/cloudwatch-log-alarm.yaml): Alarms directly from CloudWatch Logs content using the AWS::CloudWatch::LogAlarm resource.
+
+## Forwarding routes
+
+- [Audit log setup](docs/en/ontap-audit-setup.md): Enabling FSx for ONTAP file-access audit logging and the source paths it writes.
+- [EMS detection capabilities](docs/en/ems-detection-capabilities.md): The EMS event catalog and how EMS webhook events are forwarded.
+- [FPolicy operational guide](docs/en/fpolicy-operational-guide.md): Running the FPolicy server and forwarding real-time file-operation events.
+
+## Verification results
+
+- [FPolicy, S3 Access Points, and session verification](docs/en/verification-results-fpolicy-s3ap-and-session.md): E2E results for FPolicy forwarding, FSx for ONTAP S3 Access Points, and session handling.
+- [EMS and FPolicy verification](docs/en/verification-results-ems-fpolicy.md): E2E results for the EMS webhook and FPolicy event paths.
+- [Datadog verification](docs/en/verification-results-datadog.md): E2E delivery results for the Datadog integration.
+- [Splunk verification](docs/en/verification-results-splunk.md): E2E delivery results for the Splunk integration.
+- [Grafana verification](docs/en/verification-results-grafana.md): E2E delivery results for the Grafana integration.
+- [New Relic verification](docs/en/verification-results-new-relic.md): E2E delivery results for the New Relic integration.
+- [Elastic verification](docs/en/verification-results-elastic.md): E2E delivery results for the Elastic integration.
+- [Dynatrace verification](docs/en/verification-results-dynatrace.md): E2E delivery results for the Dynatrace integration.
+- [Sumo Logic verification](docs/en/verification-results-sumo-logic.md): E2E delivery results for the Sumo Logic integration.
+- [Honeycomb verification](docs/en/verification-results-honeycomb.md): E2E delivery results for the Honeycomb integration.
+- [OpenTelemetry Collector verification](docs/en/verification-results-otel-collector.md): E2E delivery results for the OTel Collector path.
+
+## Related repositories
+
+- [Adoption Playbook — llms.txt](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/llms.txt): The Hub manifest; the collection-route selection decision is made there.
+- [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md): The Hub route decision for CloudWatch vs Harvest vs SaaS vs ONTAP REST; the route selection decision is made there.

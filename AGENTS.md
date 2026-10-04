@@ -235,6 +235,14 @@ FSx for ONTAP S3 Access Points do not support S3 Event Notifications or EventBri
 
 For high-volume logs (>1000 events/second sustained), prefer the Firehose path over direct Lambda-to-vendor delivery. Firehose provides automatic buffering, retry, and backpressure handling. Splunk and Datadog have built-in Firehose destinations.
 
+## Monitoring Design / How to Choose
+
+The "which collection route" decision (CloudWatch vs Harvest + Prometheus vs SaaS vs ONTAP REST) is made in the Hub, not here: [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md). Implementation side:
+
+- `docs/en/monitoring-design.md` — in-repo index for the CloudWatch-native path (the three `shared/templates/` monitoring templates, Terraform direction, phased adoption); use once CloudWatch is chosen.
+- `docs/en/decision-tree-management-monitoring.md` — management-plane axis (System Manager, self-hosted console, CLI/REST); defers the route choice to the Hub.
+- `docs/en/native-alternative-matrix.md` — System Manager view → CloudWatch metric → template mapping.
+
 ## Testing Rules
 
 - Write pytest unit tests for all Lambda handler logic
@@ -440,7 +448,7 @@ All scripts use environment variables with sensible defaults:
 - `shared/templates/multi-account-stackset.yaml` — StackSets deployment (Enterprise)
 - `shared/templates/automated-response.yaml` — Automated incident response (user/IP blocking, snapshot via ONTAP REST API)
 - `shared/templates/automated-response-ttl.yaml` — Time-limited blocks with EventBridge Scheduler auto-unblock
-- `shared/templates/cloudwatch-log-alarm.yaml` — CloudWatch Log Alarm (`AWS::CloudWatch::LogAlarm`, GA 2026-07); direct log-to-alarm, no metric filter. cfn-lint E3006 expected until spec update.
+- `shared/templates/cloudwatch-log-alarm.yaml` — CloudWatch Log Alarm (`AWS::CloudWatch::LogAlarm`, GA 2026-07); direct log-to-alarm, no metric filter. cfn-lint E3006 varies by version (none on 1.56.3).
 - `shared/templates/fsxn-monitoring-dashboard.yaml` — CloudWatch Dashboard (IOPS/Throughput/Capacity) + capacity/throughput alarms. System Manager performance view replacement.
 - `shared/templates/qtree-quota-monitor.yaml` — Qtree quota usage monitoring (Lambda → ONTAP REST API → CloudWatch Custom Metric + alarm). System Manager quota view replacement.
 
