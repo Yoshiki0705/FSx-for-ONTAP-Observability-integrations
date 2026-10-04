@@ -22,7 +22,7 @@ This document maps every major feature of ONTAP System Manager, NetApp Workload 
 | **Capacity: Alerts** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` (threshold alarm) | ✅ |
 | **Qtree: Quota Management** | ONTAP REST API `/storage/quota/rules` | CLI scripts / manual | ⚠️ Management via API, no GUI |
 | **Qtree: Quota Monitoring** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ |
-| **Qtree: Quota Alerts** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ✅ |
+| **Qtree: Quota Alerts** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ⚠️ Metric published, shipped alarm not usable as-is (see Qtree note below) |
 | **Volume: Create/Delete/Resize** | FSx Console + ONTAP REST API | Demo templates + FSx Console (no general-purpose volume management template) | ⚠️ |
 | **Snapshot: Create/Schedule** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx native | ✅ |
 | **Snapshot: Restore** | FSx Console + ONTAP REST API | `restore-verification.yaml` (verify before restore) | ✅ |
@@ -126,7 +126,7 @@ All vendors that receive audit/EMS/FPolicy logs can build equivalent forensics v
 
 ### Qtree Quota Alarm — Identifying the Offending Qtree
 
-When the Qtree quota alarm fires, it indicates that **at least one** qtree on the SVM exceeded the threshold, but the alarm itself does not tell you which qtree. The Lambda publishes `QtreeQuotaUsedPercent` with the full dimension set `SvmName` + `VolumeName` + `QtreeName`, and CloudWatch identifies a metric by its complete dimension set — so a query scoped to `SvmName` alone matches none of the emitted series. Enumerate the complete identities first, then query each one.
+The threshold alarm shipped in `qtree-quota-monitor.yaml` is scoped to the `SvmName` dimension alone, so it matches none of the three-dimension series the Lambda emits and is not usable as shipped (see the alarm note in [monitoring-design.md](monitoring-design.md)). Until it is corrected, find an over-quota qtree by reading the `FSxONTAP/Qtree` metrics directly. The Lambda publishes `QtreeQuotaUsedPercent` with the full dimension set `SvmName` + `VolumeName` + `QtreeName`, and CloudWatch identifies a metric by its complete dimension set — so a query scoped to `SvmName` alone matches none of the emitted series. Enumerate the complete identities first, then query each one.
 
 Step 1 — list every emitted qtree identity (full `SvmName`/`VolumeName`/`QtreeName` dimensions):
 
@@ -184,7 +184,7 @@ aws cloudwatch get-metric-data \
 ## Related Documents
 
 - [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **route selection, and the limits of what this matrix maps.** The matrix answers "can this capability be reached AWS-natively"; the hub answers "should the collection route be this one at all", and records that the Harvest route already covers `ONTAP: Qtree`
-- [NetApp FSx-ONTAP-monitoring (CloudWatch-Monitoring-FSx subtree)](https://github.com/NetApp/FSx-ONTAP-monitoring) — the NetApp-published CloudWatch monitoring reference for FSx for ONTAP; like the templates above it is a CloudFormation-based serverless solution. Alongside NetApp Harvest, the NetApp reference covers a broader scope in one region-wide stack (volume/LUN/SnapMirror/EMS) while this repo's templates cover a narrower, fixed scope split across separate stacks — neither replaces the other.
+- [NetApp FSx-ONTAP-monitoring (CloudWatch-Monitoring-FSx subtree)](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx) — the NetApp-published CloudWatch monitoring reference for FSx for ONTAP; like the templates above it is a CloudFormation-based serverless solution. Alongside NetApp Harvest, the NetApp reference covers a broader scope in one region-wide stack (volume/LUN/SnapMirror/EMS) while this repo's templates cover a narrower, fixed scope split across separate stacks — neither replaces the other.
 - [Deployment Guide](deployment-guide.md) — Full stack deployment paths and VPC Endpoint management
 - [Cyber Resilience Capability Map](cyber-resilience-capability-map.md) — NIST CSF 2.0 mapping
 - [Automated Response Guide](automated-response-guide.md) — DII-equivalent containment actions

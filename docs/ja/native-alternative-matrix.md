@@ -22,7 +22,7 @@
 | **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ✅ |
 | **Qtree: クォータ管理** | ONTAP REST API `/storage/quota/rules` | CLI スクリプト / 手動 | ⚠️ API経由の管理、GUIなし |
 | **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ |
-| **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ✅ |
+| **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ⚠️ メトリクスは公開、出荷アラームは現状未使用（下記 Qtree 補足を参照） |
 | **ボリューム: 作成/削除/リサイズ** | FSx コンソール + ONTAP REST API | デモテンプレート + FSx コンソール（汎用ボリューム管理テンプレートはなし） | ⚠️ |
 | **Snapshot: 作成/スケジュール** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx ネイティブ | ✅ |
 | **Snapshot: リストア** | FSx コンソール + ONTAP REST API | `restore-verification.yaml`（リストア前検証） | ✅ |
@@ -142,7 +142,7 @@
 
 ### Qtree クォータアラーム — 問題の Qtree を特定する方法
 
-Qtree クォータアラームが発火した場合、SVM 上の**少なくとも1つの** qtree が閾値を超えたことを示しますが、アラーム自体はどの qtree かを教えてくれません。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開し、CloudWatch はメトリクスを完全なディメンション集合で識別します — そのため `SvmName` だけに絞った照会は、出力されるどの系列にも一致しません。まず完全な識別子を列挙し、次に各識別子を照会してください。
+`qtree-quota-monitor.yaml` に同梱される閾値アラームは `SvmName` ディメンションのみに絞られているため、Lambda が出す 3 ディメンションのどの系列にも一致せず、出荷状態では使えません（[monitoring-design.md](monitoring-design.md) のアラームに関する補足を参照）。修正されるまでは、クォータ超過の qtree を `FSxONTAP/Qtree` メトリクスを直接読んで特定してください。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開し、CloudWatch はメトリクスを完全なディメンション集合で識別します — そのため `SvmName` だけに絞った照会は、出力されるどの系列にも一致しません。まず完全な識別子を列挙し、次に各識別子を照会してください。
 
 手順 1 — 出力される各 qtree の識別子（完全な `SvmName`/`VolumeName`/`QtreeName` ディメンション）を列挙する:
 
@@ -184,7 +184,7 @@ aws cloudwatch get-metric-data \
 ## 関連ドキュメント
 
 - [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **経路の選択と、この対応表が扱う範囲の限界。** 本表が答えるのは「その機能を AWS ネイティブで到達できるか」で、ハブが答えるのは「収集経路をこれにすべきか」です。Harvest 経路では `ONTAP: Qtree` が既に対応対象であることもハブ側に記録されています
-- [NetApp FSx-ONTAP-monitoring（CloudWatch-Monitoring-FSx サブツリー）](https://github.com/NetApp/FSx-ONTAP-monitoring) — FSx for ONTAP の CloudWatch 監視に関する NetApp 公開リファレンス。上記のテンプレートと同様に CloudFormation ベースの serverless ソリューションです。NetApp Harvest と並び、NetApp リファレンスはリージョン単位の 1 スタックで広い範囲（ボリューム/LUN/SnapMirror/EMS）をカバーし、本リポジトリのテンプレートは範囲が狭く固定で複数スタックに分割されています — どちらも他方の置き換えではありません。
+- [NetApp FSx-ONTAP-monitoring（CloudWatch-Monitoring-FSx サブツリー）](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx) — FSx for ONTAP の CloudWatch 監視に関する NetApp 公開リファレンス。上記のテンプレートと同様に CloudFormation ベースの serverless ソリューションです。NetApp Harvest と並び、NetApp リファレンスはリージョン単位の 1 スタックで広い範囲（ボリューム/LUN/SnapMirror/EMS）をカバーし、本リポジトリのテンプレートは範囲が狭く固定で複数スタックに分割されています — どちらも他方の置き換えではありません。
 - [デプロイメントガイド](deployment-guide.md) — 全スタックのデプロイパスと VPC Endpoint 管理
 - [サイバーレジリエンス機能マップ](cyber-resilience-capability-map.md) — NIST CSF 2.0 マッピング
 - [自動応答ガイド](automated-response-guide.md) — DII 相当の封じ込めアクション
