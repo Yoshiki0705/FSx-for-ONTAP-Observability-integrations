@@ -2,13 +2,13 @@
 
 🌐 **日本語**（本ページ）| [English](../en/monitoring-design.md)
 
-> **ステータス / 対象読者 / 証拠の階層**: ステータス — active（実装側インデックス。経路選択はハブにあります）。対象読者 — CloudWatch 収集経路を既に選び、CloudWatch ネイティブの構成要素を構築するエンジニア。本ページで用いる証拠の階層: `文書化済み`（引用した AWS または NetApp のソースに記載）、`コード確認済み`（本リポジトリのテンプレートを読んだもので、実行はしていない）、`未確認`（本ブランチに日付付きの実行記録が無い）。以下の各主張は階層をインラインで併記します。出荷されている Qtree 閾値アラームと Terraform の方針は、未検証として読むべき部分です。
+> **ステータス / 対象読者 / 証拠の階層**: ステータス — active（実装側インデックス。経路選択はハブにあります）。対象読者 — CloudWatch 収集経路を既に選び、CloudWatch ネイティブの構成要素を構築するエンジニア。本ページで用いる証拠の階層: `文書化済み`（引用した AWS または NetApp のソースに記載）、`コード確認済み`（本リポジトリのテンプレートを読んだもので、実行はしていない）、`未確認`（本ブランチに日付付きの実行記録が無い）。以下の各主張は階層をインラインで併記します。Qtree メトリクスの公開、出荷されている Qtree 閾値アラーム、Terraform の方針は、未検証として読むべき部分です。`検証済み`（実行し、日付付きの記録がある）は、ログアラームの E2E 実行のようにその記録が存在する箇所にだけ使います。
 
 ## エグゼクティブサマリ
 
 本ページは、Amazon FSx for NetApp ONTAP を Amazon CloudWatch で監視するための**実装側インデックス**です。どの収集経路を使うべきかはここでは決めません。その選択 — CloudWatch ネイティブ、NetApp Harvest + Prometheus、SaaS オブザーバビリティ基盤、ONTAP REST API のいずれか — は [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md)（ハブ）で行います。CloudWatch を経路として選んだ後に本ページへ来てください。本ページは、本リポジトリが提供する CloudWatch ネイティブの構成要素の作り方、その境界、そして Terraform の方針を扱います。
 
-具体的には、`shared/templates/` 配下の 3 つの CloudFormation テンプレートが CloudWatch ネイティブ経路をカバーします。性能・容量ダッシュボード、Qtree 単位のクォータ監視、ログベースアラームです。それぞれについて、いつ使うか・なぜ存在するか・どう使うか・範囲の境界を以下に記載します。
+具体的には、`shared/templates/` 配下の 3 つの CloudFormation テンプレートが CloudWatch ネイティブ経路をカバーします。性能・容量ダッシュボード、Qtree 単位のクォータ監視、ログベースアラームです。Qtree 監視は、Qtree メトリクスを CloudWatch に公開することを意図した、実装済みでコード確認済みの経路です。運用上の公開は未確認で、同梱の閾値アラームは出荷状態のままでは使えません。それぞれについて、いつ使うか・なぜ存在するか・どう使うか・範囲の境界を以下に記載します。
 
 > **範囲に関する補足**: これは経路選択の決定木ではなく、導線と組み立てのインデックスです。CloudWatch・Harvest・SaaS・ONTAP REST をまだ選んでいない場合は、上記のハブ可観測性 README から始め、その後に本ページへ戻ってください。
 
@@ -40,7 +40,7 @@ flowchart LR
 
 ## CloudWatch による監視
 
-CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量・クォータの各ビューを CloudWatch 上で利用可能にするため、日常の監視で ONTAP System Manager を開く必要がなくなります。機能単位のマッピング（System Manager ビュー → CloudWatch メトリクス → テンプレート）は [native-alternative-matrix.md](native-alternative-matrix.md) にあります。本節では、そのマッピングの背後にある 3 つのテンプレートを記載します。
+CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量の各ビューを CloudWatch に置くため、日常の監視で ONTAP System Manager を開く必要がなくなります。クォータのビューについては、Qtree メトリクスを CloudWatch に公開することを意図した、実装済みでコード確認済みの経路を本リポジトリが提供しています。運用上の公開は未確認です（下記の Qtree 節を参照）。機能単位のマッピング（System Manager ビュー → CloudWatch メトリクス → テンプレート）は [native-alternative-matrix.md](native-alternative-matrix.md) にあります。本節では、そのマッピングの背後にある 3 つのテンプレートを記載します。
 
 以下で使うメトリクスとアラームの AWS 一次情報:
 
@@ -60,7 +60,7 @@ CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量・
 
 **どう**: 4 つのパラメータでデプロイします — `FileSystemId`、`FileSystemName`、`CapacityThresholdPercent`（既定 80）、および任意の `NotificationEmail`（指定すると Amazon Simple Notification Service（Amazon SNS）トピックとサブスクリプションを作成）。ダッシュボードは IOPS（`DataReadOperations` + `DataWriteOperations`）、スループット（`DataReadBytes` + `DataWriteBytes`）、ネットワーク利用率（`NetworkThroughputUtilization`）、容量（`StorageUsed` + `StorageCapacityUtilization`）を描画します。スタックは常に 2 つのアラームを作成します — `StorageCapacityAlarm`（`StorageCapacityUtilization` に `CapacityThresholdPercent` の閾値）と `ThroughputUtilizationAlarm`（`NetworkThroughputUtilization` に固定 80% の閾値）です。`NotificationEmail` を設定すると、SNS トピックは両方のアラームに付きます。
 
-**レイテンシウィジェットは未実装**です（確信度: `文書化済み`）。基礎メトリクス `DataReadOperationTime` と `DataWriteOperationTime` は利用可能で、算出レイテンシは `OperationTime * 1000 / Operations` で計算できますが、ダッシュボードテンプレートはまだそのウィジェットを描画しません。これは [native-alternative-matrix.md](native-alternative-matrix.md) に記録されている唯一の明示的なギャップです。
+**レイテンシウィジェットは未実装**です（確信度: `コード確認済み`。`fsxn-monitoring-dashboard.yaml` はレイテンシウィジェットを描画しない）。基礎メトリクス `DataReadOperationTime` と `DataWriteOperationTime` は存在し、期間平均レイテンシは `OperationTime * 1000 / Operations` で算出できます（確信度: `文書化済み`、[file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)）が、ダッシュボードテンプレートはまだそのウィジェットを描画しません。これは [native-alternative-matrix.md](native-alternative-matrix.md) に記録されている唯一の明示的なギャップです。
 
 > **レイテンシに関する補足**: AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` を対応する operation count で割ると期間平均レイテンシを算出できます（期間内で合計されるため p99 ではなく平均）。本テンプレートは現時点でそのウィジェットを描画しません。テールレイテンシが必要な場合は、これらの集約メトリクスのペアではなくリクエスト単位のテレメトリから取得してください。
 
@@ -72,7 +72,7 @@ CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量・
 
 **いつ**: Qtree 単位のクォータ使用量が必要で、ファイルシステム単位の CloudWatch メトリクスでは表現できないとき。
 
-**なぜ**: ネイティブの CloudWatch メトリクスが Qtree の識別子もクォータ使用量のディメンションも持たないギャップを埋めます（ファイルシステムメトリクスは `FileSystemId` を取り、詳細メトリクスは `StorageTier`/`DataType` を追加しますが、いずれも Qtree を名指しできません）。Lambda 関数が ONTAP REST API `/storage/quota/reports` をポーリングし、Qtree ごとに `FSxONTAP/Qtree` カスタムメトリクス（`QtreeQuotaUsedPercent`）を公開します。テンプレートは `QuotaThresholdPercent`（既定 85）のクォータアラームも宣言しますが、そのアラームは出荷状態では未確認です — 下記のアラームに関する補足を参照してください。
+**なぜ**: ネイティブの CloudWatch メトリクスが Qtree の識別子もクォータ使用量のディメンションも持たないギャップを埋めます（ファイルシステムメトリクスは `FileSystemId` を取り、詳細メトリクスは `StorageTier`/`DataType` を追加しますが、いずれも Qtree を名指しできません）。Lambda 関数は ONTAP REST API `/storage/quota/reports` をポーリングし、Qtree ごとに `FSxONTAP/Qtree` カスタムメトリクス（`QtreeQuotaUsedPercent`、`QtreeQuotaUsedBytes`、`QtreeQuotaLimitBytes`）を公開するよう書かれています（確信度: `コード確認済み`。運用上の公開は `未確認`）。テンプレートは `QuotaThresholdPercent`（既定 85）のクォータアラームも宣言しますが、そのアラームは出荷状態では未確認です — 下記のアラームに関する補足を参照してください。
 
 **どう**: ONTAP 管理エンドポイント IP（`OntapMgmtIp`）、ONTAP 管理者認証情報の Secrets Manager ARN、`SvmName`、VPC 配置パラメータ（`VpcId`、`SubnetIds`、`SecurityGroupId`）、`PollIntervalMinutes`（既定 5）、`QuotaThresholdPercent` でデプロイします。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開するため、各 Qtree は別々の CloudWatch メトリクスになります — ただし下記の 1 回あたりの上限まで。この Qtree 単位のカスタムメトリクス経路と DLQ 深度アラームは、このスタックのうち実装済みで `コード確認済み` の部分です。本ブランチに日付付きの実行記録は無いため、実際にメトリクスが公開されるか・アラームが発火するかという運用上の挙動は `未確認` です。
 
@@ -94,9 +94,11 @@ CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量・
 
 **いつ**: FSx for ONTAP の管理監査ログが既に CloudWatch Logs へ流れていて、メトリクスフィルターを先に作らずに Logs Insights クエリから直接アラームを上げたいとき。
 
-**なぜ**: `AWS::CloudWatch::LogAlarm` リソース（2026 年 7 月提供）を使い、ログ内容から直接アラームを上げます — 大量削除、特権操作、不正アクセスのパターンなど。
+**なぜ**: `AWS::CloudWatch::LogAlarm` リソースを使い、ログ内容から直接アラームを上げます — 大量削除、特権操作、不正アクセスのパターンなど。AWS はログクエリに対するアラームを [2026 年 7 月の What's New](https://aws.amazon.com/about-aws/whats-new/2026/07/amazon-cloudwatch-log-alarms/) で発表し、対応インターフェースに CloudFormation を挙げています。リソースは [`AWS::CloudWatch::LogAlarm` リファレンス](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-cloudwatch-logalarm.html) と [Alarming on logs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Alarm-On-Logs.html) に記載されています（確信度: `文書化済み`、2026-10-04 にページを確認）。
 
-**どう**: パラメータ・検知タイプ・デプロイスクリプトは [cloudwatch-log-alarm.md](cloudwatch-log-alarm.md) を参照してください。このリソースはリソース仕様が追いつくまで `cfn-lint` が E3006 を報告しますが、これはエラーではなく想定内です。
+**どう**: パラメータ・検知タイプ・デプロイスクリプトは [cloudwatch-log-alarm.md](cloudwatch-log-alarm.md) を参照してください。CloudFormation によるデプロイとスケジュールクエリの評価（INSUFFICIENT_DATA → OK）は 2026-07-02 に `ap-northeast-1` で実行済みです（確信度: `検証済み`、[E2E 検証結果（2026-07-02）](cloudwatch-log-alarm.md#e2e-検証結果2026-07-02) を参照）。
+
+> **lint に関する補足（日付付きの観測）**: 2026-07-02 の E2E 記録には、`cfn-lint` が `AWS::CloudWatch::LogAlarm` に E3006 を報告したとありますが、その cfn-lint のバージョンは書かれていません。2026-10-04 に、本リポジトリが固定している `cfn-lint==1.56.3`（`requirements-dev.txt`）を `cloudwatch-log-alarm.yaml` に実行したところ指摘は 0 件でした。同じ環境で、存在しないリソースタイプを持つ対照テンプレートには E3006 が出ています。ブロッキングの lint 階層は引き続き E3006 を無視しています（`Makefile` の `CFN_LINT_IGNORE`）。このリソースの E3006 は、恒常的な条件ではなく cfn-lint のバージョンに依存するものとして扱ってください。
 
 > **可観測性に関する補足**: 監査ログを CloudWatch Logs に入れる前提は、このテンプレートではなく syslog VPC Endpoint 経路（[syslog-vpce-setup-guide.md](syslog-vpce-setup-guide.md)）が担います。
 
@@ -162,7 +164,19 @@ variables はダッシュボードテンプレートのパラメータに対応�
 
 **`.tf` ファイルは今は作成しません。** 未検証のインフラコードを出荷することは本リポジトリの証拠規律に反します。実際の `.tf` ファイルは後の、別途検証するフェーズで扱います。記述し、実ファイルシステムに対して `terraform validate`/`plan` を実行し、レビューを経てから取り込みます。この方針は [ROADMAP.md](../../ROADMAP.md) の Phase 4「Terraform module equivalents」項目と、[CONTRIBUTING.md](../../CONTRIBUTING.md) の「Terraform equivalents of CloudFormation templates」優先項目として追跡しています。
 
-> **IaC に関する補足**: 上記スケルトンは目標の形であって、動作するコードではありません。`terraform apply` できるものではなく、将来の貢献が満たすべき契約として扱ってください。
+> **IaC に関する補足**: 上記スケルトンは目標の形であって、動作するコードではありません。`terraform apply` できるものではなく、将来の貢献が満たすべき契約として扱ってください。スケルトンが扱うのは最初のフェーズだけで、Qtree とログアラームの同等物は下記のフェーズで扱います。
+
+### Terraform 実装のフェーズ
+
+Terraform の作業は、CloudWatch テンプレート 1 つにつき 1 フェーズ、計 3 フェーズに分けます。各フェーズには静的な検証手順と、実環境を必要とする完了条件があります。どのフェーズもまだ着手していないため、ここに `検証済み` のものはありません。タスク一覧は [ROADMAP.md](../../ROADMAP.md)（Phase 4）と [CONTRIBUTING.md](../../CONTRIBUTING.md) に置き、本節は順序と完了条件だけを示します。
+
+| フェーズ | 範囲 | 検証 | 完了条件 |
+|---|---|---|---|
+| T1 — ダッシュボード + アラーム | `fsxn-monitoring-dashboard.yaml`（ダッシュボード、`StorageCapacityAlarm`、`ThroughputUtilizationAlarm`、任意の SNS）を移植し、のんピの CDK アラーム集合をパターン参照として追加する。`aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` を使う | FSx for ONTAP ファイルシステムがあるアカウントに対する `terraform validate` と `terraform plan` | `terraform apply` でダッシュボードとすべてのアラームが作成され、実ファイルシステムに対して各アラームが INSUFFICIENT_DATA を抜けて OK に達する |
+| T2 — Qtree ポーリング | `qtree-quota-monitor.yaml` を移植する: VPC 内の Lambda、ONTAP 認証情報の Secrets Manager、`cloudwatch:PutMetricData` への経路（NAT ゲートウェイまたは `com.amazonaws.<region>.monitoring` interface エンドポイント）、EventBridge スケジュール、DLQ。先頭ページ 200 レコードを超えるページングを追加するか、その上限を文書化した制約として引き継ぐ。`SvmName` だけのアラームは Qtree 単位アラームかメトリクス算術式に置き換える | `terraform validate` と `terraform plan`、および Lambda コードに対する既存の単体レベルの確認 | 実 SVM から、Qtree 単位の `FSxONTAP/Qtree` 系列（3 つのメトリクス名すべて、完全な `SvmName`/`VolumeName`/`QtreeName` 識別子）が CloudWatch で観測され、置き換えたアラームが実データで状態遷移する |
+| T3 — ログアラームの同等物 | `cloudwatch-log-alarm.yaml` の同等物。前提条件付き: ログアラームに対する AWS プロバイダーの対応を確認してから着手するか、文書化されたメトリクスフィルター方式を使う | `terraform validate` と `terraform plan` | CloudWatch Logs 上の実際の管理監査ログに対し、アラームが評価され（INSUFFICIENT_DATA → OK）、一致するイベントで ALARM に達する |
+
+> **プロバイダー対応に関する補足**: HashiCorp AWS プロバイダーに `AWS::CloudWatch::LogAlarm` に相当するリソースがあるかは `未確認` です。2026-10-04 の調査では見つかりませんでしたが、存在しないことの証拠ではありません。AWS はログにアラームを付ける 2 つ目の方法として、メトリクスフィルターと標準のメトリクスアラームの組み合わせを文書化しています（[Alarming on logs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Alarm-On-Logs.html)、確信度: `文書化済み`）。Terraform では [`aws_cloudwatch_log_metric_filter`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_metric_filter) + `aws_cloudwatch_metric_alarm` に対応します。2 つの方式は表現できる内容が異なる（Logs Insights の集約とフィルターパターン）ため、T3 ではどちらかを選び、その理由を記録します。
 
 ## 段階的な導入
 
@@ -174,7 +188,9 @@ CloudWatch を経路として選んだ後（ハブで決定）、次の順序で
 4. 監査ログが CloudWatch Logs へ流れたら、ログベースアラーム（`cloudwatch-log-alarm.yaml`）を追加する。
 5. CloudWatch のカバレッジが不十分と判明したら、ハブで経路選択を見直す（たとえば ONTAP の全メトリクス集合が必要な場合は Harvest 経路を指します）。
 
-> **コストに関する補足**: 手順 1 と 2 はダッシュボードとその 2 つのアラームです — 単価は上記ダッシュボードのコストに関する補足（確認日付き）を参照してください。手順 3 は Lambda 呼び出しと、Lambda が必要とする VPC エンドポイントの分が加わります。予算を決める前に AWS 料金ページで最新のレートを確認してください。
+> **コストに関する補足**: 手順 1 と 2 はダッシュボードとその 2 つのアラームです — 単価は上記ダッシュボードのコストに関する補足（確認日付き）を参照してください。手順 3 は Lambda 呼び出し、Lambda が必要とする VPC エンドポイント、CloudWatch カスタムメトリクスの分が加わります。予算を決める前に AWS 料金ページで最新のレートを確認してください。
+
+> **カスタムメトリクスのコストに関する補足**: Qtree 監視の Lambda は Qtree ごとに 3 つの系列（`QtreeQuotaUsedPercent`、`QtreeQuotaUsedBytes`、`QtreeQuotaLimitBytes`）を書き込み、それぞれが完全な `SvmName`/`VolumeName`/`QtreeName` 識別子を持ちます（確信度: `コード確認済み`、`qtree-quota-monitor.yaml`）。したがってカスタムメトリクスのコストは Qtree 数に比例します。メトリクス数 = 3 × N で、N は 1 回のポーリングで報告される Qtree 数です（先頭ページの上限により SVM あたり最大 200）。月額のカスタムメトリクス費用 ≈ 3 × N × リージョンと階層に応じたメトリクス 1 つあたりの月額単価。`PutMetricData` のリクエストは、ポーリング 1 回あたり ⌈3 × N / 20⌉ 回（Lambda は 20 件ずつ送信）× 月間ポーリング回数（既定の `PollIntervalMinutes` 5 分で 8,640 回、30 日の月を仮定）が加わります。ここでは金額を示しません。メトリクス単価とリクエスト単価は、利用するリージョンの最新の [CloudWatch 料金ページ](https://aws.amazon.com/cloudwatch/pricing/) から取り、見積りには日付・リージョン・N を併記してください。
 
 ## FAQ とよくある誤解
 
@@ -182,7 +198,7 @@ CloudWatch を経路として選んだ後（ハブで決定）、次の順序で
 A: いいえ。経路選択（CloudWatch か Harvest + Prometheus か SaaS か ONTAP REST か）は [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) で行います。本ページは、その経路を選んだ後に CloudWatch の構成要素を作るためのものです。
 
 **Q: これらの CloudWatch メトリクスから p99 レイテンシを取れますか?**
-A: このダッシュボードからは取れません。レイテンシウィジェットを描画していないためです（確信度: `文書化済み`）。AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` をそれぞれの operation count で割れば期間平均レイテンシを算出できますが、それは p99 ではなく期間平均であり、本テンプレートはそれを計算しません。テールレイテンシにはリクエスト単位のテレメトリを使ってください。
+A: このダッシュボードからは取れません。レイテンシウィジェットを描画していないためです（確信度: `コード確認済み`）。AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` をそれぞれの operation count で割れば期間平均レイテンシを算出できますが、それは p99 ではなく期間平均であり、本テンプレートはそれを計算しません。テールレイテンシにはリクエスト単位のテレメトリを使ってください。
 
 **Q: 今すぐ `terraform apply` できる Terraform モジュールはありますか?**
 A: 調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp プロバイダーのリポジトリ、コミュニティのサンプル）ではターンキーのモジュールは見つかりませんでした（確信度: 存在することは `未確認`）。これらのソースの範囲では、FSx for ONTAP の Terraform による CloudWatch 監視は、汎用の `aws_cloudwatch_*` リソースと `aws_fsx_ontap_file_system` リソースから組み立てます。本リポジトリの方針は、後の別途検証するフェーズで CloudWatch テンプレートの `.tf` 同等物を追加することです。
@@ -191,7 +207,7 @@ A: 調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp
 A: FSx for ONTAP のネイティブ CloudWatch メトリクスは `FileSystemId` ディメンションのみ（詳細メトリクスは `StorageTier`/`DataType` を追加）を持ち、Qtree 単位・ユーザー単位のディメンションはありません。Qtree 単位のクォータ使用量は、ONTAP REST API をポーリングしてカスタムメトリクスを公開することで到達します — それが `qtree-quota-monitor.yaml` の役割です。ただし、そのテンプレートに同梱されるクォータ閾値アラームは出荷状態では未確認です（Qtree 節のアラームに関する補足を参照）。修正されるまでは `FSxONTAP/Qtree` メトリクスを直接読んでください。
 
 **Q: `cfn-lint` がログアラームテンプレートで E3006 を報告します — 問題ですか?**
-A: いいえ。`AWS::CloudWatch::LogAlarm` は現行のリソース仕様より新しいため、そのテンプレートで E3006 が出るのは想定内であり、ブロッキングの lint 階層からは除外されています。
+A: デプロイ上の問題ではありません。2026-07-02 の E2E 記録で E3006 が出たのは、当時の cfn-lint が `AWS::CloudWatch::LogAlarm` を認識していなかったためで、テンプレートはデプロイできていました。E3006 が出るかどうかは cfn-lint のバージョンによります。2026-10-04 には、固定している `cfn-lint==1.56.3` がこのテンプレートに E3006 を報告しませんでした（ログベースアラーム節の lint に関する補足を参照）。E3006 は引き続きブロッキングの lint 階層から除外されています。
 
 ## 関連ドキュメント
 

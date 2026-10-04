@@ -22,7 +22,7 @@ This document maps every major feature of ONTAP System Manager, NetApp Workload 
 | **Capacity: Alerts** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` (threshold alarm) | ✅ |
 | **Qtree: Quota Management** | ONTAP REST API `/storage/quota/rules` | CLI scripts / manual | ⚠️ Management via API, no GUI |
 | **Qtree: Quota Monitoring** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ |
-| **Qtree: Quota Alerts** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ⚠️ Metric published, shipped alarm not usable as-is (see Qtree note below) |
+| **Qtree: Quota Alerts** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ⚠️ Metric publication path implemented (code-inspected; operational publication unverified); shipped alarm not usable as shipped (see Qtree note below) |
 | **Volume: Create/Delete/Resize** | FSx Console + ONTAP REST API | Demo templates + FSx Console (no general-purpose volume management template) | ⚠️ |
 | **Snapshot: Create/Schedule** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx native | ✅ |
 | **Snapshot: Restore** | FSx Console + ONTAP REST API | `restore-verification.yaml` (verify before restore) | ✅ |
