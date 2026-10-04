@@ -235,6 +235,14 @@ FSx for ONTAP S3 Access Points do not support S3 Event Notifications or EventBri
 
 For high-volume logs (>1000 events/second sustained), prefer the Firehose path over direct Lambda-to-vendor delivery. Firehose provides automatic buffering, retry, and backpressure handling. Splunk and Datadog have built-in Firehose destinations.
 
+## Monitoring Design / How to Choose
+
+The "which collection route" decision (CloudWatch vs Harvest + Prometheus vs SaaS vs ONTAP REST) is made in the Hub, not here: [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md). Implementation side:
+
+- `docs/en/monitoring-design.md` — in-repo index for the CloudWatch-native path (the three `shared/templates/` monitoring templates, Terraform direction, phased adoption); use once CloudWatch is chosen.
+- `docs/en/decision-tree-management-monitoring.md` — management-plane axis (System Manager, self-hosted console, CLI/REST); defers the route choice to the Hub.
+- `docs/en/native-alternative-matrix.md` — System Manager view → CloudWatch metric → template mapping.
+
 ## Testing Rules
 
 - Write pytest unit tests for all Lambda handler logic

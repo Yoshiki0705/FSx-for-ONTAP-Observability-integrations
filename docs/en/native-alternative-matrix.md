@@ -178,6 +178,7 @@ aws cloudwatch list-metrics \
 ## Related Documents
 
 - [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **route selection, and the limits of what this matrix maps.** The matrix answers "can this capability be reached AWS-natively"; the hub answers "should the collection route be this one at all", and records that the Harvest route already covers `ONTAP: Qtree`
+- [NetApp FSx-ONTAP-monitoring (CloudWatch-Monitoring-FSx subtree)](https://github.com/NetApp/FSx-ONTAP-monitoring) — the NetApp-published CloudWatch monitoring reference for FSx for ONTAP; the `fsxn-monitoring-dashboard.yaml` templates above are a serverless/CloudFormation-packaged counterpart. Alongside NetApp Harvest, it suits a broad-reference starting point where this repo's templates suit a deploy-ready one — neither replaces the other.
 - [Deployment Guide](deployment-guide.md) — Full stack deployment paths and VPC Endpoint management
 - [Cyber Resilience Capability Map](cyber-resilience-capability-map.md) — NIST CSF 2.0 mapping
 - [Automated Response Guide](automated-response-guide.md) — DII-equivalent containment actions
