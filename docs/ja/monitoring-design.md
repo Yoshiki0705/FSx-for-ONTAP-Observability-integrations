@@ -14,7 +14,7 @@
 
 ## このページが決めることとハブが決めることの境界
 
-**本ページが扱うのは CloudWatch ネイティブの実装**です。どのテンプレートがどのビューを作るか、各テンプレートが到達できる範囲とできない範囲、後から Terraform 同等物をどう足すか。本ページで参照するテンプレートはすべて現時点でリポジトリに存在します。
+**本ページが扱うのは CloudWatch ネイティブの実装**です。どのテンプレートがどのビューを作るか、各テンプレートが到達できる範囲とできない範囲、ダッシュボード用 Terraform モジュール（T1）と残りの計画中の Terraform 同等物の位置付け。本ページで参照するテンプレートはすべて現時点でリポジトリに存在します。
 
 **収集経路の選択は行いません。** メトリクスとログを CloudWatch・Harvest + Prometheus・SaaS 基盤・ONTAP REST API のどれで届けるかは、別の軸の別の決定であり、[Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) で行います。これは [decision-tree-management-monitoring.md](decision-tree-management-monitoring.md) が管理プレーンの選択と収集経路の選択を分けているのと同じ構図です。片方だけを読むと、アーキテクチャの半分が未決定のまま残ります。
 
@@ -130,7 +130,7 @@ Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内する�
 
 **正直なギャップは残ります。** 調べたソースの範囲では、FSx for ONTAP 向けのターンキーな公開 Terraform *監視* モジュールは見つかりませんでした（確信度: 存在することは `未確認`）。上記の construction リファレンスは構築であって監視ではありません。唯一の直接的な監視の先例 — のんピの `aws-cdk-fsxn-resources` — は Terraform ではなく CDK で、ライセンス表示が無いため、複製すべきアラーム集合を示す参考であって、複製するコードではありません。
 
-ここから導かれる方針: 出荷済みの AWS ネイティブ経路は CloudFormation のままとし、のんピの CDK アラーム集合 — ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗 — を `aws_cloudwatch_metric_alarm` + `aws_cloudwatch_dashboard` + `aws_sns_topic` に移植した Terraform `.tf` 同等物を、CloudWatch 監視について追加します。既存ファイルシステムには `aws_fsx_ontap_file_system` データソースを使い、AWS プレーンが公開しない ONTAP 内部メトリクスには NetApp プロバイダーを構成要素として利用できます。後続のスケルトンと段階的計画がこれを引き継ぎます。これは [ROADMAP.md](../../ROADMAP.md) の Phase 4 と [CONTRIBUTING.md](../../CONTRIBUTING.md) の Terraform 優先項目として追跡しています。
+ここから導かれる方針: 出荷済みの AWS ネイティブ経路は CloudFormation のままとし、のんピの CDK アラーム集合 — ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗 — を `aws_cloudwatch_metric_alarm` + `aws_cloudwatch_dashboard` + `aws_sns_topic` に移植した Terraform `.tf` 同等物を、CloudWatch 監視について追加します。既存ファイルシステムには `aws_fsx_ontap_file_system` データソースを使い、AWS プレーンが公開しない ONTAP 内部メトリクスには NetApp プロバイダーを構成要素として利用できます。後続のスケルトンと段階的計画がこれを引き継ぎます。これは [ROADMAP.md](../../ROADMAP.md) の Phase 4 と [CONTRIBUTING.md](../../CONTRIBUTING.md) の Terraform 優先項目として追跡しています。最初のフェーズ（T1）は `terraform/fsxn-monitoring-dashboard/` に実装済みで、ファイルシステム ID はデータソースで引かずに入力として受け取ります（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。バックアップジョブ失敗（`AWS/Backup`）は T1 の範囲外です。
 
 > **ライセンスに関する補足**: のんピの `aws-cdk-fsxn-resources` リポジトリは、About パネルにもトップレベルのツリーにもライセンス表示がありません（確信度: `文書化済み`、2026-10-04 に読んだリポジトリページより）。ライセンスが無い場合、再利用は既定で all-rights-reserved になります。どのアラームを作成するかの設計参考として扱い、本リポジトリに取り込むコードとしては扱わないでください。
 
@@ -138,7 +138,7 @@ Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内する�
 
 ### 現状（正直なギャップ）
 
-本リポジトリには現時点で `.tf` ファイルは存在しません。AWS ネイティブ経路は CloudFormation に標準化しています。Terraform 利用者向けの構成要素は次のとおりで、いずれもドキュメントページで実在を確認したものです（確信度: `文書化済み`。ここでは実行していません）。
+本リポジトリにある Terraform モジュールは 1 つで、ダッシュボードテンプレートの T1 同等物 `terraform/fsxn-monitoring-dashboard/` です。通過したのはオフラインの検査だけで、どのアカウントにも適用していません。出荷済みの AWS ネイティブ経路は CloudFormation のままで、Qtree とログアラームのテンプレートにはまだ Terraform 同等物がありません。正直なギャップは外部側に残ります。ターンキーな公開監視モジュールは見つかっていません（後述）。構成要素は次のとおりで、いずれもドキュメントページで実在を確認したものです（確信度: `文書化済み`。ここでは実行していません）。
 
 - ファイルシステム用の AWS プロバイダーリソース [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system)。CloudWatch は汎用の [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) と [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) リソースから組み立てます。
 - ONTAP 側設定用の NetApp 公式 ONTAP Terraform プロバイダー [terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap)。
@@ -150,29 +150,76 @@ Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内する�
 
 ### 方針とスケルトン
 
-本リポジトリは、AWS ネイティブ経路をどちらの IaC ツールでも表現できるよう、CloudWatch 監視テンプレートの Terraform `.tf` 同等物を追加する方針です。計画中のレイアウトは CloudFormation パラメータに 1 対 1 で対応します。
+本リポジトリは、AWS ネイティブ経路をどちらの IaC ツールでも表現できるよう、CloudWatch 監視テンプレートの Terraform `.tf` 同等物を追加しています。T1 モジュールは次のレイアウトで実装済みです。
 
 ```
 terraform/
   fsxn-monitoring-dashboard/
-    main.tf        # aws_cloudwatch_dashboard, aws_cloudwatch_metric_alarm, aws_sns_topic
-    variables.tf   # file_system_id, file_system_name, capacity_threshold_percent, notification_email
-    outputs.tf     # dashboard_arn, alarm_arn, sns_topic_arn
+    versions.tf          # Terraform >= 1.11.0, hashicorp/aws = 6.67.0 (exact pin)
+    variables.tf         # file_system_id, file_system_name, capacity_threshold_percent, notification_email, opt-in alarm inputs
+    main.tf              # aws_cloudwatch_dashboard, aws_cloudwatch_metric_alarm, aws_sns_topic (+ subscription)
+    outputs.tf           # dashboard_name/arn/url, alarm ARNs, sns_topic_arn
+    README.md            # inputs, outputs, deliberate differences from the template
+    .terraform.lock.hcl  # provider hashes for linux/darwin, amd64/arm64
+    tests/               # offline terraform test files (mock provider, command = plan)
 ```
 
-variables はダッシュボードテンプレートのパラメータに対応し（`FileSystemId` → `file_system_id`、`FileSystemName` → `file_system_name`、`CapacityThresholdPercent` → `capacity_threshold_percent`、`NotificationEmail` → `notification_email`）、resources は `aws_cloudwatch_dashboard`・`aws_cloudwatch_metric_alarm`・`aws_sns_topic` です。
+variables はダッシュボードテンプレートのパラメータに対応し（`FileSystemId` → `file_system_id`、`FileSystemName` → `file_system_name`、`CapacityThresholdPercent` → `capacity_threshold_percent`、`NotificationEmail` → `notification_email`）、resources は `aws_cloudwatch_dashboard`・`aws_cloudwatch_metric_alarm`・`aws_sns_topic`・`aws_sns_topic_subscription` です。
 
-**`.tf` ファイルは今は作成しません。** 未検証のインフラコードを出荷することは本リポジトリの証拠規律に反します。実際の `.tf` ファイルは後の、別途検証するフェーズで扱います。記述し、実ファイルシステムに対して `terraform validate`/`plan` を実行し、レビューを経てから取り込みます。この方針は [ROADMAP.md](../../ROADMAP.md) の Phase 4「Terraform module equivalents」項目と、[CONTRIBUTING.md](../../CONTRIBUTING.md) の「Terraform equivalents of CloudFormation templates」優先項目として追跡しています。
+**このモジュールはオフラインで検証済みで、実環境では検証していません。** `make terraform` は `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、そしてモックプロバイダーと `command = plan` による `terraform test` を、ローカルと CI ジョブ `terraform` で実行します。実アカウントに対する plan も apply も行っていません（実環境での挙動の確信度: `未確認`）。下記フェーズ表の T1 の実環境完了条件は未達のままです。この方針は [ROADMAP.md](../../ROADMAP.md) の Phase 4「Terraform module equivalents」項目と、[CONTRIBUTING.md](../../CONTRIBUTING.md) の「Terraform equivalents of CloudFormation templates」優先項目として追跡しています。
 
-> **IaC に関する補足**: 上記スケルトンは目標の形であって、動作するコードではありません。`terraform apply` できるものではなく、将来の貢献が満たすべき契約として扱ってください。スケルトンが扱うのは最初のフェーズだけで、Qtree とログアラームの同等物は下記のフェーズで扱います。
+> **IaC に関する補足**: T1 モジュールはオフライン検査を通過した動作するコードなので plan も apply もできますが、実ファイルシステムに対してアラームが INSUFFICIENT_DATA を抜けることはまだ誰も確認していません。まず本番以外のアカウントで `terraform plan` を実行してください。扱うのは最初のフェーズだけで、Qtree とログアラームの同等物は下記のフェーズで扱います。
+
+### T1 モジュールの使い方と範囲
+
+AWS プロバイダーとリージョンを与える自分のルート構成からモジュールを呼び出します。`ref` はコミットに固定してください。
+
+```hcl
+module "fsx_ontap_monitoring" {
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
+
+  file_system_id             = "fs-0123456789abcdef0"
+  file_system_name           = "fsx-for-ontap-prod"
+  capacity_threshold_percent = 80
+  notification_email         = "ops@example.com"
+
+  # Opt-in alarms (all off by default)
+  enable_cpu_utilization_alarm = true
+  volume_ids                   = ["fsvol-0123456789abcdef0"]
+}
+```
+
+既定では、ダッシュボード（テンプレートと同じ 7 つのウィジェット）と、テンプレートにある 2 つのアラームを作成します。`capacity_threshold_percent` によるストレージ容量利用率アラームと、`throughput_threshold_percent`（既定 80）によるネットワークスループット利用率アラームです。SNS トピックとメール購読は `notification_email` が空でないときだけ作成し、その場合は両アラームが ALARM と OK の両方で通知します。下表のアラームは有効にするまで作成しません。いずれも名前空間 `AWS/FSx` で、AWS のメトリクスページ（[ファイルシステム・第 1 世代](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[ファイルシステム・第 2 世代](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、[ボリューム](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html)。確信度: `文書化済み`）から取っています。
+
+| オプトインのアラーム | 有効化 | メトリクス | ディメンション |
+|---|---|---|---|
+| CPU 利用率 | `enable_cpu_utilization_alarm` | `CPUUtilization`（Average） | `FileSystemId`。`file_server_names` を指定すると `FileSystemId` + `FileServer` で、ファイルサーバーごとに 1 つ |
+| ディスク IOPS 利用率 | `enable_disk_iops_utilization_alarm` | `FileServerDiskIopsUtilization`（Average） | CPU 利用率と同じ |
+| ディスクスループット利用率 | `enable_disk_throughput_utilization_alarm` | `FileServerDiskThroughputUtilization`（Average） | CPU 利用率と同じ |
+| ボリューム容量 | `volume_ids`（ボリュームごとに 1 つ） | `StorageCapacityUtilization`（Average） | `FileSystemId` + `VolumeId` |
+| ボリュームの inode 利用率 | `volume_ids`（ボリュームごとに 1 つ） | メトリクス算術式 `100 * FilesUsed / FilesCapacity`（`FilesUsed` は Average、`FilesCapacity` は Maximum）。`InodeUtilization` というメトリクスは存在しない | `FileSystemId` + `VolumeId` |
+
+`fsxn-monitoring-dashboard.yaml` とは、次の点を意図して変えています。
+
+- 容量アラームと容量ウィジェットは、`StorageCapacityUtilization` を `FileSystemId` + `StorageTier=SSD` + `DataType=All` で参照します。これは AWS がこの詳細メトリクスに文書化しているディメンションの組です。テンプレートは `FileSystemId` だけを使っており、これはこのメトリクスの文書化された組ではありません（確信度: 文書については `文書化済み`、どちらの形も実際の挙動は `未確認`）。テンプレートの修正は別の後続作業です。
+- `throughput_threshold_percent` は、テンプレートが 80 に固定しているスループットの閾値を変数にしたものです。既定値は同じです。
+- `alarm_actions` に加えて `ok_actions` も設定します。テンプレートが設定するのは `AlarmActions` だけです。
+- `capacity_threshold_percent` はテンプレートの 50–95 の範囲を引き継ぎます。それ以外の閾値は 1–100 を受け付けます。
+- `file_system_name` の既定値は `fsx-for-ontap` です。SNS トピックはテンプレートと同じく暗号化しません。
+
+> **ディメンションに関する補足**: 第 2 世代のファイルシステムでは、ファイルサーバーのメトリクスは `FileSystemId` + `FileServer` で文書化されており、AWS のページは複数 HA ペアのファイルシステムでも単一 HA ペア向けのメトリクスを使えるとも述べています。次のアラームが読む系列がそこに存在するかは `未確認` です。`FileSystemId` だけのネットワークスループット、`Aggregate` ディメンションを付けない容量、そして `file_server_names` が空のときのオプトインのファイルサーバーアラームです。第 2 世代では `file_server_names`（例: `FsxId0123456789abcdef0-01`）を指定し、オプトインのアラームが文書化されたディメンションの組を対象にするようにしてください。
+
+> **コストに関する補足**: アラームとダッシュボードの単価は、上記ダッシュボードのコストに関する補足にあります。有効にしたファイルサーバーアラームは 1 つにつき標準メトリクスアラームを 1 つ（`file_server_names` 指定時はファイルサーバーごとに 1 つ）追加し、`volume_ids` の各要素は 2 つのアラームを追加します。うち 1 つは 2 つのメトリクスに対するメトリクス算術式を評価します。見積りの前に、料金ページがメトリクス算術式のアラームをどう数えるかを確認してください。ここでは新しい金額を示しません。
+
+> **通知に関する補足**: メール購読は、SNS が送るメッセージから受信者が確認するまで保留のままです。それまでの間、アラームは CloudWatch 上で状態遷移しますが、メールは届きません。
 
 ### Terraform 実装のフェーズ
 
-Terraform の作業は、CloudWatch テンプレート 1 つにつき 1 フェーズ、計 3 フェーズに分けます。各フェーズには静的な検証手順と、実環境を必要とする完了条件があります。どのフェーズもまだ着手していないため、ここに `検証済み` のものはありません。タスク一覧は [ROADMAP.md](../../ROADMAP.md)（Phase 4）と [CONTRIBUTING.md](../../CONTRIBUTING.md) に置き、本節は順序と完了条件だけを示します。
+Terraform の作業は、CloudWatch テンプレート 1 つにつき 1 フェーズ、計 3 フェーズに分けます。各フェーズには静的な検証手順と、実環境を必要とする完了条件があります。T1 は実装済みでオフライン検証済みですが、実環境の完了条件は未達です。T2 と T3 は未着手です。ここに `検証済み` のものはありません。タスク一覧は [ROADMAP.md](../../ROADMAP.md)（Phase 4）と [CONTRIBUTING.md](../../CONTRIBUTING.md) に置き、本節は順序と完了条件だけを示します。
 
 | フェーズ | 範囲 | 検証 | 完了条件 |
 |---|---|---|---|
-| T1 — ダッシュボード + アラーム | `fsxn-monitoring-dashboard.yaml`（ダッシュボード、`StorageCapacityAlarm`、`ThroughputUtilizationAlarm`、任意の SNS）を移植し、のんピの CDK アラーム集合をパターン参照として追加する。`aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` を使う | FSx for ONTAP ファイルシステムがあるアカウントに対する `terraform validate` と `terraform plan` | `terraform apply` でダッシュボードとすべてのアラームが作成され、実ファイルシステムに対して各アラームが INSUFFICIENT_DATA を抜けて OK に達する |
+| T1 — ダッシュボード + アラーム | `fsxn-monitoring-dashboard.yaml`（ダッシュボード、`StorageCapacityAlarm`、`ThroughputUtilizationAlarm`、任意の SNS）を移植し、のんピの CDK アラーム集合をパターン参照として追加する。`aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` を使う | 完了: モックプロバイダーによるオフラインの `terraform fmt`/`validate`/`test`（`make terraform`、CI ジョブ `terraform`）。未完了: FSx for ONTAP ファイルシステムがあるアカウントに対する `terraform plan` | `terraform apply` でダッシュボードとすべてのアラームが作成され、実ファイルシステムに対して各アラームが INSUFFICIENT_DATA を抜けて OK に達する |
 | T2 — Qtree ポーリング | `qtree-quota-monitor.yaml` を移植する: VPC 内の Lambda、ONTAP 認証情報の Secrets Manager、`cloudwatch:PutMetricData` への経路（NAT ゲートウェイまたは `com.amazonaws.<region>.monitoring` interface エンドポイント）、EventBridge スケジュール、DLQ。先頭ページ 200 レコードを超えるページングを追加するか、その上限を文書化した制約として引き継ぐ。`SvmName` だけのアラームは Qtree 単位アラームかメトリクス算術式に置き換える | `terraform validate` と `terraform plan`。現状 CloudFormation テンプレートを検査しているのは `make cfn-lint` と `make cfn-guard`（`Makefile` の `CFN_TEMPLATES`）だけで、インラインの Lambda ハンドラには単体テストが無いため、その追加もこの移植に含める | 実 SVM から、Qtree 単位の `FSxONTAP/Qtree` 系列（3 つのメトリクス名すべて、完全な `SvmName`/`VolumeName`/`QtreeName` 識別子）が CloudWatch で観測され、置き換えたアラームが実データで状態遷移する |
 | T3 — ログアラームの同等物 | `cloudwatch-log-alarm.yaml` の同等物。前提条件付き: ログアラームに対する AWS プロバイダーの対応を確認してから着手するか、文書化されたメトリクスフィルター方式を使う | `terraform validate` と `terraform plan` | CloudWatch Logs 上の実際の管理監査ログに対し、アラームが評価され（INSUFFICIENT_DATA → OK）、一致するイベントで ALARM に達する |
 
@@ -201,7 +248,7 @@ A: いいえ。経路選択（CloudWatch か Harvest + Prometheus か SaaS か O
 A: このダッシュボードからは取れません。レイテンシウィジェットを描画していないためです（確信度: `コード確認済み`）。AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` をそれぞれの operation count で割れば期間平均レイテンシを算出できますが、それは p99 ではなく期間平均であり、本テンプレートはそれを計算しません。テールレイテンシにはリクエスト単位のテレメトリを使ってください。
 
 **Q: 今すぐ `terraform apply` できる Terraform モジュールはありますか?**
-A: 調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp プロバイダーのリポジトリ、コミュニティのサンプル）ではターンキーのモジュールは見つかりませんでした（確信度: 存在することは `未確認`）。これらのソースの範囲では、FSx for ONTAP の Terraform による CloudWatch 監視は、汎用の `aws_cloudwatch_*` リソースと `aws_fsx_ontap_file_system` リソースから組み立てます。本リポジトリの方針は、後の別途検証するフェーズで CloudWatch テンプレートの `.tf` 同等物を追加することです。
+A: はい。本リポジトリの T1 モジュール `terraform/fsxn-monitoring-dashboard/` です（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。検証はオフラインだけで、fmt・validate・モックプロバイダーによる `terraform test` は通過していますが、何も適用していないため実環境での `apply` は `未確認` です。本リポジトリの外では、調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp プロバイダーのリポジトリ、コミュニティのサンプル）で、ターンキーの監視モジュールは引き続き見つかっていません（確信度: 存在することは `未確認`）。Qtree とログアラームの同等物（T2、T3）は未着手です。
 
 **Q: なぜ CloudWatch は Qtree 単位のクォータ使用量を直接表示しないのですか?**
 A: FSx for ONTAP のネイティブ CloudWatch メトリクスは `FileSystemId` ディメンションのみ（詳細メトリクスは `StorageTier`/`DataType` を追加）を持ち、Qtree 単位・ユーザー単位のディメンションはありません。Qtree 単位のクォータ使用量は、ONTAP REST API をポーリングしてカスタムメトリクスを公開することで到達します — それが `qtree-quota-monitor.yaml` の役割です。ただし、そのテンプレートに同梱されるクォータ閾値アラームは出荷状態では未確認です（Qtree 節のアラームに関する補足を参照）。修正されるまでは `FSxONTAP/Qtree` メトリクスを直接読んでください。
@@ -215,5 +262,6 @@ A: デプロイ上の問題ではありません。2026-07-02 の E2E 記録で 
 - [AWS ネイティブ代替マトリクス](native-alternative-matrix.md) — 本ページの背後にある System Manager ビュー → CloudWatch メトリクス → テンプレートのマッピング。
 - [System Manager GUI ガイド](system-manager-gui-guide.md) — GUI 経路と、それ自身の小さな決定フローチャート。
 - [CloudWatch ログアラーム](cloudwatch-log-alarm.md) — `cloudwatch-log-alarm.yaml` テンプレートの詳細。
+- [Terraform モジュール: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md) — T1 モジュールの入力・出力・検証状況（英語）。
 - [セルフホスト型管理コンソール](../../management-console/README.md) — Harvest 経路向けの NetApp Harvest 実装。
 - [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — 収集経路の決定を行う場所。

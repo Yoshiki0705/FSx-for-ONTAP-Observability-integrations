@@ -213,6 +213,8 @@ paths = [
   '''__pycache__/''',
   '''\.pyc$''',
   '''node_modules/''',
+  # Provider binaries downloaded by `terraform init`: a build artifact like node_modules/.
+  '''\.terraform/''',
   '''package-lock.json''',
   '''.hypothesis/''',
   '''.playwright-mcp/''',
