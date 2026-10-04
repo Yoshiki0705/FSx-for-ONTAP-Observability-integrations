@@ -46,7 +46,7 @@ AWS primary sources for the metrics and alarms used below:
 - [Creating an alarm for low primary storage](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/alarm-low-primary-storage.html)
 - [FSx for ONTAP file system metrics](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)
 
-> **Scope note**: CloudWatch metrics for FSx for ONTAP are at the file-system level. Per-qtree and per-user granularity is not in the native metric set; the qtree monitor below reaches it through the ONTAP REST API, and per-user access needs audit logs (see [event-sources.md](event-sources.md)).
+> **Scope note**: AWS documents FSx for ONTAP CloudWatch metrics as file-system metrics and detailed file-system metrics; the file-system metrics take the `FileSystemId` dimension, and the detailed metrics add `StorageTier` and `DataType` ([file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html), confidence: `documented`). The boundary that matters here is that the native metric set has no qtree or per-user dimension — not that nothing below the file system is measured. The qtree monitor below reaches qtree granularity through the ONTAP REST API, and per-user access needs audit logs (see [event-sources.md](event-sources.md)).
 
 ### Performance and capacity dashboard
 
@@ -56,13 +56,13 @@ AWS primary sources for the metrics and alarms used below:
 
 **Why**: It replaces the ONTAP System Manager performance and capacity views for the metrics AWS publishes to CloudWatch, so you do not need to open a management console for day-to-day capacity watching.
 
-**How**: Deploy with four parameters — `FileSystemId`, `FileSystemName`, `CapacityThresholdPercent` (default 80), and an optional `NotificationEmail` that provisions an Amazon Simple Notification Service (Amazon SNS) topic and subscription for the capacity alarm. The dashboard draws IOPS (`DataReadOperations` + `DataWriteOperations`), throughput (`DataReadBytes` + `DataWriteBytes`), network utilization (`NetworkThroughputUtilization`), and capacity (`StorageUsed` + `StorageCapacityUtilization`), and fires a threshold alarm on `StorageCapacityUtilization`.
+**How**: Deploy with four parameters — `FileSystemId`, `FileSystemName`, `CapacityThresholdPercent` (default 80), and an optional `NotificationEmail` that provisions an Amazon Simple Notification Service (Amazon SNS) topic and subscription. The dashboard draws IOPS (`DataReadOperations` + `DataWriteOperations`), throughput (`DataReadBytes` + `DataWriteBytes`), network utilization (`NetworkThroughputUtilization`), and capacity (`StorageUsed` + `StorageCapacityUtilization`). The stack always creates two alarms: `StorageCapacityAlarm` on `StorageCapacityUtilization` at `CapacityThresholdPercent`, and `ThroughputUtilizationAlarm` on `NetworkThroughputUtilization` at a fixed 80%. When `NotificationEmail` is set, the SNS topic is attached to both alarms.
 
 The **latency widget is not yet implemented** (confidence: `documented`). The underlying metrics `DataReadOperationTime` and `DataWriteOperationTime` are available, and derived latency can be computed as `OperationTime * 1000 / Operations`, but the dashboard template does not yet render that widget. This is the one explicit gap recorded in [native-alternative-matrix.md](native-alternative-matrix.md).
 
-> **Latency note**: Because the operation-time and operation-count pairs are summed over the period, dividing them yields a period average, not p99. If you need tail latency, source it from request-level telemetry rather than these aggregate metric pairs.
+> **Latency note**: The AWS metric pairs `DataReadOperationTime`/`DataWriteOperationTime` divided by the corresponding operation counts can derive period-average latency (summed over the period, so the result is an average, not p99); this template does not currently render that widget. For tail latency, source it from request-level telemetry rather than these aggregate metric pairs.
 
-> **Cost note**: A CloudWatch dashboard is $3/month per dashboard beyond the free allotment, and each alarm is approximately $0.10/month (us-east-1, pricing changes over time — confirm against the current [CloudWatch pricing page](https://aws.amazon.com/cloudwatch/pricing/)). The SNS topic is only created when `NotificationEmail` is set.
+> **Cost note**: As of the [CloudWatch pricing page](https://aws.amazon.com/cloudwatch/pricing/) checked 2026-10-04 in us-east-1, a CloudWatch dashboard is $3/month per dashboard beyond the free allotment, and a standard-resolution metric alarm is approximately $0.10/month each (this stack creates two such alarms). Pricing changes over time and varies by Region — confirm against the current page. The SNS topic is only created when `NotificationEmail` is set.
 
 ### Per-qtree quota monitoring
 
@@ -70,11 +70,13 @@ The **latency widget is not yet implemented** (confidence: `documented`). The un
 
 **When**: You need quota usage per qtree, which the file-system-level CloudWatch metrics cannot express.
 
-**Why**: It fills the gap that native CloudWatch volume metrics cannot reach. A Lambda function polls the ONTAP REST API `/storage/quota/reports`, publishes a `FSxONTAP/Qtree` custom metric (`QtreeQuotaUsedPercent`) per qtree, and raises a CloudWatch alarm when usage crosses the threshold (default 85%).
+**Why**: It fills the gap that native CloudWatch metrics cannot reach below the file-system level. A Lambda function polls the ONTAP REST API `/storage/quota/reports` and publishes a `FSxONTAP/Qtree` custom metric (`QtreeQuotaUsedPercent`) per qtree. The template also declares a `QuotaThresholdPercent` (default 85) quota alarm, but that alarm is unverified as shipped — see the alarm note below.
 
-**How**: Deploy with the ONTAP management endpoint IP (`OntapMgmtIp`), a Secrets Manager ARN for ONTAP admin credentials, the `SvmName`, VPC placement parameters (`VpcId`, `SubnetIds`, `SecurityGroupId`), a `PollIntervalMinutes` (default 5), and `QuotaThresholdPercent`. Because the alarm uses `Statistic: Maximum` across all qtrees, it tells you that one qtree crossed the threshold, not which — the [native-alternative-matrix.md](native-alternative-matrix.md) "Identifying the Offending Qtree" section gives the CLI to find it.
+**How**: Deploy with the ONTAP management endpoint IP (`OntapMgmtIp`), a Secrets Manager ARN for ONTAP admin credentials, the `SvmName`, VPC placement parameters (`VpcId`, `SubnetIds`, `SecurityGroupId`), a `PollIntervalMinutes` (default 5), and `QuotaThresholdPercent`. The Lambda publishes `QtreeQuotaUsedPercent` with the full dimension set `SvmName` + `VolumeName` + `QtreeName`, so each qtree is a distinct CloudWatch metric. The per-qtree custom metrics and the DLQ-depth alarm (which detects a stalled poller) are the verified, usable parts of this stack.
 
-> **Security note**: ONTAP admin credentials come from AWS Secrets Manager by ARN, never from Lambda environment variables. The Lambda needs HTTPS (443) reachability to the ONTAP management endpoint, so it runs inside the VPC with a security group that allows egress to that IP.
+> **Alarm note (unverified / do not rely on `QtreeQuotaAlarm` as shipped)**: The template's `QtreeQuotaAlarm` selects only the `SvmName` dimension with no `Metrics` array or metric-math expression. CloudWatch identifies a metric by its complete dimension set, so an alarm scoped to `SvmName` alone matches none of the three-dimension series the Lambda emits, and `Statistic: Maximum` does not aggregate across the separately-dimensioned per-qtree metrics (confidence: `unverified` that this alarm fires on real data). Until the template is corrected to use metric math over the per-qtree series or per-qtree alarms, treat threshold alerting as not working and read the `FSxONTAP/Qtree` metrics directly; the [native-alternative-matrix.md](native-alternative-matrix.md) "Identifying the Offending Qtree" section gives the CLI to inspect per-qtree usage.
+
+> **Security note**: ONTAP admin credentials come from AWS Secrets Manager by ARN, never from Lambda environment variables. The Lambda reaches the ONTAP management endpoint over HTTPS (443) from inside the VPC with a security group that allows egress to that IP. The shipped Lambda initializes urllib3 with `cert_reqs="CERT_NONE"`, so the transport is encrypted but the endpoint certificate is not authenticated (confidence: `verified` by reading the template) — the required containment is the VPC-internal path to a known management IP, and certificate validation is deferred work tracked for the template.
 
 > **IaC note**: This template is the clearest example of why a monitoring view can need the ONTAP management plane: the data does not exist in CloudWatch until this Lambda writes it there. A Terraform equivalent would carry the same VPC and Secrets Manager dependencies.
 
@@ -92,11 +94,11 @@ The **latency widget is not yet implemented** (confidence: `documented`). The un
 
 ## NetApp public reference
 
-NetApp publishes a CloudWatch monitoring reference implementation at [github.com/NetApp/FSx-ONTAP-monitoring](https://github.com/NetApp/FSx-ONTAP-monitoring) (the `CloudWatch-Monitoring-FSx` subtree). It is the NetApp-published reference for CloudWatch monitoring of FSx for ONTAP, and this repository's CloudFormation templates are a serverless/CloudFormation-packaged counterpart to it. The two suit different starting points: the NetApp reference provides broad monitoring scripts you adapt to your environment, while this repository provides deploy-ready CloudFormation templates with a fixed, documented scope. Neither is a replacement for the other.
+NetApp publishes a CloudWatch monitoring reference implementation at [github.com/NetApp/FSx-ONTAP-monitoring](https://github.com/NetApp/FSx-ONTAP-monitoring) (the `CloudWatch-Monitoring-FSx` subtree). Both it and this repository are CloudFormation-based serverless solutions; the distinction is documented scope, not deploy-ready versus scripts (confidence: `documented`, from the NetApp subtree README). The NetApp reference deploys a single region-wide dashboard covering all FSx for ONTAP file systems, with Lambda, three EventBridge schedulers, lifecycle-managed alarms, IAM roles, and optional VPC endpoints, in Full Stack, Monitoring Only, or EMS Logs Only modes; its dashboard spans client operations, storage utilization, disk performance, latency, per-volume stats, LUN performance, and SnapMirror status, and it streams EMS messages to CloudWatch Logs. This repository splits a smaller, fixed single-file-system dashboard, qtree quota polling, and log-based alarms into separate CloudFormation templates. The two suit different starting points, and neither is a replacement for the other.
 
-For the Harvest-plus-Prometheus path (the route the Hub may send you to instead of CloudWatch), the equivalent NetApp-published tooling is [NetApp Harvest](https://github.com/NetApp/harvest), implemented in this repository under [management-console/](../../management-console/README.md). Harvest suits teams that need the full ONTAP metric set (protocol, aggregate, and node level); CloudWatch suits teams that want file-system-level metrics without running a collector.
+For the Harvest-plus-Prometheus path (the route the Hub may send you to instead of CloudWatch), the equivalent NetApp-published tooling is [NetApp Harvest](https://github.com/NetApp/harvest), implemented in this repository under [management-console/](../../management-console/README.md). Harvest suits teams that need the full ONTAP metric set (protocol, aggregate, and node level); CloudWatch suits teams that want metrics in the native AWS monitoring plane without running a collector.
 
-> **Neutrality note**: The trade-off is symmetric. The NetApp reference repo and Harvest cover more of ONTAP but ask you to run and adapt more; the CloudWatch templates here cover less of ONTAP but deploy as-is. Which fits depends on your metric breadth and operational appetite, not on one being better than the other.
+> **Neutrality note**: The trade-off is symmetric. The NetApp reference repo covers more of ONTAP in one region-wide stack (volume, LUN, SnapMirror, EMS) and leaves alarm cleanup to the operator per its own disclaimer; the templates here cover a narrower, fixed scope split across separate stacks, and the qtree alarm as shipped is unverified (see the alarm note above). Which fits depends on your metric breadth and how you prefer to manage stacks, not on one being better than the other.
 
 ## Terraform direction
 
@@ -104,13 +106,13 @@ For the Harvest-plus-Prometheus path (the route the Hub may send you to instead 
 
 No `.tf` files exist in this repository today. The AWS-native path is standardized on CloudFormation. For Terraform users, the verified building blocks are:
 
-- The AWS provider resource `aws_fsx_ontap_file_system` for the file system, with CloudWatch assembled from the generic `aws_cloudwatch_metric_alarm` and `aws_cloudwatch_dashboard` resources.
+- The AWS provider resource [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system) for the file system, with CloudWatch assembled from the generic [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) and [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) resources.
 - The NetApp official ONTAP Terraform provider, [terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap), for ONTAP-side configuration.
 - A community example module (not monitoring-specific), [terraform-aws-fsx-netapp-ontap](https://github.com/JManzur/terraform-aws-fsx-netapp-ontap).
 
-No dedicated public Terraform **module** that builds CloudWatch monitoring for FSx for ONTAP was found (confidence: `unverified` that any turnkey module exists). In Terraform today, CloudWatch monitoring for FSx for ONTAP is composed from the generic `aws_cloudwatch_*` resources plus the FSx resource, not pulled from an off-the-shelf module.
+Searching the sources above (the HashiCorp AWS provider registry, the NetApp provider repository, and the community example) did not surface a dedicated public Terraform **module** that builds CloudWatch monitoring for FSx for ONTAP (confidence: `unverified` that a turnkey module exists). Within those sources, CloudWatch monitoring for FSx for ONTAP is composed from the generic `aws_cloudwatch_*` resources plus the FSx resource.
 
-> **Verification note**: The provider resources and the two repositories above were confirmed to exist. The claim being marked `unverified` is specifically "a turnkey monitoring module exists" — the search did not find one, which is not the same as proving none exists anywhere.
+> **Verification note**: The three AWS provider resources and the two repositories above were confirmed to exist. The claim marked `unverified` is specifically "a turnkey monitoring module exists" — the sources checked did not surface one, which is scoped to those sources and is not a claim that none exists anywhere in the ecosystem.
 
 ### Direction and skeleton
 
@@ -134,13 +136,13 @@ The variables mirror the dashboard template's parameters (`FileSystemId` → `fi
 
 Once CloudWatch is the chosen route (decided in the Hub), build in this order:
 
-1. Deploy the performance and capacity dashboard (`fsxn-monitoring-dashboard.yaml`) for file-system-level IOPS, throughput, network, and capacity.
-2. Set `NotificationEmail` on that stack (or add it) so the capacity threshold alarm reaches an SNS topic.
+1. Deploy the performance and capacity dashboard (`fsxn-monitoring-dashboard.yaml`) for file-system-level IOPS, throughput, network, and capacity. The stack also creates the capacity and throughput-utilization alarms.
+2. Set `NotificationEmail` on that stack (or add it) so both the capacity and throughput-utilization alarms reach an SNS topic.
 3. Add the per-qtree quota monitor (`qtree-quota-monitor.yaml`) if you need quota granularity below the file-system level — this requires VPC reachability to the ONTAP management endpoint.
 4. Add log-based alarms (`cloudwatch-log-alarm.yaml`) once audit logs are flowing to CloudWatch Logs.
 5. Revisit the route choice in the Hub if CloudWatch coverage proves insufficient (for example, if you need the full ONTAP metric set, which points to the Harvest route).
 
-> **Cost note**: Steps 1 and 2 cost on the order of a few dollars per month (dashboard + alarms). Step 3 adds Lambda invocations and any VPC endpoints the Lambda needs. Confirm current rates against the AWS pricing pages before committing to a budget — the figures here are illustrative.
+> **Cost note**: Steps 1 and 2 are the dashboard plus its two alarms — see the dashboard Cost note above for the dated per-unit figures. Step 3 adds Lambda invocations and any VPC endpoints the Lambda needs. Confirm current rates against the AWS pricing pages before committing to a budget.
 
 ## FAQ and common misconceptions
 
@@ -148,13 +150,13 @@ Once CloudWatch is the chosen route (decided in the Hub), build in this order:
 A: No. The route choice (CloudWatch vs Harvest + Prometheus vs SaaS vs ONTAP REST) is made in the [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md). This page is for building the CloudWatch pieces once that route is chosen.
 
 **Q: Can I get p99 latency from these CloudWatch metrics?**
-A: Not from the dashboard. The dashboard derives period-average latency from `DataReadOperationTime`/`DataWriteOperationTime` divided by operation counts, and the latency widget is not yet implemented (confidence: `documented`). For tail latency, use request-level telemetry.
+A: Not from this dashboard, which does not render a latency widget (confidence: `documented`). The AWS metric pairs `DataReadOperationTime`/`DataWriteOperationTime` divided by their operation counts can derive period-average latency, but that is a period average, not p99, and this template does not compute it. For tail latency, use request-level telemetry.
 
 **Q: Is there a Terraform module I can `terraform apply` today?**
-A: No turnkey module was found (confidence: `unverified` that one exists). Terraform CloudWatch monitoring for FSx for ONTAP is composed from generic `aws_cloudwatch_*` resources plus the FSx resource. The repository's direction is to add `.tf` equivalents of the CloudWatch templates in a later, separately-verified phase.
+A: The sources checked (the HashiCorp AWS provider registry, the NetApp provider repository, and the community example) did not surface a turnkey module (confidence: `unverified` that one exists). Within those sources, Terraform CloudWatch monitoring for FSx for ONTAP is composed from the generic `aws_cloudwatch_*` resources plus the FSx resource. The repository's direction is to add `.tf` equivalents of the CloudWatch templates in a later, separately-verified phase.
 
 **Q: Why does CloudWatch not show per-qtree quota usage directly?**
-A: Native FSx for ONTAP CloudWatch metrics are file-system level. Per-qtree quota usage is reached by polling the ONTAP REST API and publishing a custom metric — that is what `qtree-quota-monitor.yaml` does.
+A: The native FSx for ONTAP CloudWatch metrics carry only the `FileSystemId` dimension (plus `StorageTier`/`DataType` for the detailed metrics); there is no native qtree or per-user dimension. Per-qtree quota usage is reached by polling the ONTAP REST API and publishing a custom metric — that is what `qtree-quota-monitor.yaml` does. Note that the quota threshold alarm shipped in that template is unverified as shipped (see the alarm note in the qtree section); read the `FSxONTAP/Qtree` metrics directly until it is corrected.
 
 **Q: `cfn-lint` reports E3006 on the log-alarm template — is that a problem?**
 A: No. `AWS::CloudWatch::LogAlarm` is newer than the current resource spec, so E3006 is expected for that template and is excluded from the blocking lint tier.
