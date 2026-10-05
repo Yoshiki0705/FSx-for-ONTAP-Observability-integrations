@@ -68,9 +68,21 @@ Resources:
         enabling/tuning FabricPool tiering to move cold data to capacity pool.
       Namespace: AWS/FSx
       MetricName: StorageCapacityUtilization
+      # File-system-level StorageCapacityUtilization is documented with
+      # FileSystemId + StorageTier + DataType (second generation optionally
+      # adds Aggregate). FileSystemId alone is not a documented set for this
+      # metric and can match no series. Same set as the Terraform module.
+      #   https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html
+      #   https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html
+      # On second-generation multi-HA-pair file systems, whether a series
+      # without Aggregate is emitted is unverified.
       Dimensions:
         - Name: FileSystemId
           Value: !Ref FileSystemId
+        - Name: StorageTier
+          Value: SSD
+        - Name: DataType
+          Value: All
       Statistic: Average
       Period: 300
       EvaluationPeriods: 3
@@ -183,7 +195,7 @@ Resources:
               "properties": {
                 "title": "Storage Capacity Utilization (%)",
                 "metrics": [
-                  ["AWS/FSx", "StorageCapacityUtilization", "FileSystemId", "${FileSystemId}", {"stat": "Average", "period": 300}]
+                  ["AWS/FSx", "StorageCapacityUtilization", "FileSystemId", "${FileSystemId}", "StorageTier", "SSD", "DataType", "All", {"stat": "Average", "period": 300}]
                 ],
                 "view": "timeSeries",
                 "region": "${AWS::Region}",

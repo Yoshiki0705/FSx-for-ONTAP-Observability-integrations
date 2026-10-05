@@ -9,7 +9,7 @@ Offline only. `make terraform` runs `terraform fmt -check`, `terraform init -loc
 ## What it creates
 
 - `aws_cloudwatch_dashboard`: the template's seven widgets (title, throughput, IOPS, network throughput utilization, storage capacity utilization, network sent/received, storage used).
-- Two `aws_cloudwatch_metric_alarm` resources, as in the template: storage capacity utilization and network throughput utilization.
+- Two `aws_cloudwatch_metric_alarm` resources, as in the template: storage capacity utilization and network throughput utilization. The capacity alarm and widget select `FileSystemId` + `StorageTier=SSD` + `DataType=All`, the same set as the template.
 - `aws_sns_topic` and an email `aws_sns_topic_subscription`, only when `notification_email` is not empty. Both alarms then notify on ALARM and OK. The recipient must confirm the subscription before email arrives.
 - Opt-in alarms, all off by default: `CPUUtilization`, `FileServerDiskIopsUtilization`, `FileServerDiskThroughputUtilization` (one each, or one per entry in `file_server_names`), and two per entry in `volume_ids` (volume `StorageCapacityUtilization`, and inode utilization as metric math `100 * FilesUsed / FilesCapacity`).
 
@@ -65,7 +65,6 @@ module "fsx_ontap_monitoring" {
 
 ## Deliberate differences from the CloudFormation template
 
-- Capacity alarm and widget use `StorageCapacityUtilization` with `FileSystemId` + `StorageTier=SSD` + `DataType=All`, the dimension set documented for this detailed metric. The template uses `FileSystemId` alone, which is not a documented set for it.
 - `throughput_threshold_percent` exposes the threshold the template hardcodes at 80.
 - `ok_actions` is set alongside `alarm_actions`.
 - Default `file_system_name` is `fsx-for-ontap`.
