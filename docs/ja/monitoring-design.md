@@ -58,11 +58,13 @@ CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量の
 
 **なぜ**: AWS が CloudWatch に公開するメトリクスの範囲で、ONTAP System Manager の性能・容量ビューを代替します。日常の容量監視のために管理コンソールを開く必要がなくなります。
 
-**どう**: 4 つのパラメータでデプロイします — `FileSystemId`、`FileSystemName`、`CapacityThresholdPercent`（既定 80）、および任意の `NotificationEmail`（指定すると Amazon Simple Notification Service（Amazon SNS）トピックとサブスクリプションを作成）。ダッシュボードは IOPS（`DataReadOperations` + `DataWriteOperations`）、スループット（`DataReadBytes` + `DataWriteBytes`）、ネットワーク利用率（`NetworkThroughputUtilization`）、容量（`StorageUsed` + `StorageCapacityUtilization`）を描画します。スタックは常に 2 つのアラームを作成します — `StorageCapacityAlarm`（`StorageCapacityUtilization` に `CapacityThresholdPercent` の閾値）と `ThroughputUtilizationAlarm`（`NetworkThroughputUtilization` に固定 80% の閾値）です。`NotificationEmail` を設定すると、SNS トピックは両方のアラームに付きます。
+**どう**: 4 つのパラメータでデプロイします — `FileSystemId`、`FileSystemName`、`CapacityThresholdPercent`（既定 80）、および任意の `NotificationEmail`（指定すると Amazon Simple Notification Service（Amazon SNS）トピックとサブスクリプションを作成）。ダッシュボードは IOPS（`DataReadOperations` + `DataWriteOperations`）、スループット（`DataReadBytes` + `DataWriteBytes`）、ネットワーク利用率（`NetworkThroughputUtilization`）、容量（`StorageUsed` + `StorageCapacityUtilization`）を描画します。スタックは常に 2 つのアラームを作成します — `StorageCapacityAlarm`（`StorageCapacityUtilization` を `FileSystemId` + `StorageTier=SSD` + `DataType=All` で参照し、`CapacityThresholdPercent` の閾値）と `ThroughputUtilizationAlarm`（`NetworkThroughputUtilization` に固定 80% の閾値）です。`NotificationEmail` を設定すると、SNS トピックは両方のアラームに付きます。
 
 **レイテンシウィジェットは未実装**です（確信度: `コード確認済み`。`fsxn-monitoring-dashboard.yaml` はレイテンシウィジェットを描画しない）。基礎メトリクス `DataReadOperationTime` と `DataWriteOperationTime` は存在し、期間平均レイテンシは `OperationTime * 1000 / Operations` で算出できます（確信度: `文書化済み`、[file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)）が、ダッシュボードテンプレートはまだそのウィジェットを描画しません。[native-alternative-matrix.md](native-alternative-matrix.md) は、これをダッシュボードテンプレートの部分対応の行として記録しています。
 
 > **レイテンシに関する補足**: AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` を対応する operation count で割ると期間平均レイテンシを算出できます（期間内で合計されるため p99 ではなく平均）。本テンプレートは現時点でそのウィジェットを描画しません。テールレイテンシが必要な場合は、これらの集約メトリクスのペアではなくリクエスト単位のテレメトリから取得してください。
+
+> **容量ディメンションに関する補足**: AWS はファイルシステムレベルの `StorageCapacityUtilization` を `FileSystemId` + `StorageTier` + `DataType` でのみ文書化しており、第 2 世代のファイルシステムでは任意で `Aggregate` が加わります（[file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[so-file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、2026-10-05 取得）。このテンプレートの以前の版は `FileSystemId` だけを指定していました。これは AWS がこのメトリクスに文書化していない組なので、容量アラームとウィジェットがどの系列にも一致せず、アラームが発報しない可能性がありました。現在のアラームとウィジェットは `FileSystemId` + `StorageTier=SSD` + `DataType=All` を指定しており、Terraform モジュールと同じ組です（確信度: `コード確認済み`、`shared/python/tests/test_monitoring_dashboard_dimensions.py` による単体テスト済み。実環境でのアラーム発報は `未確認`）。第 2 世代の複数 HA ペアのファイルシステムで `Aggregate` なしの系列が出力されるかは `未確認` です。AWS のページは、このメトリクスがアグリゲートごとに出力されると説明しています。
 
 > **コストに関する補足**: [CloudWatch 料金ページ](https://aws.amazon.com/cloudwatch/pricing/) を 2026-10-04 に us-east-1 で確認した時点で、CloudWatch ダッシュボードは無料枠を超えると 1 つあたり月額 $3、標準解像度のメトリクスアラームは 1 つあたり月額 約 $0.10 です（本スタックはそのアラームを 2 つ作成します）。価格は時期とリージョンで変動するため、最新のページで確認してください。SNS トピックは `NotificationEmail` を設定したときのみ作成されます。
 
@@ -189,7 +191,7 @@ module "fsx_ontap_monitoring" {
 }
 ```
 
-既定では、ダッシュボード（テンプレートと同じ 7 つのウィジェット）と、テンプレートにある 2 つのアラームを作成します。`capacity_threshold_percent` によるストレージ容量利用率アラームと、`throughput_threshold_percent`（既定 80）によるネットワークスループット利用率アラームです。SNS トピックとメール購読は `notification_email` が空でないときだけ作成し、その場合は両アラームが ALARM と OK の両方で通知します。下表のアラームは有効にするまで作成しません。いずれも名前空間 `AWS/FSx` で、AWS のメトリクスページ（[ファイルシステム・第 1 世代](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[ファイルシステム・第 2 世代](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、[ボリューム](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html)。確信度: `文書化済み`）から取っています。
+既定では、ダッシュボード（テンプレートと同じ 7 つのウィジェット）と、テンプレートにある 2 つのアラームを作成します。`capacity_threshold_percent` によるストレージ容量利用率アラーム（テンプレートと同じ `FileSystemId` + `StorageTier=SSD` + `DataType=All` で参照）と、`throughput_threshold_percent`（既定 80）によるネットワークスループット利用率アラームです。SNS トピックとメール購読は `notification_email` が空でないときだけ作成し、その場合は両アラームが ALARM と OK の両方で通知します。下表のアラームは有効にするまで作成しません。いずれも名前空間 `AWS/FSx` で、AWS のメトリクスページ（[ファイルシステム・第 1 世代](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[ファイルシステム・第 2 世代](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、[ボリューム](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html)。確信度: `文書化済み`）から取っています。
 
 | オプトインのアラーム | 有効化 | メトリクス | ディメンション |
 |---|---|---|---|
@@ -201,7 +203,6 @@ module "fsx_ontap_monitoring" {
 
 `fsxn-monitoring-dashboard.yaml` とは、次の点を意図して変えています。
 
-- 容量アラームと容量ウィジェットは、`StorageCapacityUtilization` を `FileSystemId` + `StorageTier=SSD` + `DataType=All` で参照します。これは AWS がこの詳細メトリクスに文書化しているディメンションの組です。テンプレートは `FileSystemId` だけを使っており、これはこのメトリクスの文書化された組ではありません（確信度: 文書については `文書化済み`、どちらの形も実際の挙動は `未確認`）。テンプレートの修正は別の後続作業です。
 - `throughput_threshold_percent` は、テンプレートが 80 に固定しているスループットの閾値を変数にしたものです。既定値は同じです。
 - `alarm_actions` に加えて `ok_actions` も設定します。テンプレートが設定するのは `AlarmActions` だけです。
 - `capacity_threshold_percent` はテンプレートの 50–95 の範囲を引き継ぎます。それ以外の閾値は 1–100 を受け付けます。

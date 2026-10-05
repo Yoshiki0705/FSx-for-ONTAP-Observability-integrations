@@ -19,7 +19,7 @@ This document maps every major feature of ONTAP System Manager, NetApp Workload 
 | **Performance: Latency** | CloudWatch `DataReadOperationTime`/`DataWriteOperationTime` (derived latency = `OperationTime * 1000 / Operations`) | Not yet in `fsxn-monitoring-dashboard.yaml` | ⚠️ Metrics available, widget not implemented |
 | **Performance: Network Utilization** | CloudWatch `NetworkThroughputUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
 | **Capacity: Storage Used** | CloudWatch `StorageUsed` + `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
-| **Capacity: Alerts** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` (threshold alarm) | ✅ |
+| **Capacity: Alerts** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` (threshold alarm) | ⚠️ Dimension corrected; live alarm firing unverified |
 | **Qtree: Quota Management** | ONTAP REST API `/storage/quota/rules` | CLI scripts / manual | ⚠️ Management via API, no GUI |
 | **Qtree: Quota Monitoring** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ⚠️ Template implemented, operational publication unverified |
 | **Qtree: Quota Alerts** | CloudWatch Alarm on `QtreeQuotaUsedPercent` | `qtree-quota-monitor.yaml` | ⚠️ Metric publication path implemented (code-inspected; operational publication unverified); shipped alarm not usable as shipped (see Qtree note below) |
@@ -104,11 +104,11 @@ All vendors that receive audit/EMS/FPolicy logs can build equivalent forensics v
 
 | Product | Features Mapped | ✅ Covered | ⚠️ Partial | ❌ Out of Scope |
 |---------|:--------------:|:----------:|:----------:|:--------------:|
-| System Manager | 21 | 11 | 8 | 2 |
+| System Manager | 21 | 10 | 9 | 2 |
 | Workload Factory | 9 | 5 | 2 | 2 |
 | DII SWS | 13 | 13 | 0 | 0 |
 
-**Key insight**: Security/incident-response features (DII equivalent) are **100% covered**. Operations monitoring (System Manager equivalent) is **52% fully covered + 38% partial** (11/21 and 8/21 of the mapped features, respectively) — partial items are the latency widget not yet in the dashboard, qtree quota management (API only), qtree quota monitoring and alerts (template implemented, operational publication unverified, shipped alarm not usable as shipped), security-blocking-only implementations of export/share management, demo-only volume templates, and manual-only SnapMirror procedures. The remaining **10%** (QoS, LIF/DNS) are infrastructure-management tasks suited to the FSx Console.
+**Key insight**: Security/incident-response features (DII equivalent) are **100% covered**. Operations monitoring (System Manager equivalent) is **48% fully covered + 43% partial** (10/21 and 9/21 of the mapped features, respectively) — partial items are the latency widget not yet in the dashboard, the capacity alarm (dimension corrected, live firing unverified), qtree quota management (API only), qtree quota monitoring and alerts (template implemented, operational publication unverified, shipped alarm not usable as shipped), security-blocking-only implementations of export/share management, demo-only volume templates, and manual-only SnapMirror procedures. The remaining **10%** (QoS, LIF/DNS) are infrastructure-management tasks suited to the FSx Console.
 
 > **Reading this table correctly**: "100% covered" describes feature-level parity for the specific containment/detection-response actions this repository implements — it is not a claim that this approach is a superior or complete substitute for DII. DII's ML detection, agent-based collection, and vendor-managed operations are capabilities this repository doesn't build from scratch; the coverage number reflects that this repository's narrower, AWS-native mechanism reaches the same *containment actions* via a different path. See [How to Choose](#how-to-choose) below for which context favors which approach.
 

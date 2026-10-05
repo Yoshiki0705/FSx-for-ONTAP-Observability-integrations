@@ -19,8 +19,8 @@ locals {
 
   # StorageCapacityUtilization at file-system level is documented with
   # FileSystemId + StorageTier + DataType. The CloudFormation template uses
-  # FileSystemId alone, which is not a documented dimension set for this
-  # metric; this module deliberately uses the documented set.
+  # the same set (checked by
+  # shared/python/tests/test_monitoring_dashboard_dimensions.py).
   capacity_dimensions = {
     FileSystemId = var.file_system_id
     StorageTier  = "SSD"
