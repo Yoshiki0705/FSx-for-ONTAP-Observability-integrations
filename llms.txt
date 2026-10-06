@@ -16,7 +16,7 @@
 ## CloudWatch templates
 
 - [Performance and capacity dashboard](shared/templates/fsxn-monitoring-dashboard.yaml): CloudFormation dashboard for IOPS, throughput, network, and capacity, with capacity and throughput-utilization alarms.
-- [Per-qtree quota monitor](shared/templates/qtree-quota-monitor.yaml): Lambda polls the ONTAP REST API with pagination (up to 10,000 records per SVM), publishes per-qtree quota custom metrics plus an SVM-level maximum that the threshold alarm reads, and supports optional TLS verification (unit-tested against mocked ONTAP responses; on 2026-10-06 one live poll on a first-generation file system published all series and the alarm evaluated it to OK before the run stopped on an ONTAP HTTP 401; the alarm's ALARM path is not yet verified) — see the alarm, coverage, and security notes in monitoring-design.md.
+- [Per-qtree quota monitor](shared/templates/qtree-quota-monitor.yaml): Lambda polls the ONTAP REST API with pagination (up to 10,000 records per SVM), publishes per-qtree quota custom metrics plus an SVM-level maximum that the threshold alarm reads, and supports optional TLS verification (unit-tested against mocked ONTAP responses; live-verified on 2026-10-06 on a first-generation, single-HA-pair file system: 4 consecutive polls published all series with values matching ONTAP, and the alarm went OK → ALARM → OK; second generation, multi-HA-pair, CA-verified TLS, SNS delivery, and pagination beyond one page not yet verified) — see the alarm, coverage, and security notes in monitoring-design.md.
 - [Log-based alarm](shared/templates/cloudwatch-log-alarm.yaml): Alarms directly from CloudWatch Logs content using the AWS::CloudWatch::LogAlarm resource.
 
 ## Terraform modules
@@ -31,7 +31,7 @@
 
 ## Verification results
 
-- [CloudWatch monitoring verification](docs/en/verification-results-cloudwatch-monitoring.md): 2026-10-05 live run of the dashboard template and the Terraform module, and 2026-10-06 qtree quota monitor run (stopped after one successful poll), both on a first-generation, single-HA-pair file system; alarm transitions, findings, and what remains unverified (qtree ALARM path, second generation, multi-HA-pair, SNS delivery).
+- [CloudWatch monitoring verification](docs/en/verification-results-cloudwatch-monitoring.md): 2026-10-05 live run of the dashboard template and the Terraform module, and two 2026-10-06 qtree quota monitor runs (the first stopped after one successful poll; the re-run completed 4 polls and the alarm's OK → ALARM → OK path), all on a first-generation, single-HA-pair file system; alarm transitions, findings, and what remains unverified (second generation, multi-HA-pair, SNS delivery, CA-verified TLS, qtree pagination beyond one page).
 - [FPolicy, S3 Access Points, and session verification](docs/en/verification-results-fpolicy-s3ap-and-session.md): E2E results for FPolicy forwarding, FSx for ONTAP S3 Access Points, and session handling.
 - [EMS and FPolicy verification](docs/en/verification-results-ems-fpolicy.md): E2E results for the EMS webhook and FPolicy event paths.
 - [Datadog verification](docs/en/verification-results-datadog.md): E2E delivery results for the Datadog integration.

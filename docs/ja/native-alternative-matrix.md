@@ -21,8 +21,8 @@
 | **容量: ストレージ使用量** | CloudWatch `StorageUsed` + `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
 | **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ⚠️ 第 1 世代のファイルシステムで系列と OK の評価を検証済み（[2026-10-05 の記録](verification-results-cloudwatch-monitoring.md)）。ALARM への遷移は未観測 |
 | **Qtree: クォータ管理** | ONTAP REST API `/storage/quota/rules` | CLI スクリプト / 手動 | ⚠️ API経由の管理、GUIなし |
-| **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ⚠️ テンプレートは実装済み、SVM あたり 10,000 レコードまでページング、モック化した ONTAP 応答に対する単体テスト済み。第 1 世代のファイルシステムでの 1 回の実環境ポーリングが全系列を公開し、値は ONTAP と一致（2026-10-06）。2 回目のポーリングの前に実行は停止 |
-| **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercentMax` | `qtree-quota-monitor.yaml` | ⚠️ アラームは公開される SVM 単位の最大値系列と一致（モック化した ONTAP 応答に対する単体テスト済み）。第 1 世代のファイルシステムで実データに対する OK の評価を観測（2026-10-06）、ALARM への遷移は未観測。アラームは qtree を特定しない（下記 Qtree 補足を参照） |
+| **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ 第 1 世代: 連続 4 回の実環境ポーリングが全系列を公開し、値は ONTAP と一致（[2026-10-06 の再実行の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。1 ページを超えるページングはモック化した ONTAP 応答に対する単体テストのみ |
+| **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercentMax` | `qtree-quota-monitor.yaml` | ✅ 第 1 世代: 実データで OK → ALARM → OK を観測（[2026-10-06 の再実行の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。SNS の配信は未試験。アラームは qtree を特定しない（下記 Qtree 補足を参照） |
 | **ボリューム: 作成/削除/リサイズ** | FSx コンソール + ONTAP REST API | デモテンプレート + FSx コンソール（汎用ボリューム管理テンプレートはなし） | ⚠️ |
 | **Snapshot: 作成/スケジュール** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx ネイティブ | ✅ |
 | **Snapshot: リストア** | FSx コンソール + ONTAP REST API | `restore-verification.yaml`（リストア前検証） | ✅ |
@@ -36,7 +36,7 @@
 | **FPolicy 設定** | ONTAP REST API | FPolicy サーバー (Fargate) + スクリプト | ✅ |
 | **監査設定** | ONTAP CLI/REST API | セットアップスクリプト + docs | ✅ |
 
-> **実環境での検証に関する補足**: `fsxn-monitoring-dashboard.yaml` の行（IOPS、スループット、ネットワーク利用率、ストレージ使用量、容量アラート）は、2026-10-05 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに対して実行しました。ダッシュボードのすべての系列がデータを返し、容量アラームは INSUFFICIENT_DATA を抜けて OK に達しています（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）。容量: アラートが ⚠️ のままなのは、ALARM への遷移を観測していないためです。閾値の下限（50%）が、ファイルシステムの利用率 3.5% を上回っていました。第 2 世代と複数 HA ペアのファイルシステムは試験していません。Qtree テンプレートは、2026-10-06 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに別途デプロイしました。1 回のポーリングが全系列を公開して値は ONTAP のクォータレポートと一致し、`QtreeQuotaAlarm` はそのデータポイントを OK と評価しました。その後、2 回目のポーリングの前、アラームを ALARM に遷移させる前に、ONTAP の HTTP 401 で実行が停止しています（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の実行)）。そのため Qtree: クォータ監視と Qtree: クォータアラートは ⚠️ のままです。公開を観測したのは 1 サイクルだけで、ALARM への遷移は観測していません。
+> **実環境での検証に関する補足**: `fsxn-monitoring-dashboard.yaml` の行（IOPS、スループット、ネットワーク利用率、ストレージ使用量、容量アラート）は、2026-10-05 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに対して実行しました。ダッシュボードのすべての系列がデータを返し、容量アラームは INSUFFICIENT_DATA を抜けて OK に達しています（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）。容量: アラートが ⚠️ のままなのは、ALARM への遷移を観測していないためです。閾値の下限（50%）が、ファイルシステムの利用率 3.5% を上回っていました。第 2 世代と複数 HA ペアのファイルシステムは試験していません。Qtree テンプレートは、2026-10-06 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに別途デプロイしました。最初の実行は 1 回のポーリングの後に ONTAP の HTTP 401 で停止しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の実行)）。再実行では、連続 4 回のポーリングが全系列を公開して値は ONTAP のクォータレポートと一致し、`QtreeQuotaAlarm` は OK から ALARM へ遷移して OK に戻りました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。そのため Qtree: クォータ監視と Qtree: クォータアラートは、第 1 世代のファイルシステムについて ✅ です。これらについて未検証のまま残るのは、第 2 世代と複数 HA ペアのファイルシステム、CA 証明書を使った TLS、SNS の配信、1 ページを超えるページングと打ち切りの経路、Qtree が 200 を超える SVM、最小権限のセキュリティグループとエクスポートポリシー（再実行は許可範囲の広いテスト環境の設定を使った）です。
 
 ---
 
@@ -106,11 +106,11 @@
 
 | プロダクト | マッピング機能数 | ✅ 対応済み | ⚠️ 部分対応 | ❌ 対象外 |
 |----------|:-------------:|:---------:|:---------:|:--------:|
-| System Manager | 21 | 10 | 9 | 2 |
+| System Manager | 21 | 12 | 7 | 2 |
 | Workload Factory | 9 | 5 | 2 | 2 |
 | DII SWS | 13 | 13 | 0 | 0 |
 
-**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **48% 完全対応 + 43% 部分対応**（マッピングした機能のうちそれぞれ21件中10件・9件）— 部分対応は、ダッシュボード未実装のレイテンシウィジェット、容量アラーム（第 1 世代のファイルシステムで OK の評価は検証済み、ALARM への遷移は未観測）、qtree クォータ管理（API のみ）、qtree クォータ監視とアラート（テンプレートは実装済み・第 1 世代のファイルシステムで 1 回のポーリングサイクルについて公開を観測・アラームの OK の評価を観測・ALARM への遷移は未観測）、セキュリティブロック専用のエクスポート/共有管理実装、デモ用ボリュームテンプレート、手動手順のみの SnapMirror です。残る **10%**（QoS、LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。
+**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **57% 完全対応 + 33% 部分対応**（マッピングした機能のうちそれぞれ21件中12件・7件。qtree クォータ監視とアラートは第 1 世代のファイルシステムでの検証だけを根拠に完全対応に数えている）— 部分対応は、ダッシュボード未実装のレイテンシウィジェット、容量アラーム（第 1 世代のファイルシステムで OK の評価は検証済み、ALARM への遷移は未観測）、qtree クォータ管理（API のみ）、セキュリティブロック専用のエクスポート/共有管理実装、デモ用ボリュームテンプレート、手動手順のみの SnapMirror です。残る **10%**（QoS、LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。
 
 > **この表の正しい読み方**: 「100% カバー」は、本リポジトリが実装している封じ込め/検知対応アクションに限定した機能レベルの対応範囲を示すものであり、本アプローチが DII の完全な代替であるという主張ではなく、両者を単純に比較して一方を推奨する趣旨のものでもありません。DII の ML 検知、エージェントベースの収集、ベンダー管理による運用は、本リポジトリがゼロから構築していない機能です。このカバー率は、本リポジトリのより狭い範囲の AWS ネイティブな仕組みが、別の経路で同じ*封じ込めアクション*に到達していることを表しています。どちらの状況にどちらが適するかは、下記の[選び方ガイド](#選び方ガイド)を参照してください。
 
@@ -144,7 +144,7 @@
 
 ### Qtree クォータメトリクス — 問題の Qtree を特定する方法
 
-起点は `qtree-quota-monitor.yaml` の閾値アラーム `QtreeQuotaAlarm` です。このアラームは SVM 内の qtree 全体での実行ごとの最大値 `QtreeQuotaUsedPercentMax`（ディメンションは `SvmName` のみ）を読むため、SVM に閾値を超えた qtree があることは伝えますが、どの qtree かは伝えません（[monitoring-design.md](monitoring-design.md) のアラームに関する補足を参照。実環境でのアラーム発火は未確認）。どの qtree かを特定するには、qtree 単位の `FSxONTAP/Qtree` メトリクスを読んでください。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開し、CloudWatch はメトリクスを完全なディメンション集合で識別します — そのため `SvmName` だけに絞った照会は、出力されるどの系列にも一致しません。まず完全な識別子を列挙し、次に各識別子を照会してください。
+起点は `qtree-quota-monitor.yaml` の閾値アラーム `QtreeQuotaAlarm` です。このアラームは SVM 内の qtree 全体での実行ごとの最大値 `QtreeQuotaUsedPercentMax`（ディメンションは `SvmName` のみ）を読むため、SVM に閾値を超えた qtree があることは伝えますが、どの qtree かは伝えません（[monitoring-design.md](monitoring-design.md) のアラームに関する補足を参照。実環境でのアラーム発火は 2026-10-06 に第 1 世代のファイルシステムで検証済み）。どの qtree かを特定するには、qtree 単位の `FSxONTAP/Qtree` メトリクスを読んでください。Lambda は `QtreeQuotaUsedPercent` を完全なディメンション集合 `SvmName` + `VolumeName` + `QtreeName` で公開し、CloudWatch はメトリクスを完全なディメンション集合で識別します — そのため `SvmName` だけに絞った照会は、出力されるどの系列にも一致しません。まず完全な識別子を列挙し、次に各識別子を照会してください。
 
 手順 1 — 出力される各 qtree の識別子（完全な `SvmName`/`VolumeName`/`QtreeName` ディメンション）を列挙する:
 
