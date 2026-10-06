@@ -24,14 +24,14 @@ Playwright MCP（`--allow-unrestricted-file-access` 付き）を使用して以�
    - Password: (認証情報はここに記録しないこと。使い捨てのデモアカウントかシークレットマネージャーを使用する / do not record credentials here; use a disposable demo account or a secrets manager)
    - reCAPTCHA が出たら手動で突破してください
 
-2. 以下のスクリーンショットを撮影:
+2. 以下のスクリーンショットを撮影（`${PROJECT_DIR}` はこのリポジトリのクローンのルート）:
 
 | # | URL / 操作 | 保存先 |
 |---|-----------|--------|
-| 1 | `https://ap1.datadoghq.com/logs?query=source%3Afsxn-ems&from_ts=1778932000000&to_ts=1778980000000` | `/Users/yoshiki/Projects/fsxn-observability-integrations/docs/screenshots/datadog-arp-detection.png` |
-| 2 | 上記の検索結果から ARP イベントをクリックして詳細展開 | `/Users/yoshiki/Projects/fsxn-observability-integrations/docs/screenshots/datadog-arp-log-detail.png` |
-| 3 | `https://ap1.datadoghq.com/logs?query=source%3Afsxn-fpolicy&from_ts=1778932000000&to_ts=1778980000000` | `/Users/yoshiki/Projects/fsxn-observability-integrations/docs/screenshots/datadog-fpolicy-suspect-activity.png` |
-| 4 | AWS CloudWatch コンソール → Log groups → `/aws/lambda/fsxn-datadog-ems-fpolicy-ems` | `/Users/yoshiki/Projects/fsxn-observability-integrations/docs/screenshots/aws-ems-lambda-logs.png` |
+| 1 | `https://ap1.datadoghq.com/logs?query=source%3Afsxn-ems&from_ts=1778932000000&to_ts=1778980000000` | `${PROJECT_DIR}/docs/screenshots/datadog-arp-detection.png` |
+| 2 | 上記の検索結果から ARP イベントをクリックして詳細展開 | `${PROJECT_DIR}/docs/screenshots/datadog-arp-log-detail.png` |
+| 3 | `https://ap1.datadoghq.com/logs?query=source%3Afsxn-fpolicy&from_ts=1778932000000&to_ts=1778980000000` | `${PROJECT_DIR}/docs/screenshots/datadog-fpolicy-suspect-activity.png` |
+| 4 | AWS CloudWatch コンソール → Log groups → `/aws/lambda/fsxn-datadog-ems-fpolicy-ems` | `${PROJECT_DIR}/docs/screenshots/aws-ems-lambda-logs.png` |
 
 ### Playwright MCP コマンド例
 

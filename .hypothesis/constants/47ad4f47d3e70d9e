@@ -1,4 +1,0 @@
-# file: /Users/yoshiki/Projects/fsxn-observability-integrations/scripts/verification/bilingual_comparator.py
-# hypothesis_version: 6.141.1
-
-['...', '/ja/', '`[^`]+`', 'code_block', 'code_blocks', 'fail', 'file', 'file exists', 'heading', 'headings', 'pass', 'replace', 'table', 'tables', 'utf-8', 'valid UTF-8 encoding']
