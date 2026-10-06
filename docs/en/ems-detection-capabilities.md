@@ -86,7 +86,7 @@ EventBridge Scheduler (5 min) → Lambda
 - Entropy changes (file content becoming random → encryption indicator)
 - Mass file extension changes (20+ files with unusual new extensions)
 - Abnormal IOPS surge with encrypted data characteristics
-- Learning period: 30 days (dry-run mode, establishes baseline)
+- Learning period: depends on the ARP generation. Older-generation ARP on a NAS FlexVol (9.10.1-9.15.1) spends 30 days in learning mode to establish a baseline; ARP/AI (FlexVol from 9.16.1, FlexGroup from 9.18.1) has none. See the [ARP generation table in the Adoption Playbook](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md) (Japanese)
 
 **Automatic actions on `arw.volume.state` alert:**
 1. ONTAP creates `Anti_ransomware_backup` snapshot automatically

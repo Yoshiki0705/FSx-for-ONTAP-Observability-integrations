@@ -88,7 +88,7 @@ EventBridge Scheduler (5 分) → Lambda
 - エントロピー変化（ファイル内容がランダム化 → 暗号化の指標）
 - 大量のファイル拡張子変更（20 以上のファイルで異常な新拡張子）
 - 暗号化データ特性を伴う異常な IOPS 急増
-- 学習期間: 30 日間（ドライランモード、ベースラインを構築）
+- 学習期間: ARP の世代で異なります。旧世代 ARP の NAS FlexVol（9.10.1〜9.15.1）では 30 日間の学習モードでベースラインを構築します。ARP/AI（FlexVol は 9.16.1 以降、FlexGroup は 9.18.1 以降）には学習期間がありません。[Adoption Playbook の ARP の世代の表](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md)を参照
 
 **`arw.volume.state` alert 時の自動アクション:**
 1. ONTAP が `Anti_ransomware_backup` スナップショットを自動作成

@@ -94,25 +94,44 @@ def benchmark_get_object(keys: list[str], iterations: int = 5) -> dict:
 
 ## 参考結果
 
-> **未確認の推定値** — 下表は上記テスト環境を想定したサイジングの桁感であり、再現可能な測定記録（生データ・実行ログ）はこのリポジトリに未収録です。上記「測定方法」のベンチマーク Lambda テンプレートも未提供のため、記載の手順でこの数値を再現した記録はありません。サービス上限でも保証値でもなく、実測値として扱わないでください。実環境での再測定は Issue で追跡します。
+> **この節の出所** — ListObjectsV2 と GetObject の値は、姉妹リポジトリが記録した実測値の転記です。このリポジトリ自身の測定ではありません。「実効処理レート」は未確認の推定値のままで、再現可能な測定記録（生データ・実行ログ）はこのリポジトリに未収録です。上記「測定方法」のベンチマーク Lambda テンプレートも未提供です。いずれもサービス上限でも保証値でもありません。
+
+### 測定環境の差
+
+転記した 2 つの実測は、上記「テスト環境」と次の点で条件が違います。
+
+| 項目 | 上記「テスト環境」 | 転記した実測 |
+|---|---|---|
+| FSx for ONTAP のスループットキャパシティ | 512 MBps | 128 MBps（Single-AZ） |
+| クライアント | VPC 外の Lambda（256 MB） | ローカルのワークステーションからインターネット経由 |
+| S3 Access Points の NetworkOrigin | Internet | Internet |
+
+512 MBps・VPC 外の Lambda の条件での測定は未確認です（[#98](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/98) で追跡）。転記元の S3 Access Points のベンチマークは、インターネット経由ではクライアント側の帯域が律速になり、512 MBps の効果が見えなかったと記録しています。
 
 ### ListObjectsV2（100 キー）
 
 | メトリクス | 値 |
 |--------|-------|
-| p50 レイテンシ | ~80-150 ms |
-| p99 レイテンシ | ~200-400 ms |
-| リクエストあたりキー数 | 100（MaxKeys） |
+| 中央値レイテンシ | 52.0 ms（最小 49.2 ms、最大 62.1 ms） |
+| p99 レイテンシ | 未確認（5 試行のため算出していない） |
+| リクエストあたりキー数 | 100（1 回の呼び出し） |
+
+出典: [BENCH-S3AP-LIST-001](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml)（2026-08-05、ap-northeast-1、SINGLE_AZ_1、128 MBps、インターネット経由、5 試行、1 つのプレフィックスにすべてのオブジェクトを置いた配置）。
 
 ### GetObject（サイズ別）
 
-| オブジェクトサイズ | p50 レイテンシ | p99 レイテンシ | スループット |
+| オブジェクトサイズ | P50 レイテンシ | 最大レイテンシ | 平均スループット |
 |-------------|-------------|-------------|-----------|
-| ~5 KB（small） | ~50-100 ms | ~150-300 ms | ~0.05 MB/s |
-| ~200 KB（medium） | ~80-150 ms | ~200-400 ms | ~1.5 MB/s |
-| ~2 MB（large） | ~200-500 ms | ~500-1000 ms | ~5 MB/s |
+| 1 KB | 30.5 ms | 117.1 ms | 0.03 MB/s |
+| 100 KB | 34.1 ms | 59.2 ms | 2.7 MB/s |
+| 1 MB | 48.5 ms | 83.7 ms | 18.1 MB/s |
+| 5 MB | 111.0 ms | 172.3 ms | 41.8 MB/s |
+
+出典: [S3 Access Points のベンチマーク結果](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/docs/s3ap-benchmark-results.md)の GetObject の表（2026-05-22、ap-northeast-1、Single-AZ（First-generation）、128 MBps、macOS + boto3 1.34.x、インターネット経由、同時実行数 1、5〜10 回反復）。上の監査ログのサイズ区分（約 5 KB・約 200 KB・約 2 MB）そのものは測定していません。p99 は上記の条件では未確認です。
 
 ### 実効処理レート
+
+> **未確認の推定値** — 下表はサイジングの桁感で、測定記録はありません。
 
 監査ログポーラー Lambda（256 MB、VPC 外）の場合:
 

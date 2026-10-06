@@ -241,7 +241,7 @@ aws cloudformation deploy \
 - **Name-mapping REST API** — ONTAP 9.6+ から利用可能
 - **Export-policy REST API** — ONTAP 9.6+ から利用可能
 - **CIFS sessions REST API** — ONTAP 9.8+ から利用可能
-- **ARP (Autonomous Ransomware Protection)** — ONTAP 9.10.1+（学習モード）、9.13.1+（ARP/AI）
+- **ARP (Autonomous Ransomware Protection)** — 世代は ONTAP の版とボリューム種別の 2 軸で決まります。旧世代 ARP は FlexVol の 9.10.1〜9.15.1 と FlexGroup の 9.13.1〜9.17.1 で、NAS FlexVol では 30 日の学習期間があります。ARP/AI は FlexVol の 9.16.1 以降と FlexGroup の 9.18.1 以降で、学習期間はありません。[Adoption Playbook の ARP の世代の表](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md)を参照
 
 ### ONTAP 権限
 
@@ -549,11 +549,11 @@ ARP は 2 つの重大度レベルでイベントを発火します。**`alert`�
 | ARP 重大度 | 信頼度 | 推奨アクション | 根拠 |
 |-----------|--------|-------------|------|
 | `alert` | 高（ファイル改ざん + 暗号化確認済み） | ✅ 自動封じ込め (`contain_smb_threat`) | 高信頼度、被害進行中 |
-| `warning` | 中（疑わしいが未確認） | ⚠️ 通知のみ（自動ブロック禁止） | 学習期間中の誤検知の可能性 |
+| `warning` | 中（疑わしいが未確認） | ⚠️ 通知のみ（自動ブロック禁止） | 誤検知の可能性（旧世代 ARP の学習期間中は特に多い） |
 
 > **ARP 学習期間**
 >
-> ARP は行動ベースラインの構築に 30 日を要します。この期間中、`warning` イベントは頻発し多くは良性です（大量ファイル変換、バックアップソフトウェア）。学習期間中に `warning` で自動ブロックすると正当なユーザーを妨害します。
+> 学習期間があるのは旧世代 ARP だけです。NAS FlexVol では行動ベースラインの構築に 30 日を要します。ARP/AI（FlexVol は 9.16.1 以降、FlexGroup は 9.18.1 以降）には学習期間がなく、有効化した直後から保護します（上記「前提条件」を参照）。学習期間中は `warning` イベントが頻発し、多くは良性です（大量ファイル変換、バックアップソフトウェア）。`warning` で自動ブロックすると正当なユーザーを妨害します。
 
 **検知ルール設定例（任意の SIEM）**:
 ```
