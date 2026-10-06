@@ -92,25 +92,44 @@ def benchmark_get_object(keys: list[str], iterations: int = 5) -> dict:
 
 ## Reference Results
 
-> **Unverified estimate** — the tables below are order-of-magnitude sizing figures for the test environment above; no reproducible measurement record (raw data or run logs) is committed to this repository. The benchmark Lambda in the methodology above is also not provided, so there is no record of these numbers being reproduced with the stated procedure. Not a service limit or guarantee, and not to be treated as a measured result. Re-measurement in a real environment is tracked in an issue.
+> **Where these numbers come from** — the ListObjectsV2 and GetObject values are transcribed from measurements recorded in sibling repositories. They were not measured in this repository. "Effective Processing Rate" remains an unverified estimate; no reproducible measurement record (raw data or run logs) is committed to this repository, and the benchmark Lambda in the methodology above is not provided. None of these is a service limit or guarantee.
+
+### Environment Differences
+
+The two transcribed measurements differ from the test environment above as follows.
+
+| Item | Test environment above | Transcribed measurements |
+|---|---|---|
+| FSx for ONTAP throughput capacity | 512 MBps | 128 MBps (Single-AZ) |
+| Client | Lambda outside a VPC (256 MB) | Local workstation over the internet |
+| S3 Access Points NetworkOrigin | Internet | Internet |
+
+A measurement at 512 MBps from a Lambda outside a VPC has not been confirmed (tracked in [#98](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/98)). The source S3 Access Points benchmark records that over the internet, client-side bandwidth became the limit and the effect of 512 MBps was not visible.
 
 ### ListObjectsV2 (100 keys)
 
 | Metric | Value |
 |--------|-------|
-| p50 latency | ~80-150 ms |
-| p99 latency | ~200-400 ms |
-| Keys per request | 100 (MaxKeys) |
+| Median latency | 52.0 ms (min 49.2 ms, max 62.1 ms) |
+| p99 latency | Unverified (not computed from 5 trials) |
+| Keys per request | 100 (one call) |
+
+Source: [BENCH-S3AP-LIST-001](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations/blob/main/verification-pack/s3ap-list-latency/evidence/2026-08-05/benchmark-result.yaml) (2026-08-05, ap-northeast-1, SINGLE_AZ_1, 128 MBps, over the internet, 5 trials, all objects under one prefix).
 
 ### GetObject by Size
 
-| Object Size | p50 Latency | p99 Latency | Throughput |
+| Object Size | P50 Latency | Max Latency | Mean Throughput |
 |-------------|-------------|-------------|-----------|
-| ~5 KB (small) | ~50-100 ms | ~150-300 ms | ~0.05 MB/s |
-| ~200 KB (medium) | ~80-150 ms | ~200-400 ms | ~1.5 MB/s |
-| ~2 MB (large) | ~200-500 ms | ~500-1000 ms | ~5 MB/s |
+| 1 KB | 30.5 ms | 117.1 ms | 0.03 MB/s |
+| 100 KB | 34.1 ms | 59.2 ms | 2.7 MB/s |
+| 1 MB | 48.5 ms | 83.7 ms | 18.1 MB/s |
+| 5 MB | 111.0 ms | 172.3 ms | 41.8 MB/s |
+
+Source: the GetObject table in [S3 Access Points benchmark results](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/docs/s3ap-benchmark-results.en.md) (2026-05-22, ap-northeast-1, Single-AZ (First-generation), 128 MBps, macOS + boto3 1.34.x, over the internet, concurrency 1, 5-10 repetitions). The audit-log size classes above (about 5 KB, 200 KB, and 2 MB) were not measured as such. p99 is unverified under these conditions.
 
 ### Effective Processing Rate
+
+> **Unverified estimate** — the table below is an order-of-magnitude sizing figure with no measurement record.
 
 For the audit log poller Lambda (256 MB, outside VPC):
 

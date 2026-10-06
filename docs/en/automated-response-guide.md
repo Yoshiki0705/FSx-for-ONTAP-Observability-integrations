@@ -223,7 +223,7 @@ Dedicated storage security products (such as DII Storage Workload Security) prov
 - **Name-mapping REST API**: Available from ONTAP 9.6+
 - **Export-policy REST API**: Available from ONTAP 9.6+
 - **CIFS sessions REST API**: Available from ONTAP 9.8+
-- **ARP (Autonomous Ransomware Protection)**: ONTAP 9.10.1+ (learning mode), 9.13.1+ (ARP/AI)
+- **ARP (Autonomous Ransomware Protection)**: the generation depends on both ONTAP version and volume type. Older-generation ARP runs on FlexVol 9.10.1-9.15.1 and FlexGroup 9.13.1-9.17.1, with a 30-day learning period on a NAS FlexVol. ARP/AI runs on FlexVol from 9.16.1 and FlexGroup from 9.18.1, with no learning period. See the [ARP generation table in the Adoption Playbook](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md) (Japanese)
 
 ### ONTAP Permissions
 
@@ -524,9 +524,9 @@ ARP emits events at two severity levels. **Only auto-block on `alert` (high conf
 | ARP Severity | Confidence | Recommended Action | Rationale |
 |-------------|-----------|-------------------|-----------|
 | `alert` | High (file tampering + encryption confirmed) | ✅ Auto-contain (`contain_smb_threat`) | High confidence, damage in progress |
-| `warning` | Moderate (suspicious but unconfirmed) | ⚠️ Notify only (do NOT auto-block) | May be false positive during learning period |
+| `warning` | Moderate (suspicious but unconfirmed) | ⚠️ Notify only (do NOT auto-block) | May be false positive, especially during an older-generation ARP learning period |
 
-> **ARP Learning Period**: ARP requires 30 days to establish a behavioral baseline. During this period, `warning` events are common and often benign (bulk file conversions, backup software). Auto-blocking on `warning` during learning will disrupt legitimate users.
+> **ARP Learning Period**: only older-generation ARP has one. On a NAS FlexVol it spends 30 days establishing a behavioral baseline; ARP/AI (FlexVol from 9.16.1, FlexGroup from 9.18.1) has no learning period and protects from the moment it is enabled (see the Prerequisites section above). During a learning period, `warning` events are common and often benign (bulk file conversions, backup software). Auto-blocking on `warning` will disrupt legitimate users.
 
 **Detection rule configuration example (any SIEM)**:
 ```
