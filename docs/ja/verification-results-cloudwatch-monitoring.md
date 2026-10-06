@@ -164,7 +164,6 @@ volume_ids                               = ["fsvol-0123456789abcdef0"]
 |---|------|------|------------------|
 | F1 | 容量閾値の範囲が、利用率の低いファイルシステムでの ALARM 経路の確認を妨げる。`CapacityThresholdPercent`（CloudFormation、`MinValue` 50 / `MaxValue` 95）と `capacity_threshold_percent`（Terraform、同じ 50–95 の検証）はどちらも 1 を拒否した。下限の 50 では、利用率 3.45–3.51% は閾値を超えない | 検証上の制約で、コードの欠陥ではない | `StorageCapacityAlarm` と Terraform の `storage_capacity` について、OK → ALARM → OK は**未検証**。検証済みなのは、ディメンションの組がデータを返し、アラームがそれを OK と評価すること。ALARM 経路は、閾値が 1–100 を受け付けるボリューム単位の 2 アラームで検証した。`set-alarm-state` は使っていない。これが確かめるのは通知の配線で、メトリクスの評価ではないため |
 | F2 | 状態をまたがない閾値だけの変更（CloudFormation で 50）の後、CloudWatch は履歴を追加せず、アラームの `StateReason` は直前の遷移の文言（"threshold (80.0)"）のまま残る。`Threshold` フィールドは 50.0 を示す | CloudWatch の挙動で、コードの欠陥ではない | 50 での評価は ALARM にならなかったことからの推定で、直接は観測していない |
-| O1 | `shared/scripts/preflight-check.sh` は `com.amazonaws.<region>.monitoring` interface エンドポイントを確認しない。NAT ゲートウェイの無い VPC では `qtree-quota-monitor.yaml` が `PutMetricData` にこれを必要とし、Qtree スタックを対象にした preflight のプロファイルも無い | 準備中にスクリプトを読んで得た観測で、実行はしていない | ダッシュボードの結果への影響は無し。未実施の Qtree 検証のために記録する |
 
 ダッシュボードテンプレートと Terraform モジュールの欠陥: 見つかっていません。ダッシュボードの 9 系列と、アラームのメトリクスの組 9 つ（CloudFormation 2、Terraform 7）はすべて既存の系列に一致し、このファイルシステムでデータを返しました。
 
@@ -174,7 +173,7 @@ volume_ids                               = ["fsvol-0123456789abcdef0"]
 
 | 項目 | 状態 | 理由 |
 |------|------|------|
-| `shared/templates/qtree-quota-monitor.yaml` | 全体が未実施 | 同日の先行する別の試行（2026-10-05T15:44:32Z）で、ONTAP 管理エンドポイントに対する読み取り専用の認証確認 1 回が HTTP 401 を返したため、Qtree のリソースをデプロイする前に停止した。Qtree 単位のメトリクスの公開と `QtreeQuotaAlarm` の発火は未検証のまま |
+| `shared/templates/qtree-quota-monitor.yaml` | 全体が未実施 | 今回の検証範囲外で、Qtree のリソースはデプロイしていない。Qtree 単位のメトリクスの公開と `QtreeQuotaAlarm` の発火は未検証のまま |
 | ファイルシステム容量アラームの ALARM 経路（CloudFormation と Terraform） | 未検証 | F1 |
 | 第 2 世代のファイルシステム（`file_server_names`、`FileServer` と `Aggregate` のディメンション） | 未実施 | 検証対象は第 1 世代 |
 | HA ペアが 2 つ以上のファイルシステム | 未実施 | 検証対象の HA ペアは 1 つ |

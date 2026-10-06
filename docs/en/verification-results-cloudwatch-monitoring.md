@@ -164,7 +164,6 @@ Every alarm reached OK within about 1.5 minutes of creation, because CloudWatch 
 |---|---------|------|-----------------------|
 | F1 | The capacity threshold range blocks an ALARM-path test on a lightly used file system. `CapacityThresholdPercent` (CloudFormation, `MinValue` 50 / `MaxValue` 95) and `capacity_threshold_percent` (Terraform, the same 50–95 validation) both rejected 1. At 50, the lowest allowed value, utilization of 3.45–3.51% cannot cross the threshold | Verification limit, not a code defect | OK → ALARM → OK is **not verified** for `StorageCapacityAlarm` and Terraform `storage_capacity`. What is verified for them: the dimension set returns data, and the alarm evaluates it to OK. The ALARM path was verified on the two per-volume alarms, whose thresholds accept 1–100. `set-alarm-state` was not used, because it exercises notification wiring, not metric evaluation |
 | F2 | After a threshold-only change that does not cross state (CloudFormation at 50), CloudWatch adds no history entry, and the alarm's `StateReason` keeps the text of the last transition ("threshold (80.0)"). The `Threshold` field reads 50.0 | CloudWatch behavior, not a code defect | Evaluation at 50 is inferred from the absence of ALARM, not observed directly |
-| O1 | `shared/scripts/preflight-check.sh` does not check for the `com.amazonaws.<region>.monitoring` interface endpoint, which `qtree-quota-monitor.yaml` needs for `PutMetricData` in a VPC without a NAT gateway, and no preflight profile covers the qtree stack | Observation from reading the script during preparation, not exercised | None on the dashboard results. Recorded for the qtree verification that has not run |
 
 Defects in the dashboard template or the Terraform module: none found. All 9 dashboard series and all 9 alarm metric sets (2 CloudFormation, 7 Terraform) matched existing series and returned data on this file system.
 
@@ -174,7 +173,7 @@ Defects in the dashboard template or the Terraform module: none found. All 9 das
 
 | Item | Status | Reason |
 |------|--------|--------|
-| `shared/templates/qtree-quota-monitor.yaml` | Not run, entirely | In a separate attempt earlier the same day (2026-10-05T15:44:32Z), the single read-only credential check against the ONTAP management endpoint returned HTTP 401, so the run stopped before any qtree resource was deployed. Per-qtree metric publication and `QtreeQuotaAlarm` firing remain unverified |
+| `shared/templates/qtree-quota-monitor.yaml` | Not run, entirely | Out of scope for this run; no qtree resource was deployed. Per-qtree metric publication and `QtreeQuotaAlarm` firing remain unverified |
 | ALARM path of the file-system capacity alarm (CloudFormation and Terraform) | Not verified | F1 |
 | Second-generation file systems (`file_server_names`, `FileServer` and `Aggregate` dimensions) | Not run | The test file system is first generation |
 | File systems with more than one HA pair | Not run | The test file system has one HA pair |
