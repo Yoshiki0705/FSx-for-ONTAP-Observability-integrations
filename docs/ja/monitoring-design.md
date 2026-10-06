@@ -2,7 +2,7 @@
 
 🌐 **日本語**（本ページ）| [English](../en/monitoring-design.md)
 
-> **ステータス / 対象読者 / 証拠の階層**: ステータス — active（実装側インデックス。経路選択はハブにあります）。対象読者 — CloudWatch 収集経路を既に選び、CloudWatch ネイティブの構成要素を構築するエンジニア。本ページで用いる証拠の階層: `文書化済み`（引用した AWS または NetApp のソースに記載）、`コード確認済み`（本リポジトリのテンプレートを読んだもので、実行はしていない）、`未確認`（本ブランチに日付付きの実行記録が無い）。以下の各主張は階層をインラインで併記します。Qtree メトリクスの公開、出荷されている Qtree 閾値アラーム、Terraform の方針は、未検証として読むべき部分です。`検証済み`（実行し、日付付きの記録がある）は、ログアラームの E2E 実行のようにその記録が存在する箇所にだけ使います。
+> **ステータス / 対象読者 / 証拠の階層**: ステータス — active（実装側インデックス。経路選択はハブにあります）。対象読者 — CloudWatch 収集経路を既に選び、CloudWatch ネイティブの構成要素を構築するエンジニア。本ページで用いる証拠の階層: `文書化済み`（引用した AWS または NetApp のソースに記載）、`コード確認済み`（本リポジトリのテンプレートを読んだもので、実行はしていない）、`未確認`（本ブランチに日付付きの実行記録が無い）。以下の各主張は階層をインラインで併記します。Qtree メトリクスの公開、出荷されている Qtree 閾値アラーム、T1 より後の Terraform のフェーズは、未検証として読むべき部分です。`検証済み`（実行し、日付付きの記録がある）は、その記録が存在する箇所にだけ使います。ログアラームの E2E 実行と、第 1 世代・HA ペア 1 つのファイルシステムでダッシュボードテンプレートと Terraform T1 モジュールを実行した 2026-10-05 の記録（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）です。
 
 ## エグゼクティブサマリ
 
@@ -64,7 +64,9 @@ CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量の
 
 > **レイテンシに関する補足**: AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` を対応する operation count で割ると期間平均レイテンシを算出できます（期間内で合計されるため p99 ではなく平均）。本テンプレートは現時点でそのウィジェットを描画しません。テールレイテンシが必要な場合は、これらの集約メトリクスのペアではなくリクエスト単位のテレメトリから取得してください。
 
-> **容量ディメンションに関する補足**: AWS はファイルシステムレベルの `StorageCapacityUtilization` を `FileSystemId` + `StorageTier` + `DataType` でのみ文書化しており、第 2 世代のファイルシステムでは任意で `Aggregate` が加わります（[file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[so-file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、2026-10-05 取得）。このテンプレートの以前の版は `FileSystemId` だけを指定していました。これは AWS がこのメトリクスに文書化していない組なので、容量アラームとウィジェットがどの系列にも一致せず、アラームが発報しない可能性がありました。現在のアラームとウィジェットは `FileSystemId` + `StorageTier=SSD` + `DataType=All` を指定しており、Terraform モジュールと同じ組です（確信度: `コード確認済み`、`shared/python/tests/test_monitoring_dashboard_dimensions.py` による単体テスト済み。実環境でのアラーム発報は `未確認`）。第 2 世代の複数 HA ペアのファイルシステムで `Aggregate` なしの系列が出力されるかは `未確認` です。AWS のページは、このメトリクスがアグリゲートごとに出力されると説明しています。
+> **容量ディメンションに関する補足**: AWS はファイルシステムレベルの `StorageCapacityUtilization` を `FileSystemId` + `StorageTier` + `DataType` でのみ文書化しており、第 2 世代のファイルシステムでは任意で `Aggregate` が加わります（[file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[so-file-system-metrics.html](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、2026-10-05 取得）。このテンプレートの以前の版は `FileSystemId` だけを指定していました。これは AWS がこのメトリクスに文書化していない組なので、容量アラームとウィジェットがどの系列にも一致せず、アラームが発報しない可能性がありました。現在のアラームとウィジェットは `FileSystemId` + `StorageTier=SSD` + `DataType=All` を指定しており、Terraform モジュールと同じ組です（確信度: `コード確認済み`、`shared/python/tests/test_monitoring_dashboard_dimensions.py` による単体テスト済み）。HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムでは、この系列がデータを返し、アラームは INSUFFICIENT_DATA を抜けて OK に達しました（確信度: `検証済み`、2026-10-05、[記録](verification-results-cloudwatch-monitoring.md)）。このアラームの OK → ALARM の遷移は引き続き `未確認` です。`CapacityThresholdPercent` の下限は 50 で、ファイルシステムの利用率は約 3.5% だったため、アラームを発報させられませんでした（記録の所見 F1）。第 2 世代の複数 HA ペアのファイルシステムで `Aggregate` なしの系列が出力されるかは `未確認` です。AWS のページは、このメトリクスがアグリゲートごとに出力されると説明しています。
+
+> **実環境での検証に関する補足**: 2026-10-05 に、このテンプレートを `ap-northeast-1` で、HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに対してデプロイしました。スタックはダッシュボードと両アラームを作成し、ダッシュボードのウィジェットの背後にある 9 つのメトリクス系列はすべて 3 時間の窓でデータポイントを返し、`StorageCapacityAlarm` と `ThroughputUtilizationAlarm` はそれぞれ約 1 分以内に INSUFFICIENT_DATA を抜けて OK に達しました（確信度: `検証済み`、[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）。その実行が扱っていないのは、容量アラームの ALARM への遷移（F1）、SNS の配信（`NotificationEmail` は未指定）、第 2 世代と複数 HA ペアのファイルシステム、負荷時の挙動です。ファイルシステムはアイドル状態だったため、この実行が示すのは系列が存在して評価されることで、負荷時の挙動ではありません。
 
 > **コストに関する補足**: [CloudWatch 料金ページ](https://aws.amazon.com/cloudwatch/pricing/) を 2026-10-04 に us-east-1 で確認した時点で、CloudWatch ダッシュボードは無料枠を超えると 1 つあたり月額 $3、標準解像度のメトリクスアラームは 1 つあたり月額 約 $0.10 です（本スタックはそのアラームを 2 つ作成します）。価格は時期とリージョンで変動するため、最新のページで確認してください。SNS トピックは `NotificationEmail` を設定したときのみ作成されます。
 
@@ -140,7 +142,7 @@ Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内する�
 
 ### 現状（正直なギャップ）
 
-本リポジトリにある Terraform モジュールは 1 つで、ダッシュボードテンプレートの T1 同等物 `terraform/fsxn-monitoring-dashboard/` です。通過したのはオフラインの検査だけで、どのアカウントにも適用していません。出荷済みの AWS ネイティブ経路は CloudFormation のままで、Qtree とログアラームのテンプレートにはまだ Terraform 同等物がありません。正直なギャップは外部側に残ります。ターンキーな公開監視モジュールは見つかっていません（後述）。構成要素は次のとおりで、いずれもドキュメントページで実在を確認したものです（確信度: `文書化済み`。ここでは実行していません）。
+本リポジトリにある Terraform モジュールは 1 つで、ダッシュボードテンプレートの T1 同等物 `terraform/fsxn-monitoring-dashboard/` です。オフラインの検査を通過しており、2026-10-05 に HA ペア 1 つの第 1 世代ファイルシステムへ 1 回適用しました（[方針とスケルトン](#方針とスケルトン)を参照）。出荷済みの AWS ネイティブ経路は CloudFormation のままで、Qtree とログアラームのテンプレートにはまだ Terraform 同等物がありません。正直なギャップは外部側に残ります。ターンキーな公開監視モジュールは見つかっていません（後述）。構成要素は次のとおりで、いずれもドキュメントページで実在を確認したものです（確信度: `文書化済み`。ここでは実行していません）。
 
 - ファイルシステム用の AWS プロバイダーリソース [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system)。CloudWatch は汎用の [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) と [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) リソースから組み立てます。
 - ONTAP 側設定用の NetApp 公式 ONTAP Terraform プロバイダー [terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap)。
@@ -168,9 +170,9 @@ terraform/
 
 variables はダッシュボードテンプレートのパラメータに対応し（`FileSystemId` → `file_system_id`、`FileSystemName` → `file_system_name`、`CapacityThresholdPercent` → `capacity_threshold_percent`、`NotificationEmail` → `notification_email`）、resources は `aws_cloudwatch_dashboard`・`aws_cloudwatch_metric_alarm`・`aws_sns_topic`・`aws_sns_topic_subscription` です。
 
-**このモジュールはオフラインで検証済みで、実環境では検証していません。** `make terraform` は `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、そしてモックプロバイダーと `command = plan` による `terraform test` を、ローカルと CI ジョブ `terraform` で実行します。実アカウントに対する plan も apply も行っていません（実環境での挙動の確信度: `未確認`）。下記フェーズ表の T1 の実環境完了条件は未達のままです。この方針は [ROADMAP.md](../../ROADMAP.md) の Phase 4「Terraform module equivalents」項目と、[CONTRIBUTING.md](../../CONTRIBUTING.md) の「Terraform equivalents of CloudFormation templates」優先項目として追跡しています。
+**このモジュールはオフラインで検証済みで、第 1 世代・HA ペア 1 つのファイルシステムでは実環境でも検証済みです。** `make terraform` は `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、そしてモックプロバイダーと `command = plan` による `terraform test` を、ローカルと CI ジョブ `terraform` で実行します。2026-10-05 に、オプトインのファイルサーバーアラーム 3 つを有効にし（`file_server_names` は空）、`volume_ids` に 1 つを指定して、`ap-northeast-1` で plan と apply を実行しました。ダッシュボードとアラーム 7 つが作成され、すべてのアラームが INSUFFICIENT_DATA を抜けて OK に達し、ボリューム単位の容量アラームと inode アラームは ALARM に遷移させてから OK に戻りました（確信度: `検証済み`、[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）。下記フェーズ表の T1 の実環境完了条件は、このファイルシステムの形については達成しています。引き続き `未確認` なのは、ファイルシステム容量アラームの ALARM への遷移（閾値の範囲 50–95 が観測した利用率 3.5% を上回る）、SNS の配信、`file_server_names` を指定した第 2 世代のファイルシステム、複数 HA ペアのファイルシステムです。この方針は [ROADMAP.md](../../ROADMAP.md) の Phase 4「Terraform module equivalents」項目と、[CONTRIBUTING.md](../../CONTRIBUTING.md) の「Terraform equivalents of CloudFormation templates」優先項目として追跡しています。
 
-> **IaC に関する補足**: T1 モジュールはオフライン検査を通過した動作するコードなので plan も apply もできますが、実ファイルシステムに対してアラームが INSUFFICIENT_DATA を抜けることはまだ誰も確認していません。まず本番以外のアカウントで `terraform plan` を実行してください。扱うのは最初のフェーズだけで、Qtree とログアラームの同等物は下記のフェーズで扱います。
+> **IaC に関する補足**: T1 モジュールは第 1 世代・HA ペア 1 つのファイルシステムに 1 回適用され、そこではすべてのアラームが INSUFFICIENT_DATA を抜けました。これはアイドル状態のファイルシステムでの 1 回のサンプル実行で、本番での見積りではありません。形の異なるファイルシステム、特に第 2 世代や複数 HA ペアでは、まず本番以外のアカウントで `terraform plan` を実行してください。扱うのは最初のフェーズだけで、Qtree とログアラームの同等物は下記のフェーズで扱います。
 
 ### T1 モジュールの使い方と範囲
 
@@ -216,11 +218,11 @@ module "fsx_ontap_monitoring" {
 
 ### Terraform 実装のフェーズ
 
-Terraform の作業は、CloudWatch テンプレート 1 つにつき 1 フェーズ、計 3 フェーズに分けます。各フェーズには静的な検証手順と、実環境を必要とする完了条件があります。T1 は実装済みでオフライン検証済みですが、実環境の完了条件は未達です。T2 と T3 は未着手です。ここに `検証済み` のものはありません。タスク一覧は [ROADMAP.md](../../ROADMAP.md)（Phase 4）と [CONTRIBUTING.md](../../CONTRIBUTING.md) に置き、本節は順序と完了条件だけを示します。
+Terraform の作業は、CloudWatch テンプレート 1 つにつき 1 フェーズ、計 3 フェーズに分けます。各フェーズには静的な検証手順と、実環境を必要とする完了条件があります。T1 は実装済み・オフライン検証済みで、2026-10-05 に第 1 世代・HA ペア 1 つのファイルシステムで実環境の完了条件を達成しました（確信度: `検証済み`、[記録](verification-results-cloudwatch-monitoring.md)）。T2 と T3 は未着手で、`検証済み` ではありません。タスク一覧は [ROADMAP.md](../../ROADMAP.md)（Phase 4）と [CONTRIBUTING.md](../../CONTRIBUTING.md) に置き、本節は順序と完了条件だけを示します。
 
 | フェーズ | 範囲 | 検証 | 完了条件 |
 |---|---|---|---|
-| T1 — ダッシュボード + アラーム | `fsxn-monitoring-dashboard.yaml`（ダッシュボード、`StorageCapacityAlarm`、`ThroughputUtilizationAlarm`、任意の SNS）を移植し、のんピの CDK アラーム集合をパターン参照として追加する。`aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` を使う | 完了: モックプロバイダーによるオフラインの `terraform fmt`/`validate`/`test`（`make terraform`、CI ジョブ `terraform`）。未完了: FSx for ONTAP ファイルシステムがあるアカウントに対する `terraform plan` | `terraform apply` でダッシュボードとすべてのアラームが作成され、実ファイルシステムに対して各アラームが INSUFFICIENT_DATA を抜けて OK に達する |
+| T1 — ダッシュボード + アラーム | `fsxn-monitoring-dashboard.yaml`（ダッシュボード、`StorageCapacityAlarm`、`ThroughputUtilizationAlarm`、任意の SNS）を移植し、のんピの CDK アラーム集合をパターン参照として追加する。`aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` を使う | 完了: モックプロバイダーによるオフラインの `terraform fmt`/`validate`/`test`（`make terraform`、CI ジョブ `terraform`）。2026-10-05 完了: 第 1 世代の FSx for ONTAP ファイルシステムがあるアカウントに対する `terraform plan` と `apply`（[記録](verification-results-cloudwatch-monitoring.md)） | `terraform apply` でダッシュボードとすべてのアラームが作成され、実ファイルシステムに対して各アラームが INSUFFICIENT_DATA を抜けて OK に達する。2026-10-05 に第 1 世代・HA ペア 1 つのファイルシステムで達成（ダッシュボード、テンプレート同等のアラーム 2、ファイルサーバーアラーム 3、ボリューム単位のアラーム 2）。未達: 第 2 世代と複数 HA ペアのファイルシステム |
 | T2 — Qtree ポーリング | `qtree-quota-monitor.yaml` を移植する: VPC 内の Lambda、ONTAP 認証情報の Secrets Manager、`cloudwatch:PutMetricData` への経路（NAT ゲートウェイまたは `com.amazonaws.<region>.monitoring` interface エンドポイント）、EventBridge スケジュール、DLQ。50 ページのページングとその `QtreeQuotaReportTruncated` シグナル、`QtreeQuotaUsedPercentMax` に対する `QtreeQuotaAlarm` を引き継ぐ | `terraform validate` と `terraform plan`。CloudFormation テンプレートは `make cfn-lint` と `make cfn-guard`（`Makefile` の `CFN_TEMPLATES`）で検査され、インラインの Lambda ハンドラは `shared/python/tests/test_qtree_quota_monitor.py` でモック化した ONTAP 応答に対して単体テストされている。移植でも同等のテストを維持する | 実 SVM から、Qtree 単位の `FSxONTAP/Qtree` 系列（3 つのメトリクス名すべて、完全な `SvmName`/`VolumeName`/`QtreeName` 識別子）と `QtreeQuotaUsedPercentMax` が CloudWatch で観測され、`QtreeQuotaAlarm` が実データで状態遷移する |
 | T3 — ログアラームの同等物 | `cloudwatch-log-alarm.yaml` の同等物。前提条件付き: ログアラームに対する AWS プロバイダーの対応を確認してから着手するか、文書化されたメトリクスフィルター方式を使う | `terraform validate` と `terraform plan` | CloudWatch Logs 上の実際の管理監査ログに対し、アラームが評価され（INSUFFICIENT_DATA → OK）、一致するイベントで ALARM に達する |
 
@@ -249,7 +251,7 @@ A: いいえ。経路選択（CloudWatch か Harvest + Prometheus か SaaS か O
 A: このダッシュボードからは取れません。レイテンシウィジェットを描画していないためです（確信度: `コード確認済み`）。AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` をそれぞれの operation count で割れば期間平均レイテンシを算出できますが、それは p99 ではなく期間平均であり、本テンプレートはそれを計算しません。テールレイテンシにはリクエスト単位のテレメトリを使ってください。
 
 **Q: 今すぐ `terraform apply` できる Terraform モジュールはありますか?**
-A: はい。本リポジトリの T1 モジュール `terraform/fsxn-monitoring-dashboard/` です（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。検証はオフラインだけで、fmt・validate・モックプロバイダーによる `terraform test` は通過していますが、何も適用していないため実環境での `apply` は `未確認` です。本リポジトリの外では、調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp プロバイダーのリポジトリ、コミュニティのサンプル）で、ターンキーの監視モジュールは引き続き見つかっていません（確信度: 存在することは `未確認`）。Qtree とログアラームの同等物（T2、T3）は未着手です。
+A: はい。本リポジトリの T1 モジュール `terraform/fsxn-monitoring-dashboard/` です（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。オフラインの検査（fmt・validate・モックプロバイダーによる `terraform test`）は通過しており、2026-10-05 には第 1 世代・HA ペア 1 つのファイルシステムに対する `apply` でダッシュボードとアラーム 7 つが作成され、すべて OK に達しました（確信度: `検証済み`、[記録](verification-results-cloudwatch-monitoring.md)）。第 2 世代と複数 HA ペアのファイルシステムは `未確認` です。本リポジトリの外では、調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp プロバイダーのリポジトリ、コミュニティのサンプル）で、ターンキーの監視モジュールは引き続き見つかっていません（確信度: 存在することは `未確認`）。Qtree とログアラームの同等物（T2、T3）は未着手です。
 
 **Q: なぜ CloudWatch は Qtree 単位のクォータ使用量を直接表示しないのですか?**
 A: FSx for ONTAP のネイティブ CloudWatch メトリクスは `FileSystemId` ディメンションのみ（詳細メトリクスは `StorageTier`/`DataType` を追加）を持ち、Qtree 単位・ユーザー単位のディメンションはありません。Qtree 単位のクォータ使用量は、ONTAP REST API をポーリングしてカスタムメトリクスを公開することで到達します — それが `qtree-quota-monitor.yaml` の役割です。その閾値アラームは SVM 単位の `QtreeQuotaUsedPercentMax` 系列を読みます（モック化した ONTAP 応答に対する単体テスト済み。実環境でのアラーム発火は未確認。Qtree 節のアラームに関する補足を参照）。アラームが伝えるのはいずれかの Qtree が閾値を超えたことなので、どの Qtree かは Qtree 単位のメトリクスで特定してください。
