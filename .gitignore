@@ -84,3 +84,6 @@ crash.log
 crash.*.log
 *.tfvars
 *.tfvars.json
+
+# Agent run artifacts (task plans, review notes, live-verification logs that may hold real IDs)
+.agents/

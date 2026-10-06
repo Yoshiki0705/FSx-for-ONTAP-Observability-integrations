@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-08 (UTC 20:30-21:00)
 **Region**: ap-northeast-1 (Tokyo)
-**FSx for ONTAP**: fs-002ec851eba809979 (Single-AZ)
+**FSx for ONTAP**: fs-0123456789abcdef0 (Single-AZ)
 **SVM**: fsxsvm01
 
 ## Test Results
@@ -52,7 +52,7 @@
 | SNS Trigger | fsxn-automated-response-trigger |
 | SNS Notifications | fsxn-automated-response-notifications |
 | DLQ | fsxn-automated-response-dlq |
-| VPC Endpoint (Secrets Manager) | vpce-0fc6e6e8c6afe5dfa |
+| VPC Endpoint (Secrets Manager) | vpce-0123456789abcdef0 |
 | VPC Endpoint (SNS) | vpce-0dbb53fc94b47c31d |
 | SG Rule | sgr-074120573f3f40915 (Lambda to ONTAP TCP 443) |
 | EventBridge Schedule | fsxn-automated-response-ttl-cleanup-schedule (every 2 min) |
@@ -72,7 +72,7 @@
 ### VPC Endpoints (Available)
 
 ```
-$ aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=vpc-05192d06e1e91d756" \
+$ aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=vpc-0123456789abcdef1" \
     --query 'VpcEndpoints[].{Service:ServiceName,Type:VpcEndpointType,State:State}' \
     --output table
 
@@ -91,15 +91,15 @@ $ aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=vpc-05192d06e1e91
 ### FSx for ONTAP Volumes
 
 ```
-$ aws fsx describe-volumes --filters Name=file-system-id,Values=fs-002ec851eba809979 \
+$ aws fsx describe-volumes --filters Name=file-system-id,Values=fs-0123456789abcdef0 \
     --query 'Volumes[].{Name:Name,Id:VolumeId}' --output table
 
 +--------------------------------------------------+---------------------+
 |                        Id                        |        Name         |
 +--------------------------------------------------+---------------------+
-|  fsvol-0183178c8b9ec5392                         |  vol1               |
-|  fsvol-03476bedce8e1d0da                         |  fsxsvm01_root      |
-|  fsvol-0dd4e8f7e2527299e                         |  testvol01          |
+|  fsvol-0123456789abcdef1                         |  vol1               |
+|  fsvol-0123456789abcdef2                         |  fsxsvm01_root      |
+|  fsvol-0123456789abcdef3                         |  testvol01          |
 |  ...                                             |  (12 volumes total) |
 +--------------------------------------------------+---------------------+
 ```

@@ -34,8 +34,8 @@ CloudWatch Logs (/syslog/fsxn-admin-audit)
 
 | パラメータ | 確認方法 | 例 |
 |-----------|---------|-----|
-| VPC ID | FSx コンソール → ファイルシステム → Network | `vpc-0ae01826f906191af` |
-| Subnet ID | FSx と同じ AZ のサブネット | `subnet-0e36804c7fbc819a6` |
+| VPC ID | FSx コンソール → ファイルシステム → Network | `vpc-0123456789abcdef0` |
+| Subnet ID | FSx と同じ AZ のサブネット | `subnet-0123456789abcdef0` |
 | VPC CIDR | VPC コンソール → 対象 VPC | `10.0.0.0/16` |
 | FSx 管理 IP | FSx コンソール → Management endpoint | `198.51.100.72` |
 

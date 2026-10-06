@@ -117,7 +117,7 @@ Lambda の IAM ロールには以下の権限が必要:
 | 項目 | 値 |
 |------|------|
 | ファイルシステム ID | `fs-0123456789abcdef0` |
-| ボリューム ID | `fsvol-0a17e70de744e322f` |
+| ボリューム ID | `fsvol-0123456789abcdef0` |
 | ボリューム名 | `audit_logs_observability` |
 | Junction Path | `/audit_logs_observability` |
 | SVM | `svm-0abcdef123456789a` (FSxN_OnPre) | <!-- allow:naming: SVM resource name -->
