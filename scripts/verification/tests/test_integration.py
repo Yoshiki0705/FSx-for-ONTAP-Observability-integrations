@@ -255,7 +255,7 @@ class TestFullPipelineIntegration:
                 lambda_function_name="fsxn-datadog-integration-shipper",
                 datadog_site="datadoghq.com",
             ),
-            verifier=VerifierInfo(name="藤原健太", role="Cloud Engineer"),
+            verifier=VerifierInfo(name="リポジトリ管理者", role="Cloud Engineer"),
             steps=[
                 VerificationStep(
                     step_number=1,
@@ -292,7 +292,7 @@ class TestFullPipelineIntegration:
         assert "fsxn-datadog-integration" in output
         assert "fsxn-datadog-integration-shipper" in output
         assert "datadoghq.com" in output
-        assert "藤原健太" in output
+        assert "リポジトリ管理者" in output
         assert "Cloud Engineer" in output
 
         # Steps section
@@ -353,7 +353,7 @@ class TestFullPipelineIntegration:
                 lambda_function_name="fsxn-datadog-integration-shipper",
                 datadog_site="datadoghq.com",
             ),
-            verifier=VerifierInfo(name="藤原健太", role="Cloud Engineer"),
+            verifier=VerifierInfo(name="リポジトリ管理者", role="Cloud Engineer"),
             steps=screenshot_steps,
             bilingual_comparison=bilingual_result,
             issues=[

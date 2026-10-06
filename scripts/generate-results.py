@@ -12,13 +12,13 @@ Supports multiple vendors via the --vendor flag:
 Usage:
     # Datadog (default)
     python scripts/generate-results.py \
-        --verifier-name "Yoshiki Fujiwara" \
+        --verifier-name "repository maintainer" \
         --output docs/ja/verification-results-datadog.md
 
     # New Relic
     python scripts/generate-results.py \
         --vendor new-relic \
-        --verifier-name "Yoshiki Fujiwara" \
+        --verifier-name "repository maintainer" \
         --output docs/ja/verification-results-new-relic.md
 """
 

@@ -106,7 +106,7 @@ class TestRenderFullReport:
             sample_demo_timeline,
             sample_new_relic_environment,
         )
-        assert "藤原 太郎" in output
+        assert "リポジトリ管理者" in output
         assert "DevOps Engineer" in output
 
     def test_contains_step_numbers_and_names(

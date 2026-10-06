@@ -7,7 +7,7 @@
 | Item | Value |
 |------|-------|
 | **Verification Date** | `2026-05-17T07:20:00+09:00` |
-| **Verifier** | yoshiki |
+| **Verifier** | repository maintainer |
 
 ### Verification Environment
 

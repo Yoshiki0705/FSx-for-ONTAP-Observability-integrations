@@ -393,7 +393,7 @@ def sample_new_relic_report(
     return VerificationReport(
         verification_date="2026-01-20T10:00:00+09:00",
         environment=None,  # type: ignore[arg-type]
-        verifier=VerifierInfo(name="藤原 太郎", role="DevOps Engineer"),
+        verifier=VerifierInfo(name="リポジトリ管理者", role="DevOps Engineer"),
         steps=sample_new_relic_verification_steps,
         issues=[],
     )
@@ -405,7 +405,7 @@ def sample_new_relic_report_with_failures() -> VerificationReport:
     return VerificationReport(
         verification_date="2026-01-20T10:00:00+09:00",
         environment=None,  # type: ignore[arg-type]
-        verifier=VerifierInfo(name="藤原 太郎", role="DevOps Engineer"),
+        verifier=VerifierInfo(name="リポジトリ管理者", role="DevOps Engineer"),
         steps=[
             VerificationStep(
                 step_number=1,
