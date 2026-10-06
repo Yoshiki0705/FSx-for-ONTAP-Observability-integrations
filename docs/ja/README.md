@@ -314,7 +314,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [Honeycomb 統合 動作確認結果](verification-results-honeycomb.md)
 - [EMS/FPolicy E2E 動作確認結果](verification-results-ems-fpolicy.md)
 - [Create an event per candidate, deleting the ones that succeed to leave the cluster as found](verification-results-fpolicy-s3ap-and-session.md)
-- [CloudWatch 監視の動作確認結果（ダッシュボードテンプレートと Terraform モジュール）](verification-results-cloudwatch-monitoring.md)
+- [CloudWatch 監視の動作確認結果（ダッシュボードテンプレート、Terraform モジュール、Qtree クォータ監視）](verification-results-cloudwatch-monitoring.md)
 - [support-inquiry-s3ap-audit-coverage](support-inquiry-s3ap-audit-coverage.md)
 - [s3ap-monitoring-coverage-implications](s3ap-monitoring-coverage-implications.md)
 
