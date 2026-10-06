@@ -320,6 +320,7 @@ English and Japanese indexes always list the same set.
 - [Honeycomb Integration Verification Results](verification-results-honeycomb.md)
 - [EMS/FPolicy E2E Verification Results](verification-results-ems-fpolicy.md)
 - [Create an event per candidate, deleting the ones that succeed to leave the cluster as found](verification-results-fpolicy-s3ap-and-session.md)
+- [CloudWatch Monitoring Verification Results (Dashboard Template and Terraform Module)](verification-results-cloudwatch-monitoring.md)
 - [support-inquiry-s3ap-audit-coverage](support-inquiry-s3ap-audit-coverage.md)
 - [s3ap-monitoring-coverage-implications](s3ap-monitoring-coverage-implications.md)
 

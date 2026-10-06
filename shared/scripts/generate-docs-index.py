@@ -214,6 +214,7 @@ CATEGORIES: list[tuple[str, str, list[str]]] = [
             "verification-results-honeycomb",
             "verification-results-ems-fpolicy",
             "verification-results-fpolicy-s3ap-and-session",
+            "verification-results-cloudwatch-monitoring",
             "support-inquiry-s3ap-audit-coverage",
             "s3ap-monitoring-coverage-implications",
         ],

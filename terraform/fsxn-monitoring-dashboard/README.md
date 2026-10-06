@@ -4,7 +4,11 @@ Terraform equivalent of `shared/templates/fsxn-monitoring-dashboard.yaml`: a Clo
 
 ## Verification status
 
-Offline only. `make terraform` runs `terraform fmt -check`, `terraform init -lockfile=readonly`, `terraform validate`, and `terraform test` with a mock provider and `command = plan`. It needs no AWS credentials and creates nothing. Nothing has been planned against a real account or applied, so real-environment behavior is `unverified`. Run `terraform plan` in a non-production account first.
+Offline: `make terraform` runs `terraform fmt -check`, `terraform init -lockfile=readonly`, `terraform validate`, and `terraform test` with a mock provider and `command = plan`. It needs no AWS credentials and creates nothing.
+
+Live, once: on 2026-10-05 the module was planned and applied in `ap-northeast-1` against a first-generation `SINGLE_AZ_1` file system with one HA pair, with the three opt-in file-server alarms enabled (`file_server_names` empty) and one entry in `volume_ids`. It created the dashboard and 7 alarms. All 9 dashboard series returned data, every alarm left INSUFFICIENT_DATA and reached OK, and the per-volume capacity and inode alarms were driven to ALARM and back to OK. See [CloudWatch monitoring verification results](../../docs/en/verification-results-cloudwatch-monitoring.md) ([日本語](../../docs/ja/verification-results-cloudwatch-monitoring.md)).
+
+Still `unverified`: the ALARM transition of the file-system `storage_capacity` alarm (its 50–95 range is above the 3.5% utilization of the test file system), SNS delivery (no `notification_email` was set), second-generation file systems with `file_server_names`, multi-HA-pair file systems, and behavior under load. On a different file-system shape, run `terraform plan` in a non-production account first.
 
 ## What it creates
 

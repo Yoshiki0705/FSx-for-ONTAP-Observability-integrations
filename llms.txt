@@ -21,7 +21,7 @@
 
 ## Terraform modules
 
-- [Monitoring dashboard module (Terraform)](terraform/fsxn-monitoring-dashboard/README.md): Terraform equivalent of the dashboard template with the capacity and throughput-utilization alarms plus opt-in CPU, disk, and per-volume alarms; offline-verified with a mock provider, not yet applied to a real file system.
+- [Monitoring dashboard module (Terraform)](terraform/fsxn-monitoring-dashboard/README.md): Terraform equivalent of the dashboard template with the capacity and throughput-utilization alarms plus opt-in CPU, disk, and per-volume alarms; offline-verified with a mock provider, and applied once to a first-generation, single-HA-pair file system (2026-10-05).
 
 ## Forwarding routes
 
@@ -31,6 +31,7 @@
 
 ## Verification results
 
+- [CloudWatch monitoring verification](docs/en/verification-results-cloudwatch-monitoring.md): 2026-10-05 live run of the dashboard template and the Terraform module on a first-generation, single-HA-pair file system; alarm transitions, findings, and what remains unverified (qtree template, second generation, multi-HA-pair, SNS delivery).
 - [FPolicy, S3 Access Points, and session verification](docs/en/verification-results-fpolicy-s3ap-and-session.md): E2E results for FPolicy forwarding, FSx for ONTAP S3 Access Points, and session handling.
 - [EMS and FPolicy verification](docs/en/verification-results-ems-fpolicy.md): E2E results for the EMS webhook and FPolicy event paths.
 - [Datadog verification](docs/en/verification-results-datadog.md): E2E delivery results for the Datadog integration.

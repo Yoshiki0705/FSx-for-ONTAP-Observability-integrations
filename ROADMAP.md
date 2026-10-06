@@ -95,7 +95,7 @@ Target: 2027 H1
 - [ ] AWS Solutions Library submission
 - [ ] SAM (Serverless Application Model) packaging
 - [ ] AWS Marketplace listing (partner-delivered)
-- [ ] Terraform module equivalents — T1 (dashboard + alarms) delivered in `terraform/fsxn-monitoring-dashboard/`, offline-verified; T2 (qtree) and T3 (log alarm) pending
+- [ ] Terraform module equivalents — T1 (dashboard + alarms) delivered in `terraform/fsxn-monitoring-dashboard/`, offline-verified and live-verified on a first-generation, single-HA-pair file system on 2026-10-05 ([record](docs/en/verification-results-cloudwatch-monitoring.md); second-generation, multi-HA-pair, and the capacity alarm's ALARM transition still unverified); T2 (qtree) and T3 (log alarm) pending
 - [ ] CDK construct library
 - [x] Community contribution guidelines (CONTRIBUTING.md)
 - [x] [GitHub Discussions](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/discussions) for Q&A
