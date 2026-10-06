@@ -1,8 +1,10 @@
-# CloudWatch Monitoring Verification Results (Dashboard Template and Terraform Module)
+# CloudWatch Monitoring Verification Results (Dashboard Template, Terraform Module, and Qtree Quota Monitor)
 
 🌐 [日本語](../ja/verification-results-cloudwatch-monitoring.md) | **English** (this page)
 
 ## Overview
+
+This page records two runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The 2026-10-06 run of the qtree quota monitor stopped after one successful poll and has its own section: [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06).
 
 On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module.
 
@@ -173,7 +175,7 @@ Defects in the dashboard template or the Terraform module: none found. All 9 das
 
 | Item | Status | Reason |
 |------|--------|--------|
-| `shared/templates/qtree-quota-monitor.yaml` | Not run, entirely | Out of scope for this run; no qtree resource was deployed. Per-qtree metric publication and `QtreeQuotaAlarm` firing remain unverified |
+| `shared/templates/qtree-quota-monitor.yaml` | Not run in this run | Out of scope for the 2026-10-05 run; no qtree resource was deployed. It was run separately on 2026-10-06 and stopped after one successful poll; see [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06) |
 | ALARM path of the file-system capacity alarm (CloudFormation and Terraform) | Not verified | F1 |
 | Second-generation file systems (`file_server_names`, `FileServer` and `Aggregate` dimensions) | Not run | The test file system is first generation |
 | File systems with more than one HA pair | Not run | The test file system has one HA pair |
@@ -209,9 +211,201 @@ No custom metrics were emitted: every metric reference in both artifacts uses na
 
 ---
 
+## Qtree Quota Monitor Run on 2026-10-06
+
+On 2026-10-06 (UTC), `shared/templates/qtree-quota-monitor.yaml` was deployed against a first-generation `SINGLE_AZ_1` FSx for ONTAP file system with one HA pair. The run stopped at 02:16:26Z, when ONTAP began answering the poller with HTTP 401; a 401 or 403 from ONTAP was one of the run's stop conditions. Before the stop, one scheduled poll succeeded. It published 5 datapoints to `FSxONTAP/Qtree`, each value matched the ONTAP quota report, and `QtreeQuotaAlarm` left INSUFFICIENT_DATA and reached OK on that datapoint. The planned threshold change that would drive `QtreeQuotaAlarm` to ALARM was not run. The failing polls that followed exercised the DLQ path end to end. Two template-level issues were found (no back-off on 401/403, and a stack-deletion order that leaves an orphan log group); see [Findings (Qtree Run)](#findings-qtree-run).
+
+| Item | Value |
+|------|-------|
+| Verification date | 2026-10-06T01:56Z to 03:03Z (UTC) |
+| Verification environment | Test environment (`ap-northeast-1`), sample run with one SVM, one test volume, and one qtree with a tree quota |
+| Scope | Stack deployment, per-qtree and SVM-level metric publication, initial alarm evaluation, and cleanup. ONTAP REST calls were made from a bastion host to prepare the qtree and read the quota report |
+| Result | Stopped. 1 of the 2 planned successful poll cycles completed before ONTAP returned HTTP 401. `QtreeQuotaAlarm` ALARM path not run |
+
+The values below come from one poll on one qtree. They show that the series are published with the dimension sets the template documents and that the alarm evaluates the SVM-level series. They do not show behavior across cycles, at scale, or on second-generation or multi-HA-pair file systems.
+
+### Environment and Deployment (Qtree Run)
+
+| Item | Value |
+|------|-------|
+| AWS Region | `ap-northeast-1` |
+| File system | `fs-0123456789abcdef0` (placeholder), `SINGLE_AZ_1` (first generation), 1 HA pair, 128 MBps |
+| ONTAP version | NetApp Release 9.18.1P6 (`GET /api/cluster`) |
+| SVM | `<svm-name>` (placeholder), NFS enabled |
+| Template revision | `qtree-quota-monitor.yaml` from main at `54e4c5d` (#104), identical to the working tree |
+| Test volume | `zz_mon_verify_qtree`, 1024 MiB, UNIX security style, snapshot policy none, tiering policy NONE. Created through the Amazon FSx API for this run and deleted afterward |
+| Qtree and quota | Qtree `qt_mon_verify` with a tree quota rule, hard limit 104857600 bytes (100 MiB); quotas enabled on the volume |
+| Data written | 60 MiB over a temporary NFSv3 mount from the bastion host, then unmounted. ONTAP quota report afterward: used 63168512 bytes, hard limit 104857600, `hard_limit_percent` 60 |
+| Lambda placement | The file system's subnet. Its route table sends `0.0.0.0/0` to an internet gateway and has no NAT gateway |
+| CloudWatch route | A `com.amazonaws.ap-northeast-1.monitoring` interface endpoint (private DNS on), created for this run in the Lambda subnet |
+| Secrets Manager route | An existing interface endpoint in the VPC, so `CreateSecretsManagerEndpoint=false` |
+| Security group | The file system's existing security group for both the Lambda and the new endpoint. It already allowed 443; no security group or IAM change was made |
+| ONTAP credential | The `fsxadmin` credential stored in Secrets Manager |
+| Authentication | AWS IAM Identity Center (SSO) session |
+
+`shared/scripts/preflight-check.sh --profile automated-response` exited 0 with one warning, for the existing Secrets Manager endpoint. The script has no profile for this template and does not check for the `monitoring` endpoint (QF4).
+
+```bash
+aws cloudformation create-stack \
+  --stack-name fsxn-verify-qtree-quota \
+  --template-body file://shared/templates/qtree-quota-monitor.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters \
+    ParameterKey=OntapMgmtIp,ParameterValue=<management-ip> \
+    ParameterKey=OntapCredentialsSecretArn,ParameterValue=arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:<secret-name>-XXXXXX \
+    ParameterKey=SvmName,ParameterValue=<svm-name> \
+    ParameterKey=VpcId,ParameterValue=vpc-0123456789abcdef0 \
+    ParameterKey=SubnetIds,ParameterValue=subnet-0123456789abcdef0 \
+    ParameterKey=SecurityGroupId,ParameterValue=sg-0123456789abcdef0 \
+    ParameterKey=PollIntervalMinutes,ParameterValue=5 \
+    ParameterKey=QuotaThresholdPercent,ParameterValue=85 \
+    ParameterKey=NotificationEmail,ParameterValue='' \
+    ParameterKey=CreateSecretsManagerEndpoint,ParameterValue=false \
+    ParameterKey=CaCertPath,ParameterValue='' \
+    ParameterKey=CaCertLayerArn,ParameterValue='' \
+  --region ap-northeast-1
+```
+
+The stack created the IAM role, the Lambda function, its log group (retention 30 days), the DLQ, the EventBridge schedule rule, and two alarms: `fsxn-verify-qtree-quota-quota-high` (`QtreeQuotaAlarm`) and `fsxn-verify-qtree-quota-dlq-depth`. `NotificationEmail` was empty, so no SNS topic was created.
+
+### Check Results (Qtree Run)
+
+| # | Check | Result | Time (UTC) |
+|---|-------|--------|------------|
+| Q0 | Preflight: endpoints, routes, security group, ONTAP read-only (cluster, SVM, quota reports and rules, volumes) | ✅ PASS. No tree quota existed on the SVM, so Q1 was needed | 01:56:09Z → 01:59:22Z |
+| Q1 | Qtree preparation: volume, qtree, 100 MiB tree quota rule, quotas on, 60 MiB written | ✅ PASS | 02:00:04Z → 02:02:28Z |
+| Q2-1 | `monitoring` interface endpoint | ✅ PASS. Available | 02:03:11Z → 02:04:26Z |
+| Q2-2 | Stack creation | ✅ PASS. CREATE_COMPLETE | 02:04:00Z → 02:06:48Z |
+| Q2-3 | Poll cycle 1: series published, values match the ONTAP report | ✅ PASS. 5 datapoints, all matching | 02:11:22Z |
+| Q2-4 | Poll cycle 2 (the second required successful cycle) | ❌ FAIL. ONTAP HTTP 401 (stop condition) | 02:16:22Z |
+| Q3 | `QuotaThresholdPercent` 85 → 50 to drive `QtreeQuotaAlarm` to ALARM at 60.24%, then restore | ⏹️ Not run (stopped before it) | — |
+| Q4 | Cleanup, with re-read | ✅ PASS for every AWS resource. ONTAP-side read-back not possible (401) | 02:24:36Z → 03:03:54Z |
+
+### Observed Metrics and Dimension Sets
+
+Poll cycle 1 (02:11:22Z) was a cold start. The function logged `Found 2 qtree quota reports for SVM <svm-name> in 1 page(s)` and `Published 5 metric data points`, with a duration of 629.89 ms and a maximum memory of 95 MB. At initialization it logged the warning that TLS certificate verification is disabled (`cert_reqs=CERT_NONE`) and acceptable for a PoC only, because `CaCertPath` was empty.
+
+`list-metrics` on `FSxONTAP/Qtree` then returned these dimension sets:
+
+| Metric | Dimensions |
+|--------|------------|
+| `QtreeQuotaUsedPercent`, `QtreeQuotaUsedBytes`, `QtreeQuotaLimitBytes` | `SvmName`, `VolumeName=zz_mon_verify_qtree`, `QtreeName=qt_mon_verify` |
+| `QtreeQuotaUsedPercentMax`, `QtreeQuotaReportTruncated` | `SvmName` only |
+
+No series was published for the volume's default qtree (empty name, no hard limit), which ONTAP also returns as a tree quota report record.
+
+| Metric | Published (one datapoint each) | ONTAP quota report (02:02:28Z) | Match |
+|--------|-------------------------------|--------------------------------|-------|
+| `QtreeQuotaUsedBytes` | 63168512 Bytes | used 63168512 | Yes |
+| `QtreeQuotaLimitBytes` | 104857600 Bytes | hard limit 104857600 | Yes |
+| `QtreeQuotaUsedPercent` | 60.2421875 Percent | 63168512 / 104857600 × 100 = 60.2421875 (ONTAP's `hard_limit_percent` shows 60) | Yes |
+| `QtreeQuotaUsedPercentMax` | 60.2421875 Percent | Maximum over 1 qtree | Yes |
+| `QtreeQuotaReportTruncated` | 0 Count | 1 page, no next link | Yes |
+
+> **Pagination note**: This was the single-page case: 2 records, one page, no next link, so `QtreeQuotaReportTruncated` was 0. Following a next link, the 50-page cap, and the truncation value 1 were not exercised.
+
+### Alarm State Transitions (Qtree Stack)
+
+From `describe-alarm-history` (`StateUpdate`) and `describe-alarms`, UTC.
+
+| Alarm | Transition | Time | Values in the state reason |
+|-------|-----------|------|----------------------------|
+| `fsxn-verify-qtree-quota-dlq-depth` | INSUFFICIENT_DATA → OK | 02:05:51Z | Initial evaluation |
+| `fsxn-verify-qtree-quota-quota-high` | INSUFFICIENT_DATA → OK | 02:12:50Z | 1 datapoint, 60.2421875, not > 85 |
+| `fsxn-verify-qtree-quota-dlq-depth` | OK → ALARM | 02:22:51Z | 1 datapoint, 1.0, > 0 |
+
+`QtreeQuotaAlarm` reached OK on a single datapoint although `EvaluationPeriods` is 2 (QF8). It has no ALARM entry, because Q3 was not run.
+
+The DLQ path was verified end to end as a side effect of the stop: the failed invocation at 02:16:22Z was retried twice asynchronously (02:17:19Z, 02:19:12Z), a message reached the DLQ at 02:19:16Z with the error text as its attribute, and the DLQ-depth alarm moved to ALARM at 02:22:51Z. There was no SNS action, because `NotificationEmail` was empty.
+
+### Poller Stop on ONTAP HTTP 401
+
+| Time (UTC) | Invocation | Result |
+|------------|-----------|--------|
+| 02:11:22Z | Cycle 1, cold start | Success (0.63 s for the ONTAP call) |
+| 02:16:22Z | Cycle 2, same warm container and cached credential as cycle 1 | HTTP 401 |
+| 02:17:19Z, 02:19:12Z | Asynchronous retries of cycle 2 | HTTP 401; DLQ message at 02:19:16Z |
+| 02:21:22Z | Cycle 3, warm container | HTTP 401 |
+| 02:22:24Z | Retry in a new container that read the secret again | HTTP 401 |
+| 02:24:42Z | Retry | HTTP 401 |
+
+Each 401 response took about 4.1–4.5 seconds. The log lines carry only the request path and the status; no password or secret value was logged.
+
+Read-only diagnosis, without further ONTAP login attempts after the stop:
+
+- The secret's value was last changed before the run (01:48:18Z) and did not change during it.
+- The last `fsxadmin` password reset through the Amazon FSx API (`UpdateFileSystem`) was requested at 01:41:33Z and completed. CloudTrail shows no other `UpdateFileSystem` call between 01:00Z and 03:00Z.
+- So the credential that worked from the bastion host (01:58Z to 02:02Z) and from the poller (02:11:23Z) was rejected from 02:16:26Z, with no reset through the Amazon FSx API and no secret change in between.
+- Besides this run's principals, one further principal read the same secret at 02:22:30Z. What it connects to was not determined.
+
+The cause of the 401 was not determined. Two hypotheses remain, neither confirmed from the ONTAP side:
+
+- Account lockout by another client. Another function in the same VPC was invoked at about 02:02Z, twice at about 02:06Z, and at about 02:12Z: after the 01:41Z password reset and before the first 401 at 02:16:22Z. Its 02:06Z invocations each took about 4 seconds, the same duration as the poller's 401 responses. This is consistent with that function authenticating with the pre-reset password and `fsxadmin` being locked by repeated failed logins.
+- A password change made inside ONTAP, outside the Amazon FSx API.
+
+Confirming either needs an ONTAP-side read (login and lockout state, or EMS events) or a new password reset through the Amazon FSx API. Neither was done in this run.
+
+> **Credential-sharing note**: Any client that stores the `fsxadmin` password must be updated before, or together with, a password reset. A client still holding the old password can keep failing to log in, and if ONTAP locks the account, every client sharing it fails, this poller included. The poller makes only `GET` requests to `/api/storage/quota/reports` (confidence: `code-inspected`), so a dedicated ONTAP account with a read-only role avoids sharing `fsxadmin` with other clients. A read-only account was not tested in this run.
+
+### Findings (Qtree Run)
+
+| # | Finding | Kind | Effect on this record |
+|---|---------|------|-----------------------|
+| QF1 | The `fsxadmin` credential was rejected (HTTP 401) from 02:16:26Z, about 5 minutes after it worked, with no reset through the Amazon FSx API and no secret change in between | Environment, cause undetermined | Blocked the second poll cycle and Q3. ONTAP access must be restored and the cause identified before a rerun |
+| QF2 | The poller has no back-off on 401/403. The 5-minute schedule plus 2 asynchronous retries per invocation sent 6 failing basic-auth requests in about 8 minutes (02:16:26Z to 02:24:46Z). Under an ONTAP lockout policy, this would keep the account locked | Template design trade-off | Not raising on 401 would avoid the retries but would also keep the failure out of the DLQ. No fix is proposed in this record |
+| QF3 | Stack deletion removed the log group (02:24:40Z) before the function (02:25:18Z), and the role still allowed `logs:CreateLogGroup` until 02:25:33Z. An in-flight retry recreated the log group without retention at 02:24:51Z | Template defect (deletion order) | A user who deletes the stack can be left with an orphan log group that never expires. Possible fixes, untested: `DependsOn` on the function so it is deleted first, or removing `logs:CreateLogGroup` from the role |
+| QF4 | `preflight-check.sh` has no profile for this template and does not check for `com.amazonaws.<region>.monitoring`. The template does not create that endpoint | Tooling and documentation gap | In a subnet without NAT, as here, the endpoint had to be created by hand before the Lambda could call `PutMetricData` |
+| QF5 | `OntapMgmtIp` accepts only an IPv4 literal; the management DNS name fails the `AllowedPattern` | Parameter constraint | Worked here with one management IP. Whether the DNS name is the safer input when the IP can change was not evaluated |
+| QF6 | The log line `Found 2 qtree quota reports` and the return field `qtrees_monitored` (2) count the default-qtree record that is then skipped; 1 qtree was published | Wording of a count | The counts are report records, not monitored qtrees |
+| QF7 | The published percent (60.2421875) is computed from bytes; ONTAP's `hard_limit_percent` rounds to 60 | Behavior note | Alarm thresholds compare against the unrounded value |
+| QF8 | `QtreeQuotaAlarm` went from INSUFFICIENT_DATA to OK on one datapoint with `EvaluationPeriods` 2 | CloudWatch behavior, observed once | Consistent with CloudWatch evaluating partial data. Not reproduced |
+
+### Cleanup (Qtree Run)
+
+| Step | Result | Time (UTC) |
+|------|--------|------------|
+| `aws cloudformation delete-stack` | DELETE_COMPLETE | 02:24:37Z → 02:26:35Z |
+| Delete the `monitoring` interface endpoint | Accepted (no unsuccessful items) | 02:25:02Z |
+| ONTAP REST: delete the quota rule, disable quotas, delete the qtree | Not attempted. ONTAP was answering 401, and more failed logins could extend a lockout | — |
+| `aws fsx delete-volume` with `SkipFinalBackup=true` | The volume read back as not found | 02:56:00Z → 02:57:18Z |
+| Delete the orphan log group recreated by a retry (QF3) | Deleted. Its only stream, the 02:24:42Z retry, was saved first | 02:59:35Z |
+| Re-read of every AWS resource | Stack does not exist (DELETE_COMPLETE by stack ID); endpoint, volume, alarms, function, IAM role, DLQ, schedule rule, Lambda network interfaces, and log group all return nothing; the bastion host has no remaining mount | 02:58:59Z → 03:03:54Z |
+
+Two items remain open:
+
+- Whether ONTAP removed the tree quota rule from the SVM's quota policy when the volume was deleted is unverified. Re-check with `GET /api/storage/quota/rules?svm.name=<svm-name>` once ONTAP access works.
+- The 5 custom metric series in `FSxONTAP/Qtree` cannot be deleted and were still listed at 02:59:04Z. CloudWatch stops listing a metric after about two weeks without new data and keeps its data for 15 months ([CloudWatch concepts](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html), [re:Post](https://repost.aws/knowledge-center/cloudwatch-delete-metric)).
+
+### What Remains Unverified (Qtree Run)
+
+| Item | Status | Reason |
+|------|--------|--------|
+| Second and later successful poll cycles, and consistency across cycles | Not verified | Only cycle 1 succeeded (QF1) |
+| `QtreeQuotaAlarm` ALARM transition and return to OK | Not run | Q3 was not run |
+| Behavior at 0% usage | Not run | Data was written before the first poll |
+| Cause of the 401, and the ONTAP-side read-back of the quota rule and qtree | Not verified | ONTAP access was not restored during the run |
+| Second-generation file systems and more than one HA pair | Not run | The test file system was first generation with one HA pair |
+| TLS with a CA certificate (`CaCertPath`, `CaCertLayerArn`) | Not run | Only `CERT_NONE` ran |
+| SNS notification delivery | Not exercised | `NotificationEmail` was empty, so no topic was created |
+| Pagination beyond one page, the truncation path (`QtreeQuotaReportTruncated=1`), and SVMs with more than 200 qtrees | Not run | The SVM returned 2 records on one page |
+| A dedicated read-only ONTAP account for the poller | Not tested | The run used `fsxadmin` |
+| Fixes for QF2 and QF3 | Not tested | Proposals only |
+
+### Judgment (Qtree Run)
+
+| Item | Value |
+|------|-------|
+| Judgment | ⚠️ Partial. Per-qtree and SVM-level metric publication verified for one poll cycle on a first-generation, single-HA-pair file system, with values matching the ONTAP quota report. `QtreeQuotaAlarm` OK evaluation observed on real data; its ALARM path not verified. DLQ path verified end to end. The run stopped on an ONTAP HTTP 401 with the cause undetermined |
+| Passing checks | 6 of 8 (Q0, Q1, Q2-1, Q2-2, Q2-3, Q4) |
+| Failed | 1 of 8 (Q2-4, the second poll cycle) |
+| Not run | 1 of 8 (Q3) |
+| Template-level issues found | 2 (QF2 design trade-off, QF3 deletion order) |
+
+---
+
 ## Related Documents
 
-- [Monitoring Design](monitoring-design.md): the dashboard template and the Terraform T1 module, with confidence tiers that cite this record
+- [Monitoring Design](monitoring-design.md): the dashboard template, the Terraform T1 module, and the qtree quota monitor, with confidence tiers that cite this record
 - [AWS-Native Alternative Matrix](native-alternative-matrix.md): System Manager view → CloudWatch metric → template mapping
 - [Terraform module: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md): inputs, outputs, and verification status
 - [CloudWatch Log Alarm](cloudwatch-log-alarm.md): the separate log-alarm template and its 2026-07-02 E2E record
