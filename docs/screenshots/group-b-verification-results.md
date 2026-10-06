@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-12 (UTC 00:00-01:00)
 **Region**: ap-northeast-1 (Tokyo)
-**FSx for ONTAP**: fs-09ffe72a3b2b7dbbd (FSxN_OnPre_Sim)
+**FSx for ONTAP**: fs-0123456789abcdef1 (FSxN_OnPre_Sim)
 **ONTAP Version**: NetApp Release 9.17.1P7D1
 **SVM**: demo-verify-svm (svm-0a90881eb8fe64ee8, workgroup mode, no AD)
 **Volume**: demo_verify_vol (fsvol-0e42f49ad8b1802a6, MIXED, 1GB)
@@ -183,11 +183,11 @@ For demo purposes, `umount` + `mount` is required to observe the denial.
 
 | Resource | Identifier |
 |----------|-----------|
-| FSx for ONTAP | fs-09ffe72a3b2b7dbbd |
-| VPC | vpc-0ae01826f906191af |
-| Subnet (AZ-1a) | subnet-0e36804c7fbc819a6 |
-| Subnet (AZ-1c) | subnet-0fd94e3c29ad94b10 |
-| Security Group | sg-04b2fedb571860818 (PoC_SG, 0.0.0.0/0) |
+| FSx for ONTAP | fs-0123456789abcdef1 |
+| VPC | vpc-0123456789abcdef0 |
+| Subnet (AZ-1a) | subnet-0123456789abcdef0 |
+| Subnet (AZ-1c) | subnet-0123456789abcdef1 |
+| Security Group | sg-0123456789abcdef0 (PoC_SG, 0.0.0.0/0) |
 | SVM | demo-verify-svm (svm-0a90881eb8fe64ee8) |
 | Volume | demo_verify_vol (fsvol-0e42f49ad8b1802a6) |
 | EC2 | i-02dfc88e5ef9989fd (fsxn-verify-client-onpre) |
