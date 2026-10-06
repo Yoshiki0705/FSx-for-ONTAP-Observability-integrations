@@ -324,7 +324,7 @@ def mask_datadog_top_banner(img: Image.Image, sidebar_width: int) -> None:
     """Datadog 上部のウェルカムバナーとトライアル情報をマスク。
 
     マスク対象:
-      - "Welcome, Yoshiki!" テキスト
+      - "Welcome, <user name>!" テキスト
       - "You have X days left in your trial" テキスト
       - "Upgrade" リンク
     """

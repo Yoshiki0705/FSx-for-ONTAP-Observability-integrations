@@ -3,7 +3,7 @@
 🌐 [日本語](../ja/verification-results-datadog.md) | **English** (this page)
 
 - **Verification Date**: 2026-05-16T21:33:03+09:00
-- **Verifier**: Yoshiki Fujiwara / Solutions Architect
+- **Verifier**: repository maintainer / Solutions Architect
 
 > **Record status**: this is a point-in-time record of the 2026-05-16 run. The
 > commands below were correct then; the template has changed since. In

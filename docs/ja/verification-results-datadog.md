@@ -3,7 +3,7 @@
 🌐 **日本語**（このページ） | [English](../en/verification-results-datadog.md)
 
 - **検証日時** — 2026-05-16T21:33:03+09:00
-- **検証者** — Yoshiki Fujiwara / Solutions Architect
+- **検証者** — リポジトリ管理者 / Solutions Architect
 
 > **記録の位置づけ**: これは 2026-05-16 実施時点の記録です。以下のコマンドは当時は正しく、
 > その後テンプレートが変更されています。特にパラメータ `S3AccessPointArn` は後に

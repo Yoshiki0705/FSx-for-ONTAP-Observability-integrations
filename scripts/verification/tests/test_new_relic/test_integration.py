@@ -403,7 +403,7 @@ class TestFullReportGenerationPipeline:
         report = VerificationReport(
             verification_date="2026-01-20T10:00:00+09:00",
             environment=None,  # type: ignore[arg-type]
-            verifier=VerifierInfo(name="藤原 太郎", role="DevOps Engineer"),
+            verifier=VerifierInfo(name="リポジトリ管理者", role="DevOps Engineer"),
             steps=steps,
             issues=[
                 Issue(
@@ -490,7 +490,7 @@ class TestFullReportGenerationPipeline:
         assert "US" in rendered
 
         # Verify verifier info
-        assert "藤原 太郎" in rendered
+        assert "リポジトリ管理者" in rendered
         assert "DevOps Engineer" in rendered
 
         # Verify steps section
