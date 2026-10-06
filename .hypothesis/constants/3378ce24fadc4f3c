@@ -1,4 +1,0 @@
-# file: /Users/yoshiki/Projects/fsxn-observability-integrations/scripts/verification/results_renderer.py
-# hypothesis_version: 6.141.1
-
-[200, '# Datadog 統合 動作確認結果\n', '## バイリンガル対応確認結果', '## 検出された問題点', '## 検証ステップ', '### 検出された差異', '### 検証環境', '### 検証者', '### 比較対象ファイル', '**出力**:', '**実行コマンド**:', '```', '```bash', 'failure', 'skipped', 'success', '⏭️ スキップ', '✅ 成功', '❌ 失敗', '問題なし']

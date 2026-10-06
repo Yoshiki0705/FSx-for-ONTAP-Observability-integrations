@@ -1,4 +1,0 @@
-# file: /Users/yoshiki/Projects/fsxn-observability-integrations/scripts/verification/models.py
-# hypothesis_version: 6.141.1
-
-['code_block', 'fail', 'failure', 'heading', 'pass', 'skipped', 'success', 'table']

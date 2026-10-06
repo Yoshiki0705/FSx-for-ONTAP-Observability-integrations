@@ -1,4 +1,0 @@
-# file: /Users/yoshiki/Projects/fsxn-observability-integrations/scripts/verification/markdown_parser.py
-# hypothesis_version: 6.141.1
-
-['-', '^[\\s\\-:|]+$', '^`{3,}(\\S*)\\s*$', '|']
