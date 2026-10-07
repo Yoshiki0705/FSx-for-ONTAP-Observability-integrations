@@ -624,7 +624,7 @@ OK への復帰は、閾値を 85 に戻すスタック更新の完了から約 
 
 OK への復帰は、閾値の引き上げではなく、purge の後に利用率が下がったことで観測しました。アグリゲートは purge 後の最初の読み取り（63 秒後）で 50% を下回り、CloudWatch の 1 分のデータポイントは 00:39Z に 50% を下回り、両アラームは purge の約 3.5 分後に OK になりました。閾値を超えないデータポイント 1 つで足りています。00:36Z に始まる 300 秒の期間の平均が 48.21% でした。CloudWatch の利用率は、ONTAP から読んだアグリゲートの使用量より速く下がりました。両者は取得元が異なり、差は調べていません。
 
-FSx for ONTAP の API でボリュームを削除しても、その領域は解放されませんでした。AWS は、削除した FSx for ONTAP ボリュームが ONTAP の recovery queue に置かれることを文書化しており（[Recovering deleted FSx for ONTAP volumes](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/recovering-deleted-volumes.html)）、AWS re:Post は、削除したボリュームが既定で少なくとも 12 時間その queue に保持されてから完全に削除されると説明しています（[How can I recover a deleted FSx for ONTAP volume?](https://repost.aws/knowledge-center/fsx-ontap-recover-deleted-volume)）（確信度: `文書化済み`）。この実行では、削除したボリュームは purge するまで SSD の使用量に数えられ続けました。アグリゲートは削除の前後とも 505.10 GiB で、実行開始時には以前の試行で削除したボリューム 3 つがまだ約 200 GiB を保持しており、CloudWatch はそれを利用率 26.7% として報告していました（観測）。purge せずに保持期間が過ぎた後の解放は観測していません。
+FSx for ONTAP の管理 API（`aws fsx delete-volume`） でボリュームを削除しても、その領域は解放されませんでした。AWS は、削除した FSx for ONTAP ボリュームが ONTAP の recovery queue に置かれることを文書化しており（[Recovering deleted FSx for ONTAP volumes](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/recovering-deleted-volumes.html)）、AWS re:Post は、削除したボリュームが既定で少なくとも 12 時間その queue に保持されてから完全に削除されると説明しています（[How can I recover a deleted FSx for ONTAP volume?](https://repost.aws/knowledge-center/fsx-ontap-recover-deleted-volume)）（確信度: `文書化済み`）。この実行では、削除したボリュームは purge するまで SSD の使用量に数えられ続けました。アグリゲートは削除の前後とも 505.10 GiB で、実行開始時には以前の試行で削除したボリューム 3 つがまだ約 200 GiB を保持しており、CloudWatch はそれを利用率 26.7% として報告していました（観測）。purge せずに保持期間が過ぎた後の解放は観測していません。
 
 > **容量アラームの運用に関する補足**: ボリュームを削除しても、容量アラームはすぐには解除されません。recovery queue のエントリが期限切れになる（上記の re:Post の記事によれば既定で少なくとも 12 時間）か purge されるまで、削除したボリュームのデータは SSD の使用量と `StorageCapacityUtilization` に数えられたままです。したがって、ボリュームの削除は容量の逼迫をすぐに和らげる手段にはなりません。purge すればこの実行のように数分で領域が戻りますが、元に戻せません。purge したボリュームは queue から復旧できなくなります。このテスト環境では、`fsxadmin` が ONTAP REST API の private CLI パススルー `POST /api/private/cli/volume/recovery-queue/purge` に、本文で SVM と queue 上のボリューム名を渡してエントリを purge し、HTTP 202 とジョブが返りました。
 
@@ -633,7 +633,7 @@ FSx for ONTAP の API でボリュームを削除しても、その領域は解�
 | # | 所見 | 種別 | この記録への影響 |
 |---|------|------|------------------|
 | CF1 | ONTAP はシックプロビジョニングのボリューム（ギャランティ `volume`）をエラーコード 787011 で拒否した。アグリゲートにオブジェクトストアが接続されているため | ONTAP の制約で、このファイルシステムで観測 | ここでは領域の予約で利用率を上げられない。容量アラームの確認には実データが要る |
-| CF2 | FSx for ONTAP の API で削除したボリュームは ONTAP の recovery queue に残り、purge されるか保持期間（既定で少なくとも 12 時間、文書化済み。期限切れは未観測）が過ぎるまで SSD の使用量に数えられ続ける | ONTAP の挙動。保持期間は文書化済み、使用量は観測 | ボリュームを削除しても容量アラームはすぐには解除されない。この実行では purge の後に OK に戻った |
+| CF2 | FSx for ONTAP の管理 API（`aws fsx delete-volume`） で削除したボリュームは ONTAP の recovery queue に残り、purge されるか保持期間（既定で少なくとも 12 時間、文書化済み。期限切れは未観測）が過ぎるまで SSD の使用量に数えられ続ける | ONTAP の挙動。保持期間は文書化済み、使用量は観測 | ボリュームを削除しても容量アラームはすぐには解除されない。この実行では purge の後に OK に戻った |
 | CF3 | purge は数分で領域を解放した。3 エントリでは約 200 GiB を約 4 分以内に、1 エントリでは 505.10 GiB から 63 秒以内に 50% 未満へ、00:54:35Z までに基準値の 29.36 GiB へ | ONTAP の挙動で、この実行で 2 回観測 | purge は元に戻せない。テスト環境での手順であり、本番で推奨する手順ではない |
 | CF4 | ALARM は閾値を超えた最初の期間の開始から 15 分後（3 期間中 3 期間）。OK は purge の約 3.5 分後で、閾値を超えないデータポイント 1 つによる | CloudWatch の評価で、1 回観測 | このアラーム設定では、ALARM の遅れは約 3 期間、OK の遅れは約 1 期間と見込む |
 | CF5 | 書き込みストリーム 1 本の速度が、約 5 分後に約 96 MiB/s から約 30 MiB/s に落ちた | 観測。原因は未特定 | スループットの測定値ではない。この規模の書き込みに約 4 時間かかった |
