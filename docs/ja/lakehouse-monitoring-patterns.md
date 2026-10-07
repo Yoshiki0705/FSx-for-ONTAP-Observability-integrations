@@ -49,7 +49,7 @@ FSx for ONTAP のデータが S3（DataSync 経由）または別の FSx ファ�
 | ソース | メトリクス | アクセス方法 |
 |--------|--------|---------------|
 | AWS DataSync | `BytesTransferred`, タスク実行ステータス | CloudWatch メトリクス (`AWS/DataSync`) |
-| SnapMirror | `lag-time`, `state`, `healthy` | ONTAP REST API (`/api/snapmirror/relationships`) |
+| SnapMirror | `lag_time`（ISO 8601 の期間表記）, `state`, `healthy` | ONTAP REST API (`/api/snapmirror/relationships`) |
 | FSx CloudWatch | `DataReadBytes`, `DataWriteBytes` | CloudWatch メトリクス (`AWS/FSx`) |
 
 ### アラーム閾値
@@ -58,6 +58,10 @@ FSx for ONTAP のデータが S3（DataSync 経由）または別の FSx ファ�
 |-----------|------|------|------|
 | DataSyncLagSeconds | > 1800秒 (30分) | > 3600秒 (1時間) | レイクハウスクエリの鮮度要件に依存 |
 | SnapMirrorLagSeconds | > 900秒 (15分) | > 1800秒 (30分) | SnapMirror の通常 RPO に基づく |
+
+> **範囲に関する補足**
+>
+> このパターンの SnapMirror 側はプレースホルダーです。`_check_snapmirror_lag()` は提供しておらず、このページの内容は実際の関係に対して一度も実行していません。コレクターは転送先ファイルシステムの管理エンドポイントをポーリングする必要があります。ONTAP REST のリファレンスは、`GET /api/snapmirror/relationships` が返すのは転送先エンドポイントが現在のクラスターまたは SVM にある関係だと説明しているためです（[リファレンス](https://docs.netapp.com/us-en/ontap-restapi/get-snapmirror-relationships.html)、確度: `文書化済み`）。計画中の T2 ポーラーと `FSxONTAP/SnapMirror` のメトリクス名は [monitoring-design.md](monitoring-design.md#メトリクスカタログ) にあります。
 
 ### 実装
 
@@ -77,6 +81,26 @@ ONTAP_CREDENTIALS_SECRET_ARN = os.environ["ONTAP_CREDENTIALS_SECRET_ARN"]
 NAMESPACE = "FSxONTAP/Lakehouse"
 
 
+def _check_datasync_lag():
+    """Placeholder: return the DataSync lag in seconds, or None.
+
+    Not provided. Read the task executions for DATASYNC_TASK_ARN and compute
+    the time since the last successful execution.
+    """
+    raise NotImplementedError("DataSync lag collection is not provided")
+
+
+def _check_snapmirror_lag():
+    """Placeholder: return [{"relationship": str, "lag_seconds": float}, ...].
+
+    Not provided. Poll GET /api/snapmirror/relationships on the DESTINATION
+    file system and convert lag_time (ISO 8601 duration) to seconds. The
+    planned T2 poller in docs/en/monitoring-design.md ("Metric catalog")
+    publishes FSxONTAP/SnapMirror instead.
+    """
+    raise NotImplementedError("SnapMirror lag collection is not provided")
+
+
 def lambda_handler(event, context):
     """Collect DataSync task status and SnapMirror lag metrics."""
     # 1. DataSync task execution lag
@@ -89,14 +113,15 @@ def lambda_handler(event, context):
     metrics = []
 
     if datasync_lag is not None:
+        # Dimensionless: the DataSyncLagAlarm below and the dashboard read this one.
         metrics.append({
             "MetricName": "DataSyncLagSeconds",
             "Value": datasync_lag,
             "Unit": "Seconds",
-            "Dimensions": [{"Name": "Source", "Value": "DataSync"}],
         })
 
     for sm in snapmirror_metrics:
+        # Per-relationship series for drill-down. The alarm does not read these.
         metrics.append({
             "MetricName": "SnapMirrorLagSeconds",
             "Value": sm["lag_seconds"],
@@ -105,6 +130,14 @@ def lambda_handler(event, context):
                 {"Name": "Source", "Value": "SnapMirror"},
                 {"Name": "Relationship", "Value": sm["relationship"]},
             ],
+        })
+
+    if snapmirror_metrics:
+        # Dimensionless maximum across relationships: the alarm reads this one.
+        metrics.append({
+            "MetricName": "SnapMirrorLagSeconds",
+            "Value": max(sm["lag_seconds"] for sm in snapmirror_metrics),
+            "Unit": "Seconds",
         })
 
     if metrics:
@@ -243,6 +276,27 @@ ONTAP REST API: `GET /api/storage/flexcache/flexcaches/{uuid}?fields=**`
 
 ```python
 # Lambda: collect_flexcache_metrics.py
+import json
+import logging
+import os
+
+import urllib3
+
+logger = logging.getLogger(__name__)
+http = urllib3.PoolManager()
+
+ONTAP_MGMT_ENDPOINT = os.environ["ONTAP_MGMT_ENDPOINT"]
+
+
+def _get_ontap_credentials():
+    """Placeholder: return {"username": str, "password": str}.
+
+    Not provided. Read ONTAP_CREDENTIALS_SECRET_ARN from Secrets Manager with
+    the shared/python/auth_cache.py pattern.
+    """
+    raise NotImplementedError("ONTAP credential lookup is not provided")
+
+
 def _collect_flexcache_metrics():
     """Query ONTAP REST API for FlexCache statistics."""
     creds = _get_ontap_credentials()
@@ -264,7 +318,13 @@ def _collect_flexcache_metrics():
 
         if detail_resp.status == 200:
             detail = json.loads(detail_resp.data)
-            hit_rate = 100.0 - detail.get("cache_miss_percent", 0)
+            miss_percent = detail.get("cache_miss_percent")
+            if miss_percent is None:
+                # Do not invent a 100% hit rate when the field is absent.
+                logger.warning("cache_miss_percent absent for FlexCache %s; skipped", uuid)
+                continue
+            hit_rate = 100.0 - miss_percent
+            # Per-cache series for drill-down. The alarm does not read these.
             metrics.append({
                 "MetricName": "FlexCacheHitRatePercent",
                 "Value": hit_rate,
@@ -275,8 +335,20 @@ def _collect_flexcache_metrics():
                 ],
             })
 
+    if metrics:
+        # Dimensionless minimum across caches: the alarm reads this one.
+        metrics.append({
+            "MetricName": "FlexCacheHitRatePercent",
+            "Value": min(m["Value"] for m in metrics),
+            "Unit": "Percent",
+        })
+
     return metrics
 ```
+
+> **根拠に関する補足**
+>
+> `cache_miss_percent` は、2026-10-07 に読んだ [ONTAP REST の FlexCache リファレンス](https://docs.netapp.com/us-en/ontap-restapi/get-storage-flexcache-flexcaches-.html) に載っていません。"miss" や "hit" を含むフィールドもありません。ヒット率の取得元は `未解決` です。そのためサンプルは、このフィールドがないキャッシュを 100% と報告せずに読み飛ばします。
 
 ---
 
@@ -460,8 +532,13 @@ aws cloudformation deploy \
 >   --zip-file fileb://collector.zip
 > ```
 >
-> 3 つのアラームが読む `SnapMirrorLagSeconds` / `FlexCacheHitRate` /
-> `AccessAnomalyCount` を `FSxONTAP/Lakehouse` 名前空間に発行する必要があります。
+> 4 つのメトリクスアラームが読む `SnapMirrorLagSeconds` / `S3APLatencyP99Ms` /
+> `FlexCacheHitRatePercent` / `AccessAnomalyCount` を、**ディメンションなしで**
+> `FSxONTAP/Lakehouse` 名前空間に発行する必要があります。ディメンション付きの
+> エンティティ別系列はドリルダウン用の任意の系列で、アラームはこれを読みません。
+> カスタムメトリクスに対する CloudWatch アラームは、指定したディメンションの組み合わせが
+> 完全に一致する系列だけを読みます
+> （[CloudWatch アラーム](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)）。
 >
 > プレースホルダーが成功を返さず送出するのは、この欠落を可視化するためです。失敗した
 > 呼び出しは DLQ に入り、最初のスケジュール実行で `-dlq-depth` が発火してメールが

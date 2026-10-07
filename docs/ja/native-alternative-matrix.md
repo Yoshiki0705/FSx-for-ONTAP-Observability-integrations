@@ -19,18 +19,18 @@
 | **性能: レイテンシ** | CloudWatch `DataReadOperationTime`/`DataWriteOperationTime`（レイテンシは `OperationTime * 1000 / Operations` で算出） | `fsxn-monitoring-dashboard.yaml` には未実装 | ⚠️ メトリクスは利用可能、ウィジェット未実装 |
 | **性能: ネットワーク利用率** | CloudWatch `NetworkThroughputUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
 | **容量: ストレージ使用量** | CloudWatch `StorageUsed` + `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
-| **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ✅ 第 1 世代: テンプレートと Terraform モジュールの両方で、実データで OK → ALARM → OK を観測（[2026-10-06 の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)）。SNS の配信は未試験 |
+| **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ✅ 第 1 世代: テンプレートと Terraform モジュールの両方で、実データで OK → ALARM → OK を観測（[2026-10-06 の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)）。SNS の配信は未試験。段階的な閾値は [sizing-and-headroom.md](sizing-and-headroom.md)、SSD 自動拡張の選択肢は [capacity-automation.md](capacity-automation.md)（T4 は計画中で未実装） |
 | **Qtree: クォータ管理** | ONTAP REST API `/storage/quota/rules` | CLI スクリプト / 手動 | ⚠️ API経由の管理、GUIなし |
 | **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ 第 1 世代: 連続 4 回の実環境ポーリングが全系列を公開し、値は ONTAP と一致（[2026-10-06 の再実行の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。1 ページを超えるページングはモック化した ONTAP 応答に対する単体テストのみ |
 | **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercentMax` | `qtree-quota-monitor.yaml` | ✅ 第 1 世代: 実データで OK → ALARM → OK を観測（[2026-10-06 の再実行の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。SNS の配信は未試験。アラームは qtree を特定しない（下記 Qtree 補足を参照） |
-| **ボリューム: 作成/削除/リサイズ** | FSx コンソール + ONTAP REST API | デモテンプレート + FSx コンソール（汎用ボリューム管理テンプレートはなし） | ⚠️ |
+| **ボリューム: 作成/削除/リサイズ** | Amazon FSx コンソール + ONTAP REST API | デモテンプレート + Amazon FSx コンソール（汎用ボリューム管理テンプレートはなし） | ⚠️。ボリューム autosize の手順（ONTAP CLI/REST、AWS API による自動化なし）は [capacity-automation.md](capacity-automation.md) |
 | **Snapshot: 作成/スケジュール** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx ネイティブ | ✅ |
 | **Snapshot: リストア** | FSx コンソール + ONTAP REST API | `restore-verification.yaml`（リストア前検証） | ✅ |
 | **NFS エクスポート管理** | ONTAP REST API | `ontap_response.py`（export-policy deny rule によるブロック） | ⚠️ ブロックのみ |
 | **SMB 共有管理** | ONTAP REST API | `ontap_response.py`（name-mapping deny によるブロック） | ⚠️ ブロックのみ |
 | **EMS イベントビューア** | CloudWatch Logs（syslog VPC EP） | `syslog-vpce-cloudwatch.yaml` | ✅ |
 | **ARP ステータス** | EMS → Observability パイプライン | 9 ベンダー統合 + EMS webhook | ✅ |
-| **SnapMirror 管理** | FSx コンソール + ONTAP REST API | ドキュメント（手動手順） | ⚠️ 自動化なし |
+| **SnapMirror 管理** | Amazon FSx コンソール + ONTAP REST API | ドキュメント（手動手順） | ⚠️ 自動化なし。健全性と遅延の監視は、転送先ファイルシステムからポーリングするカスタムメトリクスとして設計済み（T2 で計画中、未実装。[monitoring-design.md](monitoring-design.md#メトリクスカタログ) を参照） |
 | **QoS ポリシー** | ONTAP REST API | — | ❌ 対象外 |
 | **ネットワーク (LIF/DNS)** | FSx コンソール + ONTAP REST API | — | ❌ インフラ管理 |
 | **FPolicy 設定** | ONTAP REST API | FPolicy サーバー (Fargate) + スクリプト | ✅ |
@@ -187,6 +187,9 @@ aws cloudwatch get-metric-data \
 
 - [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **経路の選択と、この対応表が扱う範囲の限界。** 本表が答えるのは「その機能を AWS ネイティブで到達できるか」で、ハブが答えるのは「収集経路をこれにすべきか」です。Harvest 経路では `ONTAP: Qtree` が既に対応対象であることもハブ側に記録されています
 - [NetApp FSx-ONTAP-monitoring（CloudWatch-Monitoring-FSx サブツリー）](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx) — FSx for ONTAP の CloudWatch 監視に関する NetApp 公開リファレンス。上記のテンプレートと同様に CloudFormation ベースの serverless ソリューションです。NetApp Harvest と並び、NetApp リファレンスはリージョン単位の 1 スタックで広い範囲（ボリューム/LUN/SnapMirror/EMS）をカバーし、本リポジトリのテンプレートは範囲が狭く固定で複数スタックに分割されています — どちらも他方の置き換えではありません。
+- [サイジングとヘッドルーム](sizing-and-headroom.md): 容量と使用率のアラームの行の背後にある閾値
+- [監視を起点にした容量自動化](capacity-automation.md): SSD 自動拡張の選択肢、ボリューム autosize とスループット変更の手順
+- [T4 ガード付き SSD 自動拡張の実装設計](capacity-automation-t4-design.md): 計画中の T4 サンプルのガード、ロックの状態、テスト計画
 - [デプロイメントガイド](deployment-guide.md) — 全スタックのデプロイパスと VPC Endpoint 管理
 - [サイバーレジリエンス機能マップ](cyber-resilience-capability-map.md) — NIST CSF 2.0 マッピング
 - [自動応答ガイド](automated-response-guide.md) — DII 相当の封じ込めアクション

@@ -11,7 +11,10 @@
 
 ## Monitoring design hub
 
-- [Monitoring design](docs/en/monitoring-design.md): In-repo implementation index for CloudWatch-native monitoring of FSx for ONTAP; the collection-route choice is deferred to the Hub.
+- [Monitoring design](docs/en/monitoring-design.md): In-repo implementation index for CloudWatch-native monitoring of FSx for ONTAP, organised as four layers (sizing, metric catalog, alert design, automation); the collection-route choice is deferred to the Hub.
+- [Sizing and headroom](docs/en/sizing-and-headroom.md): AWS sizing rules with sources, a placeholder worked example, a derived headroom formula tied to the 6-hour cooldown, and warning/critical/emergency thresholds.
+- [Capacity automation](docs/en/capacity-automation.md): Options for acting on SSD capacity alarms (T4 guarded SSD auto-increase sample planned, not implemented; throughput and volume autosize are runbooks), irreversibility and cooldown facts, Terraform ignore_changes, and a verification plan.
+- [T4 implementation design](docs/en/capacity-automation-t4-design.md): Planned, not implemented. Guards, ceiling validation against the documented per-file-system SSD maximum, lock states (including the blocked latch and UPDATED_OPTIMIZING as non-terminal), Object Lock decision archive (compliance mode for auto), IAM and test plan for the T4 guarded SSD auto-increase sample.
 
 ## CloudWatch templates
 
