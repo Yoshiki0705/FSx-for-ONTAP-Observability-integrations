@@ -25,35 +25,35 @@ All metrics are in namespace `AWS/FSx`, with names, dimensions, and statistics f
 
 ## Obtaining the module
 
-The repository has no tags and no GitHub releases today, and the module is not on the Terraform Registry, because it is a subdirectory of a larger repository. The sizes below were measured on 2026-10-07 at commit `4b27a84` and grow with the repository.
+The module is versioned with git tags of the form `terraform-fsxn-monitoring-dashboard-vX.Y.Z`. The first is `terraform-fsxn-monitoring-dashboard-v0.1.0`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0). The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. The sizes below were measured on 2026-10-07 at commit `4b27a84`, before the first tag was created, and grow with the repository.
 
 | Method | What is downloaded (measured) | Version pinning | Needs git | Status today |
 |---|---|---|---|---|
-| Git source with a tag and `?ref=<tag>&depth=1` | Shallow clone of the whole working tree, about 50 MB (measured with `ref=main&depth=1`) | Tag | Yes | Not published yet: the planned tag `terraform-fsxn-monitoring-dashboard-v0.1.0` has not been created |
+| Git source with a tag and `?ref=<tag>&depth=1` | Shallow clone of the whole working tree, about 50 MB (measured with `ref=main&depth=1`, not with the tag) | Tag | Yes | Works. First tag: `terraform-fsxn-monitoring-dashboard-v0.1.0` |
 | Git source with a commit SHA and `?ref=<commit-sha>` | Full clone of the repository, about 62 MB. Adding `&depth=1` with a SHA fails with `fatal: Remote branch <sha> not found`, because `depth` works only with a branch or tag name | Commit SHA | Yes | Works |
 | Archive URL with a commit SHA | About 20 MB download. The subdirectory path must start with `FSx-for-ONTAP-Observability-integrations-<commit-sha>/` | Commit SHA | No | Works |
-| `git sparse-checkout` of the module directory, then a local `source` path | About 912 KB (the module and the repository's top-level files, including `LICENSE`) | Commit SHA, in your copy | Yes | Works |
+| `git sparse-checkout` of the module directory, then a local `source` path | About 912 KB (the module and the repository's top-level files, including `LICENSE`) | Tag or commit SHA, in your copy | Yes | Works |
 
-The `source` values for the git source with a commit SHA and for the archive URL:
+The `source` values for the git source with the tag, the git source with a commit SHA, and the archive URL:
 
 ```hcl
+# Git source pinned to the first tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
 
 # Archive URL pinned to a commit (no git needed)
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-monitoring-dashboard"
-
-# Git source pinned to a tag, after the tag is published
-# source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<tag>&depth=1"
 ```
 
-The steps below check out only the module directory with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-monitoring-dashboard` in this copy.
+The steps below check out only the module directory at the tag with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-monitoring-dashboard` in this copy. To pin a commit instead, replace the tag name with a commit SHA.
 
 ```bash
 git init fsx-ontap-monitoring && cd fsx-ontap-monitoring
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-monitoring-dashboard
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-monitoring-dashboard-v0.1.0
 git checkout FETCH_HEAD
 ```
 
@@ -65,7 +65,7 @@ git checkout FETCH_HEAD
 >
 > GitHub removed Subversion support in 2024 ([GitHub changelog](https://github.blog/changelog/2024-01-07-subversion-has-been-sunset/)), so `svn export` of a single directory is not an option.
 
-How to choose: each option trades download size, the git dependency, the update path, and pinning differently. The archive URL needs no git and pins a commit; an update means changing the SHA in two places of one long URL. The git source with a SHA pins a commit and an update changes one `ref` value; it needs git and clones the whole repository on every `init` in a new working directory. The tag form will allow a shallow clone and a readable version once a tag exists; it needs git and still downloads the whole working tree. The sparse checkout downloads the least and lets you review the code before use; you maintain the copy and pull updates into it yourself.
+How to choose: each option trades download size, the git dependency, the update path, and pinning differently. The archive URL needs no git and pins a commit; an update means changing the SHA in two places of one long URL. The git source with a SHA pins a commit and an update changes one `ref` value; it needs git and clones the whole repository on every `init` in a new working directory. The tag form pins a readable version and allows a shallow clone, and an update changes the tag name in `ref`; it needs git and still downloads the whole working tree. The sparse checkout downloads the least and lets you review the code before use; you maintain the copy and pull updates into it yourself.
 
 ## Usage
 
@@ -104,6 +104,8 @@ aws cloudwatch list-metrics --namespace AWS/FSx --dimensions Name=FileSystemId,V
 
 ### Deploying from examples/basic
 
+Run these commands from the directory that contains `terraform/`, either the `fsx-ontap-monitoring/` sparse checkout from [Obtaining the module](#obtaining-the-module) or a full clone. There `examples/basic/` calls the module with `source = "../.."`, so the checked-out copy is used. In `terraform.tfvars`, set `region`, `file_system_id`, and any optional inputs.
+
 ```bash
 cd terraform/fsxn-monitoring-dashboard/examples/basic
 cp terraform.tfvars.example terraform.tfvars
@@ -113,11 +115,11 @@ terraform plan
 terraform apply
 ```
 
-In your own root configuration, copy [`examples/basic/`](examples/basic/) and replace `source = "../.."` with one of the sources in [Obtaining the module](#obtaining-the-module). The module block looks like this with the archive URL:
+In your own root configuration, copy [`examples/basic/`](examples/basic/) and replace `source = "../.."` with one of the sources in [Obtaining the module](#obtaining-the-module). That root needs no clone or sparse checkout: `terraform init` downloads the module from `source`. With the tag, the module block looks like this:
 
 ```hcl
 module "fsx_ontap_monitoring" {
-  source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-monitoring-dashboard"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
 
   file_system_id             = "fs-0123456789abcdef0"
   file_system_name           = "fsx-for-ontap-prod"

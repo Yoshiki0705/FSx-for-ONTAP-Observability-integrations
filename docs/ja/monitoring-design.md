@@ -180,11 +180,11 @@ variables はダッシュボードテンプレートのパラメータに対応�
 
 ### T1 モジュールの使い方と範囲
 
-AWS プロバイダーとリージョンを与える自分のルート構成からモジュールを呼び出します。モジュールだけを取得する方法、前提条件、推定の IAM 権限、デプロイ・確認・削除の手順は、モジュールの README の[モジュールの取得方法](../../terraform/fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法)と[使い方](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方)にあります。`ref` はコミットに固定してください。
+AWS プロバイダーとリージョンを与える自分のルート構成からモジュールを呼び出します。モジュールだけを取得する方法、前提条件、推定の IAM 権限、デプロイ・確認・削除の手順は、モジュールの README の[モジュールの取得方法](../../terraform/fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法)と[使い方](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方)にあります。`ref` はリリースのタグに固定してください。コミット SHA も使えますが、その場合は `&depth=1` を付けません。
 
 ```hcl
 module "fsx_ontap_monitoring" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
 
   file_system_id             = "fs-0123456789abcdef0"
   file_system_name           = "fsx-for-ontap-prod"

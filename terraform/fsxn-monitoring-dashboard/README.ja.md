@@ -25,35 +25,35 @@ SNS の配信（`notification_email` を指定していない）、`file_server_
 
 ## モジュールの取得方法
 
-現時点でリポジトリにはタグも GitHub の Release もありません。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry にも登録されていません。下表のサイズは 2026-10-07 にコミット `4b27a84` で測ったもので、リポジトリが大きくなれば増えます。
+このモジュールは `terraform-fsxn-monitoring-dashboard-vX.Y.Z` の形式の git タグで版を付けています。最初の版は `terraform-fsxn-monitoring-dashboard-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0) として公開しています。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。下表のサイズは、最初のタグを作る前の 2026-10-07 にコミット `4b27a84` で測ったもので、リポジトリが大きくなれば増えます。
 
 | 方法 | ダウンロードされるもの（実測） | 版の固定 | git の要否 | 現時点の状態 |
 |---|---|---|---|---|
-| タグを指定した git ソースと `?ref=<tag>&depth=1` | 作業ツリー全体の浅い clone、約 50 MB（`ref=main&depth=1` で測定） | タグ | 要 | 未公開（予定しているタグ `terraform-fsxn-monitoring-dashboard-v0.1.0` はまだ作成していない） |
+| タグを指定した git ソースと `?ref=<tag>&depth=1` | 作業ツリー全体の浅い clone、約 50 MB（タグではなく `ref=main&depth=1` で測定） | タグ | 要 | 使える（最初のタグは `terraform-fsxn-monitoring-dashboard-v0.1.0`） |
 | コミット SHA を指定した git ソースと `?ref=<commit-sha>` | リポジトリ全体の完全な clone、約 62 MB。SHA に `&depth=1` を付けると `fatal: Remote branch <sha> not found` で失敗する。`depth` はブランチ名かタグ名でしか使えないため | コミット SHA | 要 | 使える |
 | コミット SHA を指定したアーカイブ URL | ダウンロード約 20 MB。サブディレクトリのパスは `FSx-for-ONTAP-Observability-integrations-<commit-sha>/` で始める必要がある | コミット SHA | 不要 | 使える |
-| モジュールのディレクトリだけを `git sparse-checkout` し、ローカルパスを `source` にする | 約 912 KB（モジュールと、`LICENSE` を含むリポジトリ直下のファイル） | 手元のコピーのコミット SHA | 要 | 使える |
+| モジュールのディレクトリだけを `git sparse-checkout` し、ローカルパスを `source` にする | 約 912 KB（モジュールと、`LICENSE` を含むリポジトリ直下のファイル） | 手元のコピーのタグかコミット SHA | 要 | 使える |
 
-コミット SHA を指定した git ソースとアーカイブ URL の `source` の書き方は次のとおりです。
+タグを指定した git ソース、コミット SHA を指定した git ソース、アーカイブ URL の `source` の書き方は次のとおりです。コードブロック内のコメントは英語のままで、上から順に「最初のタグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
 
 ```hcl
+# Git source pinned to the first tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
 
 # Archive URL pinned to a commit (no git needed)
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-monitoring-dashboard"
-
-# Git source pinned to a tag, after the tag is published
-# source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<tag>&depth=1"
 ```
 
-次の手順は sparse checkout でモジュールのディレクトリだけを取り出します。その後、このコピーの `terraform/fsxn-monitoring-dashboard` のローカルパスを `source` に指定します。
+次の手順は sparse checkout で、タグの時点のモジュールのディレクトリだけを取り出します。その後、このコピーの `terraform/fsxn-monitoring-dashboard` のローカルパスを `source` に指定します。コミットに固定する場合は、タグ名をコミット SHA に置き換えます。
 
 ```bash
 git init fsx-ontap-monitoring && cd fsx-ontap-monitoring
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-monitoring-dashboard
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-monitoring-dashboard-v0.1.0
 git checkout FETCH_HEAD
 ```
 
@@ -65,7 +65,7 @@ git checkout FETCH_HEAD
 >
 > GitHub は 2024 年に Subversion のサポートを終了しました（[GitHub changelog](https://github.blog/changelog/2024-01-07-subversion-has-been-sunset/)）。1 つのディレクトリだけを `svn export` する方法は使えません。
 
-どの方法を選ぶかは、ダウンロード量・git の要否・更新の手順・版の固定のどれを優先するかで決まります。アーカイブ URL は git が不要でコミットを固定できます。更新するときは長い URL の中の 2 か所の SHA を書き換えます。SHA を指定した git ソースはコミットを固定でき、更新では `ref` の値を 1 つ変えます。git が必要で、新しい作業ディレクトリで `init` するたびにリポジトリ全体を clone します。タグの形式は、タグができれば浅い clone と読みやすい版の指定が使えます。git が必要で、作業ツリー全体はダウンロードします。sparse checkout はダウンロード量が最も少なく、使う前にコードを確認できます。コピーは自分で管理し、更新も自分で取り込みます。
+どの方法を選ぶかは、ダウンロード量・git の要否・更新の手順・版の固定のどれを優先するかで決まります。アーカイブ URL は git が不要でコミットを固定できます。更新するときは長い URL の中の 2 か所の SHA を書き換えます。SHA を指定した git ソースはコミットを固定でき、更新では `ref` の値を 1 つ変えます。git が必要で、新しい作業ディレクトリで `init` するたびにリポジトリ全体を clone します。タグの形式は読みやすい版を固定でき、浅い clone が使えます。更新では `ref` のタグ名を変えます。git が必要で、作業ツリー全体はダウンロードします。sparse checkout はダウンロード量が最も少なく、使う前にコードを確認できます。コピーは自分で管理し、更新も自分で取り込みます。
 
 ## 使い方
 
@@ -104,6 +104,8 @@ aws cloudwatch list-metrics --namespace AWS/FSx --dimensions Name=FileSystemId,V
 
 ### examples/basic からのデプロイ手順
 
+次のコマンドは、`terraform/` を含むディレクトリで実行します。[モジュールの取得方法](#モジュールの取得方法)の sparse checkout で作った `fsx-ontap-monitoring/` か、リポジトリ全体の clone です。そこでは `examples/basic/` が `source = "../.."` でモジュールを呼ぶので、取り出したコピーが使われます。`terraform.tfvars` では `region`・`file_system_id` と、必要な任意の入力値を編集します（コードブロック内の英語のコメントと同じ内容です）。
+
 ```bash
 cd terraform/fsxn-monitoring-dashboard/examples/basic
 cp terraform.tfvars.example terraform.tfvars
@@ -113,11 +115,11 @@ terraform plan
 terraform apply
 ```
 
-自分のルート構成では [`examples/basic/`](examples/basic/) をコピーし、`source = "../.."` を [モジュールの取得方法](#モジュールの取得方法) のいずれかのソースに置き換えます。アーカイブ URL を使うと、module ブロックは次のようになります。
+自分のルート構成では [`examples/basic/`](examples/basic/) をコピーし、`source = "../.."` を [モジュールの取得方法](#モジュールの取得方法) のいずれかのソースに置き換えます。この場合は clone も sparse checkout も不要で、`terraform init` が `source` からモジュールをダウンロードします。タグを使うと、module ブロックは次のようになります。コメントの `Opt-in alarms (all off by default)` は「オプトインのアラーム（既定ではすべて無効）」という意味です。
 
 ```hcl
 module "fsx_ontap_monitoring" {
-  source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-monitoring-dashboard"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
 
   file_system_id             = "fs-0123456789abcdef0"
   file_system_name           = "fsx-for-ontap-prod"

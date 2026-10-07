@@ -180,11 +180,11 @@ The variables mirror the dashboard template's parameters (`FileSystemId` → `fi
 
 ### T1 module usage and scope
 
-Call the module from your own root configuration, which supplies the AWS provider and Region. How to fetch only the module, the prerequisites, the estimated IAM permissions, and the deploy, check, and removal steps are in [Obtaining the module](../../terraform/fsxn-monitoring-dashboard/README.md#obtaining-the-module) and [Usage](../../terraform/fsxn-monitoring-dashboard/README.md#usage) of the module README. Pin `ref` to a commit:
+Call the module from your own root configuration, which supplies the AWS provider and Region. How to fetch only the module, the prerequisites, the estimated IAM permissions, and the deploy, check, and removal steps are in [Obtaining the module](../../terraform/fsxn-monitoring-dashboard/README.md#obtaining-the-module) and [Usage](../../terraform/fsxn-monitoring-dashboard/README.md#usage) of the module README. Pin `ref` to a release tag. A commit SHA also works, without `&depth=1`:
 
 ```hcl
 module "fsx_ontap_monitoring" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
 
   file_system_id             = "fs-0123456789abcdef0"
   file_system_name           = "fsx-for-ontap-prod"
