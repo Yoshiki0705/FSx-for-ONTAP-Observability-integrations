@@ -7,9 +7,14 @@ terraform {
   required_providers {
     aws = {
       source = "hashicorp/aws"
-      # Exact pin, per the repository's dependency rule. Callers on a
-      # different 6.x release must change this pin to use the module.
-      version = "= 6.67.0"
+      # Lower bound only: 6.67.0 is the release the offline tests and the
+      # live runs used; earlier 6.x releases are untested. Terraform
+      # intersects a child module's constraint with the caller's, so an
+      # exact pin here made a root on `~> 6.60.0` fail `init` with
+      # "no available releases match the given constraints ~> 6.60.0, 6.67.0".
+      # The exact pin and lock file for reproducible runs live in
+      # examples/basic/. data.aws_region.current.region needs 6.0.0 or later.
+      version = ">= 6.67.0"
     }
   }
 }

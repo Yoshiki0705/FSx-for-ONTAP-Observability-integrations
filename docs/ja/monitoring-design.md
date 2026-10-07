@@ -161,13 +161,15 @@ Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内する�
 ```
 terraform/
   fsxn-monitoring-dashboard/
-    versions.tf          # Terraform >= 1.11.0, hashicorp/aws = 6.67.0 (exact pin)
+    versions.tf          # Terraform >= 1.11.0, hashicorp/aws >= 6.67.0 (lower bound)
     variables.tf         # file_system_id, file_system_name, capacity_threshold_percent, notification_email, opt-in alarm inputs
     main.tf              # aws_cloudwatch_dashboard, aws_cloudwatch_metric_alarm, aws_sns_topic (+ subscription)
     outputs.tf           # dashboard_name/arn/url, alarm ARNs, sns_topic_arn
     README.md            # inputs, outputs, deliberate differences from the template
+    README.ja.md         # Japanese version of README.md
     .terraform.lock.hcl  # provider hashes for linux/darwin, amd64/arm64
     tests/               # offline terraform test files (mock provider, command = plan)
+    examples/basic/      # runnable root: exact pin = 6.67.0, lock file, terraform.tfvars.example
 ```
 
 variables はダッシュボードテンプレートのパラメータに対応し（`FileSystemId` → `file_system_id`、`FileSystemName` → `file_system_name`、`CapacityThresholdPercent` → `capacity_threshold_percent`、`NotificationEmail` → `notification_email`）、resources は `aws_cloudwatch_dashboard`・`aws_cloudwatch_metric_alarm`・`aws_sns_topic`・`aws_sns_topic_subscription` です。
@@ -178,7 +180,7 @@ variables はダッシュボードテンプレートのパラメータに対応�
 
 ### T1 モジュールの使い方と範囲
 
-AWS プロバイダーとリージョンを与える自分のルート構成からモジュールを呼び出します。`ref` はコミットに固定してください。
+AWS プロバイダーとリージョンを与える自分のルート構成からモジュールを呼び出します。モジュールだけを取得する方法、前提条件、推定の IAM 権限、デプロイ・確認・削除の手順は、モジュールの README の[モジュールの取得方法](../../terraform/fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法)と[使い方](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方)にあります。`ref` はコミットに固定してください。
 
 ```hcl
 module "fsx_ontap_monitoring" {
@@ -267,6 +269,6 @@ A: デプロイ上の問題ではありません。2026-07-02 の E2E 記録で 
 - [AWS ネイティブ代替マトリクス](native-alternative-matrix.md) — 本ページの背後にある System Manager ビュー → CloudWatch メトリクス → テンプレートのマッピング。
 - [System Manager GUI ガイド](system-manager-gui-guide.md) — GUI 経路と、それ自身の小さな決定フローチャート。
 - [CloudWatch ログアラーム](cloudwatch-log-alarm.md) — `cloudwatch-log-alarm.yaml` テンプレートの詳細。
-- [Terraform モジュール: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md) — T1 モジュールの入力・出力・検証状況（英語）。
+- [Terraform モジュール: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) — T1 モジュールの使い方（取得・IAM・デプロイ・確認・削除）、入力・出力・検証状況。
 - [セルフホスト型管理コンソール](../../management-console/README.md) — Harvest 経路向けの NetApp Harvest 実装。
 - [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — 収集経路の決定を行う場所。

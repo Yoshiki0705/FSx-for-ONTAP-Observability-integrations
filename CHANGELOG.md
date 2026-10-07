@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `create-alerts.sh` and `setup-full-observability.sh` for the CrowdStrike Falcon LogScale and OTel Collector integrations — the last two vendors missing them, which made the README's per-vendor one-command setup claim untrue for both.
 - `Rules` sections in `shared/templates/demo-ad-environment.yaml` and `shared/templates/ems-webhook-apigw.yaml`, rejecting parameter combinations that previously deployed cleanly and then failed at runtime.
 - `PostgresEngineVersion` parameter in `management-console/templates/console.yaml`.
+- Terraform module `terraform/fsxn-monitoring-dashboard/` (#103) now ships `examples/basic/` (a runnable root with an exact provider pin and its own lock file), a Japanese README, and "Obtaining the module" and "Usage" sections covering download size per fetch method, estimated IAM permissions, and post-apply checks. `make terraform` validates the example, and `scripts/tests/test_terraform_module_coverage.py` requires it to be listed.
 
 ### Removed
 - `shared/python/idempotency.py`. It defined a second class also named `ObjectLedger`, keyed on `object_key` — a partition key no template in this repository creates, so every call against the shipped ledger table raised `ValidationException`. Use `shared/python/object_ledger.py`, which matches `shared/templates/object-ledger.yaml` and is covered by tests.
@@ -74,6 +75,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reworded ObjectLedger semantics as idempotent object processing and duplicate suppression
 - Added compliance disclaimer to governance docs (not an attestation)
 - Updated .markdown-link-check.json with flaky link mitigation
+- Terraform module provider constraint relaxed from `= 6.67.0` to `>= 6.67.0`. Terraform intersects a child module's constraint with the caller's, so the exact pin made a caller on `~> 6.60.0` fail `init`. `CONTRIBUTING.md` now keeps exact pins for root configurations and examples only.
 
 ## [0.3.0] - 2026-05-15
 

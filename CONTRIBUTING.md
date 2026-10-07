@@ -52,9 +52,10 @@ Thank you for your interest in contributing to FSx for ONTAP Observability Integ
 ### Terraform
 
 - One module per `terraform/<module>/` with a `versions.tf`; `terraform fmt` clean
-- Exact provider pin (`version = "= X.Y.Z"`); track `.terraform.lock.hcl` and regenerate it with `terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=darwin_amd64`
+- Provider constraints: a reusable module (`terraform/<module>/versions.tf`) declares the lowest tested release as a lower bound (`version = ">= X.Y.Z"`); root configurations and examples (`terraform/<module>/examples/*/`) keep the exact pin (`version = "= X.Y.Z"`). Terraform intersects a child module's constraint with the caller's, so an exact pin in a module makes a caller on `~> 6.60.0` fail `init` with `no available releases match the given constraints ~> 6.60.0, 6.67.0`
+- Track `.terraform.lock.hcl` for modules and examples, and regenerate it with `terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=darwin_amd64`. In an example, run `terraform init -backend=false` first: `providers lock` fails until the local module is installed
 - Offline tests in `tests/*.tftest.hcl`: `mock_provider "aws"` and `command = plan`, no AWS credentials
-- Run `make terraform` (fmt, init, validate, test). It fails when `terraform` is not on PATH instead of skipping
+- Run `make terraform` (fmt, init, validate, test for modules; init and validate for examples). It fails when `terraform` is not on PATH instead of skipping
 
 ### Documentation
 
