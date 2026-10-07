@@ -93,6 +93,32 @@ run "defaults" {
     error_message = "Dashboard must have the template's 7 widgets."
   }
 
+  # Raw rows that feed a math expression must be hidden, or the console draws
+  # raw per-period bytes/operations on the converted series' axis.
+  assert {
+    condition = alltrue(flatten([
+      for w in jsondecode(aws_cloudwatch_dashboard.this.dashboard_body).widgets : [
+        for r in w.properties.metrics : try(r[length(r) - 1].visible, true) == false
+        if !can(r[0].expression) && contains(flatten([
+          for e in w.properties.metrics : regexall("[a-z][A-Za-z0-9_]*", e[0].expression) if can(e[0].expression)
+        ]), try(r[length(r) - 1].id, ""))
+      ] if w.type == "metric"
+    ]))
+    error_message = "Raw metrics used as math-expression inputs must set visible = false, or the console draws them on the expression's axis."
+  }
+
+  assert {
+    condition = length(flatten([
+      for w in jsondecode(aws_cloudwatch_dashboard.this.dashboard_body).widgets : [
+        for r in w.properties.metrics : r[length(r) - 1].id
+        if !can(r[0].expression) && contains(flatten([
+          for e in w.properties.metrics : regexall("[a-z][A-Za-z0-9_]*", e[0].expression) if can(e[0].expression)
+        ]), try(r[length(r) - 1].id, ""))
+      ] if w.type == "metric"
+    ])) == 7
+    error_message = "Expected 7 raw metrics used as math-expression inputs (read, write, riops, wiops, sent, recv, used)."
+  }
+
   assert {
     condition     = output.sns_topic_arn == null
     error_message = "sns_topic_arn must be null without notification_email."

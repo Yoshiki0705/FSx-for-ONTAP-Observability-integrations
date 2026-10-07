@@ -6,7 +6,7 @@
 
 This page records four runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06).
 
-On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module.
+On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module in this run. A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
 
 | Item | Value |
 |------|-------|
@@ -167,7 +167,11 @@ Every alarm reached OK within about 1.5 minutes of creation, because CloudWatch 
 | F1 | The capacity threshold range blocks an ALARM-path test on a lightly used file system. `CapacityThresholdPercent` (CloudFormation, `MinValue` 50 / `MaxValue` 95) and `capacity_threshold_percent` (Terraform, the same 50–95 validation) both rejected 1. At 50, the lowest allowed value, utilization of 3.45–3.51% cannot cross the threshold | Verification limit, not a code defect | OK → ALARM → OK is **not verified in this run** for `StorageCapacityAlarm` and Terraform `storage_capacity`. It was verified later on a first-generation file system by writing real data: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). What is verified for them: the dimension set returns data, and the alarm evaluates it to OK. The ALARM path was verified on the two per-volume alarms, whose thresholds accept 1–100. `set-alarm-state` was not used, because it exercises notification wiring, not metric evaluation |
 | F2 | After a threshold-only change that does not cross state (CloudFormation at 50), CloudWatch adds no history entry, and the alarm's `StateReason` keeps the text of the last transition ("threshold (80.0)"). The `Threshold` field reads 50.0 | CloudWatch behavior, not a code defect | Evaluation at 50 is inferred from the absence of ALARM, not observed directly |
 
-Defects in the dashboard template or the Terraform module: none found. All 9 dashboard series and all 9 alarm metric sets (2 CloudFormation, 7 Terraform) matched existing series and returned data on this file system.
+Defects in the dashboard template or the Terraform module: none found in this run. All 9 dashboard series and all 9 alarm metric sets (2 CloudFormation, 7 Terraform) matched existing series and returned data on this file system.
+
+> **Dashboard display note**
+>
+> On 2026-10-07, when the deployed dashboard was screenshotted and its body read back with `aws cloudwatch get-dashboard`, four widgets (Network Throughput, IOPS, Network Sent/Received, Storage Used) drew their raw input metrics on the same axis as the converted series. The axis showed raw per-minute bytes or operations, or raw bytes (the Network Throughput axis reached about 1.9G under an MB/s label), and the converted MB/s, IOPS and GB lines sat near zero. The two utilization widgets (Network Throughput Utilization, Storage Capacity Utilization) and all alarms were not affected. The `get-metric-data` counts above remain valid, because they read the series, not the rendered graph. The fix sets `visible: false` on the 7 raw input rows in both the template and the module. Tag `terraform-fsxn-monitoring-dashboard-v0.1.0` predates the fix.
 
 ---
 
@@ -207,7 +211,7 @@ No custom metrics were emitted: every metric reference in both artifacts uses na
 | Passing checks | 12 of 16 (P4-1–P4-4, P4-7, P5-1–P5-5, P5-8, P6) |
 | Partial or not achievable | 2 of 16 (P4-6, P5-7), both from F1 |
 | Rejected as designed | 2 of 16 (P4-5, P5-6): out-of-range threshold requests refused by the template and the module |
-| Defects found | None |
+| Defects found | None in this run. A dashboard display defect was found on 2026-10-07; see [Findings](#findings) |
 
 ---
 
@@ -638,7 +642,7 @@ Deleting the volume through the FSx for ONTAP management API (`aws fsx delete-vo
 | CF4 | ALARM came 15 minutes after the first breaching period started (3 of 3 periods). OK came about 3.5 minutes after the purge, on one non-breaching datapoint | CloudWatch evaluation, observed once | Expect the ALARM delay to be about 3 periods and the OK delay to be about 1 period with this alarm configuration |
 | CF5 | The single write stream dropped from about 96 MiB/s to about 30 MiB/s after about 5 minutes | Observation, cause not determined | Not a throughput measurement. A fill of this size took about 4 hours |
 
-No defect was found in the dashboard template or the Terraform module.
+No defect was found in the dashboard template or the Terraform module in this run. A dashboard display defect was found later, on 2026-10-07; see [Findings](#findings).
 
 ### Cleanup (Capacity Run)
 
@@ -670,7 +674,7 @@ No security group, IAM, or export policy was changed. No other volume or recover
 | Judgment | ✅ On a first-generation, single-HA-pair file system, the file-system capacity alarm's OK → ALARM → OK path verified on real data for both the CloudFormation template and the Terraform module, at threshold 50. The return to OK was observed by utilization falling after the purge |
 | Passing checks | 8 of 8 |
 | Failed or not run | 0 |
-| Defects found | None |
+| Defects found | None in this run. A dashboard display defect was found on 2026-10-07; see [Findings](#findings) |
 
 ---
 

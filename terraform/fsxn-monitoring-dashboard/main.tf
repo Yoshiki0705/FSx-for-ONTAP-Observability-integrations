@@ -248,6 +248,8 @@ resource "aws_cloudwatch_metric_alarm" "volume_inode" {
 resource "aws_cloudwatch_dashboard" "this" {
   dashboard_name = "${var.name_prefix}-${var.file_system_name}"
 
+  # Raw rows that feed a math expression set visible = false, so the widget
+  # draws only the converted series (MB/s, ops/s, GB), not raw per-period sums.
   dashboard_body = jsonencode({
     widgets = [
       {
@@ -269,8 +271,8 @@ resource "aws_cloudwatch_dashboard" "this" {
         properties = {
           title = "Network Throughput (MB/s)"
           metrics = [
-            ["AWS/FSx", "DataReadBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Read", id = "read" }],
-            ["AWS/FSx", "DataWriteBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Write", id = "write" }],
+            ["AWS/FSx", "DataReadBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Read", id = "read", visible = false }],
+            ["AWS/FSx", "DataWriteBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Write", id = "write", visible = false }],
             [{ expression = "read/60/1048576", label = "Read MB/s", id = "readMBs" }],
             [{ expression = "write/60/1048576", label = "Write MB/s", id = "writeMBs" }],
           ]
@@ -289,8 +291,8 @@ resource "aws_cloudwatch_dashboard" "this" {
         properties = {
           title = "IOPS (Operations/s)"
           metrics = [
-            ["AWS/FSx", "DataReadOperations", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Read IOPS", id = "riops" }],
-            ["AWS/FSx", "DataWriteOperations", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Write IOPS", id = "wiops" }],
+            ["AWS/FSx", "DataReadOperations", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Read IOPS", id = "riops", visible = false }],
+            ["AWS/FSx", "DataWriteOperations", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, label = "Write IOPS", id = "wiops", visible = false }],
             [{ expression = "riops/60", label = "Read IOPS", id = "readIOPS" }],
             [{ expression = "wiops/60", label = "Write IOPS", id = "writeIOPS" }],
           ]
@@ -350,8 +352,8 @@ resource "aws_cloudwatch_dashboard" "this" {
         properties = {
           title = "Network Sent/Received (MB/s)"
           metrics = [
-            ["AWS/FSx", "NetworkSentBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, id = "sent" }],
-            ["AWS/FSx", "NetworkReceivedBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, id = "recv" }],
+            ["AWS/FSx", "NetworkSentBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, id = "sent", visible = false }],
+            ["AWS/FSx", "NetworkReceivedBytes", "FileSystemId", var.file_system_id, { stat = "Sum", period = 60, id = "recv", visible = false }],
             [{ expression = "sent/60/1048576", label = "Sent MB/s", id = "sentMBs" }],
             [{ expression = "recv/60/1048576", label = "Received MB/s", id = "recvMBs" }],
           ]
@@ -370,7 +372,7 @@ resource "aws_cloudwatch_dashboard" "this" {
         properties = {
           title = "Storage Used (GB)"
           metrics = [
-            ["AWS/FSx", "StorageUsed", "FileSystemId", var.file_system_id, { stat = "Average", period = 300, id = "used" }],
+            ["AWS/FSx", "StorageUsed", "FileSystemId", var.file_system_id, { stat = "Average", period = 300, id = "used", visible = false }],
             [{ expression = "used/1073741824", label = "Used GB", id = "usedGB" }],
           ]
           view   = "timeSeries"
