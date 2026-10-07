@@ -141,6 +141,37 @@ def test_a_missing_self_link_target_is_reported(chk, tmp_path) -> None:
         scratch.unlink()
 
 
+@pytest.mark.parametrize("suffix", ["", "?raw=true", "?raw=true#top"])
+def test_a_missing_image_self_link_is_reported_with_or_without_query(chk, suffix) -> None:
+    """Stripping `?raw=true` must not stop a missing target from being reported."""
+    url = (
+        f"https://github.com/{chk.OWNER}/{chk.THIS_REPO}/blob/main/docs/screenshots/"
+        f"no-such-image.png{suffix}"
+    )
+    scratch = REPO_ROOT / "scratch-self-link-query-check.md"
+    scratch.write_text(f"![it]({url})\n", encoding="utf-8")
+    try:
+        findings = chk.check_self_paths([scratch])
+        assert len(findings) == 1
+        assert findings[0].severity == chk.DEAD
+        assert "docs/screenshots/no-such-image.png " in findings[0].message, (
+            "the reported path should be the file path alone, without the query string"
+        )
+    finally:
+        scratch.unlink()
+
+
+def test_an_existing_self_link_with_a_query_string_is_not_reported(chk) -> None:
+    """`blob/main/<file>?raw=true` is how GitHub serves an image inline; the file exists."""
+    url = f"https://github.com/{chk.OWNER}/{chk.THIS_REPO}/blob/main/README.md?raw=true"
+    scratch = REPO_ROOT / "scratch-self-link-query-ok.md"
+    scratch.write_text(f"![it]({url})\n", encoding="utf-8")
+    try:
+        assert not chk.check_self_paths([scratch])
+    finally:
+        scratch.unlink()
+
+
 def test_a_commit_pinned_self_link_is_inconclusive_not_dead(chk) -> None:
     """A pinned ref points at a revision this tree may not hold; that is not a defect."""
     scratch = REPO_ROOT / "scratch-pinned-link-check.md"

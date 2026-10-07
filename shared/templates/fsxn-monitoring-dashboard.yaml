@@ -128,6 +128,8 @@ Resources:
     Type: AWS::CloudWatch::Dashboard
     Properties:
       DashboardName: !Sub '${AWS::StackName}-${FileSystemName}'
+      # Raw rows that feed a math expression set "visible": false, so the widget
+      # draws only the converted series (MB/s, ops/s, GB), not raw per-period sums.
       DashboardBody: !Sub |
         {
           "widgets": [
@@ -144,8 +146,8 @@ Resources:
               "properties": {
                 "title": "Network Throughput (MB/s)",
                 "metrics": [
-                  ["AWS/FSx", "DataReadBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Read", "id": "read"}],
-                  ["AWS/FSx", "DataWriteBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Write", "id": "write"}],
+                  ["AWS/FSx", "DataReadBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Read", "id": "read", "visible": false}],
+                  ["AWS/FSx", "DataWriteBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Write", "id": "write", "visible": false}],
                   [{"expression": "read/60/1048576", "label": "Read MB/s", "id": "readMBs"}],
                   [{"expression": "write/60/1048576", "label": "Write MB/s", "id": "writeMBs"}]
                 ],
@@ -161,8 +163,8 @@ Resources:
               "properties": {
                 "title": "IOPS (Operations/s)",
                 "metrics": [
-                  ["AWS/FSx", "DataReadOperations", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Read IOPS", "id": "riops"}],
-                  ["AWS/FSx", "DataWriteOperations", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Write IOPS", "id": "wiops"}],
+                  ["AWS/FSx", "DataReadOperations", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Read IOPS", "id": "riops", "visible": false}],
+                  ["AWS/FSx", "DataWriteOperations", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "label": "Write IOPS", "id": "wiops", "visible": false}],
                   [{"expression": "riops/60", "label": "Read IOPS", "id": "readIOPS"}],
                   [{"expression": "wiops/60", "label": "Write IOPS", "id": "writeIOPS"}]
                 ],
@@ -212,8 +214,8 @@ Resources:
               "properties": {
                 "title": "Network Sent/Received (MB/s)",
                 "metrics": [
-                  ["AWS/FSx", "NetworkSentBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "id": "sent"}],
-                  ["AWS/FSx", "NetworkReceivedBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "id": "recv"}],
+                  ["AWS/FSx", "NetworkSentBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "id": "sent", "visible": false}],
+                  ["AWS/FSx", "NetworkReceivedBytes", "FileSystemId", "${FileSystemId}", {"stat": "Sum", "period": 60, "id": "recv", "visible": false}],
                   [{"expression": "sent/60/1048576", "label": "Sent MB/s", "id": "sentMBs"}],
                   [{"expression": "recv/60/1048576", "label": "Received MB/s", "id": "recvMBs"}]
                 ],
@@ -229,7 +231,7 @@ Resources:
               "properties": {
                 "title": "Storage Used (GB)",
                 "metrics": [
-                  ["AWS/FSx", "StorageUsed", "FileSystemId", "${FileSystemId}", {"stat": "Average", "period": 300, "id": "used"}],
+                  ["AWS/FSx", "StorageUsed", "FileSystemId", "${FileSystemId}", {"stat": "Average", "period": 300, "id": "used", "visible": false}],
                   [{"expression": "used/1073741824", "label": "Used GB", "id": "usedGB"}]
                 ],
                 "view": "timeSeries",

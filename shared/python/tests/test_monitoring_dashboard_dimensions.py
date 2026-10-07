@@ -17,6 +17,12 @@ The table below is encoded from the AWS docs (raw HTML, retrieved 2026-10-05):
 Volume-level dimension sets are not encoded; this template has no volume
 metric. The Terraform module ``terraform/fsxn-monitoring-dashboard`` must use
 the same capacity dimension set, which the last tests check.
+
+A second check covers rendering. A raw metric row that feeds a math
+expression must set ``"visible": false``; otherwise the console draws the raw
+per-period bytes or operations on the same axis as the converted series, and
+the converted lines sit near zero. Found on 2026-10-07 in four widgets of a
+deployed dashboard. The template and the module must hide the same rows.
 """
 
 from __future__ import annotations
@@ -114,13 +120,17 @@ def _alarms(template: dict[str, Any]) -> list[tuple[str, str, dict[str, Any], st
     return out
 
 
-def _widget_metrics(template: dict[str, Any]) -> list[tuple[str, str, dict[str, Any], str]]:
+def _dashboard_widgets(template: dict[str, Any]) -> list[dict[str, Any]]:
     body = template["Resources"]["MonitoringDashboard"]["Properties"]["DashboardBody"]["Sub"]
     # The only substitution outside a JSON string is the numeric annotation.
     body = body.replace("${CapacityThresholdPercent}", "80")
     body = re.sub(r"\$\{[^}]+\}", "PLACEHOLDER", body)
+    return json.loads(body)["widgets"]
+
+
+def _widget_metrics(template: dict[str, Any]) -> list[tuple[str, str, dict[str, Any], str]]:
     rows = []
-    for widget in json.loads(body)["widgets"]:
+    for widget in _dashboard_widgets(template):
         if widget["type"] != "metric":
             continue
         title = widget["properties"]["title"]
@@ -214,3 +224,86 @@ def test_terraform_capacity_widget_uses_same_dimensions() -> None:
     assert expected in text, "Terraform capacity widget row not found"
     cfn = next(dims for _, name, dims, _ in WIDGET_METRICS if name == "StorageCapacityUtilization")
     assert cfn == {"FileSystemId": "PLACEHOLDER", "StorageTier": "SSD", "DataType": "All"}
+
+
+_EXPR_ID = re.compile(r"[a-z][A-Za-z0-9_]*")
+
+
+def _expression_inputs(widget: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:
+    """Return (metric name, id, options) for each raw row an expression references."""
+    rows = widget["properties"]["metrics"]
+    referenced = {
+        token
+        for row in rows
+        if isinstance(row[0], dict) and "expression" in row[0]
+        for token in _EXPR_ID.findall(row[0]["expression"])
+    }
+    out = []
+    for row in rows:
+        if isinstance(row[0], dict):
+            continue
+        options = row[-1] if isinstance(row[-1], dict) else {}
+        if options.get("id") in referenced:
+            out.append((row[1], options["id"], options))
+    return out
+
+
+def hidden_input_violations(widget: dict[str, Any]) -> list[str]:
+    """Return one message per expression input row that is not ``visible: false``."""
+    title = widget["properties"].get("title", "<untitled>")
+    return [
+        f"{title}: {name} (id {metric_id}) feeds an expression but is not visible: false"
+        for name, metric_id, options in _expression_inputs(widget)
+        if options.get("visible") is not False
+    ]
+
+
+_METRIC_WIDGETS = [w for w in _dashboard_widgets(_TEMPLATE) if w["type"] == "metric"]
+
+
+def test_expression_inputs_are_hidden() -> None:
+    violations = [v for w in _METRIC_WIDGETS for v in hidden_input_violations(w)]
+    assert violations == []
+
+
+def test_expression_input_count() -> None:
+    ids = sorted(i for w in _METRIC_WIDGETS for _, i, _ in _expression_inputs(w))
+    assert ids == sorted(["read", "write", "riops", "wiops", "sent", "recv", "used"])
+
+
+def test_checker_flags_visible_input() -> None:
+    def widget(options: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "properties": {
+                "title": "t",
+                "metrics": [
+                    ["AWS/FSx", "M", "FileSystemId", "fs", options],
+                    [{"expression": "m1/60", "id": "e1"}],
+                ],
+            }
+        }
+
+    assert len(hidden_input_violations(widget({"id": "m1"}))) == 1
+    assert hidden_input_violations(widget({"id": "m1", "visible": False})) == []
+    assert hidden_input_violations(widget({"id": "other"})) == []
+
+
+def test_terraform_hides_the_same_expression_inputs() -> None:
+    hidden = {name for w in _METRIC_WIDGETS for name, _, _ in _expression_inputs(w)}
+    all_names = {name for _, name, _, _ in WIDGET_METRICS}
+    text = MAIN_TF.read_text(encoding="utf-8")
+    found: set[str] = set()
+    mismatches = []
+    for line in text.splitlines():
+        match = re.search(r'\["AWS/FSx", "(\w+)"', line)
+        if not match or match.group(1) not in all_names:
+            continue
+        name = match.group(1)
+        found.add(name)
+        has_hidden = re.search(r"\bvisible\s*=\s*false\b", line) is not None
+        if has_hidden != (name in hidden):
+            mismatches.append(
+                f"{name}: visible = false {'missing' if name in hidden else 'unexpected'}"
+            )
+    assert found == all_names, f"widget rows not found in {MAIN_TF}: {sorted(all_names - found)}"
+    assert mismatches == []

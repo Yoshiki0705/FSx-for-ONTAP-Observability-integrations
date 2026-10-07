@@ -89,9 +89,13 @@ REPO_REF = re.compile(rf"github\.com/{OWNER}/(?P<repo>[A-Za-z0-9._-]+)")
 # link that can be checked without the network and without a citation index, because the
 # target is the tree the checker is already standing in. Links into a *sibling* repository
 # need both, which is why only the name half of those is covered here.
+#
+# The path stops at a fragment (`#anchor`) and at a query string (`?raw=true`). Neither is
+# part of the file path; left in, `blob/main/x.png?raw=true` is checked as a file literally
+# named `x.png?raw=true` and reported missing.
 SELF_PATH_REF = re.compile(
     rf"github\.com/{OWNER}/{THIS_REPO}/(?P<kind>blob|tree|raw)/(?P<ref>[^/\s)\"']+)/"
-    rf"(?P<path>[^\s)\"'#>]+)"
+    rf"(?P<path>[^\s)\"'#?>]+)"
 )
 
 # Suffixes worth reading. An allowlist rather than "every tracked file" so the walk cannot
@@ -424,6 +428,8 @@ def selftest() -> int:
     live = f"https://github.com/{OWNER}/{THIS_REPO}/blob/main/README.md"
     if self_path_refs(f"see [it]({live}).") != {("main", "README.md")}:
         bad.append("a self-referential blob link was not parsed, or its path not trimmed")
+    if self_path_refs(f"![it]({live}?raw=true)") != {("main", "README.md")}:
+        bad.append("a ?raw=true query string was read as part of a self-link's path")
     if self_path_refs(f"https://github.com/{OWNER}/other-repo/blob/main/README.md"):
         bad.append("a link into a sibling repository was treated as a self-link")
 
@@ -435,7 +441,7 @@ def selftest() -> int:
         print(f"selftest FAIL: {line}", file=sys.stderr)
     if bad:
         return 1
-    print(f"selftest: {len(PARSE_CASES) + 8} case(s) passed")
+    print(f"selftest: {len(PARSE_CASES) + 9} case(s) passed")
     return 0
 
 

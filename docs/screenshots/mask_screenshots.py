@@ -903,6 +903,92 @@ def mask_automated_response_screenshots():
             print(f"  ⚠️  {fp.name}: エラー - {e}")
 
 
+# cloudwatch-monitoring/ の撮影時サイズ (1x, 1 ピクセル = CSS 1px)
+CLOUDWATCH_MONITORING_RAW_SIZE = (1600, 1260)
+# ダッシュボードのテキストウィジェット内のコード表示の背景色 ((100, 262) で採取)
+CLOUDWATCH_CODE_CHIP_COLOR = (252, 252, 253)
+# アラーム一覧の名前セルの背景色 ((250, 640) と (260, 672) で採取)
+CLOUDWATCH_ALARM_CELL_COLOR = (252, 252, 253)
+
+
+def mask_cloudwatch_monitoring_screenshots() -> None:
+    """cloudwatch-monitoring/ 配下スクリーンショットのマスク処理。
+
+    Terraform モジュール terraform/fsxn-monitoring-dashboard/ (T1) の
+    CloudWatch コンソール画面。
+    対象ファイル (いずれも撮影時 1600x1260, 1x):
+      - 01-dashboard-12h.png
+      - 02-alarms-list.png
+
+    マスク対象 (元画像の座標で塗りつぶしてから切り抜く):
+      01:
+        - テキストウィジェットの Amazon FSx for NetApp ONTAP ファイルシステム ID (fs-...)
+      02:
+        - ボリューム単位アラーム 2 件の名前に含まれるボリューム ID
+          (fsvol- に続く 17 桁。前後の "fsvol-" と "-capacity-" / "-inode-" は残す)
+      共通:
+        - 上部ナビバー (y 0〜51: アカウント ID、IAM ロール名、ユーザー名) と
+          下部フッターを切り抜きで除去
+
+    切り抜きは冪等でないため、撮影時サイズのときだけ処理する。
+    切り抜き後のサイズなら「マスク済み」としてスキップし、それ以外のサイズは
+    警告を出してスキップする。スクリプト全体を再実行しても再度切り抜かれない。
+    """
+    subdir = SCRIPT_DIR / "cloudwatch-monitoring"
+    box_t = tuple[int, int, int, int]
+    rgb_t = tuple[int, int, int]
+    targets: list[tuple[str, list[tuple[box_t, rgb_t]], box_t]] = [
+        (
+            "01-dashboard-12h.png",
+            [((99, 260, 251, 279), CLOUDWATCH_CODE_CHIP_COLOR)],
+            (0, 52, 1600, 1165),
+        ),
+        (
+            "02-alarms-list.png",
+            [
+                # 5 行目 (...-capacity-high) の 2 行目先頭のボリューム ID
+                ((78, 613, 213, 632), CLOUDWATCH_ALARM_CELL_COLOR),
+                # 6 行目 (...-inode-high) の 2 行目先頭のボリューム ID
+                ((78, 684, 213, 703), CLOUDWATCH_ALARM_CELL_COLOR),
+            ],
+            (0, 52, 1600, 772),
+        ),
+    ]
+
+    for filename, masks, crop_box in targets:
+        filepath = subdir / filename
+        if not filepath.exists():
+            print(f"  ⏭️  cloudwatch-monitoring/{filename}: ファイルが見つかりません")
+            continue
+
+        img = Image.open(filepath).convert("RGB")
+        width, height = img.size
+        print(f"  📐 cloudwatch-monitoring/{filename}: {width}x{height}")
+        cropped_size = (crop_box[2] - crop_box[0], crop_box[3] - crop_box[1])
+        if img.size == cropped_size:
+            print(f"  ℹ️  cloudwatch-monitoring/{filename}: マスク済み（スキップ）")
+            img.close()
+            continue
+        if img.size != CLOUDWATCH_MONITORING_RAW_SIZE:
+            print(
+                f"  ⚠️  cloudwatch-monitoring/{filename}: 想定外のサイズのためスキップ"
+                f"（想定 {CLOUDWATCH_MONITORING_RAW_SIZE[0]}x{CLOUDWATCH_MONITORING_RAW_SIZE[1]}）"
+            )
+            img.close()
+            continue
+
+        for box, color in masks:
+            mask_region(img, box, color=color)
+        masked = img.crop(crop_box)
+        masked.save(filepath)
+        masked.close()
+        img.close()
+        print(
+            f"  ✅ cloudwatch-monitoring/{filename}: マスク完了"
+            "（リソース ID + ナビバー/フッター切り抜き）"
+        )
+
+
 def main(target_dir: Path | None = None) -> None:
     """Run all masking operations.
 
@@ -953,6 +1039,9 @@ def main(target_dir: Path | None = None) -> None:
 
     print("\n--- Automated Response 検証分 ---")
     mask_automated_response_screenshots()
+
+    print("\n--- CloudWatch 監視ダッシュボード (Terraform T1) 分 ---")
+    mask_cloudwatch_monitoring_screenshots()
 
     # Phase 2: PNG metadata stripping (all files)
     print()
