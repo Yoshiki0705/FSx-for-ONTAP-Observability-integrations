@@ -207,6 +207,8 @@ By default the module creates the dashboard (the template's seven widgets) and t
 | Volume capacity | `volume_ids` (one per volume) | `StorageCapacityUtilization` (Average) | `FileSystemId` + `VolumeId` |
 | Volume inode utilization | `volume_ids` (one per volume) | Metric math `100 * FilesUsed / FilesCapacity` (`FilesUsed` Average, `FilesCapacity` Maximum); no `InodeUtilization` metric exists | `FileSystemId` + `VolumeId` |
 
+Screenshots of the dashboard and alarm list from one deployment of this module (first-generation file system, `ap-northeast-1`, 2026-10-07, after the display fix) are in [Dashboard and Alarm Screenshots on 2026-10-07](verification-results-cloudwatch-monitoring.md#dashboard-and-alarm-screenshots-on-2026-10-07).
+
 The module differs from `fsxn-monitoring-dashboard.yaml` in these deliberate ways:
 
 - `throughput_threshold_percent` exposes the throughput threshold that the template hardcodes at 80. The default is the same.

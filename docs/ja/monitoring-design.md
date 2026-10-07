@@ -207,6 +207,8 @@ module "fsx_ontap_monitoring" {
 | ボリューム容量 | `volume_ids`（ボリュームごとに 1 つ） | `StorageCapacityUtilization`（Average） | `FileSystemId` + `VolumeId` |
 | ボリュームの inode 利用率 | `volume_ids`（ボリュームごとに 1 つ） | メトリクス算術式 `100 * FilesUsed / FilesCapacity`（`FilesUsed` は Average、`FilesCapacity` は Maximum）。`InodeUtilization` というメトリクスは存在しない | `FileSystemId` + `VolumeId` |
 
+このモジュールを 1 回デプロイしたときのダッシュボードとアラーム一覧の画面（第 1 世代のファイルシステム、`ap-northeast-1`、2026-10-07、表示の修正後）は、[2026-10-07 のダッシュボードとアラームの画面](verification-results-cloudwatch-monitoring.md#2026-10-07-のダッシュボードとアラームの画面)にあります。
+
 `fsxn-monitoring-dashboard.yaml` とは、次の点を意図して変えています。
 
 - `throughput_threshold_percent` は、テンプレートが 80 に固定しているスループットの閾値を変数にしたものです。既定値は同じです。

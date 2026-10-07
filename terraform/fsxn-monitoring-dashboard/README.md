@@ -25,6 +25,10 @@ Still `unverified`: SNS delivery (no `notification_email` was set), second-gener
 
 All metrics are in namespace `AWS/FSx`, with names, dimensions, and statistics from the AWS metric pages: [file system (first generation)](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html), [file system (second generation)](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html), [volume](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html).
 
+The image below shows the dashboard this module deployed on 2026-10-07 to a first-generation file system in `ap-northeast-1`, after the display fix (12-hour range in UTC, console language Japanese, file system ID masked). Capture conditions, what the graphs show, and the alarm list are in the [verification record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#dashboard-and-alarm-screenshots-on-2026-10-07) ([日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-07-のダッシュボードとアラームの画面)).
+
+![CloudWatch dashboard created by this module: a text widget and six graphs (Network Throughput, IOPS, Network Throughput Utilization, Storage Capacity Utilization, Network Sent/Received, Storage Used) over a 12-hour range. File system ID masked](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/screenshots/cloudwatch-monitoring/01-dashboard-12h.png?raw=true)
+
 ## Obtaining the module
 
 The module is versioned with git tags of the form `terraform-fsxn-monitoring-dashboard-vX.Y.Z`. The first is `terraform-fsxn-monitoring-dashboard-v0.1.0`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0). The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. The sizes below were measured on 2026-10-07 at commit `4b27a84`, before the first tag was created, and grow with the repository.

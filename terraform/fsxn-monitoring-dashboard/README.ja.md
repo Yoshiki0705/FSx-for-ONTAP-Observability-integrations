@@ -25,6 +25,10 @@ SNS の配信（`notification_email` を指定していない）、`file_server_
 
 メトリクスはすべて名前空間 `AWS/FSx` にあり、名前・ディメンション・統計は AWS のメトリクスのページ（[ファイルシステム（第 1 世代）](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[ファイルシステム（第 2 世代）](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、[ボリューム](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html)）から取りました。
 
+下の画像は、このモジュールが 2026-10-07 に `ap-northeast-1` の第 1 世代のファイルシステムへ、表示の修正後にデプロイしたダッシュボードです（12 時間の範囲、UTC、コンソールの言語は日本語、ファイルシステム ID はマスク済み）。撮影条件、グラフが示している内容、アラーム一覧は [検証記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-07-のダッシュボードとアラームの画面)（[English](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#dashboard-and-alarm-screenshots-on-2026-10-07)）にあります。
+
+![このモジュールが作成した CloudWatch ダッシュボード: テキストウィジェットと 6 つのグラフ（Network Throughput、IOPS、Network Throughput Utilization、Storage Capacity Utilization、Network Sent/Received、Storage Used）、12 時間の範囲。ファイルシステム ID はマスク済み](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/screenshots/cloudwatch-monitoring/01-dashboard-12h.png?raw=true)
+
 ## モジュールの取得方法
 
 このモジュールは `terraform-fsxn-monitoring-dashboard-vX.Y.Z` の形式の git タグで版を付けています。最初の版は `terraform-fsxn-monitoring-dashboard-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0) として公開しています。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。下表のサイズは、最初のタグを作る前の 2026-10-07 にコミット `4b27a84` で測ったもので、リポジトリが大きくなれば増えます。

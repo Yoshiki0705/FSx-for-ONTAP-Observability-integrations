@@ -4,7 +4,7 @@
 
 ## Overview
 
-This page records four runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06).
+This page records four runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07).
 
 On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module in this run. A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
 
@@ -171,7 +171,7 @@ Defects in the dashboard template or the Terraform module: none found in this ru
 
 > **Dashboard display note**
 >
-> On 2026-10-07, when the deployed dashboard was screenshotted and its body read back with `aws cloudwatch get-dashboard`, four widgets (Network Throughput, IOPS, Network Sent/Received, Storage Used) drew their raw input metrics on the same axis as the converted series. The axis showed raw per-minute bytes or operations, or raw bytes (the Network Throughput axis reached about 1.9G under an MB/s label), and the converted MB/s, IOPS and GB lines sat near zero. The two utilization widgets (Network Throughput Utilization, Storage Capacity Utilization) and all alarms were not affected. The `get-metric-data` counts above remain valid, because they read the series, not the rendered graph. The fix sets `visible: false` on the 7 raw input rows in both the template and the module. Tag `terraform-fsxn-monitoring-dashboard-v0.1.0` predates the fix.
+> On 2026-10-07, when the deployed dashboard was screenshotted and its body read back with `aws cloudwatch get-dashboard`, four widgets (Network Throughput, IOPS, Network Sent/Received, Storage Used) drew their raw input metrics on the same axis as the converted series. The axis showed raw per-minute bytes or operations, or raw bytes (the Network Throughput axis reached about 1.9G under an MB/s label), and the converted MB/s, IOPS and GB lines sat near zero. The two utilization widgets (Network Throughput Utilization, Storage Capacity Utilization) and all alarms were not affected. The `get-metric-data` counts above remain valid, because they read the series, not the rendered graph. The fix sets `visible: false` on the 7 raw input rows in both the template and the module. Tag `terraform-fsxn-monitoring-dashboard-v0.1.0` predates the fix. The dashboard after the fix is shown in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07).
 
 ---
 
@@ -675,6 +675,37 @@ No security group, IAM, or export policy was changed. No other volume or recover
 | Passing checks | 8 of 8 |
 | Failed or not run | 0 |
 | Defects found | None in this run. A dashboard display defect was found on 2026-10-07; see [Findings](#findings) |
+
+---
+
+## Dashboard and Alarm Screenshots on 2026-10-07
+
+On 2026-10-07 (UTC), the Terraform module was applied in `ap-northeast-1` to a first-generation `SINGLE_AZ_1` file system with one HA pair, and the CloudWatch console was captured. This is a sample from one environment, not a verification run with checks: the images record what the console displayed at capture time. The deployment was destroyed afterwards. In both images the console navigation bar and footer are cropped out, and the file system ID and the volume ID are masked.
+
+| Item | Value |
+|------|-------|
+| Region | Asia Pacific (Tokyo), `ap-northeast-1` |
+| File system | `fs-0123456789abcdef0` (placeholder), `SINGLE_AZ_1` (first generation), 1 HA pair |
+| Module | `terraform/fsxn-monitoring-dashboard/`, applied from a local path. First apply before the raw-series display fix, second apply after it. `hashicorp/aws` v6.67.0 |
+| Inputs | `file_system_name = "fsx-for-ontap-demo"`, default `name_prefix` (`fsxn-monitoring`), the three opt-in file-server alarms enabled with `file_server_names` empty, one entry in `volume_ids`, no `notification_email`, so no SNS topic |
+| Resources | First apply completed about 06:45Z: 8 added (1 dashboard, 7 alarms). Second apply about 08:27Z: 1 changed, the dashboard only. Destroy about 08:30Z: 8 destroyed |
+| Console | Japanese UI, time zone UTC |
+| Dashboard capture | About 08:28Z, 12-hour range, after the fix |
+| Alarm list capture | About 07:03Z, filtered by `fsxn-monitoring`, before the second apply. The fix changed only the dashboard body, so the alarms are the same in both applies |
+
+![CloudWatch dashboard fsxn-monitoring-fsx-for-ontap-demo over a 12-hour range in UTC: a text widget with the file system name, region and a console link, and six graphs titled Network Throughput (MB/s), IOPS (Operations/s), Network Throughput Utilization (%), Storage Capacity Utilization (%), Network Sent/Received (MB/s) and Storage Used (GB). File system ID masked](../screenshots/cloudwatch-monitoring/01-dashboard-12h.png)
+
+The 12-hour range (about 20:28Z on 2026-10-06 to 08:28Z on 2026-10-07) overlaps the end of the [capacity alarm real-data run](#capacity-alarm-real-data-run-on-2026-10-06) on the same file system. CloudWatch keeps metric history, so a dashboard created on 2026-10-07 also draws the earlier hours. Until shortly before 23:00Z, the throughput, IOPS and network graphs show that run's single write stream, which finished at 22:55:28Z. Storage Capacity Utilization rises to about 58% (that run's CloudWatch peak was 58.61%), stays there, and falls back to the baseline after the test volume's recovery-queue entry was purged at 00:37:59Z (see [Return to OK and the Volume Recovery Queue](#return-to-ok-and-the-volume-recovery-queue)). The dashed lines at 80 are this dashboard's threshold annotations. That run's alarms used threshold 50 and belonged to separate deployments that are not on this dashboard. After about 01:00Z the graphs show only small spikes; no load was generated for this capture.
+
+![CloudWatch alarm list filtered by fsxn-monitoring: 7 alarms, all in state OK with no actions, with conditions such as StorageCapacityUtilization>80 for 3 datapoints within 15 minutes. The volume ID in two alarm names is masked](../screenshots/cloudwatch-monitoring/02-alarms-list.png)
+
+The 7 alarms are the 2 parity alarms (`capacity-high`, `throughput-high`), the 3 opt-in file-server alarms (`cpu-high`, `disk-iops-high`, `disk-throughput-high`) and the 2 per-volume alarms (`fsvol-…-capacity-high`, `fsvol-…-inode-high`). The Actions column reads "no actions" (アクションなし), because no `notification_email` was set. The condition column shows greater than 80 for 3 datapoints within 15 minutes. The last-state-update column shows every alarm reaching OK between 06:45:24Z and 06:46:11Z, shortly after the first apply. The console notice at the top right of the list (メトリクスデータが検証されていません, "metric data not verified") was not investigated.
+
+> **Display fix note**
+>
+> The first capture of this dashboard, before the fix, showed four widgets drawing their raw input metrics on the same axis as the converted series. That is the defect described in the dashboard display note under [Findings](#findings). The dashboard image above was captured after the fix was applied to the same deployment.
+
+The images do not show SNS notification (no email was set), an ALARM state on this deployment, or second-generation and multi-HA-pair file systems.
 
 ---
 
