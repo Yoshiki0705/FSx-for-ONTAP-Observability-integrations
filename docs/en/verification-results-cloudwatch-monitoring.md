@@ -4,7 +4,7 @@
 
 ## Overview
 
-This page records three runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06).
+This page records four runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06).
 
 On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module.
 
@@ -164,7 +164,7 @@ Every alarm reached OK within about 1.5 minutes of creation, because CloudWatch 
 
 | # | Finding | Kind | Effect on this record |
 |---|---------|------|-----------------------|
-| F1 | The capacity threshold range blocks an ALARM-path test on a lightly used file system. `CapacityThresholdPercent` (CloudFormation, `MinValue` 50 / `MaxValue` 95) and `capacity_threshold_percent` (Terraform, the same 50–95 validation) both rejected 1. At 50, the lowest allowed value, utilization of 3.45–3.51% cannot cross the threshold | Verification limit, not a code defect | OK → ALARM → OK is **not verified** for `StorageCapacityAlarm` and Terraform `storage_capacity`. What is verified for them: the dimension set returns data, and the alarm evaluates it to OK. The ALARM path was verified on the two per-volume alarms, whose thresholds accept 1–100. `set-alarm-state` was not used, because it exercises notification wiring, not metric evaluation |
+| F1 | The capacity threshold range blocks an ALARM-path test on a lightly used file system. `CapacityThresholdPercent` (CloudFormation, `MinValue` 50 / `MaxValue` 95) and `capacity_threshold_percent` (Terraform, the same 50–95 validation) both rejected 1. At 50, the lowest allowed value, utilization of 3.45–3.51% cannot cross the threshold | Verification limit, not a code defect | OK → ALARM → OK is **not verified in this run** for `StorageCapacityAlarm` and Terraform `storage_capacity`. It was verified later on a first-generation file system by writing real data: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). What is verified for them: the dimension set returns data, and the alarm evaluates it to OK. The ALARM path was verified on the two per-volume alarms, whose thresholds accept 1–100. `set-alarm-state` was not used, because it exercises notification wiring, not metric evaluation |
 | F2 | After a threshold-only change that does not cross state (CloudFormation at 50), CloudWatch adds no history entry, and the alarm's `StateReason` keeps the text of the last transition ("threshold (80.0)"). The `Threshold` field reads 50.0 | CloudWatch behavior, not a code defect | Evaluation at 50 is inferred from the absence of ALARM, not observed directly |
 
 Defects in the dashboard template or the Terraform module: none found. All 9 dashboard series and all 9 alarm metric sets (2 CloudFormation, 7 Terraform) matched existing series and returned data on this file system.
@@ -176,7 +176,7 @@ Defects in the dashboard template or the Terraform module: none found. All 9 das
 | Item | Status | Reason |
 |------|--------|--------|
 | `shared/templates/qtree-quota-monitor.yaml` | Not run in this run | Out of scope for the 2026-10-05 run; no qtree resource was deployed. It was run separately on 2026-10-06: the first run stopped after one successful poll ([Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06)), and the re-run completed ([Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06)) |
-| ALARM path of the file-system capacity alarm (CloudFormation and Terraform) | Not verified | F1 |
+| ALARM path of the file-system capacity alarm (CloudFormation and Terraform) | Not verified in this run | F1. Verified later on a first-generation file system: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06) |
 | Second-generation file systems (`file_server_names`, `FileServer` and `Aggregate` dimensions) | Not run | The test file system is first generation |
 | File systems with more than one HA pair | Not run | The test file system has one HA pair |
 | SNS notification delivery | Not exercised | No `NotificationEmail` / `notification_email` was set, so no topic, subscription, or alarm/OK action existed |
@@ -203,7 +203,7 @@ No custom metrics were emitted: every metric reference in both artifacts uses na
 
 | Item | Value |
 |------|-------|
-| Judgment | ✅ Deployment, series selection, and OK evaluation verified for both artifacts on a first-generation, single-HA-pair file system. Per-volume ALARM path verified (Terraform). File-system capacity ALARM path not verified (F1) |
+| Judgment | ✅ Deployment, series selection, and OK evaluation verified for both artifacts on a first-generation, single-HA-pair file system. Per-volume ALARM path verified (Terraform). File-system capacity ALARM path not verified in this run (F1); verified later in the [real-data run](#capacity-alarm-real-data-run-on-2026-10-06) |
 | Passing checks | 12 of 16 (P4-1–P4-4, P4-7, P5-1–P5-5, P5-8, P6) |
 | Partial or not achievable | 2 of 16 (P4-6, P5-7), both from F1 |
 | Rejected as designed | 2 of 16 (P4-5, P5-6): out-of-range threshold requests refused by the template and the module |
@@ -536,6 +536,141 @@ The 5 custom metric series in `FSxONTAP/Qtree` cannot be deleted and are left to
 | Passing checks | 12 of 12 |
 | Failed or not run | 0 |
 | Template-level issues found | None new. QF2 and QF3 from the first run remain in the template |
+
+---
+
+## Capacity Alarm Real-Data Run on 2026-10-06
+
+From 2026-10-06T18:17Z to 2026-10-07T00:56Z (UTC), the file-system capacity alarm was driven from OK to ALARM and back to OK on real data, for both the CloudFormation template (`StorageCapacityAlarm`) and the Terraform module (`storage_capacity`). This closes the ALARM-path gap that [F1](#findings) left in the 2026-10-05 run. About 472.5 GiB of random data was written to a thin-provisioned test volume, which raised SSD utilization from 3.48% to a peak of 58.6%, above the threshold of 50%. Both alarms moved to ALARM at 22:27Z and returned to OK at 00:41Z. The return to OK was observed by utilization falling after the test volume was deleted and its entry was purged from the ONTAP volume recovery queue. The threshold was not raised. Deleting the volume alone did not lower utilization; see [Return to OK and the Volume Recovery Queue](#return-to-ok-and-the-volume-recovery-queue).
+
+| Item | Value |
+|------|-------|
+| Verification date | 2026-10-06T18:17Z to 2026-10-07T00:56Z (UTC), including a pause of about 9 minutes for an SSO sign-in |
+| Verification environment | Test environment (`ap-northeast-1`), sample run with one SVM, one test volume, and a single write stream |
+| Scope | The ALARM transition and the return to OK of the file-system capacity alarm in both artifacts, on real data. ONTAP REST calls were made from a bastion host to read the aggregate and the volume recovery queue, and to purge recovery-queue entries |
+| Result | Pass. Both alarms went INSUFFICIENT_DATA → OK → ALARM → OK. 8 of 8 checks passed |
+
+These values come from one run on a first-generation, single-HA-pair file system. They show that the alarm fires and clears on the series it selects. They are not throughput figures for the file system, and they say nothing about second-generation or multi-HA-pair file systems.
+
+### Method and Environment (Capacity Run)
+
+The method writes real data because the first attempt, earlier on 2026-10-06, could not raise utilization by reserving space. That attempt created a thick-provisioned volume (space guarantee `volume`), and ONTAP rejected it with error code 787011: "Aggregates with attached object stores cannot contain volumes with a guarantee other than none". The test file system's aggregate has an attached object store (it reports `cloud_storage` usage), so on this file system SSD usage rises only when data is written. This run therefore wrote data, and set the threshold to 50, the lowest allowed value, to keep the fill as small as possible. A second attempt that also wrote data stopped mid-fill for a reason unrelated to AWS and is not part of this record.
+
+| Item | Value |
+|------|-------|
+| File system | `fs-0123456789abcdef0` (placeholder), `SINGLE_AZ_1` (first generation), 1 HA pair, 128 MBps, SSD IOPS 3072 (automatic) |
+| ONTAP version | 9.18.1P6 (`GET /api/cluster`) |
+| Aggregate | `aggr1`, 861.76 GiB. CloudWatch `StorageCapacity` for `StorageTier=SSD`, `DataType=All` reported the same size |
+| Source revision | `fc9e80f` (main) for both `shared/templates/fsxn-monitoring-dashboard.yaml` and `terraform/fsxn-monitoring-dashboard/` |
+| Terraform provider | `hashicorp/aws` v6.67.0 from the committed lock file, local state |
+| Alarm settings (both artifacts) | Threshold 50 (`CapacityThresholdPercent=50`, `capacity_threshold_percent=50`). `StorageCapacityUtilization` with `FileSystemId` + `StorageTier=SSD` + `DataType=All`, Average, 300 seconds × 3, `GreaterThanThreshold`. No notification email, so no SNS topic |
+| Terraform resources | `name_prefix = "fsxn-verify-tf"`, no opt-in alarms: 3 added (the dashboard and the 2 parity alarms) |
+| Test volume | Thin-provisioned (space guarantee none), 520,000 MB, UNIX security style, snapshot policy none, tiering policy `NONE`, storage efficiency disabled. Created with `aws fsx create-volume` and deleted with `SkipFinalBackup=true` |
+| Writer | One `dd if=/dev/urandom bs=1M oflag=direct` loop writing 1 GiB files over an NFS 4.2 mount from a bastion host |
+| Fill size | Computed from live aggregate usage to reach 58% of 861.76 GiB, below a 65% stop limit. 472.5 GiB (483,818 MiB) was on the volume when the writer finished |
+| Authentication | AWS IAM Identity Center (SSO) session. ONTAP: `fsxadmin` |
+
+At the start of the run the aggregate read 230.09 GiB used (26.7%), not the idle baseline. Three test volumes deleted during earlier attempts were still in the ONTAP volume recovery queue. Purging those three entries released about 200 GiB within about 4 minutes, to 30.00 GiB (CloudWatch 3.48%), before the fill began.
+
+The writer was stopped once, at 18:31:11Z after 10.41 GiB, by a cleanup command for an earlier attempt that reached the bastion host late. That command was cancelled, and the writer was restarted at 18:44:17Z with the remaining size recomputed from live aggregate usage.
+
+> **Write-rate note**: After the restart, the single write stream ran at about 96 MiB/s for the first 5 minutes, then at about 30 MiB/s steady: 31.3 MiB/s on average over the 460 GiB written after the restart, which took 4 hours 11 minutes. The cause of the drop was not determined. This was one run, and no burst-credit or IOPS metric was checked, so these numbers are not a throughput measurement of the file system. Allow several hours for a fill of this size with one stream.
+
+### Check Results (Capacity Run)
+
+| # | Check | Result | Time (UTC) |
+|---|-------|--------|------------|
+| C0 | Preflight: ONTAP `GET /api/cluster`, aggregate, recovery queue, CloudWatch, file system state | ✅ PASS. HTTP 200. Aggregate 230.09 GiB used (26.7%), held by 3 recovery-queue entries from earlier attempts | 18:17Z |
+| C1 | Purge the 3 stale recovery-queue entries | ✅ PASS. HTTP 202 for each; queue at 0 records by 18:18:52Z; aggregate at 30.00 GiB by 18:21:43Z | 18:17:32Z → 18:21:43Z |
+| C2 | Create the test volume, mount it, write data | ✅ PASS. 472.5 GiB on the volume. Interrupted once and restarted (see above) | 18:27:37Z → 22:55:28Z |
+| C3 | Deploy the CloudFormation stack and apply the Terraform module, both at threshold 50 | ✅ PASS. CREATE_COMPLETE; 3 resources added | 18:30:30Z → 18:31:30Z |
+| C4 | Both capacity alarms INSUFFICIENT_DATA → OK | ✅ PASS | 18:32:26Z, 18:32:28Z |
+| C5 | Both capacity alarms OK → ALARM | ✅ PASS | 22:27:26Z, 22:27:28Z |
+| C6 | Unmount, delete the volume, purge its recovery-queue entry; both alarms ALARM → OK | ✅ PASS | 22:58:52Z → 00:41:28Z |
+| C7 | Cleanup, with re-read | ✅ PASS for every resource | 00:54:58Z → 00:56:41Z |
+
+### Utilization and Alarm State Transitions (Capacity Run)
+
+From `describe-alarm-history` (`StateUpdate`), UTC. The same alarm names also return entries from the 2026-10-05 run, which used the same names; only the entries below belong to this run.
+
+| Alarm | Transition | Time | Values in the state reason |
+|-------|-----------|------|----------------------------|
+| `fsxn-verify-tf-capacity-high` (Terraform) | INSUFFICIENT_DATA → OK | 2026-10-06T18:32:26Z | Initial evaluation, utilization about 3.5–5% |
+| `fsxn-verify-monitoring-dashboard-capacity-high` (CloudFormation) | INSUFFICIENT_DATA → OK | 2026-10-06T18:32:28Z | Initial evaluation, utilization about 3.5–5% |
+| `fsxn-verify-tf-capacity-high` (Terraform) | OK → ALARM | 2026-10-06T22:27:26Z | 3 datapoints, 50.176 (22:12), 51.21 (22:17), 52.242 (22:22), > 50 |
+| `fsxn-verify-monitoring-dashboard-capacity-high` (CloudFormation) | OK → ALARM | 2026-10-06T22:27:28Z | Same 3 datapoints, > 50 |
+| `fsxn-verify-tf-capacity-high` (Terraform) | ALARM → OK | 2026-10-07T00:41:26Z | 1 datapoint, 48.21 (00:36), not > 50 |
+| `fsxn-verify-monitoring-dashboard-capacity-high` (CloudFormation) | ALARM → OK | 2026-10-07T00:41:28Z | Same datapoint, not > 50 |
+
+The first 300-second period above 50% started at 22:12Z, and both alarms reached ALARM 15 minutes later, when three consecutive periods had breached. Aggregate used space held between 504.96 and 505.10 GiB (58.6%; CloudWatch peak 58.61%) from the end of writing (22:55Z) until the purge (00:37:59Z). CloudWatch utilization stayed above 50% for about 2 hours 25 minutes (from the 22:12Z period to 00:38Z), and the alarms were in ALARM for about 2 hours 14 minutes. The 65% stop limit was never approached.
+
+### Return to OK and the Volume Recovery Queue
+
+| Time (UTC) | Step | Aggregate used (ONTAP) | CloudWatch utilization (60-second Average) |
+|------------|------|------------------------|--------------------------------------------|
+| 22:58:29Z | Aggregate read after the fill (writing finished at 22:55:28Z) | 504.96 GiB (58.6%) | |
+| 22:58:52Z | Plain `umount` succeeded (no lazy unmount); mount point removed | | |
+| 00:36:36Z | `aws fsx delete-volume` (`SkipFinalBackup=true`); the volume was gone from `describe-volumes` at 00:37:38Z | | |
+| 00:37:44Z | After deletion: 1 recovery-queue entry for the deleted volume | 505.10 GiB (58.6%), unchanged | 58.61% (00:37Z) |
+| 00:37:59Z | Purge of that entry: HTTP 202 (job queued) | | |
+| 00:39:02Z | Read | 414.39 GiB (48.1%) | 40.86% (00:39Z) |
+| 00:40:06Z | Read | 337.68 GiB (39.2%) | |
+| 00:41:10Z | Read | 244.58 GiB (28.4%) | 21.8% (00:41Z) |
+| 00:41:26Z, 00:41:28Z | Both alarms ALARM → OK | | |
+| 00:42:14Z | Read; queue at 0 records | 155.13 GiB (18.0%) | 3.92% (00:43Z) |
+| 00:54:35Z | Read | 29.36 GiB (3.4%), the baseline | 3.41% (from 00:45Z on) |
+
+Empty cells were not read at that step.
+
+The return to OK was observed by utilization falling after the purge, not by raising the threshold. The aggregate was below 50% at the first read after the purge (63 seconds), the 1-minute CloudWatch datapoint was below 50% at 00:39Z, and both alarms were OK about 3.5 minutes after the purge. One non-breaching datapoint was enough: the 300-second period starting 00:36Z averaged 48.21%. CloudWatch utilization fell faster than the aggregate's used space as read from ONTAP; the two come from different sources, and the difference was not investigated.
+
+Deleting the volume through the FSx for ONTAP management API (`aws fsx delete-volume`) did not free its space. AWS documents that a deleted FSx for ONTAP volume is placed in ONTAP's recovery queue ([Recovering deleted FSx for ONTAP volumes](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/recovering-deleted-volumes.html)), and AWS re:Post states that by default deleted volumes are kept in that queue for at least 12 hours before they are fully deleted ([How can I recover a deleted FSx for ONTAP volume?](https://repost.aws/knowledge-center/fsx-ontap-recover-deleted-volume)) (confidence: `documented`). In this run, a deleted volume kept counting toward SSD used space until it was purged: the aggregate read 505.10 GiB before and after the deletion, and at the start of the run three volumes deleted during earlier attempts still held about 200 GiB, which CloudWatch reported as 26.7% utilization (observed). Release without a purge, after the retention period, was not observed.
+
+> **Capacity-alarm operations note**: A capacity alarm does not clear right after you delete a volume. Until the recovery-queue entry expires (at least 12 hours by default, per the re:Post article above) or is purged, the deleted volume's data still counts toward SSD used space and toward `StorageCapacityUtilization`. Deleting volumes is therefore not an immediate way to relieve capacity pressure. Purging gives the space back within minutes, as here, but it is irreversible: the purged volume can no longer be recovered from the queue. In this test environment `fsxadmin` purged entries through the ONTAP REST private CLI passthrough, `POST /api/private/cli/volume/recovery-queue/purge` with the SVM and the queued volume name in the body, which returned HTTP 202 with a job.
+
+### Findings (Capacity Run)
+
+| # | Finding | Kind | Effect on this record |
+|---|---------|------|-----------------------|
+| CF1 | ONTAP rejected a thick-provisioned volume (guarantee `volume`) with error code 787011, because the aggregate has an attached object store | ONTAP constraint, observed on this file system | Utilization cannot be raised by reserving space here. A capacity-alarm test needs real data |
+| CF2 | A volume deleted through the FSx for ONTAP management API (`aws fsx delete-volume`) stays in the ONTAP recovery queue and keeps counting toward SSD used space until it is purged or its retention elapses (at least 12 hours by default, documented; expiry not observed) | ONTAP behavior, documented retention and observed usage | A capacity alarm does not clear right after a volume is deleted. Here the return to OK followed the purge |
+| CF3 | Purging released space within minutes: 3 entries, about 200 GiB, within about 4 minutes; 1 entry, from 505.10 GiB to below 50% within 63 seconds and to the 29.36 GiB baseline by 00:54:35Z | ONTAP behavior, observed twice in this run | The purge is irreversible. It is a test-environment procedure, not a recommended production step |
+| CF4 | ALARM came 15 minutes after the first breaching period started (3 of 3 periods). OK came about 3.5 minutes after the purge, on one non-breaching datapoint | CloudWatch evaluation, observed once | Expect the ALARM delay to be about 3 periods and the OK delay to be about 1 period with this alarm configuration |
+| CF5 | The single write stream dropped from about 96 MiB/s to about 30 MiB/s after about 5 minutes | Observation, cause not determined | Not a throughput measurement. A fill of this size took about 4 hours |
+
+No defect was found in the dashboard template or the Terraform module.
+
+### Cleanup (Capacity Run)
+
+| Step | Result | Time (UTC) |
+|------|--------|------------|
+| Confirm no writer, unmount, remove the mount point | No process under the mount; plain `umount` succeeded | 22:58:52Z → 22:58:55Z |
+| `aws fsx delete-volume` and purge of its recovery-queue entry | Volume gone from `describe-volumes`; queue at 0 records | 00:36:36Z → 00:42Z |
+| `terraform destroy` | Exit 0, 3 destroyed | 00:54:58Z |
+| `aws cloudformation delete-stack` + wait | Deleted | 00:55Z → 00:55:33Z |
+| Local and bastion temporary files | Removed | Before the re-read |
+| Re-read | No test volume; recovery queue 0 records; the stack does not exist; 0 alarms with prefix `fsxn-verify-`; 0 dashboards with prefix `fsxn-verify`; no test mount, directory, or writer process on the bastion host; aggregate 29.36 GiB used (baseline) with `cloud_storage` usage unchanged at 2.68 GiB; CloudWatch utilization 3.41% | 00:56:41Z |
+
+No security group, IAM, or export policy was changed. No other volume or recovery-queue entry was touched.
+
+### What Remains Unverified (Capacity Run)
+
+| Item | Status | Reason |
+|------|--------|--------|
+| Second-generation file systems (capacity with the `Aggregate` dimension) and more than one HA pair | Not run | The test file system was first generation with one HA pair |
+| SNS notification delivery | Not exercised | No notification email was set, so the alarms had no actions |
+| ALARM at thresholds other than 50, including the default 80 | Not run | Only 50 was used, to keep the fill small |
+| Space release when a recovery-queue entry expires without a purge | Not observed | Entries were purged |
+| Cause of the write-rate drop | Not determined | No burst-credit or IOPS metric was checked |
+
+### Judgment (Capacity Run)
+
+| Item | Value |
+|------|-------|
+| Judgment | ✅ On a first-generation, single-HA-pair file system, the file-system capacity alarm's OK → ALARM → OK path verified on real data for both the CloudFormation template and the Terraform module, at threshold 50. The return to OK was observed by utilization falling after the purge |
+| Passing checks | 8 of 8 |
+| Failed or not run | 0 |
+| Defects found | None |
 
 ---
 

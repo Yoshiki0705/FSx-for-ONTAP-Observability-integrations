@@ -19,7 +19,7 @@
 | **性能: レイテンシ** | CloudWatch `DataReadOperationTime`/`DataWriteOperationTime`（レイテンシは `OperationTime * 1000 / Operations` で算出） | `fsxn-monitoring-dashboard.yaml` には未実装 | ⚠️ メトリクスは利用可能、ウィジェット未実装 |
 | **性能: ネットワーク利用率** | CloudWatch `NetworkThroughputUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
 | **容量: ストレージ使用量** | CloudWatch `StorageUsed` + `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
-| **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ⚠️ 第 1 世代のファイルシステムで系列と OK の評価を検証済み（[2026-10-05 の記録](verification-results-cloudwatch-monitoring.md)）。ALARM への遷移は未観測 |
+| **容量: アラート** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml`（閾値アラーム） | ✅ 第 1 世代: テンプレートと Terraform モジュールの両方で、実データで OK → ALARM → OK を観測（[2026-10-06 の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)）。SNS の配信は未試験 |
 | **Qtree: クォータ管理** | ONTAP REST API `/storage/quota/rules` | CLI スクリプト / 手動 | ⚠️ API経由の管理、GUIなし |
 | **Qtree: クォータ監視** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ 第 1 世代: 連続 4 回の実環境ポーリングが全系列を公開し、値は ONTAP と一致（[2026-10-06 の再実行の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。1 ページを超えるページングはモック化した ONTAP 応答に対する単体テストのみ |
 | **Qtree: クォータアラート** | CloudWatch Alarm on `QtreeQuotaUsedPercentMax` | `qtree-quota-monitor.yaml` | ✅ 第 1 世代: 実データで OK → ALARM → OK を観測（[2026-10-06 の再実行の記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。SNS の配信は未試験。アラームは qtree を特定しない（下記 Qtree 補足を参照） |
@@ -36,7 +36,7 @@
 | **FPolicy 設定** | ONTAP REST API | FPolicy サーバー (Fargate) + スクリプト | ✅ |
 | **監査設定** | ONTAP CLI/REST API | セットアップスクリプト + docs | ✅ |
 
-> **実環境での検証に関する補足**: `fsxn-monitoring-dashboard.yaml` の行（IOPS、スループット、ネットワーク利用率、ストレージ使用量、容量アラート）は、2026-10-05 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに対して実行しました。ダッシュボードのすべての系列がデータを返し、容量アラームは INSUFFICIENT_DATA を抜けて OK に達しています（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）。容量: アラートが ⚠️ のままなのは、ALARM への遷移を観測していないためです。閾値の下限（50%）が、ファイルシステムの利用率 3.5% を上回っていました。第 2 世代と複数 HA ペアのファイルシステムは試験していません。Qtree テンプレートは、2026-10-06 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに別途デプロイしました。最初の実行は 1 回のポーリングの後に ONTAP の HTTP 401 で停止しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の実行)）。再実行では、連続 4 回のポーリングが全系列を公開して値は ONTAP のクォータレポートと一致し、`QtreeQuotaAlarm` は OK から ALARM へ遷移して OK に戻りました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。そのため Qtree: クォータ監視と Qtree: クォータアラートは、第 1 世代のファイルシステムについて ✅ です。これらについて未検証のまま残るのは、第 2 世代と複数 HA ペアのファイルシステム、CA 証明書を使った TLS、SNS の配信、1 ページを超えるページングと打ち切りの経路、Qtree が 200 を超える SVM、最小権限のセキュリティグループとエクスポートポリシー（再実行は許可範囲の広いテスト環境の設定を使った）です。
+> **実環境での検証に関する補足**: `fsxn-monitoring-dashboard.yaml` の行（IOPS、スループット、ネットワーク利用率、ストレージ使用量、容量アラート）は、2026-10-05 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに対して実行しました。ダッシュボードのすべての系列がデータを返し、容量アラームは INSUFFICIENT_DATA を抜けて OK に達しています（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）。その日は ALARM への遷移を観測できませんでした。閾値の下限（50%）が、ファイルシステムの利用率 3.5% を上回っていたためです。2026-10-06 の後の実行では、HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムでテスト用ボリュームに実データを書き込み、SSD の利用率を 58.6% まで上げ、テンプレートと Terraform モジュールの両方の容量アラームが閾値 50 で OK から ALARM へ遷移して OK に戻ることを観測しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)）。そのため容量: アラートは、第 1 世代のファイルシステムについて ✅ です。SNS の配信は引き続き未試験です。削除したボリュームは ONTAP の recovery queue に残って SSD の使用量に数えられ続ける（既定で少なくとも 12 時間）ため、ボリュームを削除しても容量アラームはすぐには解除されません。詳細は記録を参照してください。第 2 世代と複数 HA ペアのファイルシステムは試験していません。Qtree テンプレートは、2026-10-06 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに別途デプロイしました。最初の実行は 1 回のポーリングの後に ONTAP の HTTP 401 で停止しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の実行)）。再実行では、連続 4 回のポーリングが全系列を公開して値は ONTAP のクォータレポートと一致し、`QtreeQuotaAlarm` は OK から ALARM へ遷移して OK に戻りました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。そのため Qtree: クォータ監視と Qtree: クォータアラートは、第 1 世代のファイルシステムについて ✅ です。これらについて未検証のまま残るのは、第 2 世代と複数 HA ペアのファイルシステム、CA 証明書を使った TLS、SNS の配信、1 ページを超えるページングと打ち切りの経路、Qtree が 200 を超える SVM、最小権限のセキュリティグループとエクスポートポリシー（再実行は許可範囲の広いテスト環境の設定を使った）です。
 
 ---
 
@@ -106,11 +106,11 @@
 
 | プロダクト | マッピング機能数 | ✅ 対応済み | ⚠️ 部分対応 | ❌ 対象外 |
 |----------|:-------------:|:---------:|:---------:|:--------:|
-| System Manager | 21 | 12 | 7 | 2 |
+| System Manager | 21 | 13 | 6 | 2 |
 | Workload Factory | 9 | 5 | 2 | 2 |
 | DII SWS | 13 | 13 | 0 | 0 |
 
-**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **57% 完全対応 + 33% 部分対応**（マッピングした機能のうちそれぞれ21件中12件・7件。qtree クォータ監視とアラートは第 1 世代のファイルシステムでの検証だけを根拠に完全対応に数えている）— 部分対応は、ダッシュボード未実装のレイテンシウィジェット、容量アラーム（第 1 世代のファイルシステムで OK の評価は検証済み、ALARM への遷移は未観測）、qtree クォータ管理（API のみ）、セキュリティブロック専用のエクスポート/共有管理実装、デモ用ボリュームテンプレート、手動手順のみの SnapMirror です。残る **10%**（QoS、LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。
+**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **62% 完全対応 + 29% 部分対応**（マッピングした機能のうちそれぞれ21件中13件・6件。容量アラートと、qtree クォータ監視とアラートは、第 1 世代のファイルシステムでの検証だけを根拠に完全対応に数えている）— 部分対応は、ダッシュボード未実装のレイテンシウィジェット、qtree クォータ管理（API のみ）、セキュリティブロック専用のエクスポート/共有管理実装、デモ用ボリュームテンプレート、手動手順のみの SnapMirror です。残る **10%**（21件中2件: QoS、LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。3 つの割合は四捨五入しているため、合計は 101 になります。
 
 > **この表の正しい読み方**: 「100% カバー」は、本リポジトリが実装している封じ込め/検知対応アクションに限定した機能レベルの対応範囲を示すものであり、本アプローチが DII の完全な代替であるという主張ではなく、両者を単純に比較して一方を推奨する趣旨のものでもありません。DII の ML 検知、エージェントベースの収集、ベンダー管理による運用は、本リポジトリがゼロから構築していない機能です。このカバー率は、本リポジトリのより狭い範囲の AWS ネイティブな仕組みが、別の経路で同じ*封じ込めアクション*に到達していることを表しています。どちらの状況にどちらが適するかは、下記の[選び方ガイド](#選び方ガイド)を参照してください。
 
