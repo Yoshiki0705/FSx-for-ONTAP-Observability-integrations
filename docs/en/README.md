@@ -12,6 +12,7 @@
 | I want to... | Guide | Time |
 |---|---|---|
 | **Decide how to monitor FSx for ONTAP at all** — not settled on an approach yet | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 min |
+| Monitor FSx for ONTAP with CloudWatch using Terraform | [Terraform module](../../terraform/fsxn-monitoring-dashboard/README.md#usage) · [Monitoring design](monitoring-design.md#t1-module-usage-and-scope) | — |
 | Validate the pipeline end-to-end (first time) | [Minimum Test Path](quick-start-minimum.md) | 15 min |
 | Deploy a vendor integration to production | [Deployment Guide](deployment-guide.md) | 30 min |
 | Respond to ransomware at the storage layer | [Automated Incident Response](automated-response-guide.md) | 20 min |
@@ -361,7 +362,7 @@ python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v
 cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
-- **Tech stack**: CloudFormation (YAML) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
+- **Tech stack**: CloudFormation (YAML) · Terraform ([module](../../terraform/fsxn-monitoring-dashboard/README.md)) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
 - **Contributing**: See [CONTRIBUTING.md](../../CONTRIBUTING.md)
 - **Changelog**: See [CHANGELOG.md](../../CHANGELOG.md)
 - **Roadmap**: See [ROADMAP.md](../../ROADMAP.md)

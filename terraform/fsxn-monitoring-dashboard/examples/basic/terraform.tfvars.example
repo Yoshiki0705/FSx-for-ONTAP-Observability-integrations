@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (gitignored) and replace the placeholders.
+region         = "ap-northeast-1"
+file_system_id = "fs-0123456789abcdef0"
+
+# Optional. Values shown are examples; omitted lines use the module defaults.
+# file_system_name           = "fsx-for-ontap"
+# name_prefix                = "fsxn-monitoring"
+# capacity_threshold_percent = 80
+# notification_email         = "ops@example.com"
+# enable_cpu_utilization_alarm             = true
+# enable_disk_iops_utilization_alarm       = true
+# enable_disk_throughput_utilization_alarm = true
+# file_server_names = ["FsxId0123456789abcdef0-01"]
+# volume_ids        = ["fsvol-0123456789abcdef0"]
+# tags              = { Environment = "dev" }

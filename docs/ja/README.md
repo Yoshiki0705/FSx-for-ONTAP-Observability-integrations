@@ -12,6 +12,7 @@
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
 | **そもそも FSx for ONTAP をどう監視するか決める** — 方式が未決の場合 | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 分 |
+| CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [Terraform モジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) · [監視設計](monitoring-design.md#t1-モジュールの使い方と範囲) | — |
 | パイプラインを E2E で検証（初回） | [最小テストパス](quick-start-minimum.md) | 15 分 |
 | ベンダー統合を本番デプロイ | [デプロイガイド](deployment-guide.md) | 30 分 |
 | ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
@@ -357,7 +358,7 @@ python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v
 cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
-- **技術スタック**: CloudFormation (YAML) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
+- **技術スタック**: CloudFormation (YAML) · Terraform（[モジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md)） · Python 3.12 Lambda · TypeScript · GitHub Actions CI
 - **コントリビュート**: [CONTRIBUTING.md](../../CONTRIBUTING.md) 参照
 - **変更履歴**: [CHANGELOG.md](../../CHANGELOG.md) 参照
 - **ロードマップ**: [ROADMAP.md](../../ROADMAP.md) 参照

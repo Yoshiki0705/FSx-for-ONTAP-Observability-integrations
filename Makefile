@@ -71,10 +71,13 @@ CFN_TEMPLATES := \
   $(wildcard shared/templates/*.yaml) \
   $(wildcard management-console/templates/*.yaml)
 
-# Terraform modules: every terraform/<module>/ that has a versions.tf. One
-# level deep on purpose; scripts/tests/test_terraform_module_coverage.py fails
-# if a directory holding .tf files at any depth is missing from this list.
+# Terraform modules: every terraform/<module>/ that has a versions.tf, one
+# level deep. Root examples under terraform/<module>/examples/<name>/ are a
+# separate list because they get init + validate only (no `terraform test`;
+# an example has no tests). scripts/tests/test_terraform_module_coverage.py
+# fails if a directory holding .tf files at any depth is in neither list.
 TF_MODULE_DIRS := $(patsubst %/versions.tf,%,$(wildcard terraform/*/versions.tf))
+TF_EXAMPLE_DIRS := $(patsubst %/versions.tf,%,$(wildcard terraform/*/examples/*/versions.tf))
 
 # Python source for lint and security scanning. Excludes tests: assert
 # statements in tests are bandit B101 by design.
@@ -114,7 +117,7 @@ help:
 	@echo "  lint           ruff + eslint + Japanese heading style"
 	@echo "  security       bandit over PY_SRC"
 	@echo "  cfn            cfn-lint + cfn-guard over CFN_TEMPLATES"
-	@echo "  terraform      fmt + validate + offline tests (mock provider) for terraform/*"
+	@echo "  terraform      fmt + validate + offline tests (mock provider) for terraform/*, validate for examples"
 	@echo "  gitleaks       Secret scan, including the vendor-credential rules"
 	@echo "  drift          Guards that fail when config and reality diverge"
 	@echo "  repo-names     Resolve linked repository names (network; weekly in CI)"
@@ -223,7 +226,7 @@ headings-selftest:
 # the same logic under pytest, so `make test-py` and `make drift` enforce it in
 # CI without a workflow change.
 ai-style: ai-style-selftest
-	$(PY) scripts/ai_style_rules.py docs/ja docs/en README.md --summary --fail --exclude 'blog/*'
+	$(PY) scripts/ai_style_rules.py docs/ja docs/en README.md terraform --summary --fail --exclude 'blog/*'
 ai-style-selftest:
 	@$(PY) scripts/ai_style_rules.py --selftest >/dev/null
 
@@ -326,7 +329,8 @@ cfn-guard-selftest:
 
 # Offline only: `terraform test` runs every module's tests/*.tftest.hcl with a
 # mock provider and `command = plan`, so no AWS credentials are needed and
-# nothing is applied. A missing terraform binary fails this target instead of
+# nothing is applied. Examples (TF_EXAMPLE_DIRS) get init + validate, which
+# also need no credentials. A missing terraform binary fails this target instead of
 # skipping it: a skipped gate exits 0 and reads exactly like a passing one.
 # terraform/ is a real directory, so this target must stay in .PHONY or make
 # reports it up to date and runs nothing.
@@ -339,6 +343,12 @@ terraform:
 	  terraform -chdir="$$d" init -backend=false -input=false -lockfile=readonly || exit 1; \
 	  terraform -chdir="$$d" validate || exit 1; \
 	  terraform -chdir="$$d" test || exit 1; \
+	  echo "::endgroup::"; \
+	done
+	@for d in $(TF_EXAMPLE_DIRS); do \
+	  echo "::group::$$d"; \
+	  terraform -chdir="$$d" init -backend=false -input=false -lockfile=readonly || exit 1; \
+	  terraform -chdir="$$d" validate || exit 1; \
 	  echo "::endgroup::"; \
 	done
 

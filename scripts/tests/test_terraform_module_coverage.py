@@ -1,4 +1,4 @@
-"""Every Terraform module on disk must be in the Makefile's TF_MODULE_DIRS.
+"""Every Terraform directory on disk must be in TF_MODULE_DIRS or TF_EXAMPLE_DIRS.
 
 Why this exists
 ---------------
@@ -15,6 +15,11 @@ also requires each listed module to carry what the gate depends on: a
 versions.tf, at least one tests/*.tftest.hcl (``terraform test`` passes with
 zero test files), and a tracked .terraform.lock.hcl (``init -lockfile=readonly``
 needs it, and an untracked one would pass locally and fail in CI).
+
+Root examples (``terraform/<module>/examples/<name>/``) are in the separate
+TF_EXAMPLE_DIRS list, because ``make terraform`` runs only init and validate on
+them. A directory on disk counts as covered when it is in either list. Each
+example must carry a versions.tf and a tracked lock file; it needs no tests.
 
 Guard the guard
 ---------------
@@ -48,6 +53,7 @@ PRUNE = {
 }
 
 KNOWN_MODULE = "terraform/fsxn-monitoring-dashboard"
+KNOWN_EXAMPLE = "terraform/fsxn-monitoring-dashboard/examples/basic"
 
 
 def _makefile_list(name: str) -> list[str]:
@@ -91,9 +97,29 @@ def _discover_tf_dirs(root: Path) -> list[str]:
     return sorted(found)
 
 
+def _assert_lock_tracked(d: str) -> None:
+    lock = f"{d}/.terraform.lock.hcl"
+    result = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", lock],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, (
+        f"{lock} is not tracked; `terraform init -lockfile=readonly` "
+        "would fail in CI"
+    )
+
+
 @pytest.fixture(scope="module")
 def tf_module_dirs() -> list[str]:
     return _makefile_list("TF_MODULE_DIRS")
+
+
+@pytest.fixture(scope="module")
+def tf_example_dirs() -> list[str]:
+    return _makefile_list("TF_EXAMPLE_DIRS")
 
 
 def test_makefile_exposes_a_nonempty_tf_module_dirs(tf_module_dirs: list[str]) -> None:
@@ -103,11 +129,22 @@ def test_makefile_exposes_a_nonempty_tf_module_dirs(tf_module_dirs: list[str]) -
     )
 
 
-def test_every_tf_dir_on_disk_is_in_tf_module_dirs(tf_module_dirs: list[str]) -> None:
-    orphaned = set(_discover_tf_dirs(REPO_ROOT)) - set(tf_module_dirs)
+def test_makefile_exposes_the_known_example(tf_example_dirs: list[str]) -> None:
+    assert KNOWN_EXAMPLE in tf_example_dirs, (
+        f"TF_EXAMPLE_DIRS resolved to {tf_example_dirs!r}; an empty or renamed "
+        "variable would leave the example unvalidated"
+    )
+
+
+def test_every_tf_dir_on_disk_is_in_a_makefile_tf_list(
+    tf_module_dirs: list[str], tf_example_dirs: list[str]
+) -> None:
+    covered = set(tf_module_dirs) | set(tf_example_dirs)
+    orphaned = set(_discover_tf_dirs(REPO_ROOT)) - covered
     assert not orphaned, (
-        "these directories hold .tf files but are not in the Makefile's "
-        f"TF_MODULE_DIRS, so `make terraform` skips them silently: {sorted(orphaned)}"
+        "these directories hold .tf files but are in neither TF_MODULE_DIRS "
+        "nor TF_EXAMPLE_DIRS in the Makefile, so `make terraform` skips them "
+        f"silently: {sorted(orphaned)}"
     )
 
 
@@ -121,18 +158,15 @@ def test_each_module_has_versions_tests_and_tracked_lock(
             f"{d} has no tests/*.tftest.hcl; `terraform test` would pass with "
             "nothing to run"
         )
-        lock = f"{d}/.terraform.lock.hcl"
-        result = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", lock],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        assert result.returncode == 0, (
-            f"{lock} is not tracked; `terraform init -lockfile=readonly` "
-            "would fail in CI"
-        )
+        _assert_lock_tracked(d)
+
+
+def test_each_example_has_versions_and_tracked_lock(
+    tf_example_dirs: list[str],
+) -> None:
+    for d in tf_example_dirs:
+        assert (REPO_ROOT / d / "versions.tf").is_file(), f"{d} has no versions.tf"
+        _assert_lock_tracked(d)
 
 
 def test_discovery_reaches_two_levels(tmp_path: Path) -> None:

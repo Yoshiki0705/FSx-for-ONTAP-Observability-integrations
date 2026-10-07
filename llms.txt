@@ -21,7 +21,8 @@
 
 ## Terraform modules
 
-- [Monitoring dashboard module (Terraform)](terraform/fsxn-monitoring-dashboard/README.md): Terraform equivalent of the dashboard template with the capacity and throughput-utilization alarms plus opt-in CPU, disk, and per-volume alarms; offline-verified with a mock provider, and applied once to a first-generation, single-HA-pair file system (2026-10-05).
+- [Monitoring dashboard module (Terraform)](terraform/fsxn-monitoring-dashboard/README.md): Terraform equivalent of the dashboard template with the capacity and throughput-utilization alarms plus opt-in CPU, disk, and per-volume alarms; provider constraint `>= 6.67.0`; offline-verified with a mock provider, and applied twice to a first-generation, single-HA-pair file system (2026-10-05; and 2026-10-06 to 2026-10-07 (UTC), where the capacity alarm went OK → ALARM → OK on real data); second generation, multi-HA-pair, and SNS delivery not yet verified.
+- [Terraform module usage](terraform/fsxn-monitoring-dashboard/README.md#usage): Fetching only the module (git source, archive URL, or sparse checkout, with measured download sizes), estimated (unverified) IAM permissions, init/plan/apply/destroy from `examples/basic/`, and post-apply checks; a [Japanese](terraform/fsxn-monitoring-dashboard/README.ja.md) version has the same structure.
 
 ## Forwarding routes
 
@@ -31,7 +32,7 @@
 
 ## Verification results
 
-- [CloudWatch monitoring verification](docs/en/verification-results-cloudwatch-monitoring.md): 2026-10-05 live run of the dashboard template and the Terraform module, and two 2026-10-06 qtree quota monitor runs (the first stopped after one successful poll; the re-run completed 4 polls and the alarm's OK → ALARM → OK path), all on a first-generation, single-HA-pair file system; alarm transitions, findings, and what remains unverified (second generation, multi-HA-pair, SNS delivery, CA-verified TLS, qtree pagination beyond one page).
+- [CloudWatch monitoring verification](docs/en/verification-results-cloudwatch-monitoring.md): 2026-10-05 live run of the dashboard template and the Terraform module, and two 2026-10-06 qtree quota monitor runs (the first stopped after one successful poll; the re-run completed 4 polls and the alarm's OK → ALARM → OK path), and a 2026-10-06 to 2026-10-07 (UTC) capacity alarm real-data run of both the template and the module (OK → ALARM → OK), all on a first-generation, single-HA-pair file system; alarm transitions, findings, and what remains unverified (second generation, multi-HA-pair, SNS delivery, CA-verified TLS, qtree pagination beyond one page).
 - [FPolicy, S3 Access Points, and session verification](docs/en/verification-results-fpolicy-s3ap-and-session.md): E2E results for FPolicy forwarding, FSx for ONTAP S3 Access Points, and session handling.
 - [EMS and FPolicy verification](docs/en/verification-results-ems-fpolicy.md): E2E results for the EMS webhook and FPolicy event paths.
 - [Datadog verification](docs/en/verification-results-datadog.md): E2E delivery results for the Datadog integration.

@@ -161,13 +161,15 @@ The repository is adding Terraform `.tf` equivalents of the CloudWatch monitorin
 ```
 terraform/
   fsxn-monitoring-dashboard/
-    versions.tf          # Terraform >= 1.11.0, hashicorp/aws = 6.67.0 (exact pin)
+    versions.tf          # Terraform >= 1.11.0, hashicorp/aws >= 6.67.0 (lower bound)
     variables.tf         # file_system_id, file_system_name, capacity_threshold_percent, notification_email, opt-in alarm inputs
     main.tf              # aws_cloudwatch_dashboard, aws_cloudwatch_metric_alarm, aws_sns_topic (+ subscription)
     outputs.tf           # dashboard_name/arn/url, alarm ARNs, sns_topic_arn
     README.md            # inputs, outputs, deliberate differences from the template
+    README.ja.md         # Japanese version of README.md
     .terraform.lock.hcl  # provider hashes for linux/darwin, amd64/arm64
     tests/               # offline terraform test files (mock provider, command = plan)
+    examples/basic/      # runnable root: exact pin = 6.67.0, lock file, terraform.tfvars.example
 ```
 
 The variables mirror the dashboard template's parameters (`FileSystemId` → `file_system_id`, `FileSystemName` → `file_system_name`, `CapacityThresholdPercent` → `capacity_threshold_percent`, `NotificationEmail` → `notification_email`), and the resources are `aws_cloudwatch_dashboard`, `aws_cloudwatch_metric_alarm`, `aws_sns_topic`, and `aws_sns_topic_subscription`.
@@ -178,7 +180,7 @@ The variables mirror the dashboard template's parameters (`FileSystemId` → `fi
 
 ### T1 module usage and scope
 
-Call the module from your own root configuration, which supplies the AWS provider and Region. Pin `ref` to a commit:
+Call the module from your own root configuration, which supplies the AWS provider and Region. How to fetch only the module, the prerequisites, the estimated IAM permissions, and the deploy, check, and removal steps are in [Obtaining the module](../../terraform/fsxn-monitoring-dashboard/README.md#obtaining-the-module) and [Usage](../../terraform/fsxn-monitoring-dashboard/README.md#usage) of the module README. Pin `ref` to a commit:
 
 ```hcl
 module "fsx_ontap_monitoring" {
@@ -267,6 +269,6 @@ A: Not for deployment. The E2E record of 2026-07-02 saw E3006 because that cfn-l
 - [AWS-Native Alternative Matrix](native-alternative-matrix.md) — the System Manager view → CloudWatch metric → template mapping behind this page.
 - [System Manager GUI Guide](system-manager-gui-guide.md) — the GUI path and its own smaller decision flowchart.
 - [CloudWatch Log Alarm](cloudwatch-log-alarm.md) — the `cloudwatch-log-alarm.yaml` template in detail.
-- [Terraform module: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md) — inputs, outputs, and verification status of the T1 module.
+- [Terraform module: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md#usage) — usage steps (fetching, IAM, deploy, checks, removal), inputs, outputs, and verification status of the T1 module.
 - [Self-hosted Management Console](../../management-console/README.md) — the NetApp Harvest implementation for the Harvest route.
 - [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — where the collection-route decision is made.
