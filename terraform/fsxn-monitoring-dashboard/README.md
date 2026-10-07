@@ -10,7 +10,7 @@ Offline: `make terraform` runs `terraform fmt -check`, `terraform init -lockfile
 
 Live, first: on 2026-10-05 the module was planned and applied in `ap-northeast-1` against a first-generation `SINGLE_AZ_1` file system with one HA pair, with the three opt-in file-server alarms enabled (`file_server_names` empty) and one entry in `volume_ids`. It created the dashboard and 7 alarms. All 9 dashboard series returned data, every alarm left INSUFFICIENT_DATA and reached OK, and the per-volume capacity and inode alarms were driven to ALARM and back to OK. See [CloudWatch monitoring verification results](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md) ([日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md)).
 
-Display defect in tag `terraform-fsxn-monitoring-dashboard-v0.1.0`: four widgets (Network Throughput, IOPS, Network Sent/Received, Storage Used) draw their raw input metrics on the same axis as the converted MB/s, IOPS and GB series, so the converted lines sit near zero. It was found on 2026-10-07 when the deployed dashboard was screenshotted. The data and all alarms are not affected. The fix sets `visible = false` on those raw rows; it is on `main` and not yet in a tag. Until a fixed tag exists, pin a commit that contains the fix, or keep v0.1.0 and read those four widgets with this in mind. See the [dashboard display note](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#findings) ([日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#所見)).
+Display defect in tag `terraform-fsxn-monitoring-dashboard-v0.1.0`: four widgets (Network Throughput, IOPS, Network Sent/Received, Storage Used) draw their raw input metrics on the same axis as the converted MB/s, IOPS and GB series, so the converted lines sit near zero. It was found on 2026-10-07 when the deployed dashboard was screenshotted. The data and all alarms are not affected. Tag `terraform-fsxn-monitoring-dashboard-v0.1.1` fixes it by setting `visible = false` on those raw rows, so use v0.1.1 or later. See the [dashboard display note](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#findings) ([日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#所見)).
 
 Live, second: the file-system `storage_capacity` alarm could not be driven to ALARM on 2026-10-05, because its 50–95 range is above the 3.5% utilization of the test file system. From 2026-10-06 to 2026-10-07 (UTC), in the Asia Pacific (Tokyo) Region (`ap-northeast-1`), the module was applied again to a first-generation `SINGLE_AZ_1` file system with one HA pair, with the default alarms only and `capacity_threshold_percent = 50`. Real data written to a test volume raised SSD utilization to 58.6%, and the capacity alarms of both the CloudFormation template and this module went from OK to ALARM and back to OK. They read `StorageCapacityUtilization` in namespace `AWS/FSx` with `FileSystemId` + `StorageTier=SSD` + `DataType=All`. The alarms returned to OK after the deleted test volume was purged from the ONTAP recovery queue; deleting the volume alone did not lower utilization. See the [capacity alarm real-data run](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#capacity-alarm-real-data-run-on-2026-10-06) ([日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)).
 
@@ -33,11 +33,11 @@ The image below shows the dashboard this module deployed on 2026-10-07 to a firs
 
 ## Obtaining the module
 
-The module is versioned with git tags of the form `terraform-fsxn-monitoring-dashboard-vX.Y.Z`. The first is `terraform-fsxn-monitoring-dashboard-v0.1.0`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0). The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. The sizes below were measured on 2026-10-07 at commit `4b27a84`, before the first tag was created, and grow with the repository.
+The module is versioned with git tags of the form `terraform-fsxn-monitoring-dashboard-vX.Y.Z`. The current version is `terraform-fsxn-monitoring-dashboard-v0.1.1`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.1). The first tag, `terraform-fsxn-monitoring-dashboard-v0.1.0` ([GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0)), has the dashboard display defect described in [Verification status](#verification-status), so use v0.1.1 or later. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. The sizes below were measured on 2026-10-07 at commit `4b27a84`, before the first tag was created, and grow with the repository.
 
 | Method | What is downloaded (measured) | Version pinning | Needs git | Status today |
 |---|---|---|---|---|
-| Git source with a tag and `?ref=<tag>&depth=1` | Shallow clone of the whole working tree, about 50 MB (measured with `ref=main&depth=1`, not with the tag) | Tag | Yes | Works. First tag: `terraform-fsxn-monitoring-dashboard-v0.1.0` |
+| Git source with a tag and `?ref=<tag>&depth=1` | Shallow clone of the whole working tree, about 50 MB (measured with `ref=main&depth=1`, not with the tag) | Tag | Yes | Works. Current tag: `terraform-fsxn-monitoring-dashboard-v0.1.1` |
 | Git source with a commit SHA and `?ref=<commit-sha>` | Full clone of the repository, about 62 MB. Adding `&depth=1` with a SHA fails with `fatal: Remote branch <sha> not found`, because `depth` works only with a branch or tag name | Commit SHA | Yes | Works |
 | Archive URL with a commit SHA | About 20 MB download. The subdirectory path must start with `FSx-for-ONTAP-Observability-integrations-<commit-sha>/` | Commit SHA | No | Works |
 | `git sparse-checkout` of the module directory, then a local `source` path | About 912 KB (the module and the repository's top-level files, including `LICENSE`) | Tag or commit SHA, in your copy | Yes | Works |
@@ -45,8 +45,8 @@ The module is versioned with git tags of the form `terraform-fsxn-monitoring-das
 The `source` values for the git source with the tag, the git source with a commit SHA, and the archive URL:
 
 ```hcl
-# Git source pinned to the first tag (shallow clone)
-source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.1&depth=1"
 
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
@@ -61,7 +61,7 @@ The steps below check out only the module directory at the tag with a sparse che
 git init fsx-ontap-monitoring && cd fsx-ontap-monitoring
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-monitoring-dashboard
-git fetch --depth 1 --filter=blob:none origin terraform-fsxn-monitoring-dashboard-v0.1.0
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-monitoring-dashboard-v0.1.1
 git checkout FETCH_HEAD
 ```
 
@@ -87,7 +87,7 @@ The sections below follow the order of a first deployment: prerequisites, permis
 
 ### Required IAM permissions (verified)
 
-On 2026-10-07 (UTC) the module was applied in `ap-northeast-1` with Terraform 1.15.8 and `hashicorp/aws` 6.67.0, fetched from the `terraform-fsxn-monitoring-dashboard-v0.1.0` tag, to a first-generation `SINGLE_AZ_1` file system with one HA pair. Every feature was on: the dashboard, the two default alarms, the SNS topic and email subscription, the three file-server alarms, one volume (capacity and inode alarms), and `tags`, 10 resources in all. The caller was a dedicated IAM role that the provider assumed with `assume_role`, holding only an inline policy with the actions below. Create, a plan with no changes, a tag value change, removal of all tags, and destroy all succeeded. Every action in the table was needed for that lifecycle: a policy without the four tag actions failed at create (`sns:TagResource`) and at a tag change (`cloudwatch:TagResource`). This is a sample run in one account and one file-system shape.
+On 2026-10-07 (UTC) the module was applied in `ap-northeast-1` with Terraform 1.15.8 and `hashicorp/aws` 6.67.0, fetched from the `terraform-fsxn-monitoring-dashboard-v0.1.0` tag, to a first-generation `SINGLE_AZ_1` file system with one HA pair. Every feature was on: the dashboard, the two default alarms, the SNS topic and email subscription, the three file-server alarms, one volume (capacity and inode alarms), and `tags`, 10 resources in all. The caller was a dedicated IAM role that the provider assumed with `assume_role`, holding only an inline policy with the actions below. Create, a plan with no changes, a tag value change, removal of all tags, and destroy all succeeded. Every action in the table was needed for that lifecycle: a policy without the four tag actions failed at create (`sns:TagResource`) and at a tag change (`cloudwatch:TagResource`). This is a sample run in one account and one file-system shape. Compared with v0.1.0, v0.1.1 changes only the dashboard body, which is still written with `cloudwatch:PutDashboard`; the run with this role was not repeated on v0.1.1.
 
 | Resource | Actions |
 |---|---|
@@ -143,7 +143,7 @@ In your own root configuration, copy [`examples/basic/`](examples/basic/) and re
 
 ```hcl
 module "fsx_ontap_monitoring" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.1&depth=1"
 
   file_system_id             = "fs-0123456789abcdef0"
   file_system_name           = "fsx-for-ontap-prod"

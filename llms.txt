@@ -22,7 +22,7 @@
 ## Terraform modules
 
 - [Monitoring dashboard module (Terraform)](terraform/fsxn-monitoring-dashboard/README.md): Terraform equivalent of the dashboard template with the capacity and throughput-utilization alarms plus opt-in CPU, disk, and per-volume alarms; provider constraint `>= 6.67.0`; offline-verified with a mock provider, and applied twice to a first-generation, single-HA-pair file system (2026-10-05; and 2026-10-06 to 2026-10-07 (UTC), where the capacity alarm went OK → ALARM → OK on real data); second generation, multi-HA-pair, and SNS delivery not yet verified.
-- [Terraform module usage](terraform/fsxn-monitoring-dashboard/README.md#usage): Fetching only the module (git source pinned to the release tag `terraform-fsxn-monitoring-dashboard-v0.1.0` or to a commit, archive URL, or sparse checkout, with measured download sizes), the minimum IAM policy verified on 2026-10-07 (`examples/basic/iam-policy.json`, scoped to resource ARNs by `name_prefix`), init/plan/apply/destroy from `examples/basic/`, and post-apply checks; a [Japanese](terraform/fsxn-monitoring-dashboard/README.ja.md) version has the same structure.
+- [Terraform module usage](terraform/fsxn-monitoring-dashboard/README.md#usage): Fetching only the module (git source pinned to the release tag `terraform-fsxn-monitoring-dashboard-v0.1.1` or to a commit, archive URL, or sparse checkout, with measured download sizes), the minimum IAM policy verified on 2026-10-07 (`examples/basic/iam-policy.json`, scoped to resource ARNs by `name_prefix`), init/plan/apply/destroy from `examples/basic/`, and post-apply checks; a [Japanese](terraform/fsxn-monitoring-dashboard/README.ja.md) version has the same structure.
 
 ## Forwarding routes
 

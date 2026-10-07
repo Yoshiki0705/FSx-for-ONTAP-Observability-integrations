@@ -10,7 +10,7 @@
 
 実環境での 1 回目の検証では、2026-10-05 に `ap-northeast-1` で、第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムに対してモジュールを plan・apply しました。ファイルサーバーのオプトインアラーム 3 本を有効にし（`file_server_names` は空）、`volume_ids` に 1 件を指定しました。ダッシュボードと 7 本のアラームが作成されました。ダッシュボードの 9 系列すべてがデータを返し、すべてのアラームが INSUFFICIENT_DATA から OK に遷移し、ボリューム単位の容量アラームと inode アラームは ALARM に遷移させて OK に戻しました。記録は [CloudWatch 監視の動作確認結果](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md)（[English](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md)）にあります。
 
-タグ `terraform-fsxn-monitoring-dashboard-v0.1.0` には表示の欠陥があります。4 つのウィジェット（Network Throughput、IOPS、Network Sent/Received、Storage Used）が、式の入力である生のメトリクスを換算後の MB/s、IOPS、GB の系列と同じ軸に描画するため、換算後の線は 0 付近に表示されます。2026-10-07 に、デプロイしたダッシュボードのスクリーンショットを撮ったときに見つかりました。データとすべてのアラームは影響を受けていません。修正はこれらの生の行に `visible = false` を設定するもので、`main` には入っていますが、まだタグには含まれていません。修正を含むタグができるまでは、修正を含むコミットを固定するか、v0.1.0 のまま、この 4 つのウィジェットをこの点に留意して読んでください。記録は [ダッシュボード表示に関する補足](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#所見)（[English](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#findings)）にあります。
+タグ `terraform-fsxn-monitoring-dashboard-v0.1.0` には表示の欠陥があります。4 つのウィジェット（Network Throughput、IOPS、Network Sent/Received、Storage Used）が、式の入力である生のメトリクスを換算後の MB/s、IOPS、GB の系列と同じ軸に描画するため、換算後の線は 0 付近に表示されます。2026-10-07 に、デプロイしたダッシュボードのスクリーンショットを撮ったときに見つかりました。データとすべてのアラームは影響を受けていません。タグ `terraform-fsxn-monitoring-dashboard-v0.1.1` で、これらの生の行に `visible = false` を設定して修正しました。v0.1.1 以降を使ってください。記録は [ダッシュボード表示に関する補足](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#所見)（[English](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#findings)）にあります。
 
 実環境での 2 回目の検証は、ファイルシステムの `storage_capacity` アラームを対象にしました。このアラームは閾値の範囲 50–95 がテスト用ファイルシステムの利用率 3.5% より上にあるため、2026-10-05 には ALARM に遷移させられませんでした。2026-10-06〜07 (UTC) に、アジアパシフィック (東京) リージョン（`ap-northeast-1`）の第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムへ、既定のアラームだけと `capacity_threshold_percent = 50` でモジュールを再度適用しました。テスト用ボリュームに実データを書き込んで SSD の利用率を 58.6% まで上げ、CloudFormation テンプレートとこのモジュールの両方の容量アラームが OK から ALARM に遷移し、OK に戻りました。どちらも名前空間 `AWS/FSx` の `StorageCapacityUtilization` を `FileSystemId` + `StorageTier=SSD` + `DataType=All` で読みます。アラームが OK に戻ったのは、削除したテスト用ボリュームを ONTAP のリカバリキューから消去した後で、ボリュームの削除だけでは利用率は下がりませんでした。記録は [容量アラームの実データによる実行](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)（[English](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#capacity-alarm-real-data-run-on-2026-10-06)）にあります。
 
@@ -33,20 +33,20 @@ SNS によるアラーム通知の配信（IAM の検証ではメールのサブ
 
 ## モジュールの取得方法
 
-このモジュールは `terraform-fsxn-monitoring-dashboard-vX.Y.Z` の形式の git タグで版を付けています。最初の版は `terraform-fsxn-monitoring-dashboard-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0) として公開しています。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。下表のサイズは、最初のタグを作る前の 2026-10-07 にコミット `4b27a84` で測ったもので、リポジトリが大きくなれば増えます。
+このモジュールは `terraform-fsxn-monitoring-dashboard-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-monitoring-dashboard-v0.1.1` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.1) として公開しています。最初のタグ `terraform-fsxn-monitoring-dashboard-v0.1.0`（[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-monitoring-dashboard-v0.1.0)）には、[検証状況](#検証状況)に記したダッシュボードの表示の欠陥があるため、v0.1.1 以降を使ってください。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。下表のサイズは、最初のタグを作る前の 2026-10-07 にコミット `4b27a84` で測ったもので、リポジトリが大きくなれば増えます。
 
 | 方法 | ダウンロードされるもの（実測） | 版の固定 | git の要否 | 現時点の状態 |
 |---|---|---|---|---|
-| タグを指定した git ソースと `?ref=<tag>&depth=1` | 作業ツリー全体の浅い clone、約 50 MB（タグではなく `ref=main&depth=1` で測定） | タグ | 要 | 使える（最初のタグは `terraform-fsxn-monitoring-dashboard-v0.1.0`） |
+| タグを指定した git ソースと `?ref=<tag>&depth=1` | 作業ツリー全体の浅い clone、約 50 MB（タグではなく `ref=main&depth=1` で測定） | タグ | 要 | 使える（現在のタグは `terraform-fsxn-monitoring-dashboard-v0.1.1`） |
 | コミット SHA を指定した git ソースと `?ref=<commit-sha>` | リポジトリ全体の完全な clone、約 62 MB。SHA に `&depth=1` を付けると `fatal: Remote branch <sha> not found` で失敗する。`depth` はブランチ名かタグ名でしか使えないため | コミット SHA | 要 | 使える |
 | コミット SHA を指定したアーカイブ URL | ダウンロード約 20 MB。サブディレクトリのパスは `FSx-for-ONTAP-Observability-integrations-<commit-sha>/` で始める必要がある | コミット SHA | 不要 | 使える |
 | モジュールのディレクトリだけを `git sparse-checkout` し、ローカルパスを `source` にする | 約 912 KB（モジュールと、`LICENSE` を含むリポジトリ直下のファイル） | 手元のコピーのタグかコミット SHA | 要 | 使える |
 
-タグを指定した git ソース、コミット SHA を指定した git ソース、アーカイブ URL の `source` の書き方は次のとおりです。コードブロック内のコメントは英語のままで、上から順に「最初のタグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
+タグを指定した git ソース、コミット SHA を指定した git ソース、アーカイブ URL の `source` の書き方は次のとおりです。コードブロック内のコメントは英語のままで、上から順に「タグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
 
 ```hcl
-# Git source pinned to the first tag (shallow clone)
-source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.1&depth=1"
 
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=<commit-sha>"
@@ -61,7 +61,7 @@ source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integration
 git init fsx-ontap-monitoring && cd fsx-ontap-monitoring
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-monitoring-dashboard
-git fetch --depth 1 --filter=blob:none origin terraform-fsxn-monitoring-dashboard-v0.1.0
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-monitoring-dashboard-v0.1.1
 git checkout FETCH_HEAD
 ```
 
@@ -87,7 +87,7 @@ git checkout FETCH_HEAD
 
 ### 必要な IAM 権限（確認済み）
 
-2026-10-07 (UTC) に `ap-northeast-1` で、Terraform 1.15.8 と `hashicorp/aws` 6.67.0 を使い、`terraform-fsxn-monitoring-dashboard-v0.1.0` タグから取得したモジュールを、第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムに適用しました。ダッシュボード、既定の 2 本のアラーム、SNS トピックとメールのサブスクリプション、ファイルサーバーの 3 本のアラーム、ボリューム 1 つ（容量と inode のアラーム）、`tags` をすべて有効にし、リソースは合計 10 個です。呼び出し元は、プロバイダーが `assume_role` で引き受ける専用の IAM ロールで、下表のアクションを持つインラインポリシーだけを付けました。作成、変更のない plan、タグの値の変更、すべてのタグの削除、削除（destroy）がすべて成功しました。表のアクションはどれもこのライフサイクルに必要でした。タグの 4 アクションを除いたポリシーでは、作成（`sns:TagResource`）とタグの変更（`cloudwatch:TagResource`）が失敗しました。これは 1 つのアカウントと 1 つのファイルシステムの形で行ったサンプル実行です。
+2026-10-07 (UTC) に `ap-northeast-1` で、Terraform 1.15.8 と `hashicorp/aws` 6.67.0 を使い、`terraform-fsxn-monitoring-dashboard-v0.1.0` タグから取得したモジュールを、第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムに適用しました。ダッシュボード、既定の 2 本のアラーム、SNS トピックとメールのサブスクリプション、ファイルサーバーの 3 本のアラーム、ボリューム 1 つ（容量と inode のアラーム）、`tags` をすべて有効にし、リソースは合計 10 個です。呼び出し元は、プロバイダーが `assume_role` で引き受ける専用の IAM ロールで、下表のアクションを持つインラインポリシーだけを付けました。作成、変更のない plan、タグの値の変更、すべてのタグの削除、削除（destroy）がすべて成功しました。表のアクションはどれもこのライフサイクルに必要でした。タグの 4 アクションを除いたポリシーでは、作成（`sns:TagResource`）とタグの変更（`cloudwatch:TagResource`）が失敗しました。これは 1 つのアカウントと 1 つのファイルシステムの形で行ったサンプル実行です。v0.1.0 と比べて v0.1.1 で変わったのはダッシュボードの本文だけで、書き込みには引き続き `cloudwatch:PutDashboard` を使います。このロールでの実行は v0.1.1 では繰り返していません。
 
 | リソース | アクション |
 |---|---|
@@ -143,7 +143,7 @@ terraform apply
 
 ```hcl
 module "fsx_ontap_monitoring" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.0&depth=1"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-monitoring-dashboard?ref=terraform-fsxn-monitoring-dashboard-v0.1.1&depth=1"
 
   file_system_id             = "fs-0123456789abcdef0"
   file_system_name           = "fsx-for-ontap-prod"
