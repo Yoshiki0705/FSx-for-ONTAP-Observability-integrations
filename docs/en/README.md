@@ -276,6 +276,9 @@ English and Japanese indexes always list the same set.
 **Choosing an Approach**
 
 - [Amazon FSx for NetApp ONTAP Monitoring Design](monitoring-design.md)
+- [Sizing and Headroom for Amazon FSx for NetApp ONTAP Monitoring](sizing-and-headroom.md)
+- [Monitoring-Driven Capacity Automation for Amazon FSx for NetApp ONTAP](capacity-automation.md)
+- [T4 Guarded SSD Auto-Increase for Amazon FSx for NetApp ONTAP: Implementation Design](capacity-automation-t4-design.md)
 - [FSx for ONTAP Management & Monitoring Decision Tree](decision-tree-management-monitoring.md)
 - [AWS-Native Alternative Matrix — System Manager / Workload Factory / DII](native-alternative-matrix.md)
 - [Vendor Comparison](vendor-comparison.md)

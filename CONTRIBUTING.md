@@ -27,7 +27,7 @@ Thank you for your interest in contributing to FSx for ONTAP Observability Integ
 ### Priority Contribution Areas
 
 - Additional vendor integrations (Axiom, Mezmo, Coralogix, Chronosphere)
-- Terraform equivalents of CloudFormation templates
+- Terraform equivalents of CloudFormation templates (phases T1-T4 in docs/en/monitoring-design.md)
 - CDK constructs
 - Localization (Korean, Chinese, Portuguese)
 - Benchmark data from different FSx for ONTAP configurations

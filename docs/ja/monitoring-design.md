@@ -2,13 +2,15 @@
 
 🌐 **日本語**（本ページ）| [English](../en/monitoring-design.md)
 
-> **ステータス / 対象読者 / 証拠の階層**: ステータス — active（実装側インデックス。経路選択はハブにあります）。対象読者 — CloudWatch 収集経路を既に選び、CloudWatch ネイティブの構成要素を構築するエンジニア。本ページで用いる証拠の階層: `文書化済み`（引用した AWS または NetApp のソースに記載）、`コード確認済み`（本リポジトリのテンプレートを読んだもので、実行はしていない）、`未確認`（本ブランチに日付付きの実行記録が無い）。以下の各主張は階層をインラインで併記します。第 2 世代や複数 HA ペアのファイルシステムでの Qtree 監視、1 ページを超えるページング、T1 より後の Terraform のフェーズは、未検証として読むべき部分です。`検証済み`（実行し、日付付きの記録がある）は、その記録が存在する箇所にだけ使います。ログアラームの E2E 実行、第 1 世代・HA ペア 1 つのファイルシステムでダッシュボードテンプレートと Terraform T1 モジュールを実行した 2026-10-05 の記録、第 1 世代・HA ペア 1 つのファイルシステムで Qtree 監視を再実行し、4 回のポーリングとアラームの OK → ALARM → OK の経路を完了した 2026-10-06 の記録、第 1 世代・HA ペア 1 つのファイルシステムで実データを使い、テンプレートと T1 モジュールのファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻した 2026-10-06 の記録（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）です。
+> **ステータス / 対象読者 / 証拠の階層**: ステータス — active（実装側インデックス。経路選択はハブにあります）。対象読者 — CloudWatch 収集経路を既に選び、CloudWatch ネイティブの構成要素を構築するエンジニア。本ページで用いる証拠の階層: `文書化済み`（引用した AWS または NetApp のソースに記載）、`コード確認済み`（本リポジトリのテンプレートを読んだもので、実行はしていない）、`未確認`（本ブランチに日付付きの実行記録が無い）、`仮説`（推論で、確認していない）、`未解決`（読んだどの資料にも答えがない）。2 つのスポーク、[sizing-and-headroom.md](sizing-and-headroom.md) と [capacity-automation.md](capacity-automation.md) は、日付付きの実行記録がない主張を `未解決` と書きます。本ページの `未確認` は同じ意味です。メトリクスカタログ・アラート設計・自動化の節は設計であり、検証していません。以下の各主張は階層をインラインで併記します。第 2 世代や複数 HA ペアのファイルシステムでの Qtree 監視、1 ページを超えるページング、T1 より後の Terraform のフェーズは、未検証として読むべき部分です。`検証済み`（実行し、日付付きの記録がある）は、その記録が存在する箇所にだけ使います。ログアラームの E2E 実行、第 1 世代・HA ペア 1 つのファイルシステムでダッシュボードテンプレートと Terraform T1 モジュールを実行した 2026-10-05 の記録、第 1 世代・HA ペア 1 つのファイルシステムで Qtree 監視を再実行し、4 回のポーリングとアラームの OK → ALARM → OK の経路を完了した 2026-10-06 の記録、第 1 世代・HA ペア 1 つのファイルシステムで実データを使い、テンプレートと T1 モジュールのファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻した 2026-10-06 の記録（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）です。
 
 ## エグゼクティブサマリ
 
 本ページは、Amazon FSx for NetApp ONTAP を Amazon CloudWatch で監視するための**実装側インデックス**です。どの収集経路を使うべきかはここでは決めません。その選択 — CloudWatch ネイティブ、NetApp Harvest + Prometheus、SaaS オブザーバビリティ基盤、ONTAP REST API のいずれか — は [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md)（ハブ）で行います。CloudWatch を経路として選んだ後に本ページへ来てください。本ページは、本リポジトリが提供する CloudWatch ネイティブの構成要素の作り方、その境界、そして Terraform の方針を扱います。
 
 具体的には、`shared/templates/` 配下の 3 つの CloudFormation テンプレートが CloudWatch ネイティブ経路をカバーします。性能・容量ダッシュボード、Qtree 単位のクォータ監視、ログベースアラームです。Qtree 監視は、Qtree メトリクスを CloudWatch に公開することを意図した、実装済みでコード確認済みの経路です。閾値アラームは Lambda が公開する SVM 単位の最大値系列を読むようになりました（モック化した ONTAP 応答に対する単体テスト済み）。2026-10-06 に、第 1 世代・HA ペア 1 つのファイルシステムでの実環境の再実行が、連続 4 回のポーリングでそれぞれ 5 系列すべてを公開し、値は ONTAP のクォータレポートと一致しました。アラームは実データで OK から ALARM へ遷移し、OK に戻っています（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。同じ日のそれより前の実行は、1 回のポーリングの後に ONTAP の HTTP 401 で停止していました。第 2 世代と複数 HA ペアのファイルシステムは未確認のままです。それぞれについて、いつ使うか・なぜ存在するか・どう使うか・範囲の境界を以下に記載します。
+
+本ページは、監視設計の 4 つの層（サイジング、メトリクスカタログ（ネイティブとカスタム）、アラート設計、監視を起点にした自動化）のインデックスでもあります。Terraform のフェーズのうち、T1（ダッシュボードとアラーム）は実装済みで、第 1 世代・HA ペア 1 つのファイルシステムで検証済みです。T2（Qtree と SnapMirror の ONTAP REST カスタムメトリクスポーラー）、T3（ログアラーム）、T4（ガード付き SSD 自動拡張サンプル）は計画中です。SSD の自動拡張は、既定のモードが通知だけを行うガード付きサンプルとして設計し、スループットキャパシティの変更は人の承認を必要とするままにします。
 
 > **範囲に関する補足**: これは経路選択の決定木ではなく、導線と組み立てのインデックスです。CloudWatch・Harvest・SaaS・ONTAP REST をまだ選んでいない場合は、上記のハブ可観測性 README から始め、その後に本ページへ戻ってください。
 
@@ -37,6 +39,50 @@ flowchart LR
 **管理プレーン**の軸（NetApp Console 経由の System Manager、セルフホスト型コンソール、あるいは CLI と REST 直接）については [decision-tree-management-monitoring.md](decision-tree-management-monitoring.md) を参照してください。その決定木も、本ページと同様に収集経路の選択をハブへ委譲しています。
 
 > **導線に関する補足**: 上図の実線経路（CloudWatch → 本ページ）は、本ページが扱う分岐です。本リポジトリは CloudWatch 以外にも CloudFormation を提供しており — SaaS ベンダー統合と Qtree 監視も CloudFormation です — CloudWatch は唯一の CloudFormation 分岐ではなく、ここで組み立てる分岐です。破線の分岐は他所で実装されています — Harvest は [management-console/](../../management-console/README.md)、SaaS は 9 ベンダー統合、ONTAP REST は下記の Qtree 監視です。
+
+## 監視設計の 4 層
+
+FSx for ONTAP の CloudWatch 監視設計は、4 つの問いに順に答えます。各層は次の層の入力になります。サイジングが上限を決め、カタログがその上限を示す系列を挙げ、アラート設計が系列を通知に変え、自動化が通知を受けて何が動くかを決めます。
+
+| 層 | 答える問い | 場所 | 状態 |
+|---|---|---|---|
+| サイジングとヘッドルーム | スループットと SSD 容量はどれだけ必要か。各上限のどれだけ手前でアラームを鳴らすか | [sizing-and-headroom.md](sizing-and-headroom.md) | 設計。数値は `文書化済み` か導出 |
+| メトリクスカタログ | どの系列がネイティブにあり、どれがカスタムのコレクターを必要とし、それぞれの費用はどうか | 下の [メトリクスカタログ](#メトリクスカタログ) | ネイティブと Qtree の行は実装済み。SnapMirror の行は計画中 |
+| アラート設計 | どの重大度、どの欠損データの扱い、どの集約系列を使い、ポーラーが動いていることをどう知るか | 下の [アラート設計](#アラート設計) | 設計。Qtree のパターンは第 1 世代で `検証済み` |
+| 監視を起点にした自動化 | アラームを受けて何が、どのガードの下で動くか | [capacity-automation.md](capacity-automation.md) | 設計。T4 は計画中で未実装 |
+
+よくある 3 つの状況はこれらの層に対応します。HA ペア 1 つの第 1 世代ファイルシステムはアグリゲートが 1 つで SSD 容量を縮小できないため、サイジングの余裕に影響し、上限値なしの無人の拡張は選べません。2 つのファイルシステム間の SnapMirror には、転送先のファイルシステムから集めるカスタムメトリクスが必要です（メトリクスカタログ）。Terraform で管理するファイルシステムでは、容量の自動化の前に `ignore_changes` が必要です（[capacity-automation.md](capacity-automation.md#terraform-で管理するファイルシステムの扱い)）。
+
+## サイジングとヘッドルーム
+
+スループットキャパシティは読み取りスループットと書き込みスループットの 2 倍の合計でサイジングし、SSD 使用率は継続的に 80% 以下に保ちます（[managing-throughput-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-throughput-capacity.html)、[storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/storage-capacity-and-IOPS.html)、`文書化済み`）。SSD 使用率 90% でキャパシティプールからの読み取りが SSD にキャッシュされなくなり、98% で階層化が止まります（[managing-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-storage-capacity.html)、`文書化済み`）。[sizing-and-headroom.md](sizing-and-headroom.md) はこれらの規則を、計算例、6 時間のクールダウンを織り込んだヘッドルームの式、警告・重大・緊急の閾値の表に置き換えます。
+
+## メトリクスカタログ
+
+| 名前空間 / メトリクス群 | ディメンション | 収集方法 | ネットワークの前提 | カーディナリティ / 費用 | CloudFormation | Terraform |
+|---|---|---|---|---|---|---|
+| `AWS/FSx` のファイルシステム（第 1 世代。第 2 世代のファイルシステム単位も） | `FileSystemId`。詳細メトリクスは `StorageTier` + `DataType` を追加 | ネイティブ | なし | ファイルシステムごとに固定 | ダッシュボードテンプレート ✅ | T1 ✅ |
+| `AWS/FSx` の第 2 世代のファイルサーバーとアグリゲート | `FileSystemId` + `FileServer`、`FileSystemId` + `Aggregate`（アグリゲート単位のストレージ使用率） | ネイティブ | なし | ファイルサーバーまたはアグリゲートごとに 1 系列 | テンプレートにはない | T1 の `file_server_names` でオプトイン（第 2 世代は `未確認`） |
+| `AWS/FSx` のボリューム | `FileSystemId` + `VolumeId` | ネイティブ | なし | ボリュームごと | テンプレートにはない | T1 の `volume_ids` ✅（第 1 世代で `検証済み`） |
+| `AWS/FSx` のバーストバランス（`FileServerDiskThroughputBalance`、`FileServerDiskIopsBalance`） | `FileSystemId`。スループットキャパシティ 512 MBps 未満で有効 | ネイティブ | なし | ファイルシステムごとに固定 | 未実装 | 未実装 |
+| `FSxONTAP/Qtree` | `SvmName` + `VolumeName` + `QtreeName`。最大値と切り詰めの系列は `SvmName` | カスタム。VPC 内の Lambda が ONTAP REST の `/storage/quota/reports` をポーリング | 管理エンドポイントへの HTTPS 443、Secrets Manager、CloudWatch monitoring API への経路 | SVM ごとに 3 × N + 2（N は Qtree 数） | `qtree-quota-monitor.yaml` ✅（第 1 世代で `検証済み`） | T2 で計画中 |
+| `FSxONTAP/SnapMirror`（計画中。T2 で名前が変わる可能性あり） | 関係ごとに `SnapMirrorRelationshipHealthy`（1/0）と `SnapMirrorLagSeconds`（`FileSystemId` + `SourcePath` + `DestinationPath`）。ファイルシステムごとに `SnapMirrorUnhealthyCount` と `SnapMirrorLagSecondsMax`（`FileSystemId`。アラームはこれを読む）。ハートビート `CollectorSucceeded`（`FileSystemId` + `Collector`） | カスタム。VPC 内の Lambda が転送先ファイルシステムで `GET /api/snapmirror/relationships` を呼ぶ | Qtree と同じ。転送先ファイルシステムごとに必要 | 転送先ファイルシステムごとに 2 × R + 2 + ハートビート 1（R は関係の数） | 計画中 | T2 で計画中 |
+| `FSxONTAP/Lakehouse` | ディメンションなしのアラーム系列 | パターンのプレースホルダー。コレクターは同梱しない | コレクター次第 | コレクター次第 | `lakehouse-monitoring.yaml`（アラームのみ） | なし |
+| CloudWatch Logs（EMS と監査） | ログクエリ | syslog VPC エンドポイント経路で CloudWatch Logs へ送り、ログアラーム | syslog 経路（[syslog-vpce-setup-guide.md](syslog-vpce-setup-guide.md)） | ログアラームと取り込み量ごと | `cloudwatch-log-alarm.yaml` ✅（2026-07-02 に `検証済み`） | T3 で計画中 |
+
+ネイティブの行の出典は [file-system-metrics](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-system-metrics.html)、[so-file-system-metrics](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/so-file-system-metrics.html)、[volume-metrics](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html) です（`文書化済み`）。レイクハウスのプレースホルダーは [lakehouse-monitoring-patterns.md](lakehouse-monitoring-patterns.md) にあります。
+
+> **SnapMirror の構成に関する補足**
+>
+> 転送先のファイルシステムをポーリングします。ONTAP REST のリファレンスは、`GET /api/snapmirror/relationships` が返すのは転送先エンドポイントが現在のクラスターまたは SVM にある関係だと説明しており、転送元は `list_destinations_only=true` で転送先の一覧を得られます（[リファレンス](https://docs.netapp.com/us-en/ontap-restapi/get-snapmirror-relationships.html)、`文書化済み`）。転送元の一覧がどの健全性・遅延のフィールドを返すかは `未解決` なので、転送元だけのポーリングは代わりになりません。転送先のファイルシステムごとに、ポーラー・認証情報・ネットワーク経路が必要です。2026-10-07 に読んだ 4 つの AWS メトリクスのページには、ネイティブの SnapMirror 関係のメトリクスはありません。SnapMirror の通信はネットワークとディスクのメトリクスに含めて数えられます。[classmethod の記事](https://dev.classmethod.jp/articles/amazon-fsx-for-netapp-ontap-snapmirror-health-cloudwatch-metrics/) と下記の NetApp のリファレンスは、同じ REST のデータから同種のメトリクスを作っています。どちらもパターンの参照で、コードは複製していません。
+
+> **カーディナリティに関する補足**
+>
+> カスタムメトリクスの費用はアラームの数ではなく系列の数に比例します。SnapMirror では関係ごとの系列が R とともに増え、ファイルシステムごとの系列とハートビートは固定です。ここでは価格を示しません。リージョンと日付を決めて、最新の [CloudWatch の料金ページ](https://aws.amazon.com/cloudwatch/pricing/) からメトリクスあたりの単価を取ってください。
+
+> **ネットワークに関する補足**
+>
+> このカタログのカスタムコレクターはどれも、ONTAP の管理エンドポイントへの経路を持つ VPC で動き、メトリクスを公開するには NAT ゲートウェイか `com.amazonaws.<region>.monitoring` のインターフェースエンドポイントが必要です。2026-10-06 の Qtree の実行では、このエンドポイントを手で作る必要がありました（記録の所見 QF4）。
 
 ## CloudWatch による監視
 
@@ -108,13 +154,44 @@ CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量の
 
 > **可観測性に関する補足**: 監査ログを CloudWatch Logs に入れる前提は、このテンプレートではなく syslog VPC Endpoint 経路（[syslog-vpce-setup-guide.md](syslog-vpce-setup-guide.md)）が担います。
 
+## アラート設計
+
+この節は設計の指針です。日付付きの実行記録があるのは Qtree のパターンと T1 のアラームだけです（[記録](verification-results-cloudwatch-monitoring.md)）。
+
+重大度の段は [閾値の表](sizing-and-headroom.md#閾値の表) に従い、警告・重大・緊急の 3 つです。警告はチケットやチャットのトピックへ、重大と緊急は呼び出し用のトピックへ送ります。現時点で T1 とダッシュボードテンプレートはシグナルごとに 1 段のアラームを作るので、2 段目は別のアラームになります。
+
+| アラームの種類 | `TreatMissingData` | 理由 |
+|---|---|---|
+| ネイティブのファイルシステムとボリュームのアラーム（ダッシュボードテンプレート、T1） | `missing` | ネイティブの系列が止まるのは AWS 側か設定の問題で、呼び出しをせずに INSUFFICIENT_DATA として見える |
+| カスタムの集約最大値の系列（`QtreeQuotaUsedPercentMax`、計画中の `SnapMirrorUnhealthyCount` と `SnapMirrorLagSecondsMax`） | `missing` | Qtree の Lambda は使える記録がないと最大値のデータを公開しないので、アラームは誤解を招く OK ではなく INSUFFICIENT_DATA になる |
+| DLQ の深さ | `notBreaching` | メッセージがないのは失敗した呼び出しがないこと |
+| ポーラーのハートビート（計画中の T2、`CollectorSucceeded`） | `breaching` | 呼び出されないポーラーは何も公開しない。欠損を閾値超過として扱うことで、その沈黙をアラームに変える |
+
+集約最大値とドリルダウンのパターンでは、アラームの数が固定されます。1 つのアラームが SVM またはファイルシステム単位の最大値を読み、発火した後はエンティティごとの系列で「どれか」を特定します。Qtree 監視はこのパターンを使っています（第 1 世代で `検証済み`、[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。SnapMirror のコレクターもこれを使う計画です。
+
+DLQ の深さのアラームが捉えるのは、すべての再試行に失敗した呼び出しです。一度も呼び出されないポーラー（スケジュールの無効化、権限の削除）は捉えません。計画中のハートビートがその場合を扱います。
+
+> **通知に関する補足**
+>
+> CloudWatch がアラームアクションを呼ぶのは、アラームの状態が変わったときだけです（[AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)、`文書化済み`）。ALARM のままのアラームが呼び出しを行うのは 1 回です。条件が続く間に再び動く必要がある自動化には独自の再評価が必要で、T4 が 1 時間ごとのスケジュールを加えるのはそのためです。SNS のメールサブスクリプションは確認されるまで保留のままです。SNS 経由の ALARM メールの配信は、[T1 モジュールの README](../../terraform/fsxn-monitoring-dashboard/README.ja.md) に記録されているとおり、本リポジトリではまだ `未確認` です。
+
+## 監視を起点にした自動化
+
+SSD 容量のアラームを受けて動かす方法は 3 つあります。AWS のサンプルをそのまま使う、計画中の T4 ガード付きサンプル（上限値、既定の `notify_only`、クールダウンと `AdministrativeActions` の確認、1 つのファイルシステムに絞った IAM）を使う、アラートと手動の手順にする、のいずれかです。スループットキャパシティの変更とボリュームの autosize は手順のままにします。トレードオフ、不可逆性の表、検証計画は [capacity-automation.md](capacity-automation.md) にあり、T4 の状態遷移、アーカイブのスキーマ、IAM のステートメント、テスト計画は [capacity-automation-t4-design.md](capacity-automation-t4-design.md) にあります。T4 は計画中で未実装です。
+
+> **不可逆性に関する補足**
+>
+> 第 1 世代のファイルシステムでは SSD の拡張を取り消せず、SSD・IOPS・スループットのどの変更でも 6 時間のクールダウンが始まります（[storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/storage-capacity-and-IOPS.html)、`文書化済み`）。実際の拡張の前に、通知だけの実行か IAM で拒否する対照実行で自動化を確かめてください。
+
 ## NetApp 公開リファレンス
 
-NetApp は [github.com/NetApp/FSx-ONTAP-monitoring](https://github.com/NetApp/FSx-ONTAP-monitoring) の [CloudWatch-Monitoring-FSx サブツリー](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx) で CloudWatch 監視のリファレンス実装を公開しています。これも本リポジトリも CloudFormation ベースの serverless ソリューションであり、違いは文書化された範囲にあり、「そのままデプロイできるものか、スクリプト集か」という違いではありません（確信度: `文書化済み`、NetApp サブツリーの README より）。NetApp リファレンスは、リージョン内の全 FSx for ONTAP ファイルシステムをカバーする単一のダッシュボードを、Lambda・3 つの EventBridge スケジューラ・ライフサイクル管理されるアラーム・IAM ロール・任意の VPC エンドポイントとともにデプロイし、Full Stack / Monitoring Only / EMS Logs Only の 3 モードを持ちます。そのダッシュボードはクライアント操作・ストレージ利用・ディスク性能・レイテンシ・ボリューム単位の統計・LUN 性能・SnapMirror ステータスにわたり、EMS メッセージを CloudWatch Logs にストリームします。本リポジトリは、より小さく範囲が固定された単一ファイルシステムのダッシュボード・Qtree クォータのポーリング・ログベースアラームを、別々の CloudFormation テンプレートに分割しています。両者は異なる起点に適し、どちらも他方の置き換えではありません。
+NetApp は [github.com/NetApp/FSx-ONTAP-monitoring](https://github.com/NetApp/FSx-ONTAP-monitoring) の [CloudWatch-Monitoring-FSx サブツリー](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx) で CloudWatch 監視のリファレンス実装を公開しています（確信度: `文書化済み`、2026-10-07 に読んだサブツリーの README と `cloudformation-template.json` より）。リージョン内の全 FSx for ONTAP ファイルシステムをカバーする単一のダッシュボードを、Lambda 関数・3 つの EventBridge スケジューラ・IAM ロール・任意の VPC エンドポイントとともにデプロイし、Full Stack / Monitoring Only / EMS Logs Only の 3 モードを持ちます。そのダッシュボードはクライアント操作・ストレージ利用・ディスク性能・レイテンシ・ボリューム単位の統計・LUN 性能・SnapMirror ステータスにわたり、EMS メッセージを CloudWatch Logs にストリームします。Lambda 関数は NetApp が所有するアカウントの ECR リポジトリから取得するコンテナイメージで、ソースはサブツリーにありません。匿名の利用状況の送信は任意で、`SendUsage` パラメータで制御し、テンプレートの既定値は `true` です。Lambda 関数はリージョン内のすべての FSx for ONTAP ファイルシステムについて 1 時間ごとにアラームを作成・更新・削除します。それらのアラームは CloudFormation の状態の外にあり、README はスタック削除後に `FSx-ONTAP` のアラームを手で削除するよう求めています。同様に Terraform の状態の外にも置かれることになります（導出）。同じリポジトリの [FSx_ONTAP_Alerting](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/FSx_Alerting/FSx_ONTAP_Alerting) は CloudFormation と Terraform の両方でのデプロイを提供しています。本リポジトリは、より小さく範囲が固定された単一ファイルシステムのダッシュボード・Qtree クォータのポーリング・ログベースアラームを別々の CloudFormation テンプレートに分割しており、ダッシュボードは Terraform（T1）でも使えます。両者は異なる起点に適し、どちらも他方の置き換えではありません。
+
+ほかに 2 つの公開資料を、パターンの参照として本設計に使っています。コードは複製していません。AWS は、アラームを受けて SSD 容量を拡張する CloudFormation のサンプル（[Updating storage capacity dynamically](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/automate-storage-capacity-increase.html)）と、[sizing-and-headroom.md](sizing-and-headroom.md) で使うサイジングの規則（[managing-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-storage-capacity.html)）を公開しています。[classmethod の記事](https://dev.classmethod.jp/articles/amazon-fsx-for-netapp-ontap-snapmirror-health-cloudwatch-metrics/)（ログの日付は 2024-11）は、スケジュール実行の Lambda 関数から SnapMirror 関係の健全性をカスタムの CloudWatch メトリクスとして公開しています。
 
 Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内することがある経路）については、同等の NetApp 公開ツールは [NetApp Harvest](https://github.com/NetApp/harvest) で、本リポジトリでは [management-console/](../../management-console/README.md) に実装されています。Harvest は ONTAP の全メトリクス集合（プロトコル・アグリゲート・ノードの各レベル）が必要なチームに適し、CloudWatch はコレクターを運用せず AWS ネイティブの監視プレーンでメトリクスが欲しいチームに適します。
 
-> **中立性に関する補足**: トレードオフは対称です。NetApp リファレンスリポジトリは、リージョン単位の 1 スタックで ONTAP をより広くカバーし（ボリューム・LUN・SnapMirror・EMS）、README の免責どおりアラームの後片付けは運用者に委ねます。ここのテンプレートは範囲が狭く固定で複数スタックに分割され、Qtree アラームが実データで発火することを観測したのは、第 1 世代・HA ペア 1 つのファイルシステムだけです（上記のアラームに関する補足を参照）。どちらが適するかは、必要なメトリクスの広さとスタックの管理方法の好みで決まるものであり、どちらかが上位という話ではありません。
+> **中立性に関する補足**: トレードオフは対称です。NetApp リファレンスリポジトリは、リージョン単位の 1 スタックで ONTAP をより広くカバーし（ボリューム・LUN・SnapMirror・EMS）、再デプロイなしで新しいファイルシステムにアラームを加え、README の免責どおりアラームの後片付けは運用者に委ねます。Lambda のソースはサブツリーにありません。ここのテンプレートは範囲が狭く固定で複数スタックに分割され、すべてのアラームを IaC の状態に置き、SnapMirror のコレクターはまだなく（T2 で計画中）、Qtree アラームが実データで発火することを観測したのは、第 1 世代・HA ペア 1 つのファイルシステムだけです（上記のアラームに関する補足を参照）。AWS のサンプルはクールダウン付きで SSD の拡張を自動化しますが、顧客が決める上限値はありません。計画中の T4 はガードを加えますが、まだ存在しません。どれが適するかは、必要なメトリクスの広さ、スタックの管理方法の好み、自動化にどこまで任せたいかで決まるものであり、どれかが上位という話ではありません。
 
 ## Terraform の方針
 
@@ -124,27 +201,27 @@ Harvest + Prometheus 経路（ハブが CloudWatch の代わりに案内する�
 
 | ソース | 範囲 | URL | 中立な一行説明 |
 |---|---|---|---|
-| のんピ (non-97) `aws-cdk-fsxn-resources` | monitoring | [github.com/non-97/aws-cdk-fsxn-resources](https://github.com/non-97/aws-cdk-fsxn-resources) | AWS CDK（TypeScript）プロジェクト。monitoring construct が SNS トピックと CloudWatch アラーム集合（ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗）を作成します。CloudFormation ではなく CDK のリファレンスで、リポジトリにライセンス表示がありません — パターンを参照し、コードは複製しないでください。 |
+| コミュニティの AWS CDK プロジェクト `aws-cdk-fsxn-resources` | monitoring | [github.com/non-97/aws-cdk-fsxn-resources](https://github.com/non-97/aws-cdk-fsxn-resources) | AWS CDK（TypeScript）プロジェクト。monitoring construct が SNS トピックと CloudWatch アラーム集合（ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗）を作成します。CloudFormation ではなく CDK のリファレンスで、リポジトリにライセンス表示がありません — パターンを参照し、コードは複製しないでください。 |
 | NetApp `FSx-ONTAP-samples-scripts`（Terraform） | construction | [github.com/NetApp/FSx-ONTAP-samples-scripts/.../Terraform](https://github.com/NetApp/FSx-ONTAP-samples-scripts/tree/main/Infrastructure_as_Code/Terraform) | Apache-2.0 の Terraform 例（File Share / SQL Server / ファイルシステムデプロイ / DR レプリケーション）。ファイルシステムを構築するもので、CloudWatch 監視ではありません。 |
-| JManzur `terraform-aws-fsx-netapp-ontap` | construction | [github.com/JManzur/terraform-aws-fsx-netapp-ontap](https://github.com/JManzur/terraform-aws-fsx-netapp-ontap) | ファイルシステム・SVM・ボリューム・管理されたセキュリティグループ・オンデマンドボリュームバックアップ用の Terraform モジュール。create-or-lookup モードを持ちます。監視リソースはありません。 |
+| コミュニティの Terraform モジュール `terraform-aws-fsx-netapp-ontap` | construction | [github.com/JManzur/terraform-aws-fsx-netapp-ontap](https://github.com/JManzur/terraform-aws-fsx-netapp-ontap) | ファイルシステム・SVM・ボリューム・管理されたセキュリティグループ・オンデマンドボリュームバックアップ用の Terraform モジュール。create-or-lookup モードを持ちます。監視リソースはありません。 |
 | aws-samples `genai-bedrock-fsxontap`（terraform） | construction | [github.com/aws-samples/genai-bedrock-fsxontap/.../terraform](https://github.com/aws-samples/genai-bedrock-fsxontap/tree/main/terraform) | 多数の `.tf` ファイルのなかに `fsx.tf` を含む Bedrock + FSx for ONTAP の GenAI スタック。GenAI ワークロードの構築であり、監視モジュールではありません。 |
-| shikazuki Zenn 記事 | construction | [zenn.dev/shikazuki/articles/5f925edb148c85](https://zenn.dev/shikazuki/articles/5f925edb148c85) | FSx for ONTAP を Terraform で構築し、SMB/NFS のマルチプロトコル共有を設定します。CloudWatch 監視はありません。 |
+| コミュニティの Zenn 記事（Terraform） | construction | [zenn.dev/shikazuki/articles/5f925edb148c85](https://zenn.dev/shikazuki/articles/5f925edb148c85) | FSx for ONTAP を Terraform で構築し、SMB/NFS のマルチプロトコル共有を設定します。CloudWatch 監視はありません。 |
 | AWS Storage Blog（Terraform） | construction | [aws.amazon.com/blogs/storage/deploying-amazon-fsx-for-netapp-ontap-hashicorp-terraform](https://aws.amazon.com/blogs/storage/deploying-amazon-fsx-for-netapp-ontap-hashicorp-terraform) | HashiCorp Terraform で FSx for ONTAP をデプロイするウォークスルー。構築であり、監視ではありません。 |
 | Yoshiki0705 `FSx-for-ONTAP-Agentic-Access-Aware-RAG` | construction | [github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | FSx for ONTAP を構築する CDK リファレンス。その CloudWatch 監視は RAG アプリケーション（Lambda / CloudFront / DynamoDB）を対象としており、FSx for ONTAP のファイルシステムメトリクスではありません。 |
 | NetApp `terraform-provider-netapp-ontap` | building-block | [github.com/NetApp/terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap) | NetApp 公式の ONTAP Terraform プロバイダー — AWS プレーンが公開しないメトリクス向けの、ONTAP 内部プレーンの構成要素です。 |
 | AWS プロバイダーリソース | building-block | [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system) · [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) · [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) · [`aws_sns_topic`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sns_topic) | Terraform 監視モジュールが組み立てる AWS プロバイダーのプリミティブ。 |
 
-**正直なギャップは残ります。** 調べたソースの範囲では、FSx for ONTAP 向けのターンキーな公開 Terraform *監視* モジュールは見つかりませんでした（確信度: 存在することは `未確認`）。上記の construction リファレンスは構築であって監視ではありません。唯一の直接的な監視の先例 — のんピの `aws-cdk-fsxn-resources` — は Terraform ではなく CDK で、ライセンス表示が無いため、複製すべきアラーム集合を示す参考であって、複製するコードではありません。
+**正直なギャップは残ります。** 調べたソースの範囲では、FSx for ONTAP 向けのターンキーな公開 Terraform *監視* モジュールは見つかりませんでした（確信度: 存在することは `未確認`）。上記の construction リファレンスは構築であって監視ではありません。唯一の直接的な監視の先例 — コミュニティの `aws-cdk-fsxn-resources` プロジェクト — は Terraform ではなく CDK で、ライセンス表示が無いため、複製すべきアラーム集合を示す参考であって、複製するコードではありません。
 
-ここから導かれる方針: 出荷済みの AWS ネイティブ経路は CloudFormation のままとし、のんピの CDK アラーム集合 — ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗 — を `aws_cloudwatch_metric_alarm` + `aws_cloudwatch_dashboard` + `aws_sns_topic` に移植した Terraform `.tf` 同等物を、CloudWatch 監視について追加します。既存ファイルシステムには `aws_fsx_ontap_file_system` データソースを使い、AWS プレーンが公開しない ONTAP 内部メトリクスには NetApp プロバイダーを構成要素として利用できます。後続のスケルトンと段階的計画がこれを引き継ぎます。これは [ROADMAP.md](../../ROADMAP.md) の Phase 4 と [CONTRIBUTING.md](../../CONTRIBUTING.md) の Terraform 優先項目として追跡しています。最初のフェーズ（T1）は `terraform/fsxn-monitoring-dashboard/` に実装済みで、ファイルシステム ID はデータソースで引かずに入力として受け取ります（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。バックアップジョブ失敗（`AWS/Backup`）は T1 の範囲外です。
+ここから導かれる方針: 出荷済みの AWS ネイティブ経路は CloudFormation のままとし、`aws-cdk-fsxn-resources` の CDK アラーム集合 — ファイルシステム容量 / ネットワークスループット / ファイルサーバーディスクスループット / ディスク IOPS / CPU、ボリューム単位の容量 + inode、バックアップジョブ失敗 — を `aws_cloudwatch_metric_alarm` + `aws_cloudwatch_dashboard` + `aws_sns_topic` に移植した Terraform `.tf` 同等物を、CloudWatch 監視について追加します。既存ファイルシステムには `aws_fsx_ontap_file_system` データソースを使い、AWS プレーンが公開しない ONTAP 内部メトリクスには NetApp プロバイダーを構成要素として利用できます。後続のスケルトンと段階的計画がこれを引き継ぎます。これは [ROADMAP.md](../../ROADMAP.md) の Phase 4 と [CONTRIBUTING.md](../../CONTRIBUTING.md) の Terraform 優先項目として追跡しています。最初のフェーズ（T1）は `terraform/fsxn-monitoring-dashboard/` に実装済みで、ファイルシステム ID はデータソースで引かずに入力として受け取ります（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。バックアップジョブ失敗（`AWS/Backup`）は T1 の範囲外です。
 
-> **ライセンスに関する補足**: のんピの `aws-cdk-fsxn-resources` リポジトリは、About パネルにもトップレベルのツリーにもライセンス表示がありません（確信度: `文書化済み`、2026-10-04 に読んだリポジトリページより）。ライセンスが無い場合、再利用は既定で all-rights-reserved になります。どのアラームを作成するかの設計参考として扱い、本リポジトリに取り込むコードとしては扱わないでください。
+> **ライセンスに関する補足**: `aws-cdk-fsxn-resources` リポジトリは、About パネルにもトップレベルのツリーにもライセンス表示がありません（確信度: `文書化済み`、2026-10-04 に読んだリポジトリページより）。ライセンスが無い場合、再利用は既定で all-rights-reserved になります。どのアラームを作成するかの設計参考として扱い、本リポジトリに取り込むコードとしては扱わないでください。
 
-> **範囲に関する補足**: のんピによる classmethod のインライン CloudFormation 記事（[AWS CDK で FSx for ONTAP リソースをデプロイする](https://dev.classmethod.jp/articles/deploy-amazon-fsx-for-netapp-ontap-resources-with-aws-cdk/)）は、上記で引用した CDK プロジェクトの解説記事であり、監視リファレンスです。別の classmethod インライン CloudFormation 記事は FSx for ONTAP 周辺の環境（ネットワーク/EC2）を構築し、リポジトリを提供しないため、監視ソースではなく構築の how-to です。ログ転送（Syslog → CloudWatch Logs）の資料は別のテーマに属し、IaC リファレンスではありません。
+> **範囲に関する補足**: classmethod のインライン CloudFormation 記事（[AWS CDK で FSx for ONTAP リソースをデプロイする](https://dev.classmethod.jp/articles/deploy-amazon-fsx-for-netapp-ontap-resources-with-aws-cdk/)）は、上記で引用した CDK プロジェクトの解説記事であり、監視リファレンスです。別の classmethod インライン CloudFormation 記事は FSx for ONTAP 周辺の環境（ネットワーク/EC2）を構築し、リポジトリを提供しないため、監視ソースではなく構築の how-to です。ログ転送（Syslog → CloudWatch Logs）の資料は別のテーマに属し、IaC リファレンスではありません。
 
 ### 現状（正直なギャップ）
 
-本リポジトリにある Terraform モジュールは 1 つで、ダッシュボードテンプレートの T1 同等物 `terraform/fsxn-monitoring-dashboard/` です。オフラインの検査を通過しており、2026-10-05 と 2026-10-06 に HA ペア 1 つの第 1 世代ファイルシステムへ 2 回適用しました（[方針とスケルトン](#方針とスケルトン)を参照）。出荷済みの AWS ネイティブ経路は CloudFormation のままで、Qtree とログアラームのテンプレートにはまだ Terraform 同等物がありません。正直なギャップは外部側に残ります。ターンキーな公開監視モジュールは見つかっていません（後述）。構成要素は次のとおりで、いずれもドキュメントページで実在を確認したものです（確信度: `文書化済み`。ここでは実行していません）。
+本リポジトリにある Terraform モジュールは 1 つで、ダッシュボードテンプレートの T1 同等物 `terraform/fsxn-monitoring-dashboard/` です。オフラインの検査を通過しており、2026-10-05 と 2026-10-06 に HA ペア 1 つの第 1 世代ファイルシステムへ 2 回適用しました（[方針とスケルトン](#方針とスケルトン)を参照）。出荷済みの AWS ネイティブ経路は CloudFormation のままで、Qtree とログアラームのテンプレートにはまだ Terraform 同等物がありません。SnapMirror の健全性の監視と SSD 容量の自動化は、本リポジトリに Terraform の実装もデプロイできる実装もありません（T2 と T4 で計画中）。正直なギャップは外部側に残ります。ターンキーな公開監視モジュールは見つかっていません（後述）。構成要素は次のとおりで、いずれもドキュメントページで実在を確認したものです（確信度: `文書化済み`。ここでは実行していません）。
 
 - ファイルシステム用の AWS プロバイダーリソース [`aws_fsx_ontap_file_system`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/fsx_ontap_file_system)。CloudWatch は汎用の [`aws_cloudwatch_metric_alarm`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) と [`aws_cloudwatch_dashboard`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_dashboard) リソースから組み立てます。
 - ONTAP 側設定用の NetApp 公式 ONTAP Terraform プロバイダー [terraform-provider-netapp-ontap](https://github.com/NetApp/terraform-provider-netapp-ontap)。
@@ -224,13 +301,14 @@ module "fsx_ontap_monitoring" {
 
 ### Terraform 実装のフェーズ
 
-Terraform の作業は、CloudWatch テンプレート 1 つにつき 1 フェーズ、計 3 フェーズに分けます。各フェーズには静的な検証手順と、実環境を必要とする完了条件があります。T1 は実装済み・オフライン検証済みで、2026-10-05 に第 1 世代・HA ペア 1 つのファイルシステムで実環境の完了条件を達成しました。2026-10-06 には、ファイルシステム容量アラームも実データで OK から ALARM へ遷移させて OK に戻しています（確信度: `検証済み`、[記録](verification-results-cloudwatch-monitoring.md)）。T2 と T3 は未着手で、`検証済み` ではありません。タスク一覧は [ROADMAP.md](../../ROADMAP.md)（Phase 4）と [CONTRIBUTING.md](../../CONTRIBUTING.md) に置き、本節は順序と完了条件だけを示します。
+Terraform の作業は 4 フェーズに分けます。3 つは CloudWatch テンプレートの移植（T2 は SnapMirror も扱うよう範囲を広げる）で、T4 はガード付き SSD 自動拡張サンプルを加えます。各フェーズには静的な検証手順と、実環境を必要とする完了条件があります。T1 は実装済み・オフライン検証済みで、2026-10-05 に第 1 世代・HA ペア 1 つのファイルシステムで実環境の完了条件を達成しました。2026-10-06 には、ファイルシステム容量アラームも実データで OK から ALARM へ遷移させて OK に戻しています（確信度: `検証済み`、[記録](verification-results-cloudwatch-monitoring.md)）。T2、T3、T4 は未着手で、`検証済み` ではありません。タスク一覧は [ROADMAP.md](../../ROADMAP.md)（Phase 4）と [CONTRIBUTING.md](../../CONTRIBUTING.md) に置き、本節は順序と完了条件だけを示します。
 
 | フェーズ | 範囲 | 検証 | 完了条件 |
 |---|---|---|---|
-| T1 — ダッシュボード + アラーム | `fsxn-monitoring-dashboard.yaml`（ダッシュボード、`StorageCapacityAlarm`、`ThroughputUtilizationAlarm`、任意の SNS）を移植し、のんピの CDK アラーム集合をパターン参照として追加する。`aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` を使う | 完了: モックプロバイダーによるオフラインの `terraform fmt`/`validate`/`test`（`make terraform`、CI ジョブ `terraform`）。2026-10-05 完了: 第 1 世代の FSx for ONTAP ファイルシステムがあるアカウントに対する `terraform plan` と `apply`（[記録](verification-results-cloudwatch-monitoring.md)） | `terraform apply` でダッシュボードとすべてのアラームが作成され、実ファイルシステムに対して各アラームが INSUFFICIENT_DATA を抜けて OK に達する。2026-10-05 に第 1 世代・HA ペア 1 つのファイルシステムで達成（ダッシュボード、テンプレート同等のアラーム 2、ファイルサーバーアラーム 3、ボリューム単位のアラーム 2）。完了条件を超える範囲として、2026-10-05 にボリューム単位の 2 アラームが ALARM に達して OK に戻り、2026-10-06 にファイルシステム容量アラームも実データで同じ経路をたどった（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)）。未達: 第 2 世代と複数 HA ペアのファイルシステム |
-| T2 — Qtree ポーリング | `qtree-quota-monitor.yaml` を移植する: VPC 内の Lambda、ONTAP 認証情報の Secrets Manager、`cloudwatch:PutMetricData` への経路（NAT ゲートウェイまたは `com.amazonaws.<region>.monitoring` interface エンドポイント）、EventBridge スケジュール、DLQ。50 ページのページングとその `QtreeQuotaReportTruncated` シグナル、`QtreeQuotaUsedPercentMax` に対する `QtreeQuotaAlarm` を引き継ぐ | `terraform validate` と `terraform plan`。CloudFormation テンプレートは `make cfn-lint` と `make cfn-guard`（`Makefile` の `CFN_TEMPLATES`）で検査され、インラインの Lambda ハンドラは `shared/python/tests/test_qtree_quota_monitor.py` でモック化した ONTAP 応答に対して単体テストされている。移植でも同等のテストを維持する | 実 SVM から、Qtree 単位の `FSxONTAP/Qtree` 系列（3 つのメトリクス名すべて、完全な `SvmName`/`VolumeName`/`QtreeName` 識別子）と `QtreeQuotaUsedPercentMax` が CloudWatch で観測され、`QtreeQuotaAlarm` が実データで状態遷移する |
-| T3 — ログアラームの同等物 | `cloudwatch-log-alarm.yaml` の同等物。前提条件付き: ログアラームに対する AWS プロバイダーの対応を確認してから着手するか、文書化されたメトリクスフィルター方式を使う | `terraform validate` と `terraform plan` | CloudWatch Logs 上の実際の管理監査ログに対し、アラームが評価され（INSUFFICIENT_DATA → OK）、一致するイベントで ALARM に達する |
+| T1 — ダッシュボード + アラーム | `fsxn-monitoring-dashboard.yaml`（ダッシュボード、`StorageCapacityAlarm`、`ThroughputUtilizationAlarm`、任意の SNS）を移植し、`aws-cdk-fsxn-resources` の CDK アラーム集合をパターン参照として追加する。`aws_cloudwatch_dashboard` + `aws_cloudwatch_metric_alarm` + `aws_sns_topic` を使う | 完了: モックプロバイダーによるオフラインの `terraform fmt`/`validate`/`test`（`make terraform`、CI ジョブ `terraform`）。2026-10-05 完了: 第 1 世代の FSx for ONTAP ファイルシステムがあるアカウントに対する `terraform plan` と `apply`（[記録](verification-results-cloudwatch-monitoring.md)） | `terraform apply` でダッシュボードとすべてのアラームが作成され、実ファイルシステムに対して各アラームが INSUFFICIENT_DATA を抜けて OK に達する。2026-10-05 に第 1 世代・HA ペア 1 つのファイルシステムで達成（ダッシュボード、テンプレート同等のアラーム 2、ファイルサーバーアラーム 3、ボリューム単位のアラーム 2）。完了条件を超える範囲として、2026-10-05 にボリューム単位の 2 アラームが ALARM に達して OK に戻り、2026-10-06 にファイルシステム容量アラームも実データで同じ経路をたどった（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)）。未達: 第 2 世代と複数 HA ペアのファイルシステム |
+| T2 — ONTAP REST カスタムメトリクスポーラー（Qtree + SnapMirror の健全性と遅延） | 2 つのコレクターを持つ VPC 内の Lambda 1 つ。`qtree` は `qtree-quota-monitor.yaml` を移植する（ONTAP 認証情報の Secrets Manager、NAT ゲートウェイまたは `com.amazonaws.<region>.monitoring` interface エンドポイントによる `cloudwatch:PutMetricData` への経路、EventBridge スケジュール、DLQ、50 ページのページングとその `QtreeQuotaReportTruncated` シグナル、`QtreeQuotaUsedPercentMax` に対する `QtreeQuotaAlarm`）。`snapmirror` は転送先ファイルシステムで `GET /api/snapmirror/relationships` をポーリングし、[メトリクスカタログ](#メトリクスカタログ) にある計画中の `FSxONTAP/SnapMirror` 系列を公開する。各コレクターは独自の try/except で動き、それぞれの `CollectorSucceeded` ハートビートを公開する | `terraform validate` と `terraform plan`。CloudFormation テンプレートは `make cfn-lint` と `make cfn-guard`（`Makefile` の `CFN_TEMPLATES`）で検査され、インラインの Lambda ハンドラは `shared/python/tests/test_qtree_quota_monitor.py` でモック化した ONTAP 応答に対して単体テストされている。移植でも同等のテストを維持し、SnapMirror のコレクターのテストを加える | 実 SVM から両方のコレクターの系列とアラームが CloudWatch で観測される。Qtree 単位の `FSxONTAP/Qtree` 系列と `QtreeQuotaUsedPercentMax` が出て `QtreeQuotaAlarm` が実データで状態遷移し、テスト用ボリュームの SnapMirror 関係を健全 → 異常 → 健全と動かしたときに `SnapMirrorUnhealthyCount` が追従する |
+| T3 — ログアラームの同等物 + `wafl.vol.autoSize.fail` のレシピ | `cloudwatch-log-alarm.yaml` の同等物と、EMS イベント `wafl.vol.autoSize.fail` にアラームを付けるレシピ。前提条件付き: ログアラームに対する AWS プロバイダーの対応を確認してから着手するか、文書化されたメトリクスフィルター方式を使う | `terraform validate` と `terraform plan` | CloudWatch Logs 上の実際の管理監査ログに対し、アラームが評価され（INSUFFICIENT_DATA → OK）、一致するイベントで ALARM に達する |
+| T4 — ガード付き SSD 自動拡張サンプル | [capacity-automation-t4-design.md](capacity-automation-t4-design.md) で設計したモジュール。Terraform と実行時に、文書化されたファイルシステムあたりの最大値と照合する必須の上限値、既定が `notify_only` の `mode`、10% の最小幅を守る切り上げ、`AdministrativeActions` と 6 時間のクールダウンの確認、IOPS モードの扱い、1 つのファイルシステム ARN に絞った IAM、`DescribeAlarms` によるトリガーのアラームの状態の確認、前の要求が受け付けられたかわからない間は 2 回目の要求を出さず、決定的なエラーを固定して 1 回だけ報告し、`UPDATED_OPTIMIZING` をまだ終端として扱わないファイルシステム単位のロック（`evaluating`、`calling`、`submitted`、`optimizing`、`indeterminate`、`manual_disposition_required`、`blocked`）、CloudWatch Logs の判断ログと、関数が実行時に Object Lock の既定の保持を確かめる S3 バケットへのイベントごとに 1 オブジェクトの判断アーカイブ（`auto` ではコンプライアンスモードが必須）、トリガー用とは別の通知用トピックで送る変更前後の SNS レポート、1 時間ごとの再評価 | `terraform validate` と `terraform test`。目標値の計算、すべてのガード、ロックの状態のすべての遷移（要求が遅れて見える場合、最後まで見えない場合、エラーが固定された場合、アクションが `UPDATED_OPTIMIZING` の場合を含む）の単体テスト。上限値の検証の `terraform test` | 実ファイルシステムで `notify_only` と `approve` を観測する。`fsx:UpdateFileSystem` を IAM で拒否した `auto` の実行で関数のログに `AccessDenied` が出る。IAM のポリシーシミュレーションで、絞った Allow が設定したファイルシステムの ARN とトリガーのアラームの ARN にだけ一致する。アラームが OK のときのスケジュール実行は API を呼ばない。2 つの同時呼び出しで API の呼び出しは多くても 1 回。どの評価のイベントの列も判断アーカイブに残り、オブジェクトごとのロックのモードと保持期限が設定した保持と一致する。実際の拡張は明示的な承認がある場合か、使い捨てのファイルシステムでのみ |
 
 > **プロバイダー対応に関する補足**: HashiCorp AWS プロバイダーに `AWS::CloudWatch::LogAlarm` に相当するリソースがあるかは `未確認` です。2026-10-04 の調査では見つかりませんでしたが、存在しないことの証拠ではありません。AWS はログにアラームを付ける 2 つ目の方法として、メトリクスフィルターと標準のメトリクスアラームの組み合わせを文書化しています（[Alarming on logs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Alarm-On-Logs.html)、確信度: `文書化済み`）。Terraform では [`aws_cloudwatch_log_metric_filter`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_metric_filter) + `aws_cloudwatch_metric_alarm` に対応します。2 つの方式は表現できる内容が異なる（Logs Insights の集約とフィルターパターン）ため、T3 ではどちらかを選び、その理由を記録します。
 
@@ -238,13 +316,15 @@ Terraform の作業は、CloudWatch テンプレート 1 つにつき 1 フェ�
 
 CloudWatch を経路として選んだ後（ハブで決定）、次の順序で構築します。
 
-1. 性能・容量ダッシュボード（`fsxn-monitoring-dashboard.yaml`）をデプロイし、ファイルシステム単位の IOPS・スループット・ネットワーク・容量を得る。スタックは容量アラームとスループット利用率アラームも作成する。
-2. そのスタックに `NotificationEmail` を設定（または追加）し、容量アラームとスループット利用率アラームの両方が SNS トピックに届くようにする。
-3. ファイルシステム単位より細かいクォータ粒度が必要なら、Qtree 単位のクォータ監視（`qtree-quota-monitor.yaml`）を追加する — これは ONTAP 管理エンドポイントへの VPC 到達性を要します。
-4. 監査ログが CloudWatch Logs へ流れたら、ログベースアラーム（`cloudwatch-log-alarm.yaml`）を追加する。
-5. CloudWatch のカバレッジが不十分と判明したら、ハブで経路選択を見直す（たとえば ONTAP の全メトリクス集合が必要な場合は Harvest 経路を指します）。
+1. [sizing-and-headroom.md](sizing-and-headroom.md) でサイジングを見直し、閾値を決める。
+2. 性能・容量ダッシュボード（`fsxn-monitoring-dashboard.yaml`）をデプロイし、ファイルシステム単位の IOPS・スループット・ネットワーク・容量を得る。スタックは容量アラームとスループット利用率アラームも作成する。
+3. そのスタックに `NotificationEmail` を設定（または追加）し、容量アラームとスループット利用率アラームの両方が SNS トピックに届くようにする。
+4. ファイルシステム単位より細かいクォータ粒度が必要なら、Qtree 単位のクォータ監視（`qtree-quota-monitor.yaml`）を追加する — これは ONTAP 管理エンドポイントへの VPC 到達性を要します。
+5. 監査ログが CloudWatch Logs へ流れたら、ログベースアラーム（`cloudwatch-log-alarm.yaml`）を追加する。
+6. アラームを受けて何を動かすかを、通知だけから始めて決める（[capacity-automation.md](capacity-automation.md)）。
+7. CloudWatch のカバレッジが不十分と判明したら、ハブで経路選択を見直す（たとえば ONTAP の全メトリクス集合が必要な場合は Harvest 経路を指します）。
 
-> **コストに関する補足**: 手順 1 と 2 はダッシュボードとその 2 つのアラームです — 単価は上記ダッシュボードのコストに関する補足（確認日付き）を参照してください。手順 3 は Lambda 呼び出し、Lambda が必要とする VPC エンドポイント、CloudWatch カスタムメトリクスの分が加わります。予算を決める前に AWS 料金ページで最新のレートを確認してください。
+> **コストに関する補足**: 手順 2 と 3 はダッシュボードとその 2 つのアラームです — 単価は上記ダッシュボードのコストに関する補足（確認日付き）を参照してください。手順 4 は Lambda 呼び出し、Lambda が必要とする VPC エンドポイント、CloudWatch カスタムメトリクスの分が加わります。予算を決める前に AWS 料金ページで最新のレートを確認してください。
 
 > **カスタムメトリクスのコストに関する補足**: Qtree 監視の Lambda は Qtree ごとに 3 つの系列（`QtreeQuotaUsedPercent`、`QtreeQuotaUsedBytes`、`QtreeQuotaLimitBytes`）を書き込み、それぞれが完全な `SvmName`/`VolumeName`/`QtreeName` 識別子を持ちます。加えて SVM ごとに SVM 単位の 2 系列 `QtreeQuotaUsedPercentMax` と `QtreeQuotaReportTruncated` を書き込みます（確信度: `コード確認済み`、`qtree-quota-monitor.yaml`）。したがってカスタムメトリクスのコストは Qtree 数に比例します。メトリクス数 = SVM あたり 3 × N + 2 で、N は 1 回のポーリングで報告される Qtree 数です（ページ上限により SVM あたり最大 10,000。使用可能なレコードが無い実行では最大値系列を省くため、その実行が書く SVM 単位のデータポイントは 1 つだけ）。月額のカスタムメトリクス費用 ≈ (3 × N + 2) × リージョンと階層に応じたメトリクス 1 つあたりの月額単価。`PutMetricData` のリクエストは、ポーリング 1 回あたり ⌈(3 × N + 2) / 20⌉ 回（Lambda は 20 件ずつ送信）× 月間ポーリング回数（既定の `PollIntervalMinutes` 5 分で 8,640 回、30 日の月を仮定）が加わります。ここでは金額を示しません。メトリクス単価とリクエスト単価は、利用するリージョンの最新の [CloudWatch 料金ページ](https://aws.amazon.com/cloudwatch/pricing/) から取り、見積りには日付・リージョン・N を併記してください。
 
@@ -257,13 +337,19 @@ A: いいえ。経路選択（CloudWatch か Harvest + Prometheus か SaaS か O
 A: このダッシュボードからは取れません。レイテンシウィジェットを描画していないためです（確信度: `コード確認済み`）。AWS のメトリクスペア `DataReadOperationTime`/`DataWriteOperationTime` をそれぞれの operation count で割れば期間平均レイテンシを算出できますが、それは p99 ではなく期間平均であり、本テンプレートはそれを計算しません。テールレイテンシにはリクエスト単位のテレメトリを使ってください。
 
 **Q: 今すぐ `terraform apply` できる Terraform モジュールはありますか?**
-A: はい。本リポジトリの T1 モジュール `terraform/fsxn-monitoring-dashboard/` です（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。オフラインの検査（fmt・validate・モックプロバイダーによる `terraform test`）は通過しており、2026-10-05 には第 1 世代・HA ペア 1 つのファイルシステムに対する `apply` でダッシュボードとアラーム 7 つが作成され、すべて OK に達しました（確信度: `検証済み`、[記録](verification-results-cloudwatch-monitoring.md)）。2026-10-06 には、同じ形のファイルシステムでファイルシステム容量アラームも実データで OK から ALARM へ遷移して OK に戻りました。第 2 世代と複数 HA ペアのファイルシステムは `未確認` です。本リポジトリの外では、調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp プロバイダーのリポジトリ、コミュニティのサンプル）で、ターンキーの監視モジュールは引き続き見つかっていません（確信度: 存在することは `未確認`）。Qtree とログアラームの同等物（T2、T3）は未着手です。
+A: はい。本リポジトリの T1 モジュール `terraform/fsxn-monitoring-dashboard/` です（[T1 モジュールの使い方と範囲](#t1-モジュールの使い方と範囲)を参照）。オフラインの検査（fmt・validate・モックプロバイダーによる `terraform test`）は通過しており、2026-10-05 には第 1 世代・HA ペア 1 つのファイルシステムに対する `apply` でダッシュボードとアラーム 7 つが作成され、すべて OK に達しました（確信度: `検証済み`、[記録](verification-results-cloudwatch-monitoring.md)）。2026-10-06 には、同じ形のファイルシステムでファイルシステム容量アラームも実データで OK から ALARM へ遷移して OK に戻りました。第 2 世代と複数 HA ペアのファイルシステムは `未確認` です。本リポジトリの外では、調べたソース（HashiCorp AWS プロバイダーレジストリ、NetApp プロバイダーのリポジトリ、コミュニティのサンプル）で、ターンキーの監視モジュールは引き続き見つかっていません（確信度: 存在することは `未確認`）。カスタムメトリクスポーラー・ログアラーム・SSD 自動拡張のフェーズ（T2、T3、T4）は未着手です。
 
 **Q: なぜ CloudWatch は Qtree 単位のクォータ使用量を直接表示しないのですか?**
 A: FSx for ONTAP のネイティブ CloudWatch メトリクスは `FileSystemId` ディメンションのみ（詳細メトリクスは `StorageTier`/`DataType` を追加）を持ち、Qtree 単位・ユーザー単位のディメンションはありません。Qtree 単位のクォータ使用量は、ONTAP REST API をポーリングしてカスタムメトリクスを公開することで到達します — それが `qtree-quota-monitor.yaml` の役割です。その閾値アラームは SVM 単位の `QtreeQuotaUsedPercentMax` 系列を読みます（モック化した ONTAP 応答に対する単体テスト済み。実環境での OK → ALARM → OK は 2026-10-06 に第 1 世代ファイルシステムで検証済み。Qtree 節のアラームに関する補足を参照）。アラームが伝えるのはいずれかの Qtree が閾値を超えたことなので、どの Qtree かは Qtree 単位のメトリクスで特定してください。
 
 **Q: `cfn-lint` がログアラームテンプレートで E3006 を報告します — 問題ですか?**
 A: デプロイ上の問題ではありません。2026-07-02 の E2E 記録で E3006 が出たのは、当時の cfn-lint が `AWS::CloudWatch::LogAlarm` を認識していなかったためで、テンプレートはデプロイできていました。E3006 が出るかどうかは cfn-lint のバージョンによります。2026-10-04 には、固定している `cfn-lint==1.56.3` がこのテンプレートに E3006 を報告しませんでした（ログベースアラーム節の lint に関する補足を参照）。E3006 は引き続きブロッキングの lint 階層から除外されています。
+
+**Q: SSD 容量を自動拡張できますか?**
+A: はい。現時点では AWS のサンプル（[Updating storage capacity dynamically](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/automate-storage-capacity-increase.html)）で、また計画中の T4 ガード付きサンプルでも可能になる予定です。T4 は上限値、既定の `notify_only`、1 つのファイルシステムに絞った IAM を加えます。第 1 世代では拡張のたびに恒久的に残り、どの変更でも 6 時間のクールダウンが始まります。どちらかを有効にする前に、[capacity-automation.md](capacity-automation.md) で選択肢を比べてください。
+
+**Q: CloudWatch で SnapMirror の健全性を監視するには?**
+A: カスタムメトリクスを使います。2026-10-07 に読んだ AWS のメトリクスのページには、ネイティブの SnapMirror 関係のメトリクスはありません。コレクターが転送先ファイルシステムで `GET /api/snapmirror/relationships` をポーリングし、健全性と遅延を公開します。計画中の T2 ポーラーとメトリクス名は [メトリクスカタログ](#メトリクスカタログ) にあります。`lakehouse-monitoring.yaml` の SnapMirror アラームはコレクターのないパターンのプレースホルダーで、動作する経路ではありません。
 
 ## 関連ドキュメント
 
@@ -274,3 +360,7 @@ A: デプロイ上の問題ではありません。2026-07-02 の E2E 記録で 
 - [Terraform モジュール: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) — T1 モジュールの使い方（取得・IAM・デプロイ・確認・削除）、入力・出力・検証状況。
 - [セルフホスト型管理コンソール](../../management-console/README.md) — Harvest 経路向けの NetApp Harvest 実装。
 - [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — 収集経路の決定を行う場所。
+- [サイジングとヘッドルーム](sizing-and-headroom.md): AWS のサイジング規則、計算例、ヘッドルームの式、閾値の表。
+- [監視を起点にした容量自動化](capacity-automation.md): SSD 自動拡張の選択肢、計画中の T4 のガード、ボリューム autosize とスループット変更の手順。
+- [T4 ガード付き SSD 自動拡張の実装設計](capacity-automation-t4-design.md): T4 の状態遷移、ロックのライフサイクル、アーカイブのスキーマ、IAM、テスト計画（計画中で未実装）。
+- [レイクハウス監視パターン](lakehouse-monitoring-patterns.md): `FSxONTAP/Lakehouse` のパターンのプレースホルダーと、そのアラームの契約。

@@ -47,7 +47,7 @@ When FSx for ONTAP data is replicated to S3 (via DataSync) or to another FSx fil
 | Source | Metric | Access Method |
 |--------|--------|---------------|
 | AWS DataSync | `BytesTransferred`, `FilesTransferred`, task execution status | CloudWatch Metrics (`AWS/DataSync`) |
-| SnapMirror | `lag-time`, `state`, `healthy` | ONTAP REST API (`/api/snapmirror/relationships`) |
+| SnapMirror | `lag_time` (ISO 8601 duration), `state`, `healthy` | ONTAP REST API (`/api/snapmirror/relationships`) |
 | FSx CloudWatch | `DataReadBytes`, `DataWriteBytes` | CloudWatch Metrics (`AWS/FSx`) |
 
 ### Alarm Thresholds
@@ -56,6 +56,10 @@ When FSx for ONTAP data is replicated to S3 (via DataSync) or to another FSx fil
 |--------|---------|----------|-----------|
 | DataSyncLagSeconds | > 1800s (30 min) | > 3600s (1 hour) | Depends on the freshness requirement of your lakehouse queries |
 | SnapMirrorLagSeconds | > 900s (15 min) | > 1800s (30 min) | Based on a typical SnapMirror RPO |
+
+> **Scope note**
+>
+> The SnapMirror half of this pattern is a placeholder. `_check_snapmirror_lag()` is not provided, and nothing on this page has been run against a real relationship. A collector has to poll the management endpoint of the destination file system, because the ONTAP REST reference describes `GET /api/snapmirror/relationships` as returning relationships whose destination endpoints are in the current cluster or SVM ([reference](https://docs.netapp.com/us-en/ontap-restapi/get-snapmirror-relationships.html), confidence: `documented`). The planned T2 poller and its `FSxONTAP/SnapMirror` metric names are in [monitoring-design.md](monitoring-design.md#metric-catalog).
 
 ### Implementation
 
@@ -75,6 +79,26 @@ ONTAP_CREDENTIALS_SECRET_ARN = os.environ["ONTAP_CREDENTIALS_SECRET_ARN"]
 NAMESPACE = "FSxONTAP/Lakehouse"
 
 
+def _check_datasync_lag():
+    """Placeholder: return the DataSync lag in seconds, or None.
+
+    Not provided. Read the task executions for DATASYNC_TASK_ARN and compute
+    the time since the last successful execution.
+    """
+    raise NotImplementedError("DataSync lag collection is not provided")
+
+
+def _check_snapmirror_lag():
+    """Placeholder: return [{"relationship": str, "lag_seconds": float}, ...].
+
+    Not provided. Poll GET /api/snapmirror/relationships on the DESTINATION
+    file system and convert lag_time (ISO 8601 duration) to seconds. The
+    planned T2 poller in docs/en/monitoring-design.md ("Metric catalog")
+    publishes FSxONTAP/SnapMirror instead.
+    """
+    raise NotImplementedError("SnapMirror lag collection is not provided")
+
+
 def lambda_handler(event, context):
     """Collect DataSync task status and SnapMirror lag metrics."""
     # 1. DataSync task execution lag
@@ -87,14 +111,15 @@ def lambda_handler(event, context):
     metrics = []
 
     if datasync_lag is not None:
+        # Dimensionless: the DataSyncLagAlarm below and the dashboard read this one.
         metrics.append({
             "MetricName": "DataSyncLagSeconds",
             "Value": datasync_lag,
             "Unit": "Seconds",
-            "Dimensions": [{"Name": "Source", "Value": "DataSync"}],
         })
 
     for sm in snapmirror_metrics:
+        # Per-relationship series for drill-down. The alarm does not read these.
         metrics.append({
             "MetricName": "SnapMirrorLagSeconds",
             "Value": sm["lag_seconds"],
@@ -103,6 +128,14 @@ def lambda_handler(event, context):
                 {"Name": "Source", "Value": "SnapMirror"},
                 {"Name": "Relationship", "Value": sm["relationship"]},
             ],
+        })
+
+    if snapmirror_metrics:
+        # Dimensionless maximum across relationships: the alarm reads this one.
+        metrics.append({
+            "MetricName": "SnapMirrorLagSeconds",
+            "Value": max(sm["lag_seconds"] for sm in snapmirror_metrics),
+            "Unit": "Seconds",
         })
 
     if metrics:
@@ -239,6 +272,27 @@ ONTAP REST API: `GET /api/storage/flexcache/flexcaches/{uuid}?fields=**`
 
 ```python
 # Lambda: collect_flexcache_metrics.py
+import json
+import logging
+import os
+
+import urllib3
+
+logger = logging.getLogger(__name__)
+http = urllib3.PoolManager()
+
+ONTAP_MGMT_ENDPOINT = os.environ["ONTAP_MGMT_ENDPOINT"]
+
+
+def _get_ontap_credentials():
+    """Placeholder: return {"username": str, "password": str}.
+
+    Not provided. Read ONTAP_CREDENTIALS_SECRET_ARN from Secrets Manager with
+    the shared/python/auth_cache.py pattern.
+    """
+    raise NotImplementedError("ONTAP credential lookup is not provided")
+
+
 def _collect_flexcache_metrics():
     """Query ONTAP REST API for FlexCache statistics."""
     creds = _get_ontap_credentials()
@@ -260,7 +314,13 @@ def _collect_flexcache_metrics():
 
         if detail_resp.status == 200:
             detail = json.loads(detail_resp.data)
-            hit_rate = 100.0 - detail.get("cache_miss_percent", 0)
+            miss_percent = detail.get("cache_miss_percent")
+            if miss_percent is None:
+                # Do not invent a 100% hit rate when the field is absent.
+                logger.warning("cache_miss_percent absent for FlexCache %s; skipped", uuid)
+                continue
+            hit_rate = 100.0 - miss_percent
+            # Per-cache series for drill-down. The alarm does not read these.
             metrics.append({
                 "MetricName": "FlexCacheHitRatePercent",
                 "Value": hit_rate,
@@ -271,8 +331,20 @@ def _collect_flexcache_metrics():
                 ],
             })
 
+    if metrics:
+        # Dimensionless minimum across caches: the alarm reads this one.
+        metrics.append({
+            "MetricName": "FlexCacheHitRatePercent",
+            "Value": min(m["Value"] for m in metrics),
+            "Unit": "Percent",
+        })
+
     return metrics
 ```
+
+> **Evidence note**
+>
+> `cache_miss_percent` is not listed on the [ONTAP REST FlexCache reference](https://docs.netapp.com/us-en/ontap-restapi/get-storage-flexcache-flexcaches-.html) read on 2026-10-07; no field containing "miss" or "hit" appears there. Where the hit rate comes from is `open`. The sample therefore skips a cache when the field is absent instead of reporting 100%.
 
 > **ONTAP REST API access**: The Lambda must reach the FSx for ONTAP management endpoint. Deploy in a VPC with access to the management IP. Credentials stored in Secrets Manager with `shared/python/auth_cache.py` pattern.
 
@@ -458,9 +530,13 @@ aws cloudformation deploy \
 >   --zip-file fileb://collector.zip
 > ```
 >
-> It must publish `SnapMirrorLagSeconds`, `FlexCacheHitRate` and
-> `AccessAnomalyCount` to the `FSxONTAP/Lakehouse` namespace, which is what the
-> three alarms read.
+> It must publish `SnapMirrorLagSeconds`, `S3APLatencyP99Ms`,
+> `FlexCacheHitRatePercent` and `AccessAnomalyCount` to the `FSxONTAP/Lakehouse`
+> namespace **without dimensions**, which is what the four metric alarms read.
+> Per-entity series with dimensions are optional drill-down series; the alarms
+> do not read them. A CloudWatch alarm on a custom metric matches only the
+> complete dimension set it names
+> ([CloudWatch alarms](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)).
 >
 > The placeholder raises rather than returning success so the gap is visible: the
 > failed invocation lands in the DLQ, `-dlq-depth` fires on the first schedule

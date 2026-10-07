@@ -270,6 +270,9 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 **アプローチの選択**
 
 - [Amazon FSx for NetApp ONTAP の監視設計](monitoring-design.md)
+- [Amazon FSx for NetApp ONTAP の監視のためのサイジングとヘッドルーム](sizing-and-headroom.md)
+- [Amazon FSx for NetApp ONTAP の監視を起点にした容量自動化](capacity-automation.md)
+- [Amazon FSx for NetApp ONTAP の T4 ガード付き SSD 自動拡張の実装設計](capacity-automation-t4-design.md)
 - [FSx for ONTAP 管理・監視 Decision Tree](decision-tree-management-monitoring.md)
 - [AWS ネイティブ代替マトリクス — System Manager / Workload Factory / DII](native-alternative-matrix.md)
 - [ベンダー比較](vendor-comparison.md)

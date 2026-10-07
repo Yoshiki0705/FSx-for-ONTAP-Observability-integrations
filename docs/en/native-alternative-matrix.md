@@ -19,18 +19,18 @@ This document maps every major feature of ONTAP System Manager, NetApp Workload 
 | **Performance: Latency** | CloudWatch `DataReadOperationTime`/`DataWriteOperationTime` (derived latency = `OperationTime * 1000 / Operations`) | Not yet in `fsxn-monitoring-dashboard.yaml` | ⚠️ Metrics available, widget not implemented |
 | **Performance: Network Utilization** | CloudWatch `NetworkThroughputUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
 | **Capacity: Storage Used** | CloudWatch `StorageUsed` + `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` | ✅ |
-| **Capacity: Alerts** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` (threshold alarm) | ✅ First generation: OK → ALARM → OK observed on real data for the template and the Terraform module ([2026-10-06 record](verification-results-cloudwatch-monitoring.md#capacity-alarm-real-data-run-on-2026-10-06)); SNS delivery not tested |
+| **Capacity: Alerts** | CloudWatch Alarm on `StorageCapacityUtilization` | `fsxn-monitoring-dashboard.yaml` (threshold alarm) | ✅ First generation: OK → ALARM → OK observed on real data for the template and the Terraform module ([2026-10-06 record](verification-results-cloudwatch-monitoring.md#capacity-alarm-real-data-run-on-2026-10-06)); SNS delivery not tested; tiered thresholds in [sizing-and-headroom.md](sizing-and-headroom.md), SSD auto-increase options in [capacity-automation.md](capacity-automation.md) (T4 planned, not implemented) |
 | **Qtree: Quota Management** | ONTAP REST API `/storage/quota/rules` | CLI scripts / manual | ⚠️ Management via API, no GUI |
 | **Qtree: Quota Monitoring** | Lambda → ONTAP REST API → CloudWatch Custom Metric | `qtree-quota-monitor.yaml` | ✅ First generation: 4 consecutive live polls published all series with values matching ONTAP ([2026-10-06 re-run record](verification-results-cloudwatch-monitoring.md#qtree-quota-monitor-re-run-on-2026-10-06)). Pagination beyond one page is unit-tested against mocked ONTAP responses only |
 | **Qtree: Quota Alerts** | CloudWatch Alarm on `QtreeQuotaUsedPercentMax` | `qtree-quota-monitor.yaml` | ✅ First generation: OK → ALARM → OK observed on real data ([2026-10-06 re-run record](verification-results-cloudwatch-monitoring.md#qtree-quota-monitor-re-run-on-2026-10-06)); SNS delivery not tested; the alarm does not name the qtree (see Qtree note below) |
-| **Volume: Create/Delete/Resize** | FSx Console + ONTAP REST API | Demo templates + FSx Console (no general-purpose volume management template) | ⚠️ |
+| **Volume: Create/Delete/Resize** | Amazon FSx console + ONTAP REST API | Demo templates + Amazon FSx console (no general-purpose volume management template) | ⚠️; volume autosize runbook (ONTAP CLI/REST, no AWS-API automation) in [capacity-automation.md](capacity-automation.md) |
 | **Snapshot: Create/Schedule** | FSx Backup + ONTAP REST API | `ontap_response.py` + FSx native | ✅ |
 | **Snapshot: Restore** | FSx Console + ONTAP REST API | `restore-verification.yaml` (verify before restore) | ✅ |
 | **NFS Export Management** | ONTAP REST API | `ontap_response.py` (export-policy deny rules for blocking) | ⚠️ Blocking only |
 | **SMB Share Management** | ONTAP REST API | `ontap_response.py` (name-mapping deny for blocking) | ⚠️ Blocking only |
 | **EMS Event Viewer** | CloudWatch Logs (syslog VPC EP) | `syslog-vpce-cloudwatch.yaml` | ✅ |
 | **ARP Status** | EMS → Observability pipeline | 9 vendor integrations + EMS webhook | ✅ |
-| **SnapMirror Management** | FSx Console + ONTAP REST API | Docs (manual procedure) | ⚠️ No automation |
+| **SnapMirror Management** | Amazon FSx console + ONTAP REST API | Docs (manual procedure) | ⚠️ No automation; health/lag monitoring designed as a custom metric polled from the destination file system (planned T2, not implemented, see [monitoring-design.md](monitoring-design.md#metric-catalog)) |
 | **QoS Policy** | ONTAP REST API | — | ❌ Out of scope |
 | **Network (LIF/DNS)** | FSx Console + ONTAP REST API | — | ❌ Infrastructure management |
 | **FPolicy Configuration** | ONTAP REST API | FPolicy server (Fargate) + scripts | ✅ |
@@ -187,6 +187,9 @@ aws cloudwatch get-metric-data \
 
 - [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) — **route selection, and the limits of what this matrix maps.** The matrix answers "can this capability be reached AWS-natively"; the hub answers "should the collection route be this one at all", and records that the Harvest route already covers `ONTAP: Qtree`
 - [NetApp FSx-ONTAP-monitoring (CloudWatch-Monitoring-FSx subtree)](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx) — the NetApp-published CloudWatch monitoring reference for FSx for ONTAP; like the templates above it is a CloudFormation-based serverless solution. Alongside NetApp Harvest, the NetApp reference covers a broader scope in one region-wide stack (volume/LUN/SnapMirror/EMS) while this repo's templates cover a narrower, fixed scope split across separate stacks — neither replaces the other.
+- [Sizing and Headroom](sizing-and-headroom.md) — thresholds behind the capacity and utilization alarm rows
+- [Monitoring-Driven Capacity Automation](capacity-automation.md) — SSD auto-increase options, volume autosize and throughput runbooks
+- [T4 Guarded SSD Auto-Increase: Implementation Design](capacity-automation-t4-design.md) — guards, lock states and test plan for the planned T4 sample
 - [Deployment Guide](deployment-guide.md) — Full stack deployment paths and VPC Endpoint management
 - [Cyber Resilience Capability Map](cyber-resilience-capability-map.md) — NIST CSF 2.0 mapping
 - [Automated Response Guide](automated-response-guide.md) — DII-equivalent containment actions

@@ -52,9 +52,12 @@ Resources:
           Endpoint: !Ref AlertEmail
 
   # CollectorSchedule invokes the collector asynchronously, so a failing
-  # invocation is retried twice by Lambda and then dropped. The three alarms
-  # below all use TreatMissingData notBreaching, so a collector that stops
-  # publishing looks exactly like a healthy pipeline.
+  # invocation is retried twice by Lambda and then dropped. The four metric
+  # alarms below do not set TreatMissingData, so they use the default
+  # (missing): a collector that stops publishing leaves them in
+  # INSUFFICIENT_DATA, and because they define only AlarmActions, that state
+  # sends no notification. The DLQ-depth alarm is what reports a failing
+  # collector.
   CollectorDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -191,8 +194,15 @@ Resources:
         #     --zip-file fileb://collector.zip
         #
         # The function must publish to the FSxONTAP/Lakehouse namespace the
-        # metrics the alarms below read: SnapMirrorLagSeconds, FlexCacheHitRate
-        # and AccessAnomalyCount. See docs/en/lakehouse-monitoring-patterns.md.
+        # metrics the alarms below read: SnapMirrorLagSeconds, S3APLatencyP99Ms,
+        # FlexCacheHitRatePercent and AccessAnomalyCount, each WITHOUT
+        # dimensions. A per-entity series with dimensions is a different
+        # CloudWatch metric and does not satisfy these alarms.
+        # See docs/en/lakehouse-monitoring-patterns.md.
+        #
+        # The SnapMirror part is a pattern placeholder. The planned T2 ONTAP REST
+        # custom-metrics poller (docs/en/monitoring-design.md, "Metric catalog")
+        # will publish FSxONTAP/SnapMirror and is not wired to this alarm.
         ZipFile: |
           """Collector placeholder -- fails loudly until real code is uploaded.
 
@@ -203,8 +213,9 @@ Resources:
               raise NotImplementedError(
                   "No collector code deployed. This stack ships a placeholder on "
                   "purpose: the metrics depend on your lakehouse layout. Upload a "
-                  "collector that publishes SnapMirrorLagSeconds, FlexCacheHitRate "
-                  "and AccessAnomalyCount to the FSxONTAP/Lakehouse namespace, "
+                  "collector that publishes SnapMirrorLagSeconds, S3APLatencyP99Ms, "
+                  "FlexCacheHitRatePercent and AccessAnomalyCount without "
+                  "dimensions to the FSxONTAP/Lakehouse namespace, "
                   "then this alarm clears. See "
                   "docs/en/lakehouse-monitoring-patterns.md."
               )
@@ -250,7 +261,7 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: !Sub '${AWS::StackName}-snapmirror-lag'
-      AlarmDescription: 'SnapMirror lag exceeds 30 minutes'
+      AlarmDescription: 'Pattern placeholder: SnapMirror lag above 30 minutes. Reads the dimensionless SnapMirrorLagSeconds series (maximum across relationships) that an uploaded collector must publish.'
       Namespace: FSxONTAP/Lakehouse
       MetricName: SnapMirrorLagSeconds
       Statistic: Maximum
@@ -280,7 +291,7 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: !Sub '${AWS::StackName}-flexcache-hit-rate'
-      AlarmDescription: 'FlexCache hit rate below 70%'
+      AlarmDescription: 'FlexCache hit rate below 70%. Reads the dimensionless FlexCacheHitRatePercent series (minimum across caches) that an uploaded collector must publish.'
       Namespace: FSxONTAP/Lakehouse
       MetricName: FlexCacheHitRatePercent
       Statistic: Average
@@ -307,7 +318,7 @@ Resources:
         - !Ref AlertSNSTopic
 
   # A message here means the collector failed every retry, so every metric in
-  # the FSxONTAP/Lakehouse namespace is stale and the three alarms above are
+  # the FSxONTAP/Lakehouse namespace is stale and the four alarms above are
   # evaluating old data rather than reporting a problem.
   CollectorDlqDepthAlarm:
     Type: AWS::CloudWatch::Alarm
