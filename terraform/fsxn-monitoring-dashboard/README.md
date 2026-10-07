@@ -14,7 +14,9 @@ Display defect in tag `terraform-fsxn-monitoring-dashboard-v0.1.0`: four widgets
 
 Live, second: the file-system `storage_capacity` alarm could not be driven to ALARM on 2026-10-05, because its 50–95 range is above the 3.5% utilization of the test file system. From 2026-10-06 to 2026-10-07 (UTC), in the Asia Pacific (Tokyo) Region (`ap-northeast-1`), the module was applied again to a first-generation `SINGLE_AZ_1` file system with one HA pair, with the default alarms only and `capacity_threshold_percent = 50`. Real data written to a test volume raised SSD utilization to 58.6%, and the capacity alarms of both the CloudFormation template and this module went from OK to ALARM and back to OK. They read `StorageCapacityUtilization` in namespace `AWS/FSx` with `FileSystemId` + `StorageTier=SSD` + `DataType=All`. The alarms returned to OK after the deleted test volume was purged from the ONTAP recovery queue; deleting the volume alone did not lower utilization. See the [capacity alarm real-data run](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#capacity-alarm-real-data-run-on-2026-10-06) ([日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)).
 
-Still `unverified`: SNS delivery (no `notification_email` was set), second-generation file systems with `file_server_names`, multi-HA-pair file systems, and behavior under load. On a different file-system shape, run `terraform plan` in a non-production account first.
+Live, IAM: on 2026-10-07 (UTC), in `ap-northeast-1`, the module fetched from the `terraform-fsxn-monitoring-dashboard-v0.1.0` tag was applied with every feature on (10 resources) by a role limited to the policy in [Required IAM permissions (verified)](#required-iam-permissions-verified). Create, tag changes, and destroy succeeded with `Resource: "*"` and again with ARNs scoped by `name_prefix`, and the recipient confirmed the email subscription.
+
+Still `unverified`: delivery of alarm notifications through SNS (the IAM run confirmed an email subscription; no notification delivery was recorded), second-generation file systems with `file_server_names`, multi-HA-pair file systems, and behavior under load. On a different file-system shape, run `terraform plan` in a non-production account first.
 
 ## What it creates
 
@@ -83,9 +85,9 @@ The sections below follow the order of a first deployment: prerequisites, permis
 - `hashicorp/aws` `>= 6.67.0`. Tested with 6.67.0; releases 6.0 to 6.66 are untested.
 - AWS credentials from IAM Identity Center or an IAM role, and the Region of the file system set in your `provider "aws"` block. The module has no `provider` block.
 
-### Estimated IAM permissions (unverified)
+### Required IAM permissions (verified)
 
-The list below is estimated and unverified: it was derived by reading the module's resource types, and the module has never been applied with a role limited to these actions.
+On 2026-10-07 (UTC) the module was applied in `ap-northeast-1` with Terraform 1.15.8 and `hashicorp/aws` 6.67.0, fetched from the `terraform-fsxn-monitoring-dashboard-v0.1.0` tag, to a first-generation `SINGLE_AZ_1` file system with one HA pair. Every feature was on: the dashboard, the two default alarms, the SNS topic and email subscription, the three file-server alarms, one volume (capacity and inode alarms), and `tags`, 10 resources in all. The caller was a dedicated IAM role that the provider assumed with `assume_role`, holding only an inline policy with the actions below. Create, a plan with no changes, a tag value change, removal of all tags, and destroy all succeeded. Every action in the table was needed for that lifecycle: a policy without the four tag actions failed at create (`sns:TagResource`) and at a tag change (`cloudwatch:TagResource`). This is a sample run in one account and one file-system shape.
 
 | Resource | Actions |
 |---|---|
@@ -93,9 +95,25 @@ The list below is estimated and unverified: it was derived by reading the module
 | `aws_cloudwatch_metric_alarm` | `cloudwatch:PutMetricAlarm`, `cloudwatch:DescribeAlarms`, `cloudwatch:DeleteAlarms`, `cloudwatch:ListTagsForResource`, `cloudwatch:TagResource`, `cloudwatch:UntagResource` |
 | `aws_sns_topic` (only with `notification_email`) | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:UntagResource`, `sns:DeleteTopic` |
 | `aws_sns_topic_subscription` (only with `notification_email`) | `sns:Subscribe`, `sns:GetSubscriptionAttributes`, `sns:Unsubscribe` |
-| Read-only checks in the sections below | `cloudwatch:ListMetrics`, `fsx:DescribeFileSystems` (plus `cloudwatch:DescribeAlarms` and `cloudwatch:GetDashboard` from above) |
 
-`data "aws_region"` is not expected to need an action (unverified). Whether these actions can be scoped to resource ARNs by `name_prefix` (for example `arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:fsxn-monitoring-*`) is not verified.
+The policy is in [`examples/basic/iam-policy.json`](examples/basic/iam-policy.json). Each statement is scoped to the names the module builds from `name_prefix`: the dashboard `<name_prefix>-<file_system_name>`, the alarms `<name_prefix>-...`, and the topic `<name_prefix>-alarms`. Before creating the policy, replace `123456789012` with your account ID, `ap-northeast-1` with the Region of the file system, and `fsxn-monitoring` with your `name_prefix` if you changed it. The dashboard ARN has no Region segment. The wildcard also matches any other dashboard, alarm, or topic whose name starts with the same prefix. Run the commands below in `examples/basic/` after editing the file, then use the role in your `provider "aws"` block. The run used the same document as an inline role policy; these commands create a customer managed policy from it instead.
+
+```bash
+aws iam create-policy --policy-name fsxn-monitoring-terraform \
+  --policy-document file://iam-policy.json
+aws iam attach-role-policy --role-name <terraform-role-name> \
+  --policy-arn arn:aws:iam::123456789012:policy/fsxn-monitoring-terraform
+```
+
+`Resource: "*"` with the same actions also passed in the run; the file publishes the scoped form. `sts:GetCallerIdentity`, which the provider calls, and `data "aws_region"` needed no permission. The read-only commands in [Finding dimension values](#finding-dimension-values) and [Verifying after apply](#verifying-after-apply) need `cloudwatch:ListMetrics` and `fsx:DescribeFileSystems` besides `cloudwatch:DescribeAlarms` and `cloudwatch:GetDashboard`. They are meant for your own credentials, not for the apply role, and were not run with the role.
+
+> **CloudTrail note**
+>
+> A policy built only from the actions CloudTrail records for one apply misses the tag actions. When the topic is created with `tags`, a missing `sns:TagResource` is logged as `CreateTopic` AccessDenied, not as a `TagResource` event. `cloudwatch:TagResource` was not needed to create tagged alarms but was needed to change a tag value later, and `TagResource` and `UntagResource` calls appear only when tags change.
+
+> **Pending subscription note**
+>
+> If the email subscription was never confirmed, `terraform destroy` calls `Unsubscribe`, which fails with `InvalidParameterException` for the pending subscription, and the provider removes it from state. The pending entry stays in `aws sns list-subscriptions` until SNS deletes unconfirmed subscriptions after 48 hours ([Amazon SNS email notifications](https://docs.aws.amazon.com/sns/latest/dg/sns-email-notifications.html)).
 
 ### Finding dimension values
 
