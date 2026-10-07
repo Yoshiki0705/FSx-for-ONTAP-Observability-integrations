@@ -12,7 +12,9 @@
 
 実環境での 2 回目の検証は、ファイルシステムの `storage_capacity` アラームを対象にしました。このアラームは閾値の範囲 50–95 がテスト用ファイルシステムの利用率 3.5% より上にあるため、2026-10-05 には ALARM に遷移させられませんでした。2026-10-06〜07 (UTC) に、アジアパシフィック (東京) リージョン（`ap-northeast-1`）の第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムへ、既定のアラームだけと `capacity_threshold_percent = 50` でモジュールを再度適用しました。テスト用ボリュームに実データを書き込んで SSD の利用率を 58.6% まで上げ、CloudFormation テンプレートとこのモジュールの両方の容量アラームが OK から ALARM に遷移し、OK に戻りました。どちらも名前空間 `AWS/FSx` の `StorageCapacityUtilization` を `FileSystemId` + `StorageTier=SSD` + `DataType=All` で読みます。アラームが OK に戻ったのは、削除したテスト用ボリュームを ONTAP のリカバリキューから消去した後で、ボリュームの削除だけでは利用率は下がりませんでした。記録は [容量アラームの実データによる実行](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)（[English](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#capacity-alarm-real-data-run-on-2026-10-06)）にあります。
 
-SNS の配信（`notification_email` を指定していない）、`file_server_names` を指定した第 2 世代のファイルシステム、複数 HA ペアのファイルシステム、負荷時の挙動は、まだ `unverified` です。構成の異なるファイルシステムでは、先に本番以外のアカウントで `terraform plan` を実行してください。
+IAM 権限の実環境での検証では、2026-10-07 (UTC) に `ap-northeast-1` で、`terraform-fsxn-monitoring-dashboard-v0.1.0` タグから取得したモジュールを、すべての機能を有効にして（10 リソース）、[必要な IAM 権限（確認済み）](#必要な-iam-権限確認済み)のポリシーだけを持つロールで適用しました。作成・タグの変更・削除は、`Resource: "*"` でも、`name_prefix` で絞った ARN でも成功し、受信者がメールのサブスクリプションを確認しました。
+
+SNS によるアラーム通知の配信（IAM の検証ではメールのサブスクリプションを確認したが、通知の配信は記録していない）、`file_server_names` を指定した第 2 世代のファイルシステム、複数 HA ペアのファイルシステム、負荷時の挙動は、まだ `unverified` です。構成の異なるファイルシステムでは、先に本番以外のアカウントで `terraform plan` を実行してください。
 
 ## 作成されるリソース
 
@@ -77,9 +79,9 @@ git checkout FETCH_HEAD
 - `hashicorp/aws` `>= 6.67.0`。6.67.0 で確認済みで、6.0〜6.66 は未確認です。
 - IAM Identity Center または IAM ロールによる AWS の認証情報と、`provider "aws"` ブロックに設定したファイルシステムのリージョン。モジュール自体は `provider` ブロックを持ちません。
 
-### 必要な IAM 権限（推定）
+### 必要な IAM 権限（確認済み）
 
-下表は推定で、未検証です。モジュールのリソースの種類を読んで導いたもので、これらのアクションだけに絞ったロールでモジュールを適用したことはありません。
+2026-10-07 (UTC) に `ap-northeast-1` で、Terraform 1.15.8 と `hashicorp/aws` 6.67.0 を使い、`terraform-fsxn-monitoring-dashboard-v0.1.0` タグから取得したモジュールを、第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムに適用しました。ダッシュボード、既定の 2 本のアラーム、SNS トピックとメールのサブスクリプション、ファイルサーバーの 3 本のアラーム、ボリューム 1 つ（容量と inode のアラーム）、`tags` をすべて有効にし、リソースは合計 10 個です。呼び出し元は、プロバイダーが `assume_role` で引き受ける専用の IAM ロールで、下表のアクションを持つインラインポリシーだけを付けました。作成、変更のない plan、タグの値の変更、すべてのタグの削除、削除（destroy）がすべて成功しました。表のアクションはどれもこのライフサイクルに必要でした。タグの 4 アクションを除いたポリシーでは、作成（`sns:TagResource`）とタグの変更（`cloudwatch:TagResource`）が失敗しました。これは 1 つのアカウントと 1 つのファイルシステムの形で行ったサンプル実行です。
 
 | リソース | アクション |
 |---|---|
@@ -87,9 +89,25 @@ git checkout FETCH_HEAD
 | `aws_cloudwatch_metric_alarm` | `cloudwatch:PutMetricAlarm`, `cloudwatch:DescribeAlarms`, `cloudwatch:DeleteAlarms`, `cloudwatch:ListTagsForResource`, `cloudwatch:TagResource`, `cloudwatch:UntagResource` |
 | `aws_sns_topic`（`notification_email` を指定したときだけ） | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:UntagResource`, `sns:DeleteTopic` |
 | `aws_sns_topic_subscription`（`notification_email` を指定したときだけ） | `sns:Subscribe`, `sns:GetSubscriptionAttributes`, `sns:Unsubscribe` |
-| 以降の節の読み取り専用の確認 | `cloudwatch:ListMetrics`, `fsx:DescribeFileSystems`（ほかに上の `cloudwatch:DescribeAlarms` と `cloudwatch:GetDashboard`） |
 
-`data "aws_region"` にはアクションが不要と見込んでいますが、未確認です。`name_prefix` でリソース ARN に絞れるか（例: `arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:fsxn-monitoring-*`）も確認していません。
+ポリシーは [`examples/basic/iam-policy.json`](examples/basic/iam-policy.json) にあります。各ステートメントは、モジュールが `name_prefix` から作る名前に絞っています。ダッシュボードは `<name_prefix>-<file_system_name>`、アラームは `<name_prefix>-...`、トピックは `<name_prefix>-alarms` です。ポリシーを作る前に、`123456789012` を自分のアカウント ID に、`ap-northeast-1` をファイルシステムのリージョンに、`name_prefix` を変えた場合は `fsxn-monitoring` をその値に置き換えます。ダッシュボードの ARN にはリージョンの部分がありません。ワイルドカードは、同じプレフィックスで始まる名前のほかのダッシュボード・アラーム・トピックにも一致します。ファイルを編集した後、`examples/basic/` で次のコマンドを実行し、そのロールを `provider "aws"` ブロックで使います。検証では同じ内容をロールのインラインポリシーとして付けました。次のコマンドは、代わりにカスタマー管理ポリシーを作ります。
+
+```bash
+aws iam create-policy --policy-name fsxn-monitoring-terraform \
+  --policy-document file://iam-policy.json
+aws iam attach-role-policy --role-name <terraform-role-name> \
+  --policy-arn arn:aws:iam::123456789012:policy/fsxn-monitoring-terraform
+```
+
+同じアクションで `Resource: "*"` にしたポリシーも検証で成功しましたが、ファイルでは絞った形を公開しています。プロバイダーが呼ぶ `sts:GetCallerIdentity` と、`data "aws_region"` には権限が不要でした。[ディメンション値の調べ方](#ディメンション値の調べ方)と[適用後の確認手順](#適用後の確認手順)の読み取り専用のコマンドには、`cloudwatch:DescribeAlarms` と `cloudwatch:GetDashboard` のほかに `cloudwatch:ListMetrics` と `fsx:DescribeFileSystems` が必要です。これらは apply 用のロールではなく自分の認証情報で実行するもので、ロールでは実行していません。
+
+> **CloudTrail に関する補足**
+>
+> 1 回の apply で CloudTrail に記録されたアクションだけからポリシーを作ると、タグのアクションが抜けます。`tags` を指定してトピックを作るとき、`sns:TagResource` がないと `TagResource` のイベントではなく `CreateTopic` の AccessDenied として記録されます。`cloudwatch:TagResource` はタグ付きのアラームの作成には不要でしたが、後でタグの値を変えるときに必要でした。`TagResource` と `UntagResource` の呼び出しは、タグを変えたときにだけ現れます。
+
+> **未確認のサブスクリプションに関する補足**
+>
+> メールのサブスクリプションを確認しないままにすると、`terraform destroy` は `Unsubscribe` を呼び、保留中のサブスクリプションに対して `InvalidParameterException` で失敗し、プロバイダーはそれを state から外します。保留中のエントリは、SNS が未確認のサブスクリプションを 48 時間後に削除するまで `aws sns list-subscriptions` に残ります（[Amazon SNS のメール通知](https://docs.aws.amazon.com/sns/latest/dg/sns-email-notifications.html)）。
 
 ### ディメンション値の調べ方
 
