@@ -171,7 +171,7 @@ volume_ids                               = ["fsvol-0123456789abcdef0"]
 
 > **ダッシュボード表示に関する補足**
 >
-> 2026-10-07 に、デプロイしたダッシュボードのスクリーンショットを撮り、`aws cloudwatch get-dashboard` で本文を読み戻したところ、4 つのウィジェット（Network Throughput、IOPS、Network Sent/Received、Storage Used）が、式の入力である生のメトリクスを換算後の系列と同じ軸に描画していました。軸は 1 分あたりの生のバイト数や操作数、または生のバイト数を示し（Network Throughput の軸は MB/s のラベルのまま約 1.9G に達した）、換算後の MB/s、IOPS、GB の線は 0 付近にありました。2 つの利用率のウィジェット（Network Throughput Utilization、Storage Capacity Utilization）とすべてのアラームは影響を受けていません。上の `get-metric-data` の件数は、描画されたグラフではなく系列を読んだものなので、引き続き有効です。修正では、テンプレートとモジュールの両方で、生の入力 7 行に `visible: false` を設定しました。タグ `terraform-fsxn-monitoring-dashboard-v0.1.0` はこの修正より前のものです。修正後のダッシュボードの画面は [2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面) にあります。
+> 2026-10-07 に、デプロイしたダッシュボードのスクリーンショットを撮り、`aws cloudwatch get-dashboard` で本文を読み戻したところ、4 つのウィジェット（Network Throughput、IOPS、Network Sent/Received、Storage Used）が、式の入力である生のメトリクスを換算後の系列と同じ軸に描画していました。軸は 1 分あたりの生のバイト数や操作数、または生のバイト数を示し（Network Throughput の軸は MB/s のラベルのまま約 1.9G に達した）、換算後の MB/s、IOPS、GB の線は 0 付近にありました。2 つの利用率のウィジェット（Network Throughput Utilization、Storage Capacity Utilization）とすべてのアラームは影響を受けていません。上の `get-metric-data` の件数は、描画されたグラフではなく系列を読んだものなので、引き続き有効です。修正では、テンプレートとモジュールの両方で、生の入力 7 行に `visible: false` を設定しました。タグ `terraform-fsxn-monitoring-dashboard-v0.1.0` はこの修正より前のもので、修正はタグ `terraform-fsxn-monitoring-dashboard-v0.1.1` に含まれています。修正後のダッシュボードの画面は [2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面) にあります。
 
 ---
 
