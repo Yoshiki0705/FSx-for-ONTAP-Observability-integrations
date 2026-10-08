@@ -15,8 +15,8 @@ body) must be identical, since commands and HCL are not translated.
 
 Guard the guard
 ---------------
-Discovery that finds nothing passes vacuously, so the known module README must
-be found. A comparison that never reports a difference also passes, so a
+Discovery that finds nothing passes vacuously, so every known module README
+must be found. A comparison that never reports a difference also passes, so a
 negative control feeds it a pair with one missing ``##`` and requires a report.
 """
 
@@ -26,7 +26,10 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-KNOWN_README = "terraform/fsxn-monitoring-dashboard/README.md"
+KNOWN_READMES = (
+    "terraform/fsxn-monitoring-dashboard/README.md",
+    "terraform/fsxn-ontap-custom-metrics/README.md",
+)
 
 FENCE = re.compile(r"^\s*(```|~~~)(.*)$")
 HEADING = re.compile(r"^(#{1,6})\s")
@@ -81,8 +84,10 @@ def _discover_readmes(root: Path) -> list[str]:
     )
 
 
-def test_discovery_finds_the_known_module_readme() -> None:
-    assert KNOWN_README in _discover_readmes(REPO_ROOT)
+def test_discovery_finds_every_known_module_readme() -> None:
+    found = _discover_readmes(REPO_ROOT)
+    missing = [r for r in KNOWN_READMES if r not in found]
+    assert not missing, f"discovery returned {found}, missing {missing}"
 
 
 def test_every_module_readme_has_a_matching_japanese_readme() -> None:

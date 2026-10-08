@@ -2,8 +2,10 @@
 
 Why this exists
 ---------------
-The poller lives only in the inline ``ZipFile`` body of QuotaMonitorFunction, so
-nothing executed it. Two defects survived because of that. QtreeQuotaAlarm
+The poller used to live only in the inline ``ZipFile`` body of QuotaMonitorFunction,
+so nothing executed it. (It is now generated from
+shared/lambda/ontap_metrics/qtree_quota_poller.py; these tests still run the
+copy inside the template, which is what CloudFormation deploys.) Two defects survived because of that. QtreeQuotaAlarm
 selected ``QtreeQuotaUsedPercent`` with only the ``SvmName`` dimension, while the
 Lambda published that metric only with ``SvmName``, ``VolumeName`` and
 ``QtreeName``. CloudWatch treats each dimension set as a separate metric, so the
@@ -407,3 +409,62 @@ def test_display_name_and_timeout_budget(template) -> None:
 
     fn = template["Resources"]["QuotaMonitorFunction"]["Properties"]
     assert fn["Timeout"] >= 300
+
+
+# --------------------------------------------------------------------------
+# CloudFormation path stays as it was after the source extraction
+#
+# The inline body is generated from shared/lambda/ontap_metrics/
+# qtree_quota_poller.py, which is also the ONTAP REST client of the Terraform
+# module. The Terraform handler passes retries and a credential TTL; the
+# CloudFormation entry point must not. These tests pin that, without changing
+# load_lambda above.
+# --------------------------------------------------------------------------
+
+
+def test_cfn_path_passes_no_retries_kwarg(load_lambda) -> None:
+    lam = load_lambda(_pages([_page(SAMPLE)]))
+    http = lam.pool.return_value
+    lam.run()
+    assert http.request.call_count == 1
+    kwargs = http.request.call_args.kwargs
+    assert "retries" not in kwargs, kwargs
+    assert kwargs["timeout"] == 30.0
+
+
+def test_cfn_path_publishes_no_heartbeat(load_lambda) -> None:
+    lam = load_lambda(_pages([_page(SAMPLE)]))
+    lam.run()
+    assert lam.by_name("CollectorSucceeded") == []
+
+
+def test_cfn_path_requests_a_503_once_and_raises(load_lambda) -> None:
+    lam = load_lambda(lambda _n, _url: _Resp(503, {}))
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        lam.run()
+    assert len(lam.urls) == 1
+
+
+def test_cfn_path_caches_credentials_for_the_container(load_lambda, monkeypatch) -> None:
+    lam = load_lambda(_pages([_page(SAMPLE), _page(SAMPLE)]))
+    sm = sys.modules["boto3"].client("secretsmanager")
+    clock = {"now": 0.0}
+    monkeypatch.setattr(lam.ns["time"], "monotonic", lambda: clock["now"])
+    lam.run()
+    clock["now"] += 10 * 86400.0
+    lam.run()
+    assert sm.get_secret_value.call_count == 1
+
+
+def test_template_fits_the_inline_body_limit() -> None:
+    """CreateStack/UpdateStack accept a template body of at most 51,200 bytes.
+
+    Source: AWS CloudFormation quotas, "Template body size in a request"
+    (https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cloudformation-limits.html).
+    `aws cloudformation deploy` without --s3-bucket passes the body inline, so
+    the generated inline code must leave the template under that size.
+    """
+    size = TEMPLATE.stat().st_size
+    assert size < 51_200, size
+    text = TEMPLATE.read_text(encoding="utf-8")
+    assert "# Generated from shared/lambda/ontap_metrics/qtree_quota_poller.py" in text

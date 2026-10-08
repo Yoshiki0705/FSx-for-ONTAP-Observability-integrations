@@ -30,7 +30,7 @@
 | **SMB 共有管理** | ONTAP REST API | `ontap_response.py`（name-mapping deny によるブロック） | ⚠️ ブロックのみ |
 | **EMS イベントビューア** | CloudWatch Logs（syslog VPC EP） | `syslog-vpce-cloudwatch.yaml` | ✅ |
 | **ARP ステータス** | EMS → Observability パイプライン | 9 ベンダー統合 + EMS webhook | ✅ |
-| **SnapMirror 管理** | Amazon FSx コンソール + ONTAP REST API | ドキュメント（手動手順） | ⚠️ 自動化なし。健全性と遅延の監視は、転送先ファイルシステムからポーリングするカスタムメトリクスとして設計済み（T2 で計画中、未実装。[monitoring-design.md](monitoring-design.md#メトリクスカタログ) を参照） |
+| **SnapMirror 管理** | Amazon FSx コンソール + ONTAP REST API | ドキュメント（手動手順） | ⚠️ 自動化なし。健全性と遅延の監視は、転送先ファイルシステムからポーリングするカスタムメトリクスとして Terraform モジュール `terraform/fsxn-ontap-custom-metrics/` で提供（T2、オフラインで検証済み、実環境は `未確認`。CloudFormation の版はない）。[monitoring-design.md](monitoring-design.md#メトリクスカタログ) を参照 |
 | **QoS ポリシー** | ONTAP REST API | — | ❌ 対象外 |
 | **ネットワーク (LIF/DNS)** | FSx コンソール + ONTAP REST API | — | ❌ インフラ管理 |
 | **FPolicy 設定** | ONTAP REST API | FPolicy サーバー (Fargate) + スクリプト | ✅ |

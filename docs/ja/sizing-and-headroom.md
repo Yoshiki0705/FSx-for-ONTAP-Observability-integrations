@@ -147,9 +147,9 @@ u_t <= 90% - 100 x H / C        (0.1 単位で切り捨て)
 | ボリュームの inode 使用率（T1 と同じメトリクス演算 `100 * FilesUsed / FilesCapacity`） | 80 | 90 | なし | inode を使い切ったボリュームにはデータを追加できない（[volume-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-storage-capacity.html)） | 閾値は `導出`、動作は `文書化済み` |
 | `NetworkThroughputUtilization`、`FileServerDiskThroughputUtilization`、`FileServerDiskIopsUtilization`、`CPUUtilization` | 80 | 90 | なし | T1 の既定は 80。NetApp のリファレンスは性能アラームの既定を 90 にしている（[CloudWatch-Monitoring-FSx の README](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx)）。これは別のリファレンスの既定値で、AWS の規則ではない | `導出` |
 | `FileServerDiskThroughputBalance`、`FileServerDiskIopsBalance`（スループットキャパシティ 512 MBps 未満のみ） | < 50 | < 20 | なし | クレジットが尽きるとディスク性能はベースラインに下がる。AWS は閾値を示していない | `導出`、`未解決` |
-| SnapMirror の遅延（計画中の T2、`SnapMirrorLagSecondsMax`） | > 転送スケジュール間隔の 1.5 倍 | > 間隔の 3 倍 | なし | 転送 1 回の遅れは警告、2 回以上は重大 | `導出` |
-| SnapMirror の異常な関係の数（計画中の T2、`SnapMirrorUnhealthyCount`） | なし | > 0 | なし | NetApp のリファレンスと同じ既定値 | `文書化済み`（そのリファレンスの README） |
-| ポーラーのハートビート（計画中の T2、`CollectorSucceeded`） | なし | 2 期間欠落 | なし | `TreatMissingData: breaching` にすることで、呼び出されなくなったポーラーでもアラームが鳴る | `導出` |
+| SnapMirror の遅延（T2 のアラーム `snapmirror_lag`、`SnapMirrorLagSecondsMax` を読む。重大の段は `snapmirror_lag_threshold_seconds` で、既定値 10800 は 1 時間のスケジュール向け） | > 転送スケジュール間隔の 1.5 倍 | > 間隔の 3 倍 | なし | 転送 1 回の遅れは警告、2 回以上は重大 | `導出` |
+| SnapMirror の異常な関係の数（T2 のアラーム `snapmirror_unhealthy`、`SnapMirrorUnhealthyCount` を読む。閾値は 0 に固定） | なし | > 0 | なし | NetApp のリファレンスと同じ既定値 | `文書化済み`（そのリファレンスの README） |
+| ポーラーのハートビート（T2 のコレクターごとのアラーム `heartbeat`、`CollectorSucceeded` を読む。期間は `poll_interval_minutes` に従う） | なし | 2 期間欠落 | なし | `TreatMissingData: breaching` にすることで、呼び出されなくなったポーラーでもアラームが鳴る | `導出` |
 
 > **ボリュームに関する補足**
 >

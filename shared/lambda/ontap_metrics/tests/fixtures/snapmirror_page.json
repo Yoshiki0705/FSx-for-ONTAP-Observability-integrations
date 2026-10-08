@@ -1,0 +1,41 @@
+{
+  "_comment": "Shaped like the example response of GET /api/snapmirror/relationships in the ONTAP 9.18.1 REST API reference (https://docs.netapp.com/us-en/ontap-restapi-9181/get-snapmirror-relationships.html), restricted to the fields the collector requests. The path svm1:volume1, the first UUID, lag_time PT8H35M42S and the unhealthy_reason codes and messages 6621444/6621445 come from that example; the other UUIDs and paths are placeholders derived from it, and the third record models an uninitialized relationship, which has no lag_time.",
+  "num_records": 3,
+  "records": [
+    {
+      "uuid": "4ea7a442-86d1-11e0-ae1c-123478563412",
+      "healthy": true,
+      "lag_time": "PT8H35M42S",
+      "state": "snapmirrored",
+      "source": {"path": "svm1:volume1"},
+      "destination": {"path": "svm1_dr:volume1_dst"}
+    },
+    {
+      "uuid": "4ea7a442-86d1-11e0-ae1c-123478563413",
+      "healthy": false,
+      "unhealthy_reason": [
+        {
+          "arguments": [],
+          "code": "6621444",
+          "message": "Failed to complete update operation on one or more item relationships."
+        },
+        {
+          "arguments": [],
+          "code": "6621445",
+          "message": "Group Update failed"
+        }
+      ],
+      "lag_time": "P1DT2H3M4S",
+      "state": "snapmirrored",
+      "source": {"path": "svm1:volume2"},
+      "destination": {"path": "svm1_dr:volume2_dst"}
+    },
+    {
+      "uuid": "4ea7a442-86d1-11e0-ae1c-123478563414",
+      "healthy": false,
+      "state": "uninitialized",
+      "source": {"path": "svm1:volume3"},
+      "destination": {"path": "svm1_dr:volume3_dst"}
+    }
+  ]
+}

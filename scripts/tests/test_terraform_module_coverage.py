@@ -24,7 +24,7 @@ example must carry a versions.tf and a tracked lock file; it needs no tests.
 Guard the guard
 ---------------
 A coverage test fails open: an empty list or a discovery walk that finds
-nothing both pass. The tests below pin a non-empty list with a known module and
+nothing both pass. The tests below pin a non-empty list with every known module and
 run discovery over a temporary tree with a two-level module, so a discovery
 that only walks one level is caught.
 """
@@ -52,8 +52,13 @@ PRUNE = {
     ".terraform",
 }
 
-KNOWN_MODULE = "terraform/fsxn-monitoring-dashboard"
-KNOWN_EXAMPLE = "terraform/fsxn-monitoring-dashboard/examples/basic"
+# Every module and example this repository ships. Each must be in the
+# Makefile list; a module added here but globbed out of the list fails.
+KNOWN_MODULES = (
+    "terraform/fsxn-monitoring-dashboard",
+    "terraform/fsxn-ontap-custom-metrics",
+)
+KNOWN_EXAMPLES = tuple(f"{m}/examples/basic" for m in KNOWN_MODULES)
 
 
 def _makefile_list(name: str) -> list[str]:
@@ -123,16 +128,18 @@ def tf_example_dirs() -> list[str]:
 
 
 def test_makefile_exposes_a_nonempty_tf_module_dirs(tf_module_dirs: list[str]) -> None:
-    assert KNOWN_MODULE in tf_module_dirs, (
-        f"TF_MODULE_DIRS resolved to {tf_module_dirs!r}; an empty or renamed "
-        "variable would make the coverage comparison vacuous"
+    missing = [m for m in KNOWN_MODULES if m not in tf_module_dirs]
+    assert not missing, (
+        f"TF_MODULE_DIRS resolved to {tf_module_dirs!r}, missing {missing}; an "
+        "empty or renamed variable would make the coverage comparison vacuous"
     )
 
 
-def test_makefile_exposes_the_known_example(tf_example_dirs: list[str]) -> None:
-    assert KNOWN_EXAMPLE in tf_example_dirs, (
-        f"TF_EXAMPLE_DIRS resolved to {tf_example_dirs!r}; an empty or renamed "
-        "variable would leave the example unvalidated"
+def test_makefile_exposes_the_known_examples(tf_example_dirs: list[str]) -> None:
+    missing = [e for e in KNOWN_EXAMPLES if e not in tf_example_dirs]
+    assert not missing, (
+        f"TF_EXAMPLE_DIRS resolved to {tf_example_dirs!r}, missing {missing}; an "
+        "empty or renamed variable would leave the example unvalidated"
     )
 
 

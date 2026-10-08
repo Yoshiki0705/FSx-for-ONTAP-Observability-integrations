@@ -59,7 +59,7 @@ When FSx for ONTAP data is replicated to S3 (via DataSync) or to another FSx fil
 
 > **Scope note**
 >
-> The SnapMirror half of this pattern is a placeholder. `_check_snapmirror_lag()` is not provided, and nothing on this page has been run against a real relationship. A collector has to poll the management endpoint of the destination file system, because the ONTAP REST reference describes `GET /api/snapmirror/relationships` as returning relationships whose destination endpoints are in the current cluster or SVM ([reference](https://docs.netapp.com/us-en/ontap-restapi/get-snapmirror-relationships.html), confidence: `documented`). The planned T2 poller and its `FSxONTAP/SnapMirror` metric names are in [monitoring-design.md](monitoring-design.md#metric-catalog).
+> The SnapMirror half of this pattern is a placeholder. `_check_snapmirror_lag()` is not provided, and nothing on this page has been run against a real relationship. A collector has to poll the management endpoint of the destination file system, because the ONTAP REST reference describes `GET /api/snapmirror/relationships` as returning relationships whose destination endpoints are in the current cluster or SVM ([ONTAP 9.18.1 reference](https://docs.netapp.com/us-en/ontap-restapi-9181/get-snapmirror-relationships.html), confidence: `documented`). The T2 Terraform module [`terraform/fsxn-ontap-custom-metrics/`](../../terraform/fsxn-ontap-custom-metrics/README.md) implements that collector (offline-verified, live `unverified`); its `FSxONTAP/SnapMirror` metric names are in [monitoring-design.md](monitoring-design.md#metric-catalog). This pattern's `FSxONTAP/Lakehouse` alarm does not read them.
 
 ### Implementation
 
