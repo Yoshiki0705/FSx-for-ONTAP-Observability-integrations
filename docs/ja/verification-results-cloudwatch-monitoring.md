@@ -4,7 +4,7 @@
 
 ## 実施概要
 
-このページは 4 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。
+このページは 5 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。2026-10-08 には、Terraform のカスタムメトリクスモジュール（フェーズ T2、Qtree と SnapMirror）を適用し、1 つの SVM の中の関係で SnapMirror のアラームを動かしました: [2026-10-08 の Terraform カスタムメトリクスモジュールの実行](#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。
 
 2026-10-05（UTC）に、CloudFormation のダッシュボードテンプレート `shared/templates/fsxn-monitoring-dashboard.yaml` と Terraform モジュール `terraform/fsxn-monitoring-dashboard/` を、実在する Amazon FSx for NetApp ONTAP ファイルシステム 1 つに対してデプロイしました。対象は第 1 世代、`SINGLE_AZ_1`、HA ペア 1 つです。ダッシュボードのすべての系列がデータを返し、すべてのアラームが INSUFFICIENT_DATA を抜けて OK に達しました。Terraform のボリューム単位のアラーム 2 つは、ALARM に遷移させてから OK に戻すところまで確認しました。ファイルシステムの容量アラーム（CloudFormation と Terraform）は ALARM に遷移させられませんでした。閾値の下限（50%）が、観測した利用率（約 3.5%）を上回るためです（[F1](#所見) を参照）。この実行では、テンプレートとモジュールに欠陥は見つかっていません。2026-10-07 に見つかったダッシュボードの表示の欠陥は、[所見](#所見) の補足に記載しています。
 
@@ -709,9 +709,211 @@ FSx for ONTAP の管理 API（`aws fsx delete-volume`） でボリュームを�
 
 ---
 
+## 2026-10-08 の Terraform カスタムメトリクスモジュールの実行
+
+2026-10-08（UTC）に、Terraform モジュール `terraform/fsxn-ontap-custom-metrics/`（フェーズ T2）を、HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` の FSx for ONTAP ファイルシステムに適用しました。2 つのコレクターを両方とも有効にし、ポーリング間隔は 1 分です。これは 1 つのファイルシステムでのサンプル実行です。SnapMirror の関係は、そのファイルシステムの同じ SVM の中にある 2 つのテスト用ボリュームの間で組みました。ファイルシステムの SVM の数が文書化された上限に達しており、宛先の SVM を作成できなかったためです（下の「環境とデプロイした構成（T2 の実行）」を参照）。2 つの SVM の間、および 2 つのファイルシステムの間の SnapMirror（クラスターピアリングと、別クラスターの宛先ファイルシステムのポーリング）は未検証のままです。
+
+2 つのコレクターはモジュールの README に記載したすべての系列を発行し、値は ONTAP が返した内容と一致しました。SnapMirror の非健全アラームは、手動の転送を失敗させて ONTAP が関係を非健全と報告し、その後の転送で健全に戻ったときに、OK → ALARM → OK と遷移しました。遅延アラームは、遅延がテスト用の閾値 300 秒を超えたときと、更新の転送で遅延が戻ったときに、OK → ALARM → OK と遷移しました。2 つのハートビートのアラームは、最初のポーリングの前に ALARM になり、その後に OK になりました。予定した期待値のうち 1 つは成り立ちませんでした。初期化していない関係は非健全として数えられる想定でしたが、ONTAP 9.18.1P6 はその関係を `healthy: true` と報告し、コレクターはその値をそのまま発行しました（F1）。モジュールのコードに欠陥は見つからず、コードは変更していません。
+
+| 項目 | 値 |
+|------|-----|
+| 検証日時 | 2026-10-08T01:00Z から 03:11Z（UTC）。SSO の再サインインのための約 30 分の中断（01:11Z から 01:42Z）を含む |
+| 検証環境 | テスト環境（`ap-northeast-1`）。SVM 1 つ、テスト用ボリューム 2 つ、tree クォータを設定した Qtree 1 つ、その SVM の中の SnapMirror 関係 1 つでのサンプル実行 |
+| 範囲 | モジュールのデプロイ、2 つのコレクター、ハートビート・Lambda エラー・DLQ のアラーム、ONTAP のクォータレポートと照合した Qtree の系列、SnapMirror の非健全アラームと遅延アラームの状態遷移、後片付け。テスト用オブジェクトの準備、関係の操作、状態の読み戻しのため、踏み台ホストから ONTAP REST API を呼んだ |
+| 結果 | 確認項目 15 件中 12 件が合格。期待値が成り立たなかったものが 1 件（S1、F1）、サービスの上限で拒否された手順が 1 件（M1）、volume recovery queue のエントリ 2 つを残して後片付けを終えたものが 1 件（M6） |
+
+以下の値は、第 1 世代・HA ペア 1 つのファイルシステム 1 つでの 1 回の実行から得たもので、ポーリング間隔 1 分と遅延の閾値 300 秒はテストのために選んだ値です。示すのは、コレクターが実際の ONTAP の応答を読み、アラームが発行された系列を評価することです。2 つのファイルシステムの間での挙動、既定の 5 分間隔での挙動、規模を大きくしたときの挙動、第 2 世代や HA ペアが 2 つ以上のファイルシステムでの挙動は示しません。
+
+### 環境とデプロイした構成（T2 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| AWS リージョン | `ap-northeast-1` |
+| ファイルシステム | `fs-0123456789abcdef0`（プレースホルダー）、`SINGLE_AZ_1`（第 1 世代）、HA ペア 1 つ、128 MBps、SSD 1024 GiB |
+| ONTAP のバージョン | NetApp Release 9.18.1P6 |
+| SVM | `<svm-name>`（プレースホルダー、`svm-0123456789abcdef0`）。ファイルシステムにある 6 つの SVM のうちの 1 つ |
+| ソースのリビジョン | モジュールのフィーチャーブランチの `5b9b4ce`（マージ前）。実行のために、また実行の後に、コードは変更していない |
+| Terraform / プロバイダー | Terraform v1.15.8、`examples/basic/` のロックファイルの `hashicorp/aws` 6.67.0 と `hashicorp/archive` 2.8.1 |
+| テスト用ボリューム | `t2_sm_src`: RW、1024 MiB、UNIX セキュリティスタイル、スナップショットポリシー none、階層化ポリシー `NONE`。`t2_sm_dst`: DP、1024 MiB、階層化ポリシー `NONE`。どちらも `aws fsx create-volume` で作成し、`SkipFinalBackup=true` で削除 |
+| Qtree とクォータ | `t2_sm_src` の Qtree `t2_qt` に tree クォータルールを設定。ハードリミット 104857600 バイト（100 MiB）。クォータを有効化 |
+| SnapMirror 関係 | `<svm-name>:t2_sm_src` → `<svm-name>:t2_sm_dst`、ポリシー `MirrorAllSnapshots`（async）、転送スケジュール無し。転送元と転送先は同じ SVM で、SVM ピアは作成していない |
+| ポーラー用の ONTAP ユーザー | `t2-metrics-ro`、アプリケーション `http`、ロール `fsxadmin-readonly`、クラスタースコープ。`POST /api/security/accounts` で作成。認証情報は Secrets Manager のシークレットに `{"username": ..., "password": ...}` の形で保存し、既定のキー `aws/secretsmanager` で暗号化 |
+| Lambda の配置と経路 | NAT ゲートウェイの無い、ファイルシステムのサブネット。構成した経路で、経路を追跡したものではなく推論（下のネットワーク経路に関する補足を参照）。`PutMetricData` はモジュールが作る `monitoring` interface エンドポイント、Secrets Manager は VPC に既存の interface エンドポイントを経由 |
+| デプロイした主体 | 管理者権限を持つ AWS IAM Identity Center（SSO）のセッション |
+
+計画では、最初に宛先の SVM を作成する予定でした。01:02:26Z に `aws fsx create-storage-virtual-machine` は `ServiceLimitExceeded` を返しました。ファイルシステムには既に 6 つの SVM があり、[SVM の上限の表](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-svms.html)は、HA ペア 1 つ・128 MBps での上限を 6 としています。何も作成されていません。承認を得て、宛先の DP ボリュームを転送元と同じ SVM に置き、宛先の SVM と SVM ピアは作らない形に変えました。
+
+モジュールは、一時的なルート構成から相対パスのローカルの `source`（F2 を参照）と次の入力で呼び出しました。`notification_email` は指定していないため、SNS トピックは作成されていません。
+
+```hcl
+name_prefix                      = "fsxn-t2check"
+file_system_id                   = "fs-0123456789abcdef0"
+ontap_management_ip              = "<management-ip>"
+ontap_credentials_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:fsxn-t2-ontap-readonly-XXXXXX"
+vpc_id                           = "vpc-0123456789abcdef0"
+subnet_ids                       = ["subnet-0123456789abcdef0"]
+create_monitoring_endpoint       = true
+create_secretsmanager_endpoint   = false
+aws_api_egress_cidr_blocks       = ["<vpc-cidr>"]
+qtree_svm_name                   = "<svm-name>"
+poll_interval_minutes            = 1
+snapmirror_lag_threshold_seconds = 300
+log_retention_days               = 1
+tags                             = { Purpose = "t2-live-verification" }
+```
+
+`terraform plan` は 23 件の追加を報告しました。`monitoring` エンドポイント、エンドポイントのセキュリティグループ、VPC CIDR へのエグレスルール、7 つのアラームを含み、Secrets Manager のエンドポイントと SNS トピックは含みません。`terraform apply` は 23 件のリソースを追加しました。時間がかかったのは、Lambda 関数（VPC への接続のため 2 分 20 秒）、DLQ（1 分 32 秒）、`monitoring` エンドポイント（45 秒）です。予約済み同時実行数 1 は受け付けられました。アカウントには予約されていない同時実行数が十分にありました。
+
+> **セキュリティに関する補足**
+>
+> ファイルシステムのセキュリティグループはテスト環境に既存の設定で、`0.0.0.0/0` からのすべてのインバウンド通信を許可しており、既存の Secrets Manager エンドポイントも同じグループを使っています。そのため、Lambda のセキュリティグループに対するインバウンドルールは追加しておらず、README のインバウンドルールの手順と、destroy の前にルールを取り消す手順は実行していません。SVM の `default` エクスポートポリシーは `0.0.0.0/0` に読み書きを許可しており、Qtree へのデータの書き込みは変更せずにそれを使いました。どちらも推奨する設定ではありません。モジュール自身の Lambda のセキュリティグループのエグレスは、管理 IP（`/32`）と VPC CIDR だけに限られていました。
+
+### 確認項目の結果（T2 の実行）
+
+| # | 確認項目 | 結果 | 時刻（UTC） |
+|---|----------|------|-------------|
+| M0 | 事前確認: 認証主体、ファイルシステム、SVM、VPC エンドポイント、セキュリティグループ、ONTAP の読み取り専用の基準値 | ✅ 合格。既定の `GET /api/snapmirror/relationships` ビュー（コレクタが読む対象）は 0 件。転送元側のビュー（`list_destinations_only=true`）には実行前からの FSxN_OnPre の関係が 3 つあり、触れていない。volume recovery queue のエントリ 0 件、`t2*` のアカウントとボリュームは無し | 01:00:04Z から、M1 の前 |
+| M1 | 宛先の SVM の作成 | ⛔ `ServiceLimitExceeded`（SVM 6 つ、128 MBps での文書化された上限）。何も作成されず、関係を 1 つの SVM の中に移した | 01:02:26Z |
+| M2 | テスト用ボリューム、Qtree、100 MiB の tree クォータ、読み取り専用の ONTAP ユーザー、シークレット | ✅ 合格。DP ボリュームの要求が 1 回拒否され（`BadRequest`: DP ボリュームにはジャンクションパス、ストレージ効率、スナップショットポリシー、セキュリティスタイルを指定できない）、それらのパラメータを外して再試行した。`t2-metrics-ro` として、クラスター、SnapMirror、クォータレポートの `GET` が 200 を返した | 01:07:34Z → 01:09:32Z |
+| M3 | `terraform init -lockfile=readonly`、`validate`、`plan` | ✅ 合格。2 回の再試行の後に 23 件の追加。再試行の理由は、絶対パスの `source`（F2）と、期限切れの SSO トークン | 01:42:21Z |
+| M4 | `terraform apply` | ✅ 合格。23 件追加 | 01:42:45Z → 01:46:50Z |
+| M5 | ハートビートのアラーム: 最初のポーリングの前に ALARM、その後に OK | ✅ 合格 | 01:44:37Z、01:45:46Z → 01:47:37Z、01:47:46Z |
+| S1 | 初期化していない関係 → `SnapMirrorUnhealthyCount` 1、`snapmirror-unhealthy` が ALARM | ❌ 期待値は成り立たなかった。ONTAP は `healthy: true` を報告し、コレクターは健全 1・件数 0 を発行し、アラームは OK のまま（F1） | 01:48:40Z → 01:50:55Z |
+| S2 | 初期化 → 健全 1、件数 0、遅延の系列が現れる | ✅ 合格。最初の遅延のデータポイントは 22 秒 | 01:52:31Z → 01:53:52Z |
+| S3 | スケジュール無しで遅延が 300 秒を超える → `snapmirror-lag-high` が ALARM | ✅ 合格 | 01:58:52Z |
+| S4 | 更新の転送 → 遅延が下がり、遅延アラームが OK | ✅ 合格。682 → 23 秒。02:09:52Z に OK、転送をスケジュールするものが無いため 02:10:52Z に再び ALARM | 02:04:30Z → 02:10:52Z |
+| S1b | S1 の代替: 手動の転送の失敗 → 非健全、復旧の転送 → 健全、非健全アラームが OK → ALARM → OK | ✅ 合格 | 02:12:56Z → 02:27:52Z |
+| S5-1 | ONTAP のクォータレポートと照合した Qtree の系列 | ✅ 合格。40.1641%（42115072 / 104857600） | 02:03Z 以降 |
+| S5-2 | 発行された系列とディメンション名を、README の表とコストの式に照合 | ✅ 合格。各名前空間に 6 系列 | 02:29Z → 02:30Z |
+| S5-3 | Lambda のエラーとスロットリング、ONTAP の認証エラー、DLQ | ✅ 合格。43 回の呼び出しで Errors 0、Throttles 0、HTTP 401 と 403 は無し、DLQ 0 | 02:29Z → 02:30Z |
+| M6 | 後片付けと再読み取り | ⚠️ 例外付きで完了。Terraform が管理する 23 件のリソースすべてと、テスト用の SnapMirror 関係、2 つのテスト用ボリューム、Qtree、クォータルール、ONTAP ユーザーを削除した。残っているものは 3 種類（[後片付け](#後片付けt2-の実行)を参照）。volume recovery queue のエントリ 2 つは、purge が元に戻せない操作で承認を得ていないため残した。シークレットは 7 日間の復旧期間の後に削除される予定。12 のカスタムメトリクスの系列は CloudWatch の保持期間に従って残る | 02:32:26Z → 03:10:54Z |
+
+デプロイしたコミットでは、オフラインの検査も通過しています。`shared/lambda/ontap_metrics/tests` に対する `pytest`（45 件合格）と、`make terraform`（exit 0。2 つのモジュールの `terraform test` で 15 件合格と 43 件合格）です。
+
+### アラームの状態遷移（T2 の実行）
+
+アラームの履歴（`StateUpdate`）とアラームの状態の読み取りより、UTC。アラーム名はすべて `fsxn-t2check-` で始まります。状態理由の括弧内の時刻は、CloudWatch が評価した 300 秒の窓の開始時刻です。
+
+| アラーム | 遷移 | 時刻 | 状態理由に含まれる値 |
+|----------|------|------|----------------------|
+| `snapmirror-heartbeat` | 初回の評価 → ALARM | 01:44:37Z | 2 期間データポイントが無く、欠損を閾値超過として扱った |
+| `qtree-heartbeat` | 初回の評価 → ALARM | 01:45:46Z | 同上 |
+| `dlq-depth` | 初回の評価 → OK | 01:45:52Z | 欠損を閾値超過でないものとして扱った |
+| `snapmirror-heartbeat` | ALARM → OK | 01:47:37Z | 最初のポーリングの後 |
+| `qtree-heartbeat` | ALARM → OK | 01:47:46Z | データポイント 1 つ [1.0]、1.0 未満ではない |
+| `qtree-quota-high` | INSUFFICIENT_DATA → OK | 01:47:47Z | 0.0 |
+| `lambda-errors` | INSUFFICIENT_DATA → OK | 01:47:50Z | 0.0 |
+| `snapmirror-unhealthy` | INSUFFICIENT_DATA → OK | 01:47:52Z | 0.0、関係はまだ無い |
+| `snapmirror-lag-high` | INSUFFICIENT_DATA → OK | 01:53:52Z | 22.0（01:48）、not > 300 |
+| `snapmirror-lag-high` | OK → ALARM | 01:58:52Z | 322.0（01:53）、> 300 |
+| `snapmirror-lag-high` | ALARM → OK | 02:09:52Z | 263.0（02:04）、not > 300 |
+| `snapmirror-lag-high` | OK → ALARM | 02:10:52Z | 323.0（02:05）、> 300 |
+| `snapmirror-unhealthy` | OK → ALARM | 02:19:52Z | データポイント 2 つ、1.0（02:14）と 1.0（02:09）、> 0 |
+| `snapmirror-unhealthy` | ALARM → OK | 02:27:52Z | 0.0（02:22）、not > 0 |
+| `snapmirror-lag-high` | ALARM → OK | 02:27:52Z | 275.0、not > 300 |
+| `snapmirror-lag-high` | OK → ALARM | 02:28:52Z | 335.0、> 300 |
+
+アラームの履歴からは、各アラームが 5 分の区切りではなく、毎分、直近 300 秒を評価していることが分かります。遅延アラームは、閾値を超えた最初のデータポイントが発行されてから（01:57:55Z に 322 秒）57 秒後に ALARM に達しました。OK に戻ったのは更新の転送が終わってから 5 分 7 秒後です。300 秒の窓から更新前の最大値（02:03 の 682 秒）が外れるまで、Maximum が下がらなかったためです。非健全アラームは、最初の非健全のデータポイント（02:13:54Z）から 5 分 58 秒後に ALARM に達しました。300 秒の評価期間 2 つから見込まれるとおりです。復旧の転送から 5 分 38 秒後に OK に戻りました。転送のスケジュールが無いため、遅延アラームは、転送の後に遅延が再び 300 秒を超えるたびに発報しました。
+
+### 観測したメトリクス（T2 の実行）
+
+データポイントの分ごとの SnapMirror の系列です。関係ごとの系列は `FileSystemId`、`SourcePath=<svm-name>:t2_sm_src`、`DestinationPath=<svm-name>:t2_sm_dst` を持ちます。読み取った値では、関係ごとの `SnapMirrorLagSeconds` は `SnapMirrorLagSecondsMax` と一致していました。
+
+| 時刻（UTC） | ONTAP から読んだ関係の状態 | `SnapMirrorRelationshipHealthy` | `SnapMirrorUnhealthyCount` | `SnapMirrorLagSecondsMax`（秒） |
+|-------------|----------------------------|:---:|:---:|----------------------------------|
+| 01:46–01:47 | 関係は無し | 系列無し | 0 | 発行されない |
+| 01:48–01:50 | `uninitialized`、`healthy: true`、`lag_time` 無し | 1 | 0 | 発行されない |
+| 01:52 | 01:52:31Z の初期化の後に `snapmirrored`、`lag_time` PT10S | 1 | 0 | 22 |
+| 01:53–02:03 | 転送無し | 1 | 0 | 82、142、… 322（01:57）… 682（02:03）。ポーリングごとに +60 |
+| 02:04 | 更新の転送、13 秒で 43074608 バイト | 1 | 0 | 23 |
+| 02:05–02:12 | 転送無し | 1 | 0 | 83 … 263（02:08）、323（02:09）… |
+| 02:13–02:21 | 転送の失敗: `transfer.state: failed`、`healthy: false`、`unhealthy_reason` のコード 2 つ | 0 | 1 | 増え続け、02:21 に 1043 |
+| 02:22 以降 | 02:22:14Z の復旧の転送、`healthy: true` | 1 | 0 | 02:22 に 35 |
+
+`SnapMirrorRelationshipsTruncated` はすべてのポーリングで 0 でした。転送の失敗は、存在しない転送元のスナップショットを指定した手動の転送の要求によるものです。ONTAP は理由のコード 6619937（スナップショットの作成に失敗）と 6619987（転送元のボリュームにそのスナップショットが無い）を返しました。関係が非健全の間、ポーリングのたびに、関係の UUID、`state=snapmirrored`、両方のパス、2 つの理由のコードを含む警告がログに出ました。モジュールの README に記載したログの形式です。
+
+`t2_qt` の Qtree の系列（`SvmName`、`VolumeName=t2_sm_src`、`QtreeName=t2_qt`）: `QtreeQuotaLimitBytes` はすべてのポーリングで 104857600 でした。`QtreeQuotaUsedBytes` は 02:02 まで 0 で、02:03:41Z に踏み台ホストから一時的な NFSv3 マウントで 40 MiB のファイルを書き込んだ後、02:03 から 42115072 になりました。その 20 秒後の ONTAP のクォータレポートも、使用量 42115072 バイトを示しました。`QtreeQuotaUsedPercent` は 0 から 40.1641（42115072 / 104857600 × 100）になり、ハードリミットを持つ Qtree が 1 つだけなので、`QtreeQuotaUsedPercentMax` も同じ値でした。ボリュームのデフォルトの tree レコード（Qtree 名が空で、ハードリミットが無い）は、記載どおり系列を持ちません。`QtreeQuotaReportTruncated` は 0 でした。
+
+`list-metrics` は各名前空間で 6 系列を返しました。`FSxONTAP/SnapMirror` は `CollectorSucceeded`、`SnapMirrorLagSeconds`、`SnapMirrorLagSecondsMax`、`SnapMirrorRelationshipHealthy`、`SnapMirrorRelationshipsTruncated`、`SnapMirrorUnhealthyCount`、`FSxONTAP/Qtree` は `CollectorSucceeded`、`QtreeQuotaLimitBytes`、`QtreeQuotaReportTruncated`、`QtreeQuotaUsedBytes`、`QtreeQuotaUsedPercent`、`QtreeQuotaUsedPercentMax` です。README のコストの式（SnapMirror 2 × 1 + 3 + 1 = 6、Qtree 3 × 1 + 2 + 1 = 6）と一致し、ディメンション名も README の表と一致します。`CollectorSucceeded` は、すべてのポーリングで両方のコレクターとも 1 でした。
+
+関数は 43 回実行されました。どの実行も Qtree の成功の行と SnapMirror の要約の行をログに出し、`[ERROR]` の行、HTTP 401 と 403、トレースバック、タイムアウトはいずれも 0 件でした。実行時間は 327–568 ms、最大メモリ使用量は 256 MB 中 96 MB です。読み取り専用のユーザー `t2-metrics-ro` で、コレクターが送るすべての要求が通りました。`ca_cert_path` が空だったため、記載どおり、各実行は urllib3 の `InsecureRequestWarning` を 2 行出し、コールドスタートではモジュールの TLS の警告を出しました。ログの `Found credentials in environment variables.` は boto3 が Lambda のロールの認証情報を読んだもので、ONTAP の認証情報ではありません。
+
+> **ネットワーク経路に関する補足**
+>
+> Secrets Manager の呼び出しは既存のエンドポイントを、`PutMetricData` はモジュールの `monitoring` エンドポイントを経由しました。これは経路を追跡した結果ではなく推定です。サブネットには NAT ゲートウェイが無く、Lambda のセキュリティグループのエグレスは VPC CIDR と管理 IP だけに限られ、データポイントが届いたことから推定しています。
+
+### 所見（T2 の実行）
+
+| # | 所見 | 種別 | この記録への影響 |
+|---|------|------|------------------|
+| F1 | ONTAP 9.18.1P6 では、初期化していない関係が `healthy: true` を報告し、`lag_time` を持たなかった。そのためモジュールは健全 1、件数 0 を発行し、遅延のデータポイントは発行しなかった。`snapmirror-unhealthy` は OK のまま、`snapmirror-lag-high` は INSUFFICIENT_DATA のままだった | ONTAP の挙動で、1 回観測。モジュールのコードの欠陥ではなく、監視の空白 | 作成したが一度も初期化していない関係では、どちらの SnapMirror アラームも発報しない。この空白を埋めるには新しいシグナルが要る。たとえば `uninitialized` の関係の件数や、`lag_time` の欠損を閾値超過として扱うこと。これはメトリクスカタログを変える設計上の判断なので、記録にとどめ、実装していない。非健全の確認は S1 の代わりに S1b で行った |
+| F2 | `source` にローカルの絶対パスを指定すると、`terraform init` はモジュールを `file://` のソースとして `.terraform/modules/` 配下にシンボリックリンクで導入し、`archive_file` が `${path.module}/../../shared` をそのシンボリックリンクから解決して失敗した（`lstat .terraform/shared/lambda/ontap_metrics/__pycache__: no such file or directory`）。相対パスでは動いた | このモジュールの `shared/` へのパスに関する Terraform の挙動で、1 回観測 | ローカルの相対パス、git のソース、またはアーカイブの URL を使う。README に記載したソースは影響を受けない |
+| F3 | `terraform destroy` は `aws_security_group.lambda` に 22 分 3 秒かかった。関数の削除後に Lambda のネットワークインターフェイスが解放されるのを待っていた | 1 回観測 | この長さの destroy を見込む。README はこの所要時間を未測定としていた |
+| F4 | ポーリング間隔 1 分、期間 300 秒で、非健全アラームは最初の非健全のデータポイントから 5 分 58 秒後に ALARM、復旧の転送から 5 分 38 秒後に OK。遅延アラームは閾値を超えた最初のデータポイントから 57 秒後に ALARM、更新から 5 分 7 秒後に OK | CloudWatch の評価で、1 回観測 | 推定: 転送の後、遅延アラームはアラームの期間 1 つと最大 1 分以内に OK に戻る。転送のスケジュールが無いと、閾値の時間が経つたびに再び発報する |
+| F5 | 2 つのハートビートのアラームは、作成から約 1.5–2.5 分後、最初のポーリングの前に ALARM になり、最初のポーリングから約 1 分以内に OK になった | 文書化した挙動で、今回観測した | `apply` の直後の ALARM は想定どおり。推定で、実行はしていない: `notification_email` を指定していれば、ALARM と、続いて OK の通知が送られる |
+| F6 | 128 MBps の第 1 世代のファイルシステムには既に 6 つの SVM があり、これは文書化された上限なので、宛先の SVM を作成できなかった | サービスの上限で、文書化済み | 関係は 1 つの SVM の中で組んだ。SVM ピアリングと 2 つのファイルシステムの間の SnapMirror は未検証のまま |
+
+モジュールのコードに欠陥は見つかっておらず、コードは変更していません。
+
+### 後片付け（T2 の実行）
+
+| 手順 | 結果 | 時刻（UTC） |
+|------|------|-------------|
+| Lambda のセキュリティグループを参照する、Terraform の外のルールの確認 | 参照していたのはモジュール自身のエンドポイントのセキュリティグループだけで、取り消すものは無し | 02:32:26Z の前 |
+| 1 回目の `terraform destroy -auto-approve` | exit 1。SSO の `GetRoleCredentials` がネットワークでタイムアウトした。何も削除されず、state はすべてのリソースを保持していた | 02:32:26Z → 02:34:02Z |
+| 2 回目の `terraform destroy -auto-approve` | exit 0、23 件削除。`aws_security_group.lambda` に 22 分 3 秒（F3）、`monitoring` エンドポイントに 2 分 51 秒、DLQ に 51 秒 | 02:43:57Z → 03:06:28Z |
+| SnapMirror 関係の削除（転送元での解放を含む） | HTTP 200。転送先の一覧は 0 件。転送元の一覧には、実行前からあった別の SVM の関係 3 つだけが残り、`t2_sm_src` のスナップショットは 0 件 | 03:06:49Z |
+| シークレットの削除 | `delete-secret --recovery-window-in-days 7`。削除日 2026-10-15T03:07:27Z | 03:07:27Z |
+| 2 つのテスト用ボリュームの削除（`SkipFinalBackup=true`） | 03:10:03Z までにどちらも `VolumeNotFound` | 03:09:08Z → 03:10:03Z |
+| ONTAP ユーザー `t2-metrics-ro` の削除 | HTTP 200。`t2*` のアカウントは 0 件 | 03:09:24Z |
+| ローカルと踏み台ホストの一時ファイル | `terraform.tfvars`、state、plan のファイルを削除。パスワードの一時ファイル、踏み台ホストの使い捨ての鍵とマウントポイントは先に削除済み | 2 回目の destroy の後 |
+| 再読み取り | AWS: state のエントリ 0 件。接頭辞 `fsxn-t2check` のアラーム・ロググループ・関数・ルール・キュー・IAM ロール・セキュリティグループは無し。モジュールが作った 2 つのセキュリティグループを持つネットワークインターフェイスは無し。`monitoring` エンドポイントは無し。既存の VPC エンドポイント 5 つは available。2 つのテスト用ボリュームは `VolumeNotFound`。SVM は 6 つ。ONTAP: 既定の `GET /api/snapmirror/relationships` ビューは 0 件（t2 の関係は消えた）。転送元側のビュー（`list_destinations_only=true`）には実行前からの FSxN_OnPre の関係 3 つだけ。SVM ピアは既存の 2 つだけ、`t2*` のボリューム・Qtree・アカウントは 0 件、`<svm-name>` のクォータルールは 0 件。踏み台ホストのパスは存在しない | 03:10:49Z → 03:10:54Z |
+
+意図して残した項目が 3 つあります。
+
+- `t2_sm_dst` と `t2_sm_src` の volume recovery queue のエントリ 2 つは purge していません。purge は元に戻せない操作で、承認を得ていないためです。アグリゲートの空き容量は基準値より 282951680 バイト（約 270 MiB）少なくなっていました。推定で、検証はしていません: この領域は、ONTAP が 2 つのエントリを期限切れにするまで保持されます。既定の保持期間はこの実行では確認していません。文書化された挙動は [OK への復帰と volume recovery queue](#ok-への復帰と-volume-recovery-queue) を参照してください。
+- シークレットは 2026-10-15T03:07:27Z に削除される予定です（7 日間の復旧期間）。
+- カスタムメトリクスの 12 系列（各名前空間に 6）は、01:46Z から約 02:44Z までのデータポイントを持ちます。カスタムメトリクスは削除できず、データは CloudWatch の保持期間に従って期限切れになります。保持期間はこの実行では確認し直していません。
+
+エクスポートポリシー、モジュール外の IAM、モジュール外のセキュリティグループは変更していません。踏み台ホストの他の NFS マウント、実行前からあった SnapMirror 関係と SVM ピアには触れていません。
+
+### 未検証の範囲（T2 の実行）
+
+| 項目 | 状態 | 理由 |
+|------|------|------|
+| 2 つの SVM の間（SVM ピアリング）と 2 つのファイルシステムの間（クラスターピアリング、別クラスターの宛先ファイルシステムのポーリング）の SnapMirror | 未実施 | F6。関係は 1 つの SVM の中で組んだ |
+| 一度も初期化していない関係に対するアラーム | モジュールの対象外 | F1 |
+| 第 2 世代のファイルシステムと、HA ペアが 2 つ以上のファイルシステム | 未実施 | 検証対象は第 1 世代で HA ペアは 1 つ |
+| デプロイ用の IAM ポリシー `examples/basic/iam-policy.json` | 未検証 | デプロイした主体は管理者権限を持っていた |
+| README のインバウンドルールの手順と、destroy の前に取り消す手順（`DependencyViolation` の経路） | 未実施 | ファイルシステムのセキュリティグループが既にすべてのインバウンド通信を許可していた |
+| `qtree-quota-high` の ALARM への遷移 | 未実施 | 使用率は 40.16% で、閾値の 85 を下回った |
+| ハートビートの失敗の経路（`CollectorSucceeded` = 0） | 未実施 | すべてのポーリングで両方のコレクターが成功した |
+| SVM スコープの ONTAP ユーザー | 未試験 | ユーザーはクラスタースコープの `fsxadmin-readonly` |
+| README の前提条件にある SSH での `security login create` | 未実施 | ユーザーは `POST /api/security/accounts` で作成した |
+| SNS 通知の配信 | 未実施 | `notification_email` を指定していない |
+| CA 証明書を使った TLS の検証（`ca_cert_path`、`ca_cert_layer_arn`） | 未実施 | どちらも空 |
+| 既定のポーリング間隔 5 分と、既定の遅延の閾値 10800 秒 | 未実施 | テストを短くするため 1 分と 300 秒を使った |
+| 1 ページを超える応答、`snapmirror_max_relationships` の上限、打ち切りの値 1 | 未実施 | 関係 1 つとクォータレコード 2 件。打ち切りは 0 |
+| 予約済み同時実行数 1 の下でのスロットリング | 未観測 | Throttles は 0 |
+| recovery queue のエントリ 2 つが期限切れになったときの解放 | 未観測 | エントリは残したまま |
+
+### 判定（T2 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| 判定 | ✅ このサンプル実行の範囲、つまり第 1 世代・HA ペア 1 つのファイルシステム 1 つと、1 つの SVM の中の SnapMirror 関係で、デプロイ、実際の ONTAP の応答に対する両方のコレクターの系列、最初のポーリングの前のハートビートの ALARM とその後の OK、SnapMirror の非健全アラームの OK → ALARM → OK、遅延アラームの OK → ALARM → OK を検証した。初期化していない関係ではアラームが発報しない（F1）。2 つの SVM の間と 2 つのファイルシステムの間の SnapMirror、`qtree-quota-high` の ALARM の経路は未検証 |
+| 合格 | 15 件中 12 件（M0、M2–M5、S2、S3、S4、S1b、S5-1–S5-3） |
+| 期待値が成り立たなかったもの | 15 件中 1 件（S1）。F1 による |
+| サービスの上限による拒否 | 15 件中 1 件（M1）。F6 による |
+| 残った項目付きで完了 | 15 件中 1 件（M6）。recovery queue のエントリ 2 つ、予定されたシークレットの削除、カスタムメトリクスのデータ |
+| モジュールのコードの欠陥 | 見つかっていない。コードは変更していない |
+
+---
+
 ## 関連ドキュメント
 
 - [監視設計](monitoring-design.md): ダッシュボードテンプレート、Terraform T1 モジュール、Qtree クォータ監視。確信度の階層がこの記録を引用している
 - [AWS ネイティブ代替マトリクス](native-alternative-matrix.md): System Manager のビュー → CloudWatch メトリクス → テンプレートの対応
 - [Terraform モジュール: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md): 入力・出力・検証状況
+- [Terraform モジュール: fsxn-ontap-custom-metrics](../../terraform/fsxn-ontap-custom-metrics/README.ja.md): T2 の Qtree と SnapMirror のポーラーと、その検証状況
 - [CloudWatch ログアラーム](cloudwatch-log-alarm.md): 別のログアラームテンプレートと、その 2026-07-02 の E2E 記録
