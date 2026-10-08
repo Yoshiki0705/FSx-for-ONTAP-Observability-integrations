@@ -8,7 +8,7 @@ Amazon FSx for NetApp ONTAP のファイルシステム 1 つの ONTAP REST API 
 
 オフラインの検証では、`make terraform` が `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、`terraform test`（モックの `aws` プロバイダーと `command = plan` による。`archive` プロバイダーは実際の Lambda の zip を作ります）を実行します。[`examples/basic/`](examples/basic/) に対しても `init` と `validate` を実行します。`shared/lambda/ontap_metrics/` の Lambda のソースには、urllib3 と boto3 をモックにした pytest の単体テストがあり、SnapMirror のレコードは ONTAP 9.18.1 REST API リファレンスのレスポンス例の形に合わせています。テストファイルの 1 つは、すべてのアラームが `shared/lambda/ontap_metrics/tests/fixtures/metric_contract.json` にある（名前空間、メトリクス、ディメンション名）の組を読むことを確認し、Python のテストは、コレクターが発行する系列がそのファイルと完全に一致することを確認します。
 
-実環境での検証はまだ行っていません。AWS アカウントへ適用していないため、実際のファイルシステムに依存するもの、つまり実クラスターの ONTAP REST のレスポンス、ネットワーク経路、デプロイ用の IAM ポリシー、すべてのアラームの状態遷移は `unverified` です。予定している SnapMirror の確認では、テスト用ボリュームで 2 つのファイルシステム間の SnapMirror を組み、宛先のファイルシステムをポーリングし、関係を健全から非健全にして健全に戻す間に `SnapMirrorUnhealthyCount` と `snapmirror-unhealthy` アラームが追随することを見ます。その実行を記録するまでは、まず本番以外のアカウントで適用してください。
+実環境での検証はまだ行っていません。AWS アカウントへ適用していないため、実際のファイルシステムに依存するもの、つまり実クラスターの ONTAP REST のレスポンス、ネットワーク経路、デプロイ用の IAM ポリシー、すべてのアラームの状態遷移は `unverified` です。予定している SnapMirror の確認では、1 つのファイルシステムの 2 つの SVM の間でテスト用ボリュームの関係を組み、関係を健全から非健全にして健全に戻す間に `SnapMirrorUnhealthyCount` と `snapmirror-unhealthy` アラームが追随することを見ます。この確認で分かるのは収集処理とアラームの動作で、2 つのファイルシステム間の SnapMirror（クラスターピアリングと、別クラスターの宛先ファイルシステムのポーリング）は未確認のまま残ります。その実行を記録するまでは、まず本番以外のアカウントで適用してください。
 
 ## 作成されるリソース
 
