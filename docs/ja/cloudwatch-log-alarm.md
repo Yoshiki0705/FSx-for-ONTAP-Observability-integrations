@@ -149,6 +149,8 @@ CloudWatch Log Alarm は「ログ内の文字列に直接アラートする」�
 
 > **specific-user-activity の TargetPattern に関する補足**: 監査ログの行に現れる `<user>:<role>` の語を渡します。例は `fsxadmin:fsxadmin` です。`admin` だけにすると、オペレーターの操作がなくてもファイルシステムが 1 分に約 80 行書く `fsx-control-plane:admin` の行にも一致します（2026-10-09 の実行）。Pending の除外は、変更の操作ごとに結果の前に書かれる `:: Pending` の行を落とすので、操作 1 回を 1 回と数えます。`Pending` を含むほかの行も落とします。
 
+> **正規表現に関する補足**: `sensitive-file-access` と `specific-user-activity` はどちらも、`TargetPattern` を正規表現の区切り `/` の内側に差し込みます。そのため値は文字列そのものではなく正規表現として読まれます。`.` は任意の 1 文字に一致し、`\` はエスケープの始まりです。文字どおりに一致させるにはエスケープします。既定値の `/vol/data/confidential` は区切りの `/` そのものを含み、Logs Insights が `like //vol/data/confidential/` をどう解釈するかは確認していません（`unverified`）。`/` を `\/` とエスケープするか、アラームに頼る前に Logs Insights でクエリを試してください。
+
 つまり:
 
 1. **文字列にマッチした数を数える** (count)

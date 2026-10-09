@@ -145,6 +145,8 @@ The filter lines of the template's built-in queries, after the change that follo
 
 > **TargetPattern for specific-user-activity**: pass the `<user>:<role>` token as it appears in the audit line, for example `fsxadmin:fsxadmin`. With a bare `admin`, the filter also matches the `fsx-control-plane:admin` lines that the file system writes about 80 times a minute without operator activity (2026-10-09 run). The Pending exclusion drops the `:: Pending` line that each change operation writes before its result, so each operation counts once. It also drops any other line that contains `Pending`.
 
+> **Regular-expression note**: both `sensitive-file-access` and `specific-user-activity` insert `TargetPattern` between the `/` delimiters of a regular expression, so the value is read as a regex, not as a literal string. `.` matches any character and `\` starts an escape; escape them to match them literally. The default `/vol/data/confidential` contains `/`, the delimiter itself, and how Logs Insights parses `like //vol/data/confidential/` has not been checked (`unverified`); escape each `/` as `\/` or test the query in Logs Insights before relying on the alarm.
+
 The pattern:
 
 1. **Count events matching a string** (count)
