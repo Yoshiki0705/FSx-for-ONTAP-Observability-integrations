@@ -12,7 +12,7 @@
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
 | **そもそも FSx for ONTAP をどう監視するか決める** — 方式が未決の場合 | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 分 |
-| CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) · [Qtree と SnapMirror のカスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#使い方)（実環境は `未確認`） · [ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md#使い方)（実環境は `未確認`） · [SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md#使い方)（実環境は `未確認`） · [監視設計](monitoring-design.md#t1-モジュールの使い方と範囲) | — |
+| CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [Terraform による監視の展開ガイド](terraform-monitoring-guide.md)（モジュールの順序・前提条件・検証状況） · [ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) · [Qtree と SnapMirror のカスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#使い方)（実環境は `未確認`） · [ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md#使い方)（監査の検出を 2026-10-09 に実環境で確認） · [SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md#使い方)（実環境は `未確認`） · [監視設計](monitoring-design.md#t1-モジュールの使い方と範囲) | — |
 | パイプラインを E2E で検証（初回） | [最小テストパス](quick-start-minimum.md) | 15 分 |
 | ベンダー統合を本番デプロイ | [デプロイガイド](deployment-guide.md) | 30 分 |
 | ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
@@ -32,6 +32,7 @@
 | 問い | 答えのある場所 |
 |------|--------------|
 | 監査ログ / EMS イベント / FPolicy ファイル操作を自分のプラットフォームへ届ける方法 | **ここ。**[デプロイガイド](deployment-guide.md) |
+| CloudWatch の監視設計を Terraform で展開する手順と順序 | **ここ**。[Terraform による監視の展開ガイド](terraform-monitoring-guide.md) |
 | 最初に壊れるものと、実際にかかった費用 | **ここ**。環境と日付つきの実測 — [S3 AP スループット](s3ap-throughput-benchmark.md)、[コストモデル](cost-model.md) |
 | どの収集経路が自分の制約に合うか（CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST） | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) |
 | 監査ベースの可観測性の限界（採用を決める前に知るべきもの） | Playbook。**監査ログの保存先が枯渇するとクライアントアクセスが停止する**（監視の劣化ではない）ことを含む |
@@ -270,6 +271,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 **アプローチの選択**
 
 - [Amazon FSx for NetApp ONTAP の監視設計](monitoring-design.md)
+- [Terraform による Amazon FSx for NetApp ONTAP の CloudWatch 監視は 3 つのモジュールを順に適用して構成し、SSD 自動拡張は任意の 4 つ目として加える](terraform-monitoring-guide.md)
 - [Amazon FSx for NetApp ONTAP の監視のためのサイジングとヘッドルーム](sizing-and-headroom.md)
 - [Amazon FSx for NetApp ONTAP の監視を起点にした容量自動化](capacity-automation.md)
 - [Amazon FSx for NetApp ONTAP の T4 ガード付き SSD 自動拡張の実装設計](capacity-automation-t4-design.md)
@@ -361,7 +363,7 @@ python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v
 cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
-- **技術スタック**: CloudFormation (YAML) · Terraform（[ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md)、[カスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md)、[ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md)、[SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md)） · Python 3.12 Lambda · TypeScript · GitHub Actions CI
+- **技術スタック**: CloudFormation (YAML) · Terraform（[Terraform による監視の展開ガイド](terraform-monitoring-guide.md)、[ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md)、[カスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md)、[ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md)、[SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md)） · Python 3.12 Lambda · TypeScript · GitHub Actions CI
 - **コントリビュート**: [CONTRIBUTING.md](../../CONTRIBUTING.md) 参照
 - **変更履歴**: [CHANGELOG.md](../../CHANGELOG.md) 参照
 - **ロードマップ**: [ROADMAP.md](../../ROADMAP.md) 参照

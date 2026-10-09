@@ -12,7 +12,7 @@
 | I want to... | Guide | Time |
 |---|---|---|
 | **Decide how to monitor FSx for ONTAP at all** — not settled on an approach yet | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 min |
-| Monitor FSx for ONTAP with CloudWatch using Terraform | [Dashboard module](../../terraform/fsxn-monitoring-dashboard/README.md#usage) · [Qtree and SnapMirror custom-metrics module](../../terraform/fsxn-ontap-custom-metrics/README.md#usage) (live `unverified`) · [Log alarm module](../../terraform/fsxn-log-alarm/README.md#usage) (live `unverified`) · [SSD auto-increase module](../../terraform/fsxn-ssd-auto-increase/README.md#usage) (live `unverified`) · [Monitoring design](monitoring-design.md#t1-module-usage-and-scope) | — |
+| Monitor FSx for ONTAP with CloudWatch using Terraform | [Terraform monitoring guide](terraform-monitoring-guide.md): module order, prerequisites, verification status · [Dashboard module](../../terraform/fsxn-monitoring-dashboard/README.md#usage) · [Qtree and SnapMirror custom-metrics module](../../terraform/fsxn-ontap-custom-metrics/README.md#usage) (live `unverified`) · [Log alarm module](../../terraform/fsxn-log-alarm/README.md#usage) (audit detections live-verified 2026-10-09) · [SSD auto-increase module](../../terraform/fsxn-ssd-auto-increase/README.md#usage) (live `unverified`) · [Monitoring design](monitoring-design.md#t1-module-usage-and-scope) | — |
 | Validate the pipeline end-to-end (first time) | [Minimum Test Path](quick-start-minimum.md) | 15 min |
 | Deploy a vendor integration to production | [Deployment Guide](deployment-guide.md) | 30 min |
 | Respond to ransomware at the storage layer | [Automated Incident Response](automated-response-guide.md) | 20 min |
@@ -33,6 +33,7 @@ judged the others.
 | Question | Where it is answered |
 |----------|----------------------|
 | How do I get audit logs, EMS events or FPolicy file operations to my platform | **Here.** [Deployment Guide](deployment-guide.md) |
+| How do I deploy the CloudWatch monitoring design with Terraform, and in what order | **Here**. [Terraform monitoring guide](terraform-monitoring-guide.md) |
 | What breaks first, and what did it actually cost | **Here.** Measured, with environment and dates — e.g. [S3 AP throughput](s3ap-throughput-benchmark.md), [cost model](cost-model.md) |
 | Which collection route suits my constraints (CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST) | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) |
 | What are the limits of audit-based observability before I commit to it | Playbook — including that **a full audit destination stops client access** rather than degrading monitoring |
@@ -276,6 +277,7 @@ English and Japanese indexes always list the same set.
 **Choosing an Approach**
 
 - [Amazon FSx for NetApp ONTAP Monitoring Design](monitoring-design.md)
+- [CloudWatch Monitoring for Amazon FSx for NetApp ONTAP with Terraform: Three Modules Applied in Order, Plus an Optional Fourth for SSD Auto-Increase](terraform-monitoring-guide.md)
 - [Sizing and Headroom for Amazon FSx for NetApp ONTAP Monitoring](sizing-and-headroom.md)
 - [Monitoring-Driven Capacity Automation for Amazon FSx for NetApp ONTAP](capacity-automation.md)
 - [T4 Guarded SSD Auto-Increase for Amazon FSx for NetApp ONTAP: Implementation Design](capacity-automation-t4-design.md)
@@ -365,7 +367,7 @@ python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v
 cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
-- **Tech stack**: CloudFormation (YAML) · Terraform ([dashboard module](../../terraform/fsxn-monitoring-dashboard/README.md), [custom-metrics module](../../terraform/fsxn-ontap-custom-metrics/README.md), [log alarm module](../../terraform/fsxn-log-alarm/README.md), [SSD auto-increase module](../../terraform/fsxn-ssd-auto-increase/README.md)) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
+- **Tech stack**: CloudFormation (YAML) · Terraform ([monitoring guide](terraform-monitoring-guide.md); [dashboard module](../../terraform/fsxn-monitoring-dashboard/README.md), [custom-metrics module](../../terraform/fsxn-ontap-custom-metrics/README.md), [log alarm module](../../terraform/fsxn-log-alarm/README.md), [SSD auto-increase module](../../terraform/fsxn-ssd-auto-increase/README.md)) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
 - **Contributing**: See [CONTRIBUTING.md](../../CONTRIBUTING.md)
 - **Changelog**: See [CHANGELOG.md](../../CHANGELOG.md)
 - **Roadmap**: See [ROADMAP.md](../../ROADMAP.md)
