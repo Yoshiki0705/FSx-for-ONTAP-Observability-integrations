@@ -159,7 +159,8 @@ This solution does not aim to replace these options; it offers a serverless alte
 | Component | Time to Deploy | Prerequisites |
 |-----------|---------------|---------------|
 | Serverless pipeline (CloudFormation) | 30 minutes | AWS account, FSx for ONTAP with audit enabled |
-| NetApp Console + System Manager (GUI) | 1-2 business days | NSS account creation (free, 1 business day for approval) |
+| AWS-native GUI — self-hosted [Management Console](../../management-console/) + [Amplify Gen2 file portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) (sibling repo) — **default GUI this project uses** | ~30 min (console) + portal assembly | AWS account only (no NetApp SaaS account); you deploy and operate the apps |
+| NetApp Console + System Manager (GUI) — alternative for teams already using NetApp SaaS | 1-2 business days | NSS account creation (free, 1 business day for approval) |
 | EMS Webhook (quota alerts) | 1 hour | ONTAP CLI access (fsxadmin) |
 | FPolicy (real-time file ops) | 2-4 hours | VPC networking, ECS Fargate, ONTAP CLI |
 | Full PoC (pipeline + dashboard + alerts) | 1 week | All above + vendor account |

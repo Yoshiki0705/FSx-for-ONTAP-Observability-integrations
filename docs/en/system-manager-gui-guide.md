@@ -13,6 +13,16 @@ This document provides step-by-step instructions for operations teams to use **O
 
 > **Target audience**: Operations staff familiar with Windows File Resource Manager
 
+> **Where this fits**: this guide covers the NetApp Console / System Manager GUI path, which
+> this project treats as an **alternative** to its AWS-native default. The default GUI path is
+> the self-hosted [management-console/](../../management-console/) (Cognito/IAM) plus the
+> Amplify Gen2 file portal built in the sibling repo
+> ([solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)).
+> NetApp Console / System Manager stays a valid choice, suited to teams already using a
+> NetApp SaaS relationship. The trade-offs are symmetric: the native options are apps you
+> deploy and operate yourself, while NetApp Console is managed SaaS requiring an NSS account.
+> See the [management-plane decision tree](decision-tree-management-monitoring.md) to choose.
+
 ---
 
 ## Background: System Manager vs NetApp BlueXP<!-- allow:naming --> vs NetApp Console<!-- allow:naming -->

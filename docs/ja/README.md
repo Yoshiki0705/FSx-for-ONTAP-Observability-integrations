@@ -41,7 +41,9 @@
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
 | ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
-| ブラウザ GUI で FSx for ONTAP を管理 | [Management Console のセットアップガイド](../../management-console/docs/ja/setup-guide.md) · [管理プレーンの Decision Tree](decision-tree-management-monitoring.md) | 30 分 |
+| ブラウザ GUI で FSx for ONTAP を管理（AWS ネイティブが既定） | [セルフホスト Management Console のセットアップガイド](../../management-console/docs/ja/setup-guide.md) · [Amplify Gen2 ファイルポータル（姉妹リポジトリ）](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) · [管理プレーンの Decision Tree](decision-tree-management-monitoring.md) | 30 分 |
+
+> **GUI 経路は AWS ネイティブが既定**: 本プロジェクトの既定の GUI 選択肢は AWS ネイティブです — セルフホストの [Management Console](../../management-console/)（Cognito/IAM）と、姉妹リポジトリで構築された [Amplify Gen2 ファイルポータル](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)。NetApp Console は、既に NetApp SaaS を利用しているチームに適した代替手段として有効です。それぞれにトレードオフがあり、ネイティブ側は自分でデプロイ・運用するアプリ、NetApp Console はマネージド SaaS です。選び方は [管理プレーンの Decision Tree](decision-tree-management-monitoring.md) を参照してください。
 
 ### パートナー PoC
 
@@ -108,10 +110,12 @@
 | [Sumo Logic](../../integrations/sumo-logic/docs/ja/setup-guide.md) | ✅ E2E 検証済み | HTTP Source |
 | [Honeycomb](../../integrations/honeycomb/docs/ja/setup-guide.md) | ✅ E2E 検証済み | Events Batch API |
 | [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/docs/ja/setup-guide.md) | ✅ HEC 検証済み | Splunk HEC 互換 |
-| [NetApp Console<!-- allow:naming -->](../../integrations/netapp-console/)（英語） | ✅ 検証済み | GUI 管理（SaaS） |
-| [セルフホスト Management Console](../../management-console/docs/ja/setup-guide.md) | ✅ 検証済み | AWS ネイティブ GUI（Cognito/IAM） |
+| [セルフホスト Management Console](../../management-console/docs/ja/setup-guide.md) | ✅ 検証済み | AWS ネイティブ GUI（Cognito/IAM）— **既定の GUI 経路** |
+| [NetApp Console<!-- allow:naming -->](../../integrations/netapp-console/)（英語） | ✅ 検証済み | GUI 管理（SaaS）— 既存 NetApp SaaS 利用チーム向けの代替 |
 | [自動インシデント対応](automated-response-guide.md) | ✅ E2E 検証済み | ストレージ層 block/snapshot |
 | [Mackerel](../../integrations/mackerel/docs/ja/setup-guide.md) | ✅ E2E 検証済み（オープンβ） | OTLP/HTTP ログ |
+
+> AWS ネイティブの **GUI/ファイル管理** の既定は、セルフホストの [Management Console](../../management-console/) と、姉妹リポジトリで実装された [Amplify Gen2 ファイルポータル](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)（React + Amplify Gen2、Cognito 認証、S3 Access Points を介した参照・処理・閲覧）です。本リポジトリ自身の [integrations/amplify-portal/](../../integrations/amplify-portal/) 監査相関モジュールはそのアプリを参照しますが、**まだ E2E 検証は済んでいません**。
 
 ### テレメトリ経路のカバレッジ
 
@@ -360,7 +364,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 
 | リポジトリ | 説明 |
 |-----------|------|
-| [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | FPolicy パイプライン含む 17 業界ユースケース |
+| [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | FPolicy パイプライン含む 17 業界ユースケース — [Amplify Gen2 ファイルポータル](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)（NAS データ向け AWS ネイティブ GUI）を含む |
 | [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) | S3 AP 経由の Data Lake / Lakehouse 統合 |
 | [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Bedrock によるアクセス制御対応 Agentic RAG |
 | [FSx-for-ONTAP-Adoption-Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/observability/README.md) | **どの収集経路を選ぶか**。作り始める前に読むもの |

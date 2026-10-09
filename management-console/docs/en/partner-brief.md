@@ -27,6 +27,8 @@ This pattern is one option among several; the right choice depends on data resid
 
 > **How to choose**: Lead with the requirement, not the tool. If a data residency constraint rules out external SaaS, this pattern or CLI-only are the remaining options. If no such constraint exists and the team already has a NetApp SaaS relationship, DII<!-- allow:naming -->/BlueXP<!-- allow:naming --> may be the faster path since it needs no additional AWS infrastructure to operate.
 
+> **AWS-native GUI default**: this self-hosted console is one of two AWS-native GUI options this project uses by default. For end-user **file management** of NAS data (browse, process, view) the companion option is the [Amplify Gen2 file portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) implemented in the sibling repo (React + Amplify Gen2, Cognito auth, S3-Access-Point-backed). AWS offers no integrated managed Box/Drive-like service for FSx for ONTAP NAS data, so you assemble one — the portal adds NAS-specific capabilities (Snapshot restore, SnapLock WORM, ransomware containment, AI-on-NAS). The trade-off is symmetric with the SaaS alternative: you deploy and operate this self-assembled app yourself. See its [admin capability map](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/solutions/amplify-portal/docs/admin-capability-map.en.md) for the Console-equivalent management features it covers. NetApp Console / DII<!-- allow:naming -->/BlueXP<!-- allow:naming --> remains the alternative for teams already using NetApp SaaS.
+
 ## PoC Success Criteria
 
 | Criteria | Measurement | Target |
@@ -63,3 +65,4 @@ This pattern is one option among several; the right choice depends on data resid
 - GitHub: `management-console/` directory
 - Setup Guide: `docs/en/setup-guide.md`
 - Local Dev: `docs/en/local-dev-guide.md`
+- Sibling Amplify Gen2 file portal: [solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) ([portal README](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/solutions/amplify-portal/README.md) · [end-user guide](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/docs/en/portal-user-guide.md))

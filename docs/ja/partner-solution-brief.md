@@ -159,7 +159,8 @@ FSx for ONTAP → S3 Access Point → EventBridge Scheduler → Lambda → Vendo
 | コンポーネント | デプロイ所要時間 | 前提条件 |
 |-------------|---------------|---------|
 | サーバーレスパイプライン（CloudFormation） | 30 分 | AWS アカウント、監査ログ有効化済み FSx for ONTAP |
-| NetApp Console + System Manager（GUI） | 1-2 営業日 | NSS アカウント作成（無料、承認に 1 営業日） |
+| AWS ネイティブ GUI — セルフホスト [Management Console](../../management-console/) + [Amplify Gen2 ファイルポータル](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)（姉妹リポジトリ）— **本プロジェクトが使う既定の GUI** | 約 30 分（コンソール）+ ポータルの組み立て | AWS アカウントのみ（NetApp SaaS アカウント不要）。アプリは自分でデプロイ・運用 |
+| NetApp Console + System Manager（GUI）— 既に NetApp SaaS を利用しているチーム向けの代替 | 1-2 営業日 | NSS アカウント作成（無料、承認に 1 営業日） |
 | EMS Webhook（クォータアラート） | 1 時間 | ONTAP CLI アクセス（fsxadmin） |
 | FPolicy（リアルタイムファイル操作） | 2-4 時間 | VPC ネットワーキング、ECS Fargate、ONTAP CLI |
 | フル PoC（パイプライン + ダッシュボード + アラート） | 1 週間 | 上記全て + ベンダーアカウント |
