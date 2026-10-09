@@ -100,6 +100,8 @@ The following S3 features are NOT supported on FSx for ONTAP S3 Access Points:
 
 **Key implication for this project**: We use a **standard S3 bucket** as the audit log destination (which supports EventBridge notifications), NOT the FSx for ONTAP S3 Access Point directly. The S3 AP is used for Lambda to read the logs from the bucket.
 
+**No object-browser in the S3 console**: Opening an FSx for ONTAP S3 Access Point in the S3 console shows only the "Properties" and "Permissions" tabs — there is no object-browser tab, and the `tab=objects` URL is ignored. List objects only through the S3 API (`ListObjectsV2` against the access-point alias), not the console (`verified` 2026-10-10).
+
 Reference: [AWS Docs — S3 AP API Support](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/access-points-for-fsxn-object-api-support.html) | [AWS Blog — S3 Access Points for FSx](https://aws.amazon.com/blogs/storage/bridge-legacy-and-modern-applications-with-amazon-s3-access-points-for-amazon-fsx/)
 
 ### ⚠️ S3 Access Points on AD-Joined SVMs — AD DC Reachability Required
