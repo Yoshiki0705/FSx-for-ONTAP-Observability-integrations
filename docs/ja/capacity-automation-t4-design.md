@@ -39,7 +39,7 @@ T4 のガードは、公開されている AWS のサンプル（[Updating stora
 
 > **ネットワークに関する補足**
 >
-> T4 は AWS API だけを呼ぶので、Lambda 関数は VPC の外で動きます。ONTAP の管理エンドポイントへの VPC 内の経路が必要な Qtree のポーラーや計画中の SnapMirror のポーラーとは、ここが異なります。
+> T4 は AWS API だけを呼ぶので、Lambda 関数は VPC の外で動きます。ONTAP の管理エンドポイントへの VPC 内の経路が必要な T2 の Qtree と SnapMirror のコレクターとは、ここが異なります。
 
 ## ガード
 
@@ -55,7 +55,7 @@ T4 のガードは、公開されている AWS のサンプル（[Updating stora
 | IOPS モード | `AUTOMATIC` は IOPS の引数を付けない。`USER_PROVISIONED` は `Iops = max(current, 3 × target)` とし、デプロイタイプとリージョンごとの SSD IOPS の最大値を超える場合は `iops_exceeds_maximum` で `blocked` に固定し、1 回だけ通知する | ユーザープロビジョンドの IOPS は要求する GiB あたり 3 以上（[increase-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/increase-storage-capacity.html)）。クォータのページには、第 1 世代は米国東部（オハイオ）・米国東部（バージニア北部）・米国西部（オレゴン）・欧州（アイルランド）で 160,000、その他のリージョンで 80,000、第 2 世代は Single-AZ で HA ペアあたり 200,000（最大 12 ペア）、Multi-AZ で合計 200,000 とある（[クォータ](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/limits.html)、`文書化済み`） |
 | IAM | `arn:aws:fsx:ap-northeast-1:123456789012:file-system/fs-0123456789abcdef0` に対する `fsx:UpdateFileSystem` だけ | 影響範囲を 1 つのファイルシステムに限る。Service Authorization Reference は、`fsx:UpdateFileSystem` の必須のリソースタイプとして `file-system*` を挙げている（[list_fsx](https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html)、`文書化済み`）。このモジュールのポリシーで絞った Allow が効くことはまだ確かめておらず、テスト計画のポリシーシミュレーションで確かめる |
 | レポート | 呼び出しの前と、その後の状態の変化のたびに、通知用トピックに SNS メッセージを送る（相関 ID、現在の GiB、目標の GiB、モード、理由、クールダウンの状態、`AdministrativeActions` の状態） | 運用者に何が起きたかを伝える。SNS の配信は一過性で、メールサブスクリプションは確認されないまま残ることがあるので、レポートは記録にはならない |
-| 判断ログ（運用の履歴） | アーカイブのイベント 1 つにつき CloudWatch Logs に構造化した JSON のログを 1 行書く（相関 ID、入力（アラームの状態、使用率、現在の GiB、上限値、モード、クールダウンの状態、`AdministrativeActions`、ロックの状態）、判断、理由、API を呼んだ場合は `UpdateFileSystem` のリクエスト ID）。ロググループの保持期間はモジュールの入力（計画中の既定値は 365 日） | 運用者が検索できる履歴。監査の記録ではない。保持期間を過ぎたイベントは消え、必要な権限を持つ ID はロググループを削除できる |
+| 判断ログ（運用の履歴） | アーカイブのイベント 1 つにつき CloudWatch Logs に構造化した JSON のログを 1 行書く（相関 ID、入力（アラームの状態、使用率、現在の GiB、上限値、モード、クールダウンの状態、`AdministrativeActions`、ロックの状態）、判断、理由、API を呼んだ場合は `UpdateFileSystem` のリクエスト ID）。ロググループの保持期間はモジュールの入力（既定値は 365 日） | 運用者が検索できる履歴。監査の記録ではない。保持期間を過ぎたイベントは消え、必要な権限を持つ ID はロググループを削除できる |
 | 判断アーカイブ（監査の記録） | 評価の相関 ID の下にイベント 1 つにつき 1 オブジェクトを、Object Lock の既定の保持を設定し、関数のロールとは別のところで管理する S3 バケットに書く。`auto` では `UpdateFileSystem` の前に意図のイベントを書いてその保持を確かめ、どちらかが失敗したら呼ばない。`auto` はコンプライアンスモードを必須とする | CloudTrail が記録するのは API の呼び出しだけで、`notify_only`・延期・ロックの競合・拒否の判断は残らない。保持のモードとその限界は判断アーカイブの節にある |
 
 ## 上限値の検証
@@ -204,7 +204,7 @@ stateDiagram-v2
 
 > **失敗の扱いに関する補足**
 >
-> `blocked` の固定は、1 回だけ安全側に倒します。1 回報告した後は、設定が変わるか運用者が解除するまで関数は何も送りません。固定が続く間、この設計の他の部分も通知を繰り返しません。トリガーのアラームは評価を続けて ALARM のままなので、状態は CloudWatch のコンソールと `DescribeAlarms` で確認できます。ただし、アラームがアクションを呼び出すのは ALARM に変わったときだけで、ALARM にとどまっている間は再び呼び出しません。繰り返すのは Auto Scaling のアクションだけです（[AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)、`文書化済み`）。そのため、オンコールの担当者に届くのは、アラームにメールのアクションがあればその状態変化の通知と、1 回だけの `blocked` のレポートまでで、再通知は届きません。繰り返し知らせるには別の仕組みが要ります。たとえば、ロックテーブルを読み直し、運用者が確認するまで通知を繰り返すスケジュールです。計画中の T4 にはこの仕組みを含めていません。
+> `blocked` の固定は、1 回だけ安全側に倒します。1 回報告した後は、設定が変わるか運用者が解除するまで関数は何も送りません。固定が続く間、この設計の他の部分も通知を繰り返しません。トリガーのアラームは評価を続けて ALARM のままなので、状態は CloudWatch のコンソールと `DescribeAlarms` で確認できます。ただし、アラームがアクションを呼び出すのは ALARM に変わったときだけで、ALARM にとどまっている間は再び呼び出しません。繰り返すのは Auto Scaling のアクションだけです（[AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)、`文書化済み`）。そのため、オンコールの担当者に届くのは、アラームにメールのアクションがあればその状態変化の通知と、1 回だけの `blocked` のレポートまでで、再通知は届きません。繰り返し知らせるには別の仕組みが要ります。たとえば、ロックテーブルを読み直し、運用者が確認するまで通知を繰り返すスケジュールです。T4 にはこの仕組みを含めていません。
 
 ## 判断アーカイブ
 

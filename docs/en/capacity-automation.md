@@ -237,7 +237,7 @@ The deploy-time ceiling-validation row below has been executed (`terraform test`
 1. Review sizing and thresholds in [sizing-and-headroom.md](sizing-and-headroom.md).
 2. Deploy tiered alarms with SNS notifications and confirm the subscription.
 3. Adopt the throughput and volume autosize runbooks, and the EMS alarm for `wafl.vol.autoSize.fail`.
-4. When T4 exists, deploy it in `notify_only` and compare its reports with operator decisions for some weeks.
+4. Deploy T4 in `notify_only` and compare its reports with operator decisions for some weeks.
 5. Switch to `approve`.
 6. Switch to `auto` only with a validated ceiling, a compliance-mode decision archive whose retention check passes, an operator named for manual disposition and for clearing a `blocked` latch, and `ignore_changes` in place on any Terraform-managed file system.
 

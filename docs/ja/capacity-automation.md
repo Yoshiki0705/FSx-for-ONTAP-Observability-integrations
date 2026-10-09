@@ -237,7 +237,7 @@ aws fsx describe-file-systems \
 1. [sizing-and-headroom.md](sizing-and-headroom.md) でサイジングと閾値を見直します。
 2. SNS 通知付きの段階的なアラームをデプロイし、サブスクリプションを確認します。
 3. スループットとボリューム autosize の手順、`wafl.vol.autoSize.fail` の EMS アラームを取り入れます。
-4. T4 ができたら `notify_only` でデプロイし、数週間、そのレポートと運用者の判断を比べます。
+4. T4 を `notify_only` でデプロイし、数週間、そのレポートと運用者の判断を比べます。
 5. `approve` に切り替えます。
 6. 上限値の検証が通り、コンプライアンスモードの判断アーカイブへの書き込みが動いてその保持の確認が通り、人による判断と `blocked` の解除を担う運用者を決め、Terraform で管理するファイルシステムに `ignore_changes` を入れた後でのみ `auto` に切り替えます。
 
