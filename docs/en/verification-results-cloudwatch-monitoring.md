@@ -1176,7 +1176,7 @@ The guards behaved as designed. The function made 4 `UpdateFileSystem` calls in 
 | Verification date | 2026-10-09, 11:55:59Z to 12:57:03Z (UTC), including a pause for screenshots from 12:40Z to 12:55Z |
 | Verification environment | Test environment (`ap-northeast-1`), sample run on one file system, with a disposable compliance-mode archive bucket with a 1-day default retention |
 | Scope | Deployment, IAM policy simulation of the execution role, `notify_only`, `approve`, the alarm-OK branch, `auto` behind an explicit IAM deny (the `blocked` latch, an operator clear, two concurrent invocations, lease contention and expiry), deploy-time and run-time fail-closed checks, archive retention, and cleanup. The real increase, test plan row (e), was not in scope |
-| Result | 19 of 20 checks passed, including cleanup, which left the archive bucket in place until its retention passes (M1). 1 passed with a deviation in how it was reached (L3) |
+| Result | 18 of 20 checks passed. 1 passed with a deviation in how it was reached (L3). Cleanup (M1) is done with the archive bucket left in place until its retention passes |
 
 These results come from one run on one first-generation, single-HA-pair file system at 3.5% SSD utilization, with a ceiling set to the minimum valid increase (1,127 GiB) and a trigger threshold lowered to 3% for the test. They show that the guards stop or allow a call as designed on that file system. They do not show a real increase, the cooldown after one, second-generation or multi-HA-pair behaviour, or behaviour over weeks of hourly re-evaluation.
 
@@ -1344,9 +1344,9 @@ One item remains: the archive bucket, with 12 object versions and 0 delete marke
 | Item | Value |
 |------|-------|
 | Judgment | ✅ Within the scope of this sample run, on one first-generation, single-HA-pair file system: `notify_only` on a real alarm transition, `approve`, the alarm-OK branch, `auto` behind an explicit IAM deny with the `blocked` latch and an operator clear, at most one call per evaluation, lease contention and take-over, deploy-time and run-time fail-closed checks, and compliance-mode retention of the archived versions read are verified. No storage capacity changed. The real increase is unverified |
-| Passing checks | 19 of 20 (E1, S1, N1–N4, D0, V1–V3, L1, L2, L4–L6, R1, R2, X1, M1) |
+| Passing checks | 18 of 20 (E1, S1, N1–N4, D0, V1–V3, L1, L2, L4–L6, R1, R2, X1) |
 | Passed with a deviation | 1 of 20 (L3), from F6 |
-| Done with remaining items | M1: the archive bucket stays until 2026-10-10T12:33:00.194Z |
+| Done with remaining items | 1 of 20 (M1): the archive bucket stays until 2026-10-10T12:33:00.194Z |
 | T4 completion criteria | Not all met. The `notify_only`, `approve`, IAM-deny, policy-simulation, alarm-OK, concurrency and deploy-time validation rows pass. The decision-archive row is open: the positive controls for identities A and B were not run, and latched runs are not archived (F3) |
 | Module code defects | None found. No code was changed. F1–F3 are differences from the design wording, recorded in the module README |
 

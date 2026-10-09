@@ -1149,7 +1149,7 @@ def mask_ssd_auto_increase_screenshots() -> list[str]:
       - ファイルシステム ID (fs-...): ロググループ名、ログ本文、S3 のプレフィックス、
         Lambda の説明と環境変数、DynamoDB のキー、SNS の表示名
       - AWS アカウント ID: ARN、SNS トピックの所有者、CloudTrail の JSON
-      - 決定アーカイブのバケット名の乱数部分
+      - 判断アーカイブのバケット名の乱数部分
       - CloudTrail の JSON のアクセスキー ID (ASIA...)、ロール ID (AROA...)、
         送信元 IP アドレス
     切り抜きで除くもの:
@@ -1175,7 +1175,7 @@ def mask_ssd_auto_increase_screenshots() -> list[str]:
     # パンくずリストの S3 のバケット名の乱数部分と fs-id のプレフィックス
     s3_bucket_suffix: box_t = (388, 62, 456, 84)
     s3_fs_id_prefix: box_t = (650, 62, 809, 84)
-    # 決定ログ 1 件目 5 行目の "file_system_id": "<fs-id>"
+    # 判断ログ 1 件目 5 行目の "file_system_id": "<fs-id>"
     decision_fs_id: box_t = (1097, 384, 1263, 405)
 
     json_masks: list[box_t] = [

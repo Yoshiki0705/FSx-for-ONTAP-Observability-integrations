@@ -10,7 +10,7 @@
 
 オフライン: `make terraform` が `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、`terraform test`（モックの `aws` プロバイダと `command = plan`。`archive` プロバイダは実際の Lambda zip をビルドします）を実行し、[`examples/basic/`](examples/basic/) に対して `init` と `validate` も実行します。`shared/lambda/ssd_auto_increase/` の Lambda ソースには、モックした boto3（`fsx`、`cloudwatch`、`sns`、`s3`、`dynamodb`、`logs`）に対する pytest 単体テストがあり、設計のテスト計画のガードとロック状態遷移を扱います。呼び出し直前の 2 回目のスナップショット（両方のガードの再実行）、`accepted` と同じ扱いで保留される呼び出し後のアーカイブ書き込み失敗、冪等な保留分の再送、モードごとのバケット既定保持のマトリクス、ブロック済みレポートの再送、管理アクションのステータスのマトリクス、`GetMetricData` による使用率の取得（ディメンション、レポートとアーカイブのイベントに載る値、値がない場合の分類）、複数回の呼び出しにまたがる連鎖（新しいトークンでの引き継ぎ、上限値到達時の解放、数回の実行にわたる表示の遅れ、`not_accepted` の後に限った新しいトークン）を含みます。これらはモックに対するオフラインテストで、設計のテスト計画の実機の行（実ファイルシステム・バケット・ポリシーシミュレーター）は未実行のままです。
 
-ライブ: 2026-10-09 に、第 1 世代 `SINGLE_AZ_1`、HA ペア 1 つ、SSD ストレージ 1,024 GiB のファイルシステム 1 つに、既定の保持期間 1 日のコンプライアンスモードのアーカイブバケットを使ってモジュールを適用しました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)）。そこで検証したのは、実際の OK → ALARM の遷移での `notify_only`、`approve`、アラームが OK のときの分岐、`fsx:UpdateFileSystem` への明示的な IAM の拒否の後ろでの `auto`（拒否される呼び出し 1 回、1 回だけ報告される `blocked` のラッチ、次の実行での沈黙、オペレーターによる解除）、同時の 2 回の呼び出しから最大 1 回の呼び出し、リースの競合と期限切れのリースの引き継ぎ、デプロイ時の `auto` + `GOVERNANCE` の事前条件、バケットの保持期間が短すぎる場合と intent の書き込みが拒否された場合の実行時の `archive_retention_unproven`、読んだアーカイブのバージョンのコンプライアンスモードでの保持、実行ロールの IAM ポリシーのシミュレーションです。関数が呼んだ `UpdateFileSystem` は 4 回ですべて拒否され、容量は変わっていません。`unverified` のまま残るのは、1 回の実際の拡張とその後のクールダウン、第 2 世代と Aggregate のアラーム、メールの配信、デプロイ用 IAM ポリシー（実行では管理者権限を使用）、決定アーカイブのテストの陽性対照です。設計の記述と違う挙動が 3 つあり（記録の F1–F3）、[デプロイのテストと運用](#デプロイのテストと運用)に記載しています。まず非本番アカウントでモジュールを適用してください。
+ライブ: 2026-10-09 に、第 1 世代 `SINGLE_AZ_1`、HA ペア 1 つ、SSD ストレージ 1,024 GiB のファイルシステム 1 つに、既定の保持期間 1 日のコンプライアンスモードのアーカイブバケットを使ってモジュールを適用しました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)）。そこで検証したのは、実際の OK → ALARM の遷移での `notify_only`、`approve`、アラームが OK のときの分岐、`fsx:UpdateFileSystem` への明示的な IAM の拒否の後ろでの `auto`（拒否される呼び出し 1 回、1 回だけ報告される `blocked` のラッチ、次の実行での沈黙、オペレーターによる解除）、同時の 2 回の呼び出しから最大 1 回の呼び出し、リースの競合と期限切れのリースの引き継ぎ、デプロイ時の `auto` + `GOVERNANCE` の事前条件、バケットの保持期間が短すぎる場合と intent の書き込みが拒否された場合の実行時の `archive_retention_unproven`、読んだアーカイブのバージョンのコンプライアンスモードでの保持、実行ロールの IAM ポリシーのシミュレーションです。関数が呼んだ `UpdateFileSystem` は 4 回ですべて拒否され、容量は変わっていません。`unverified` のまま残るのは、1 回の実際の拡張とその後のクールダウン、第 2 世代と Aggregate のアラーム、メールの配信、デプロイ用 IAM ポリシー（実行では管理者権限を使用）、判断アーカイブのテストの陽性対照です。設計の記述と違う挙動が 3 つあり（記録の F1–F3）、[デプロイのテストと運用](#デプロイのテストと運用)に記載しています。まず非本番アカウントでモジュールを適用してください。
 
 ## 作成するもの
 
@@ -18,13 +18,13 @@
 - `aws_cloudwatch_event_rule`（`reevaluation_schedule`、既定 `rate(1 hour)`）とそのターゲット、`aws_lambda_permission`。CloudWatch のアラームアクションは状態変化時にのみ発火するため、ALARM のままのアラームでは関数が再起動されません。スケジュールはそのために必要です。
 - `aws_sqs_queue` `<name_prefix>-dlq`（保持 14 日、`alias/aws/sqs`）を関数のデッドレターキューとして。
 - `aws_dynamodb_table` `<name_prefix>-lock`（`PAY_PER_REQUEST`、ハッシュキー `file_system_id`、TTL なし）を単一実行ロックのストアとして。`expires_at` はリース取り直しの比較値で、関数が現在時刻と比較して判定します。テーブルに TTL はないため、持続状態（`submitted`、`optimizing`、`indeterminate`、`manual_disposition_required`、`blocked`）が設計上の解放より前にサービスに削除されることはありません。
-- `aws_cloudwatch_log_group` `/fsx/ssd-auto-increase/<file-system-id>`（`log_retention_days`）を決定ログとして。これは運用履歴であり監査記録ではありません。
+- `aws_cloudwatch_log_group` `/fsx/ssd-auto-increase/<file-system-id>`（`log_retention_days`）を判断ログとして。これは運用履歴であり監査記録ではありません。
 - `aws_cloudwatch_log_group` `/aws/lambda/<name_prefix>-evaluator`（`log_retention_days`）を関数自身のロググループとして。Lambda の既定（無期限）に任せず、モジュールが作成して保持期間を管理します。
 - `aws_iam_role` `<name_prefix>-role` とインラインポリシー（下の表）。
 - `aws_sns_topic` `<name_prefix>-trigger`（Lambda サブスクリプションが 1 つだけで、アラームはこれを通じて関数を起動）と、レポートと approve のメール用の `<name_prefix>-notify`（`notification_email` を設定したときだけメールサブスクリプション）。関数はトリガートピックに発行しないため、レポートが関数を再起動することはありません。
 - `aws_cloudwatch_metric_alarm` `<name_prefix>-ssd-utilization`（`AWS/FSx` `StorageCapacityUtilization`、`StorageTier=SSD`、`DataType=All`）と、第 2 世代では `aggregate_names` の各要素ごとに 1 つ。
 
-決定アーカイブの S3 バケットは**作成しません**。これはモジュール外で管理される既存の Object Lock バケット（`decision_archive_bucket`）です。関数はプレフィックスへの `s3:PutObject` と読み取り専用の保持期間チェックだけを得て、保持期間を設定・変更しません。コンプライアンスモードの保持期間は短縮できないため、運用者が所有する長期の約束になります。
+判断アーカイブの S3 バケットは**作成しません**。これはモジュール外で管理される既存の Object Lock バケット（`decision_archive_bucket`）です。関数はプレフィックスへの `s3:PutObject` と読み取り専用の保持期間チェックだけを得て、保持期間を設定・変更しません。コンプライアンスモードの保持期間は短縮できないため、運用者が所有する長期の約束になります。
 
 ## ガード
 
@@ -46,7 +46,7 @@
 
 ## モジュールの入手
 
-計画中のタグは `terraform-fsxn-ssd-auto-increase-v0.1.0` です。**まだ作成されていません**。[検証状況](#検証状況)の 2026-10-09 のライブ実行では T4 の完了条件のうち決定アーカイブの行が未完了のまま残ったので、その行を記録した後に作る計画です。それまではコミット SHA で git ソースか下のアーカイブ URL をピン留めしてください。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
+計画中のタグは `terraform-fsxn-ssd-auto-increase-v0.1.0` です。**まだ作成されていません**。[検証状況](#検証状況)の 2026-10-09 のライブ実行では T4 の完了条件のうち判断アーカイブの行が未完了のまま残ったので、その行を記録した後に作る計画です。それまではコミット SHA で git ソースか下のアーカイブ URL をピン留めしてください。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
 
 Lambda ソースはモジュールディレクトリの外、`shared/lambda/ssd_auto_increase/` にあります。`//subdirectory` ソースでは Terraform がパッケージ全体をダウンロードして展開し、サブディレクトリからモジュールを読む ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)) ため、下のどのソースでも `../../shared` が解決します。
 
@@ -102,7 +102,7 @@ git checkout FETCH_HEAD
 | `aws_sns_topic`、`aws_sns_topic_subscription` | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:UntagResource`, `sns:DeleteTopic`, `sns:Subscribe`, `sns:GetSubscriptionAttributes`, `sns:Unsubscribe` |
 | プラン時のファイルシステム読み取り（`Resource: "*"`） | `fsx:DescribeFileSystems` |
 
-ポリシーは [`examples/basic/iam-policy.json`](examples/basic/iam-policy.json) にあります。スコープ付きステートメントはモジュールが `name_prefix` から作る名前（既定 `fsxn-ssd-auto-increase-*`）を使います。使う前に `123456789012`、`ap-northeast-1`、プレフィックスを置き換えてください。`fsx:DescribeFileSystems` は [サービス認可リファレンス](https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html) がリソースタイプなしで載せているため `Resource: "*"` に置きます。デプロイ側は `fsx:UpdateFileSystem` を呼びません。呼ぶのは関数の実行ロールだけで、モジュールはその付与を呼び出し側が指定する 1 つのファイルシステム ARN（`arn:aws:fsx:...:file-system/fs-...`）にスコープします。`logs` ステートメントは決定ロググループが `name_prefix` ではなくファイルシステム ID から作られるため、アカウントのロググループにスコープします。
+ポリシーは [`examples/basic/iam-policy.json`](examples/basic/iam-policy.json) にあります。スコープ付きステートメントはモジュールが `name_prefix` から作る名前（既定 `fsxn-ssd-auto-increase-*`）を使います。使う前に `123456789012`、`ap-northeast-1`、プレフィックスを置き換えてください。`fsx:DescribeFileSystems` は [サービス認可リファレンス](https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html) がリソースタイプなしで載せているため `Resource: "*"` に置きます。デプロイ側は `fsx:UpdateFileSystem` を呼びません。呼ぶのは関数の実行ロールだけで、モジュールはその付与を呼び出し側が指定する 1 つのファイルシステム ARN（`arn:aws:fsx:...:file-system/fs-...`）にスコープします。`logs` ステートメントは判断ロググループが `name_prefix` ではなくファイルシステム ID から作られるため、アカウントのロググループにスコープします。
 
 ### examples/basic からのデプロイ
 
@@ -146,7 +146,7 @@ terraform apply -var trigger_threshold_percent=3
 terraform apply -var trigger_threshold_percent=80
 ```
 
-実際の呼び出しをせずに `auto` を試すには、`mode = "auto"` を適用する前に、実行ロールに `fsx:UpdateFileSystem` への明示的な拒否を付け、`mode` を `notify_only` に戻してから外します。モジュールのロールはこの名前のインラインポリシーを定義しないので、Terraform の plan はこれに触れません。ポリシーシミュレーターは保存されたポリシーを読むので、その `explicitDeny` は変更がすべてのエンドポイントに届いたことを示しません。IAM の変更は結果整合です（[IAM のトラブルシューティング](https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_general.html#troubleshoot_general_eventual-consistency)）。最初の `auto` の実行の前に待ってください。実行では、最初の呼び出しの 4 分前から拒否を付けていて、その呼び出しは拒否されました。
+実際の呼び出しをせずに `auto` を試すには、`mode = "auto"` を適用する前に、実行ロールに `fsx:UpdateFileSystem` への明示的な拒否を付け、`mode` を `notify_only` に戻してから外します。モジュールのロールはこの名前のインラインポリシーを定義しないので、Terraform の plan はこれに触れません。ポリシーシミュレーターは保存されたポリシーを読むので、その `explicitDeny` は変更がすべてのエンドポイントに届いたことを示しません。IAM の変更は結果整合です（[IAM のトラブルシューティング](https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_general.html#troubleshoot_general_eventual-consistency)）。シミュレーションは、拒否を付けたとき、その 60 秒以上後、`mode = "auto"` を適用する直前の 3 回行ってください。`auto` を適用するのは、すべてのシミュレーションが `explicitDeny` を返したときだけです。リンク先のページは伝播にかかる時間の上限を示していないので、60 秒は実行での運用であって保証ではありません。実行では、2 回目のシミュレーションは 1 回目の 86 秒後で、最初の呼び出しの 4 分前から拒否を付けていて、その呼び出しは拒否されました。第 1 世代では、拒否されなかった呼び出しは実際の、元に戻せない拡張になります。
 
 ```bash
 aws iam put-role-policy --role-name fsxn-ssd-auto-increase-role \
@@ -166,7 +166,7 @@ aws iam delete-role-policy --role-name fsxn-ssd-auto-increase-role \
 
 - 呼び出しをしない評価（アラームが OK、管理アクションの実行中、クールダウン、上限に到達）は、そのたびにレポートを 1 通送ります。既定の `rate(1 hour)` では、アラームが OK の間も 1 日最大 24 通です。
 - `auto` の呼び出しはレポートを 2 通送ります。呼び出し前のレポートと、その結果です。拒否された呼び出しは `blocked` で終わり、そのレポートはエラーコードを示します。
-- `blocked` のラッチで止まった実行は、呼び出しもレポートもせず、決定ログの行もアーカイブのオブジェクトも書きません。記録するのは関数自身のログ `/aws/lambda/<name_prefix>-evaluator` だけで、`blocked latch holds` と書きます。
+- `blocked` のラッチで止まった実行は、呼び出しもレポートもせず、判断ログの行もアーカイブのオブジェクトも書きません。記録するのは関数自身のログ `/aws/lambda/<name_prefix>-evaluator` だけで、`blocked latch holds` と書きます。
 - `archive_retention_unproven` のレポートは、呼び出しをせずロックも解放しているのに `"lock_state": "calling"` を持ちます。この結果では `decision` と `detail` を読んでください。
 
 `blocked` のラッチは、原因を直してから解除します。設定のフィンガープリント（`max_storage_capacity_gib`、`increase_percent`、`mode`、`decision_archive_required_mode`）を変えて適用するか、ロックの項目にオペレーターの disposition を修正の根拠と一緒に記録します。関数は次の呼び出しで解除を適用し、元の相関 ID の下に `reconciled` のイベントをアーカイブし、同じ呼び出しの中で評価し直します。`auto` でアラームがまだ ALARM なら、その再評価は `UpdateFileSystem` を呼ぶことがあります。
@@ -197,7 +197,7 @@ aws s3api get-object-retention --bucket <object-lock-bucket-name> \
 terraform destroy
 ```
 
-決定アーカイブのバケットはこのモジュールの外にあり、削除されません。コンプライアンスモードのバケットのオブジェクトは保持期限が過ぎるまで削除できません。
+判断アーカイブのバケットはこのモジュールの外にあり、削除されません。コンプライアンスモードのバケットのオブジェクトは保持期限が過ぎるまで削除できません。
 
 ## 入力
 
@@ -227,7 +227,7 @@ terraform destroy
 | `lambda_function_name`、`lambda_function_arn`、`lambda_role_arn` | 関数と実行ロール |
 | `trigger_topic_arn`、`notification_topic_arn` | 2 つの SNS トピック |
 | `lock_table_name`、`lock_table_arn` | DynamoDB 単一実行ロックテーブル |
-| `decision_log_group_name` | 決定ロググループ（運用履歴） |
+| `decision_log_group_name` | 判断ロググループ（運用履歴） |
 | `dead_letter_queue_url`、`dead_letter_queue_arn` | 失敗した起動の DLQ |
 | `schedule_rule_arn` | EventBridge スケジュールルール |
 | `trigger_alarm_arns` | file-system と aggregate/<name> をキーにしたトリガーアラーム ARN |
