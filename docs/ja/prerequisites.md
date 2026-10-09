@@ -184,7 +184,7 @@ bash shared/scripts/ontap-audit-setup.sh \
 3. **Settings** → **Audit** → **Enable**
 4. 設定:
    - Destination: `/vol/audit_logs`
-   - Format: EVTX または JSON
+   - Format: EVTX または XML
    - Rotation: Size-based, 100MB
 
 ### 方法 C: SSH で手動実行

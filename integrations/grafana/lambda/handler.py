@@ -47,9 +47,20 @@ LOKI_ENDPOINT = os.environ.get("LOKI_ENDPOINT", "")
 API_KEY_SECRET_ARN = os.environ.get("API_KEY_SECRET_ARN", "")
 S3_ACCESS_POINT_ARN = os.environ.get("S3_ACCESS_POINT_ARN", "")
 S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "")
+# The checkpoint is a RECORD TIMESTAMP (epoch nanoseconds), not a last-processed
+# key. ONTAP appends to a single active audit file whose key is fixed and sorts
+# AFTER every rotated file's key, so a key high-water mark passed to
+# ListObjectsV2 StartAfter stops returning newly rotated files permanently once
+# it reaches the active file (ROADMAP L80-L86). amplify-portal established the
+# timestamp approach that this mirrors.
 CHECKPOINT_PARAM_NAME = os.environ.get("CHECKPOINT_PARAM_NAME", "")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 LOKI_TENANT_ID = os.environ.get("LOKI_TENANT_ID", "")
+
+# How far back of a file's modification time to still consider, covering the gap
+# between a record being written and the object's LastModified settling. Mirrors
+# amplify-portal's GRACE_SECONDS.
+GRACE_SECONDS = int(os.environ.get("CHECKPOINT_GRACE_SECONDS", "300"))
 
 # Auto-detect endpoint mode
 def _is_otlp_endpoint(endpoint: str) -> bool:
@@ -124,23 +135,29 @@ def _handle_scheduler_event(
 ) -> dict[str, Any]:
     """Handle EventBridge Scheduler invocation (polling mode).
 
-    Lists new objects via S3 Access Point, processes only files newer
-    than the checkpoint, and updates the checkpoint after success.
+    Lists audit files by modification time, re-reads any file that could hold a
+    record newer than the timestamp watermark (including the active file, whose
+    key never changes), ships only records strictly newer than the watermark,
+    and advances the watermark to the newest record it shipped.
+
+    This replaces a key high-water mark: ONTAP's active audit file has a fixed
+    key that sorts after every rotated file, so a key passed to ``StartAfter``
+    stops listing rotated files for good once it reaches the active one
+    (ROADMAP L80-L86). The timestamp watermark cannot stall that way. See the
+    module-level note on ``CHECKPOINT_PARAM_NAME`` and integrations/amplify-portal.
     """
     s3_ap_arn = event.get("s3_access_point_arn", S3_ACCESS_POINT_ARN)
     prefix = event.get("prefix", S3_KEY_PREFIX)
 
-    # Get checkpoint (last processed key)
-    last_processed_key = _get_checkpoint()
+    watermark_ns = _get_checkpoint()
     logger.info(
-        "Scheduler mode: prefix=%s, checkpoint=%s", prefix, last_processed_key
+        "Scheduler mode: prefix=%s, watermark_ns=%s", prefix, watermark_ns or "(none)"
     )
 
-    # List objects and filter to new ones
-    new_keys = _list_new_keys(s3_ap_arn, prefix, last_processed_key)
+    candidate_keys = _list_candidate_keys(s3_ap_arn, prefix, watermark_ns)
 
-    if not new_keys:
-        logger.info("No new files to process")
+    if not candidate_keys:
+        logger.info("No candidate files to process")
         return {
             "statusCode": 200,
             "body": {"total_logs": 0, "total_shipped": 0, "new_files": 0},
@@ -148,25 +165,25 @@ def _handle_scheduler_event(
 
     # Bound work per invocation
     max_keys = int(os.environ.get("MAX_KEYS_PER_RUN", "100"))
-    if len(new_keys) > max_keys:
-        logger.warning("Capping to %d of %d keys", max_keys, len(new_keys))
-        new_keys = new_keys[:max_keys]
+    if len(candidate_keys) > max_keys:
+        logger.warning("Capping to %d of %d keys", max_keys, len(candidate_keys))
+        candidate_keys = candidate_keys[:max_keys]
 
-    logger.info("Found %d new files to process", len(new_keys))
+    logger.info("Found %d candidate files to process", len(candidate_keys))
 
     total_logs = 0
     total_shipped = 0
     errors = []
-    last_successful_key = last_processed_key
+    highest_ns = watermark_ns
 
     safety_threshold_ms = int(os.environ.get("SAFETY_THRESHOLD_MS", "30000"))
 
-    for idx, key in enumerate(new_keys):
+    for idx, key in enumerate(candidate_keys):
         # Stop early if Lambda is about to timeout
         if context and hasattr(context, "get_remaining_time_in_millis"):
             if context.get_remaining_time_in_millis() < safety_threshold_ms:
                 logger.warning("Stopping early: %dms remaining, %d files left",
-                    context.get_remaining_time_in_millis(), len(new_keys) - idx)
+                    context.get_remaining_time_in_millis(), len(candidate_keys) - idx)
                 break
 
         try:
@@ -174,36 +191,44 @@ def _handle_scheduler_event(
             raw = data["Body"].read()
 
             logs = _parse_logs(raw, key)
-            total_logs += len(logs)
 
-            shipped = _ship_logs(logs, key, auth_header)
-            if len(logs) > 0 and shipped == 0:
-                # Delivery failed — logs existed but none were shipped
-                raise RuntimeError(f"Grafana delivery failed for {key} ({len(logs)} logs)")
-            # Note: files with 0 parseable records are treated as successfully
-            # processed and checkpointed (not a delivery failure)
+            # Keep only records strictly newer than the watermark. The active
+            # file is re-read every run, so already-shipped records are filtered
+            # out here rather than by not reading the file.
+            fresh_logs, file_max_ns = _filter_new_records(logs, watermark_ns)
+            total_logs += len(fresh_logs)
+
+            shipped = _ship_logs(fresh_logs, key, auth_header)
+            if len(fresh_logs) > 0 and shipped == 0:
+                # Delivery failed — fresh records existed but none were shipped
+                raise RuntimeError(
+                    f"Grafana delivery failed for {key} ({len(fresh_logs)} logs)"
+                )
+            # Note: files with 0 fresh records are treated as successfully
+            # processed and do not move the watermark (not a delivery failure).
             total_shipped += shipped
 
-            # Track progress — update checkpoint after each successful file
-            last_successful_key = key
+            # Advance only after the file's fresh records were shipped.
+            if file_max_ns > highest_ns:
+                highest_ns = file_max_ns
 
         except Exception as e:
             logger.error("Failed to process %s: %s", key, str(e))
             errors.append({"key": key, "error": str(e)})
-            # Stop processing on error to avoid gaps in checkpoint
+            # Stop processing on error to avoid gaps in the watermark
             break
 
-    # Update checkpoint to last successfully processed key
-    if last_successful_key != last_processed_key:
-        _set_checkpoint(last_successful_key)
+    # Advance the watermark to the newest record shipped this run
+    if highest_ns > watermark_ns:
+        _set_checkpoint(highest_ns)
 
     return {
         "statusCode": 200 if not errors else 207,
         "body": {
             "total_logs": total_logs,
             "total_shipped": total_shipped,
-            "new_files": len(new_keys),
-            "processed_files": len(new_keys) - len(errors),
+            "new_files": len(candidate_keys),
+            "processed_files": len(candidate_keys) - len(errors),
             "errors": errors,
         },
     }
@@ -246,55 +271,146 @@ def _handle_s3_event(
 # --- Checkpoint management (SSM Parameter Store) ---
 
 
-def _get_checkpoint() -> str:
-    """Retrieve the last processed S3 key from SSM Parameter Store."""
+def _get_checkpoint() -> int:
+    """Retrieve the audit-record timestamp watermark (epoch nanoseconds).
+
+    Returns 0 — meaning "start from the beginning of the prefix" — when no
+    checkpoint exists yet, when the parameter still holds the ``__INIT__``
+    sentinel written at stack creation, when it holds a legacy key-shaped value
+    from the previous key-based scheme, or when the lookup fails. Treating a
+    legacy key as a cold start is what makes the upgrade non-crashing.
+    """
     param_name = os.environ.get("CHECKPOINT_PARAM_NAME", "")
     if not param_name:
-        return ""
+        return 0
     try:
         response = ssm_client.get_parameter(Name=param_name)
         value = response["Parameter"]["Value"]
-        return "" if value == "__INIT__" else value
     except ClientError as e:
         if e.response["Error"]["Code"] == "ParameterNotFound":
-            return ""
+            return 0
         logger.warning("Failed to get checkpoint: %s", str(e))
-        return ""
+        return 0
     except Exception as e:
         logger.warning("Failed to get checkpoint: %s", str(e))
-        return ""
+        return 0
+
+    value = (value or "").strip()
+    if not value or value == "__INIT__" or not value.isdigit():
+        # Empty, the init sentinel, or a leftover key from the previous scheme.
+        logger.info(
+            "Checkpoint %r is not a timestamp watermark; starting from the "
+            "beginning of the prefix", value
+        )
+        return 0
+    return int(value)
 
 
-def _set_checkpoint(key: str) -> None:
-    """Update the checkpoint in SSM Parameter Store."""
+def _set_checkpoint(watermark_ns: int) -> None:
+    """Persist the audit-record timestamp watermark to SSM Parameter Store."""
     param_name = os.environ.get("CHECKPOINT_PARAM_NAME", "")
-    if not param_name:
+    if not param_name or watermark_ns <= 0:
         return
     try:
         ssm_client.put_parameter(
             Name=param_name,
-            Value=key,
+            Value=str(watermark_ns),
             Type="String",
             Overwrite=True,
         )
-        logger.info("Checkpoint updated: %s", key)
+        logger.info("Checkpoint updated: %s", watermark_ns)
     except Exception as e:
         logger.error("Failed to update checkpoint: %s", str(e))
+
+
+# --- Audit-record timestamp parsing ---
+
+
+def _audit_timestamp_ns(log: dict[str, Any]) -> int | None:
+    """Parse a parsed audit record's timestamp into epoch nanoseconds.
+
+    Nanoseconds rather than milliseconds because this value is the dedup
+    watermark, not just a display field: rounding would make records written in
+    the same millisecond indistinguishable. The fractional digits are read
+    directly rather than through ``datetime.fromisoformat`` (microseconds max).
+    Mirrors amplify-portal's ``_audit_timestamp_ns``.
+    """
+    import re
+    from datetime import timezone
+
+    raw = str(log.get("timestamp", log.get("Timestamp", ""))).strip()
+    if not raw:
+        return None
+
+    fraction_ns = 0
+    text = raw
+    match = re.search(r"\.(\d+)", text)
+    if match:
+        digits = match.group(1)
+        fraction_ns = int(digits.ljust(9, "0")[:9])
+        text = text[: match.start()] + text[match.end() :]
+
+    text = text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        logger.warning("Unparseable audit timestamp: %r", raw)
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp()) * 1_000_000_000 + fraction_ns
+
+
+def _filter_new_records(
+    logs: list[dict[str, Any]], watermark_ns: int
+) -> tuple[list[dict[str, Any]], int]:
+    """Keep records strictly newer than the watermark; report the newest kept.
+
+    An undated record is kept rather than dropped (at-least-once) and does not
+    move the watermark. Returns the filtered records and the maximum record
+    timestamp (ns) among the kept dated records, or ``watermark_ns`` if none.
+    """
+    fresh: list[dict[str, Any]] = []
+    file_max_ns = watermark_ns
+    for log in logs:
+        record_ns = _audit_timestamp_ns(log)
+        if record_ns is None:
+            fresh.append(log)
+            continue
+        if watermark_ns and record_ns <= watermark_ns:
+            continue
+        fresh.append(log)
+        if record_ns > file_max_ns:
+            file_max_ns = record_ns
+    return fresh, file_max_ns
 
 
 # --- S3 listing and filtering ---
 
 
-def _list_new_keys(
-    s3_ap_arn: str, prefix: str, last_processed_key: str
+def _list_candidate_keys(
+    s3_ap_arn: str, prefix: str, watermark_ns: int
 ) -> list[str]:
-    """List S3 objects newer than the checkpoint.
+    """List audit files that may hold records newer than the watermark.
 
-    Uses StartAfter to efficiently skip already-processed keys.
-    S3 ListObjectsV2 returns keys in lexicographic order, so keys
-    with date-based prefixes (YYYY/MM/DD/) are naturally sorted.
+    Selection is by object modification time, never by a key high-water mark:
+    ONTAP's active audit file has a fixed key that sorts after every rotated
+    file, so ``StartAfter`` on a key would skip rotated files for good once the
+    checkpoint reached the active one (ROADMAP L80-L86). A file whose last
+    modification precedes the watermark by more than ``GRACE_SECONDS`` cannot
+    hold a newer record and is skipped. Returns keys sorted oldest-modified
+    first so a mid-run failure leaves the watermark behind, not ahead. Mirrors
+    amplify-portal's ``_list_candidate_audit_keys``.
     """
-    all_keys: list[str] = []
+    from datetime import timedelta, timezone
+
+    watermark_dt = (
+        datetime.fromtimestamp(watermark_ns / 1_000_000_000, tz=timezone.utc)
+        if watermark_ns
+        else None
+    )
+
+    candidates: list[tuple[datetime, str]] = []
     continuation_token = None
 
     params: dict[str, Any] = {
@@ -302,10 +418,6 @@ def _list_new_keys(
         "Prefix": prefix,
         "MaxKeys": 1000,
     }
-
-    # StartAfter skips keys <= the checkpoint (lexicographic)
-    if last_processed_key:
-        params["StartAfter"] = last_processed_key
 
     while True:
         if continuation_token:
@@ -318,16 +430,22 @@ def _list_new_keys(
             # Skip directory markers
             if key.endswith("/"):
                 continue
-            all_keys.append(key)
+            modified = obj.get("LastModified")
+            if watermark_dt and modified is not None:
+                if modified < watermark_dt - timedelta(seconds=GRACE_SECONDS):
+                    continue
+            candidates.append(
+                (modified or datetime.min.replace(tzinfo=timezone.utc), key)
+            )
 
         if response.get("IsTruncated"):
             continuation_token = response.get("NextContinuationToken")
         else:
             break
 
-    # Sort to ensure deterministic processing order
-    all_keys.sort()
-    return all_keys
+    # Oldest-modified first for deterministic, chronological processing.
+    candidates.sort()
+    return [key for _, key in candidates]
 
 
 # --- S3 event extraction (backward compatibility) ---

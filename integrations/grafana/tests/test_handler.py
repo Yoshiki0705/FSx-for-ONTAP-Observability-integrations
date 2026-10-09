@@ -171,23 +171,40 @@ class TestSendLokiPush:
 
 
 class TestSchedulerMode:
-    """Tests for EventBridge Scheduler polling mode."""
+    """Tests for EventBridge Scheduler polling mode.
+
+    Progress is tracked with a record-timestamp watermark, not a last-processed
+    key: ONTAP's active audit file has a fixed key that sorts AFTER every
+    rotated file, so a key high-water mark passed to ListObjectsV2 StartAfter
+    stalls listing of newly rotated files permanently (ROADMAP L80-L86).
+    """
+
+    # The active audit file ONTAP appends to has a fixed key that sorts AFTER
+    # every rotated file's key, because "l" (last) > "D" (the rotated prefix).
+    ACTIVE_KEY = "audit/svm-prod-01/svm_last.json"
+    ROTATED_KEY = "audit/svm-prod-01/svm_D2026-01-15-T12-00-00_0.json"
+
+    @staticmethod
+    def _ns(ts: str) -> int:
+        return handler._audit_timestamp_ns({"timestamp": ts})
+
+    @staticmethod
+    def _lm(second):
+        from datetime import datetime, timezone
+        return datetime(2026, 1, 15, 12, 0, second, tzinfo=timezone.utc)
 
     @patch("handler.ssm_client")
     @patch("handler.s3_client")
     @patch("handler.secrets_client")
     @patch("handler.http")
-    def test_scheduler_no_new_files(self, mock_http, mock_secrets, mock_s3, mock_ssm):
-        """When no new files exist, return early with zero counts."""
+    def test_scheduler_no_candidate_files(self, mock_http, mock_secrets, mock_s3, mock_ssm):
+        """When no candidate files exist, return early with zero counts."""
         mock_secrets.get_secret_value.return_value = {
             "SecretString": json.dumps({"instance_id": "123", "api_key": "key"})
         }
-        mock_ssm.get_parameter.return_value = {
-            "Parameter": {"Value": "audit/svm-prod-01/2026/01/15/last.json"}
-        }
+        mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "12345"}}
         mock_s3.list_objects_v2.return_value = {"Contents": [], "IsTruncated": False}
 
-        # Reset auth cache
         handler._auth_header_cache = None
 
         event = {"source": "scheduler", "prefix": "audit/svm-prod-01/"}
@@ -200,32 +217,40 @@ class TestSchedulerMode:
     @patch("handler.s3_client")
     @patch("handler.secrets_client")
     @patch("handler.http")
-    def test_scheduler_processes_new_files(self, mock_http, mock_secrets, mock_s3, mock_ssm):
-        """Scheduler mode processes new files and updates checkpoint."""
+    def test_scheduler_ships_fresh_records_and_advances_watermark(
+        self, mock_http, mock_secrets, mock_s3, mock_ssm
+    ):
+        """Candidate files are listed by LastModified, fresh records ship, and
+        the watermark advances to the newest shipped record timestamp."""
         mock_secrets.get_secret_value.return_value = {
             "SecretString": json.dumps({"instance_id": "123", "api_key": "key"})
         }
-        mock_ssm.get_parameter.return_value = {
-            "Parameter": {"Value": "__INIT__"}
-        }
+        mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "__INIT__"}}
         mock_ssm.put_parameter.return_value = {}
 
-        log_content = json.dumps(
-            {"timestamp": "2026-01-15T12:00:01Z", "SVMName": "svm-prod-01", "msg": "test"}
-        ).encode()
+        bodies = {
+            "audit/svm-prod-01/2026/01/15/file1.json": json.dumps(
+                {"timestamp": "2026-01-15T12:00:01Z", "SVMName": "svm-prod-01", "msg": "a"}
+            ).encode(),
+            "audit/svm-prod-01/2026/01/15/file2.json": json.dumps(
+                {"timestamp": "2026-01-15T12:00:02Z", "SVMName": "svm-prod-01", "msg": "b"}
+            ).encode(),
+        }
 
         mock_s3.list_objects_v2.return_value = {
             "Contents": [
-                {"Key": "audit/svm-prod-01/2026/01/15/file1.json"},
-                {"Key": "audit/svm-prod-01/2026/01/15/file2.json"},
+                {"Key": "audit/svm-prod-01/2026/01/15/file1.json", "LastModified": self._lm(1)},
+                {"Key": "audit/svm-prod-01/2026/01/15/file2.json", "LastModified": self._lm(2)},
             ],
             "IsTruncated": False,
         }
 
-        mock_body = MagicMock()
-        mock_body.read.return_value = log_content
-        mock_s3.get_object.return_value = {"Body": mock_body}
+        def get_object(**kw):
+            body = MagicMock()
+            body.read.return_value = bodies[kw["Key"]]
+            return {"Body": body}
 
+        mock_s3.get_object.side_effect = get_object
         mock_http.request.return_value = MagicMock(status=204)
 
         handler._auth_header_cache = None
@@ -236,11 +261,12 @@ class TestSchedulerMode:
         assert result["statusCode"] == 200
         assert result["body"]["new_files"] == 2
         assert result["body"]["processed_files"] == 2
-
-        # Verify checkpoint was updated to last file
+        # A key high-water mark must never be passed to S3 — that is the stall.
+        assert "StartAfter" not in mock_s3.list_objects_v2.call_args.kwargs
+        # Watermark advances to the newest record timestamp shipped.
         mock_ssm.put_parameter.assert_called_once_with(
             Name="/fsxn-grafana/test-stack/last-processed-key",
-            Value="audit/svm-prod-01/2026/01/15/file2.json",
+            Value=str(self._ns("2026-01-15T12:00:02Z")),
             Type="String",
             Overwrite=True,
         )
@@ -249,8 +275,60 @@ class TestSchedulerMode:
     @patch("handler.s3_client")
     @patch("handler.secrets_client")
     @patch("handler.http")
+    def test_active_file_fixed_key_does_not_stop_later_rotated_files(
+        self, mock_http, mock_secrets, mock_s3, mock_ssm
+    ):
+        """Regression for ROADMAP L82 — the exact failure mode.
+
+        Under the old key scheme, once the checkpoint reached the active file's
+        fixed key, StartAfter never returned a later-rotated file again (the
+        rotated key sorts BEFORE the active key). With the timestamp watermark,
+        a file rotated after the active one is still listed and shipped.
+        """
+        # The ordering fact the old scheme broke on, asserted directly.
+        assert self.ROTATED_KEY < self.ACTIVE_KEY
+
+        mock_secrets.get_secret_value.return_value = {
+            "SecretString": json.dumps({"instance_id": "123", "api_key": "key"})
+        }
+        watermark = self._ns("2026-01-15T12:00:30Z")
+        mock_ssm.get_parameter.return_value = {"Parameter": {"Value": str(watermark)}}
+
+        later_rotated = "audit/svm-prod-01/svm_D2026-01-15-T12-05-00_1.json"
+        mock_s3.list_objects_v2.return_value = {
+            "Contents": [
+                {"Key": self.ACTIVE_KEY, "LastModified": self._lm(1)},
+                {"Key": later_rotated, "LastModified": self._lm(50)},
+            ],
+            "IsTruncated": False,
+        }
+
+        def get_object(**kw):
+            body = MagicMock()
+            # A record at 12:00:40, newer than the 12:00:30 watermark.
+            body.read.return_value = json.dumps(
+                {"timestamp": "2026-01-15T12:00:40Z", "SVMName": "svm", "msg": "x"}
+            ).encode()
+            return {"Body": body}
+
+        mock_s3.get_object.side_effect = get_object
+        mock_http.request.return_value = MagicMock(status=204)
+        handler._auth_header_cache = None
+
+        event = {"source": "scheduler", "prefix": "audit/svm-prod-01/"}
+        result = handler.lambda_handler(event, None)
+
+        assert "StartAfter" not in mock_s3.list_objects_v2.call_args.kwargs
+        read_keys = {c.kwargs["Key"] for c in mock_s3.get_object.call_args_list}
+        assert read_keys == {self.ACTIVE_KEY, later_rotated}
+        assert result["body"]["total_shipped"] == 2
+
+    @patch("handler.ssm_client")
+    @patch("handler.s3_client")
+    @patch("handler.secrets_client")
+    @patch("handler.http")
     def test_scheduler_stops_on_error(self, mock_http, mock_secrets, mock_s3, mock_ssm):
-        """Scheduler mode stops processing on error to avoid checkpoint gaps."""
+        """Scheduler mode stops processing on error to avoid watermark gaps."""
         mock_secrets.get_secret_value.return_value = {
             "SecretString": json.dumps({"instance_id": "123", "api_key": "key"})
         }
@@ -259,23 +337,23 @@ class TestSchedulerMode:
 
         mock_s3.list_objects_v2.return_value = {
             "Contents": [
-                {"Key": "audit/file1.json"},
-                {"Key": "audit/file2.json"},
+                {"Key": "audit/file1.json", "LastModified": self._lm(1)},
+                {"Key": "audit/file2.json", "LastModified": self._lm(2)},
             ],
             "IsTruncated": False,
         }
 
-        # First file succeeds, second file fails
-        log_content = json.dumps({"timestamp": "2026-01-15T12:00:01Z", "SVMName": "svm", "msg": "ok"}).encode()
-        mock_body_ok = MagicMock()
-        mock_body_ok.read.return_value = log_content
+        # First file succeeds (record at 12:00:01), second file fails to read.
+        ok_body = MagicMock()
+        ok_body.read.return_value = json.dumps(
+            {"timestamp": "2026-01-15T12:00:01Z", "SVMName": "svm", "msg": "ok"}
+        ).encode()
         mock_s3.get_object.side_effect = [
-            {"Body": mock_body_ok},
+            {"Body": ok_body},
             Exception("S3 read error"),
         ]
 
         mock_http.request.return_value = MagicMock(status=204)
-
         handler._auth_header_cache = None
 
         event = {"source": "scheduler", "prefix": "audit/"}
@@ -283,10 +361,10 @@ class TestSchedulerMode:
 
         assert result["statusCode"] == 207
         assert len(result["body"]["errors"]) == 1
-        # Checkpoint should be updated to file1 (last successful)
+        # Watermark advances only to file1's record timestamp, so file2 is retried.
         mock_ssm.put_parameter.assert_called_once_with(
             Name="/fsxn-grafana/test-stack/last-processed-key",
-            Value="audit/file1.json",
+            Value=str(self._ns("2026-01-15T12:00:01Z")),
             Type="String",
             Overwrite=True,
         )
@@ -331,73 +409,97 @@ class TestS3EventMode:
 
 
 class TestCheckpoint:
-    """Tests for SSM Parameter Store checkpoint management."""
+    """Tests for SSM Parameter Store checkpoint management (timestamp watermark)."""
 
     @patch("handler.ssm_client")
-    def test_get_checkpoint_init_value(self, mock_ssm):
-        """__INIT__ value is treated as empty (no checkpoint)."""
+    def test_get_checkpoint_init_value_is_cold_start(self, mock_ssm):
+        """__INIT__ reads as watermark 0 (start from the beginning)."""
         mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "__INIT__"}}
-        assert handler._get_checkpoint() == ""
+        assert handler._get_checkpoint() == 0
 
     @patch("handler.ssm_client")
-    def test_get_checkpoint_returns_key(self, mock_ssm):
-        """Normal checkpoint value is returned as-is."""
+    def test_get_checkpoint_returns_watermark(self, mock_ssm):
+        """A numeric watermark value is returned as an int."""
+        mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "1737000001000000000"}}
+        assert handler._get_checkpoint() == 1737000001000000000
+
+    @patch("handler.ssm_client")
+    def test_legacy_key_checkpoint_is_a_cold_start_not_a_crash(self, mock_ssm):
+        """A checkpoint left as a last-processed key by the old scheme reads as a
+        cold start rather than raising on the non-numeric value."""
         mock_ssm.get_parameter.return_value = {
             "Parameter": {"Value": "audit/svm-prod-01/2026/01/15/file.json"}
         }
-        assert handler._get_checkpoint() == "audit/svm-prod-01/2026/01/15/file.json"
+        assert handler._get_checkpoint() == 0
 
     @patch("handler.ssm_client")
     def test_get_checkpoint_not_found(self, mock_ssm):
-        """ParameterNotFound returns empty string (caught by generic Exception)."""
+        """ParameterNotFound returns 0 (start from the beginning)."""
         from botocore.exceptions import ClientError
         mock_ssm.get_parameter.side_effect = ClientError(
             {"Error": {"Code": "ParameterNotFound", "Message": "not found"}},
             "GetParameter",
         )
-        # Falls into the generic Exception handler, returns ""
-        assert handler._get_checkpoint() == ""
+        assert handler._get_checkpoint() == 0
 
 
-class TestListNewKeys:
-    """Tests for S3 listing and filtering."""
+class TestListCandidateKeys:
+    """Tests for S3 listing by modification time."""
+
+    @staticmethod
+    def _lm(second):
+        from datetime import datetime, timezone
+        return datetime(2026, 1, 15, 12, 0, second, tzinfo=timezone.utc)
 
     @patch("handler.s3_client")
     def test_list_skips_directory_markers(self, mock_s3):
         mock_s3.list_objects_v2.return_value = {
             "Contents": [
                 {"Key": "audit/svm-prod-01/"},
-                {"Key": "audit/svm-prod-01/file1.json"},
+                {"Key": "audit/svm-prod-01/file1.json", "LastModified": self._lm(1)},
             ],
             "IsTruncated": False,
         }
-        keys = handler._list_new_keys("arn:aws:s3:ap-northeast-1:123456789012:accesspoint/ap", "audit/", "")
+        keys = handler._list_candidate_keys("arn:aws:s3:ap-northeast-1:123456789012:accesspoint/ap", "audit/", 0)
         assert keys == ["audit/svm-prod-01/file1.json"]
 
     @patch("handler.s3_client")
-    def test_list_uses_start_after(self, mock_s3):
+    def test_list_never_uses_start_after(self, mock_s3):
         mock_s3.list_objects_v2.return_value = {
-            "Contents": [{"Key": "audit/file3.json"}],
+            "Contents": [{"Key": "audit/file3.json", "LastModified": self._lm(1)}],
             "IsTruncated": False,
         }
-        handler._list_new_keys("arn:aws:s3:ap-northeast-1:123456789012:accesspoint/ap", "audit/", "audit/file2.json")
-        call_kwargs = mock_s3.list_objects_v2.call_args[1]
-        assert call_kwargs["StartAfter"] == "audit/file2.json"
+        handler._list_candidate_keys("arn:aws:s3:ap-northeast-1:123456789012:accesspoint/ap", "audit/", 123)
+        assert "StartAfter" not in mock_s3.list_objects_v2.call_args.kwargs
+
+    @patch("handler.s3_client")
+    def test_file_older_than_watermark_is_dropped(self, mock_s3):
+        from datetime import datetime, timezone
+        watermark = handler._audit_timestamp_ns({"timestamp": "2026-01-15T12:00:00Z"})
+        mock_s3.list_objects_v2.return_value = {
+            "Contents": [
+                {"Key": "audit/old.json", "LastModified": datetime(2020, 1, 1, tzinfo=timezone.utc)},
+                {"Key": "audit/new.json", "LastModified": self._lm(30)},
+            ],
+            "IsTruncated": False,
+        }
+        keys = handler._list_candidate_keys("arn:aws:s3:ap-northeast-1:123456789012:accesspoint/ap", "audit/", watermark)
+        assert keys == ["audit/new.json"]
 
     @patch("handler.s3_client")
     def test_list_handles_pagination(self, mock_s3):
         mock_s3.list_objects_v2.side_effect = [
             {
-                "Contents": [{"Key": "audit/file1.json"}],
+                "Contents": [{"Key": "audit/file1.json", "LastModified": self._lm(1)}],
                 "IsTruncated": True,
                 "NextContinuationToken": "token1",
             },
             {
-                "Contents": [{"Key": "audit/file2.json"}],
+                "Contents": [{"Key": "audit/file2.json", "LastModified": self._lm(2)}],
                 "IsTruncated": False,
             },
         ]
-        keys = handler._list_new_keys("arn:aws:s3:ap-northeast-1:123456789012:accesspoint/ap", "audit/", "")
+        keys = handler._list_candidate_keys("arn:aws:s3:ap-northeast-1:123456789012:accesspoint/ap", "audit/", 0)
         assert keys == ["audit/file1.json", "audit/file2.json"]
 
 

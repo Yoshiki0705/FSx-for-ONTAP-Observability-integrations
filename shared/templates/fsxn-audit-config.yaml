@@ -36,10 +36,11 @@ Parameters:
     Default: evtx
     AllowedValues:
       - evtx
-      - json
+      - xml
     Description: >
-      Audit log format. 'evtx' is Windows Event Log binary format.
-      'json' is human-readable but larger.
+      Audit log format. ONTAP supports only 'evtx' (Windows Event Log binary
+      format) and 'xml'. These are the sole values `vserver audit create -format`
+      accepts and the only formats the downstream log-parser / ems-parser read.
 
   RotateSize:
     Type: String

@@ -3,6 +3,7 @@
 import gzip
 import json
 import sys
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -319,8 +320,11 @@ class TestSchedulerPolling:
     """Tests for the EventBridge Scheduler polling path.
 
     This is the production trigger: FSx for ONTAP S3 Access Points do not emit
-    S3 Event Notifications, so the shipper discovers new files with
-    ListObjectsV2 and tracks progress in an SSM Parameter Store checkpoint.
+    S3 Event Notifications, so the shipper discovers files with ListObjectsV2
+    and tracks progress with a record-timestamp watermark in SSM Parameter
+    Store. The watermark replaces a last-processed-key high-water mark, which
+    stalled permanently on ONTAP's active audit file (fixed key that sorts after
+    every rotated file — ROADMAP L80-L86).
     """
 
     SCHEDULER_EVENT = {
@@ -329,12 +333,21 @@ class TestSchedulerPolling:
         "prefix": "audit/",
     }
 
+    # The active audit file ONTAP appends to has a fixed key that sorts AFTER
+    # every rotated file's key, because "l" (last) > "D" (the rotated prefix).
+    ACTIVE_KEY = "audit/svm_last.json"
+    ROTATED_KEY = "audit/svm_D2026-08-07-T09-00-00_0.json"
+
     @staticmethod
-    def _audit_body(count: int = 1) -> bytes:
+    def _ns(ts: str) -> int:
+        return handler._audit_timestamp_ns({"timestamp": ts})
+
+    @staticmethod
+    def _audit_body(count: int = 1, base_second: int = 0) -> bytes:
         lines = [
             json.dumps(
                 {
-                    "timestamp": "2026-08-07T09:00:0%d" % i,
+                    "timestamp": "2026-08-07T09:00:%02dZ" % (base_second + i),
                     "EventID": "4663",
                     "SVMName": "svm-prod-01",
                     "UserName": "jdoe@corp.local",
@@ -347,50 +360,143 @@ class TestSchedulerPolling:
         ]
         return "\n".join(lines).encode("utf-8")
 
-    def test_scheduler_ships_new_files_and_advances_checkpoint(self, monkeypatch):
-        """New files are listed, shipped, and the checkpoint moves to the last key."""
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+    def test_scheduler_ships_fresh_records_and_advances_watermark(self, monkeypatch):
+        """Candidate files are listed by LastModified, newer records ship, and
+        the watermark advances to the newest shipped record timestamp."""
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
 
         with patch.object(handler, "get_api_key", return_value="k"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
              patch.object(handler.ssm_client, "put_parameter") as mock_put, \
              patch.object(handler.s3_client, "list_objects_v2") as mock_list, \
              patch.object(handler.s3_client, "get_object") as mock_get_obj, \
-             patch.object(handler, "_ship_to_datadog", return_value=1) as mock_ship:
+             patch.object(handler, "_ship_to_datadog", return_value=2) as mock_ship:
 
-            mock_get.return_value = {"Parameter": {"Value": "audit/2026/08/07/a.json"}}
+            # Cold start (no checkpoint).
+            mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
             mock_list.return_value = {
                 "Contents": [
-                    {"Key": "audit/2026/08/07/b.json"},
-                    {"Key": "audit/2026/08/07/c.json"},
+                    {"Key": self.ROTATED_KEY, "LastModified": datetime(2026, 8, 7, 9, 1, tzinfo=timezone.utc)},
+                    {"Key": self.ACTIVE_KEY, "LastModified": datetime(2026, 8, 7, 9, 2, tzinfo=timezone.utc)},
                 ],
                 "IsTruncated": False,
             }
-            # Fresh stream per call — a single BytesIO would be consumed by file 1
-            mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(self._audit_body())}
+            mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(self._audit_body(2))}
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
 
         assert result["statusCode"] == 200
         assert result["body"]["new_files"] == 2
         assert mock_ship.call_count == 2
-        # StartAfter must use the checkpoint so processed keys are skipped server-side
-        assert mock_list.call_args.kwargs["StartAfter"] == "audit/2026/08/07/a.json"
+        # The listing is by modification time; a key high-water mark must never
+        # be passed to S3 — that is the stall this fix removes.
+        assert "StartAfter" not in mock_list.call_args.kwargs
         assert mock_list.call_args.kwargs["Prefix"] == "audit/"
-        # Checkpoint advances to the last successfully shipped key
+        # Watermark advances to the newest record timestamp shipped.
         mock_put.assert_called_once()
-        assert mock_put.call_args.kwargs["Value"] == "audit/2026/08/07/c.json"
+        assert mock_put.call_args.kwargs["Value"] == str(self._ns("2026-08-07T09:00:01Z"))
 
-    def test_scheduler_no_new_files_is_a_noop(self, monkeypatch):
+    def test_active_file_fixed_key_does_not_stop_later_rotated_files(self, monkeypatch):
+        """Regression for ROADMAP L82 — the exact failure mode.
+
+        Under the old key-based scheme, once the checkpoint reached the active
+        file's fixed key, ListObjectsV2 StartAfter never returned a
+        later-rotated file again (the rotated key sorts BEFORE the active key).
+        With the timestamp watermark, a file rotated after the active one is
+        still listed and its records are still shipped.
+        """
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
+
+        # The ordering fact the old scheme broke on, asserted directly.
+        assert self.ROTATED_KEY < self.ACTIVE_KEY
+
+        # A watermark already set to a record read from the active file — the
+        # only state in which the old scheme did anything wrong.
+        watermark = self._ns("2026-08-07T09:00:30Z")
+
+        shipped_files: list[str] = []
+
+        def fake_ship(dd_logs, api_key):
+            # Record which source files produced shipped records.
+            for log in dd_logs:
+                shipped_files.append(log["ddtags"])
+            return len(dd_logs)
+
+        with patch.object(handler, "get_api_key", return_value="k"), \
+             patch.object(handler.ssm_client, "get_parameter") as mock_get, \
+             patch.object(handler.ssm_client, "put_parameter"), \
+             patch.object(handler.s3_client, "list_objects_v2") as mock_list, \
+             patch.object(handler.s3_client, "get_object") as mock_get_obj, \
+             patch.object(handler, "_ship_to_datadog", side_effect=fake_ship):
+
+            mock_get.return_value = {"Parameter": {"Value": str(watermark)}}
+            # The newly rotated file is modified AFTER the active one and holds
+            # records newer than the watermark.
+            mock_list.return_value = {
+                "Contents": [
+                    {"Key": self.ACTIVE_KEY, "LastModified": datetime(2026, 8, 7, 9, 1, tzinfo=timezone.utc)},
+                    {"Key": "audit/svm_D2026-08-07-T09-05-00_1.json",
+                     "LastModified": datetime(2026, 8, 7, 9, 6, tzinfo=timezone.utc)},
+                ],
+                "IsTruncated": False,
+            }
+            # Each file holds a record at 09:00:40, newer than the 09:00:30 watermark.
+            mock_get_obj.side_effect = lambda **kw: {
+                "Body": BytesIO(self._audit_body(1, base_second=40))
+            }
+
+            result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
+
+        assert "StartAfter" not in mock_list.call_args.kwargs
+        # Both files were read; the later-rotated file was NOT skipped.
+        assert mock_get_obj.call_count == 2
+        read_keys = {c.kwargs["Key"] for c in mock_get_obj.call_args_list}
+        assert read_keys == {self.ACTIVE_KEY, "audit/svm_D2026-08-07-T09-05-00_1.json"}
+        assert result["body"]["total_shipped"] == 2
+
+    def test_records_at_or_below_watermark_are_not_reshipped(self, monkeypatch):
+        """The active file is re-read every run, so already-shipped records are
+        filtered out by timestamp rather than by skipping the file."""
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
+
+        # Watermark equals the newest record in the file: nothing fresh.
+        watermark = self._ns("2026-08-07T09:00:00Z")
+
+        with patch.object(handler, "get_api_key", return_value="k"), \
+             patch.object(handler.ssm_client, "get_parameter") as mock_get, \
+             patch.object(handler.ssm_client, "put_parameter") as mock_put, \
+             patch.object(handler.s3_client, "list_objects_v2") as mock_list, \
+             patch.object(handler.s3_client, "get_object") as mock_get_obj, \
+             patch.object(handler, "_ship_to_datadog", return_value=0) as mock_ship:
+
+            mock_get.return_value = {"Parameter": {"Value": str(watermark)}}
+            mock_list.return_value = {
+                "Contents": [
+                    {"Key": self.ACTIVE_KEY, "LastModified": datetime(2026, 8, 7, 9, 2, tzinfo=timezone.utc)},
+                ],
+                "IsTruncated": False,
+            }
+            mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(self._audit_body(1))}
+
+            result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
+
+        # File was re-read, but no record was fresh, so nothing shipped and the
+        # watermark did not move.
+        assert mock_get_obj.call_count == 1
+        assert result["body"]["total_logs"] == 0
+        mock_ship.assert_called_once()
+        mock_put.assert_not_called()
+
+    def test_scheduler_no_candidate_files_is_a_noop(self, monkeypatch):
         """An empty listing returns 200 without touching the checkpoint."""
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
 
         with patch.object(handler, "get_api_key", return_value="k"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
              patch.object(handler.ssm_client, "put_parameter") as mock_put, \
              patch.object(handler.s3_client, "list_objects_v2") as mock_list:
 
-            mock_get.return_value = {"Parameter": {"Value": "audit/z.json"}}
+            mock_get.return_value = {"Parameter": {"Value": "12345"}}
             mock_list.return_value = {"Contents": [], "IsTruncated": False}
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
@@ -402,9 +508,10 @@ class TestSchedulerPolling:
     def test_checkpoint_stops_at_first_failure(self, monkeypatch):
         """Processing halts on the first failing file so no file is skipped.
 
-        Advancing past a failed file would permanently drop its audit records.
+        Advancing the watermark past a failed file would permanently drop its
+        audit records.
         """
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
 
         with patch.object(handler, "get_api_key", return_value="k"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
@@ -414,17 +521,23 @@ class TestSchedulerPolling:
              patch.object(handler, "_ship_to_datadog") as mock_ship:
 
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
+            # Oldest-modified first, so a.json is processed before b.json.
             mock_list.return_value = {
                 "Contents": [
-                    {"Key": "audit/a.json"},
-                    {"Key": "audit/b.json"},
-                    {"Key": "audit/c.json"},
+                    {"Key": "audit/a.json", "LastModified": datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)},
+                    {"Key": "audit/b.json", "LastModified": datetime(2026, 8, 7, 9, 1, tzinfo=timezone.utc)},
+                    {"Key": "audit/c.json", "LastModified": datetime(2026, 8, 7, 9, 2, tzinfo=timezone.utc)},
                 ],
                 "IsTruncated": False,
             }
-            # Fresh stream per call — a single BytesIO would be consumed by file 1
-            mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(self._audit_body())}
-            # First file ships, second fails, third must not be attempted
+            # a.json records at 09:00:00, b.json at 09:00:10, c.json at 09:00:20.
+            bodies = {
+                "audit/a.json": self._audit_body(1, base_second=0),
+                "audit/b.json": self._audit_body(1, base_second=10),
+                "audit/c.json": self._audit_body(1, base_second=20),
+            }
+            mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(bodies[kw["Key"]])}
+            # First file ships, second fails, third must not be attempted.
             mock_ship.side_effect = [1, RuntimeError("intake 503"), 1]
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
@@ -432,36 +545,38 @@ class TestSchedulerPolling:
         assert result["statusCode"] == 207
         assert mock_ship.call_count == 2
         assert result["body"]["errors"][0]["key"] == "audit/b.json"
-        # Checkpoint stops at the last *successful* key, so b.json is retried
-        assert mock_put.call_args.kwargs["Value"] == "audit/a.json"
+        # Watermark stops at a.json's record timestamp, so b.json is retried.
+        assert mock_put.call_args.kwargs["Value"] == str(self._ns("2026-08-07T09:00:00Z"))
 
-    def test_init_sentinel_means_start_from_beginning(self, monkeypatch):
-        """The '__INIT__' sentinel must not be passed to S3 as StartAfter."""
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+    def test_init_sentinel_is_a_cold_start(self, monkeypatch):
+        """The '__INIT__' sentinel reads as watermark 0 (start from beginning)."""
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
 
-        with patch.object(handler, "get_api_key", return_value="k"), \
-             patch.object(handler.ssm_client, "get_parameter") as mock_get, \
-             patch.object(handler.s3_client, "list_objects_v2") as mock_list:
-
+        with patch.object(handler.ssm_client, "get_parameter") as mock_get:
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
-            mock_list.return_value = {"Contents": [], "IsTruncated": False}
+            assert handler._get_checkpoint() == 0
 
-            handler.lambda_handler(self.SCHEDULER_EVENT, None)
+    def test_legacy_key_checkpoint_is_a_cold_start_not_a_crash(self, monkeypatch):
+        """A checkpoint left as a last-processed key by the old scheme must read
+        as a cold start rather than raising on the non-numeric value."""
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
 
-        assert "StartAfter" not in mock_list.call_args.kwargs
+        with patch.object(handler.ssm_client, "get_parameter") as mock_get:
+            mock_get.return_value = {"Parameter": {"Value": "audit/2026/08/07/a.json"}}
+            assert handler._get_checkpoint() == 0
 
     def test_missing_checkpoint_parameter_starts_from_beginning(self, monkeypatch):
         """A ParameterNotFound error is treated as 'no checkpoint yet'."""
         from botocore.exceptions import ClientError
 
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
 
         with patch.object(handler.ssm_client, "get_parameter") as mock_get:
             mock_get.side_effect = ClientError(
                 {"Error": {"Code": "ParameterNotFound", "Message": "not found"}},
                 "GetParameter",
             )
-            assert handler._get_checkpoint() == ""
+            assert handler._get_checkpoint() == 0
 
     def test_directory_markers_are_skipped(self):
         """Zero-byte directory markers are not audit log files."""
@@ -470,11 +585,11 @@ class TestSchedulerPolling:
                 "Contents": [
                     {"Key": "audit/"},
                     {"Key": "audit/2026/"},
-                    {"Key": "audit/2026/log.json"},
+                    {"Key": "audit/2026/log.json", "LastModified": datetime(2026, 8, 7, tzinfo=timezone.utc)},
                 ],
                 "IsTruncated": False,
             }
-            keys = handler._list_new_keys("arn:aws:s3:::ap", "audit/", "")
+            keys = handler._list_candidate_keys("arn:aws:s3:::ap", "audit/", 0)
 
         assert keys == ["audit/2026/log.json"]
 
@@ -483,20 +598,36 @@ class TestSchedulerPolling:
         with patch.object(handler.s3_client, "list_objects_v2") as mock_list:
             mock_list.side_effect = [
                 {
-                    "Contents": [{"Key": "audit/a.json"}],
+                    "Contents": [{"Key": "audit/a.json", "LastModified": datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)}],
                     "IsTruncated": True,
                     "NextContinuationToken": "tok",
                 },
-                {"Contents": [{"Key": "audit/b.json"}], "IsTruncated": False},
+                {"Contents": [{"Key": "audit/b.json", "LastModified": datetime(2026, 8, 7, 9, 1, tzinfo=timezone.utc)}], "IsTruncated": False},
             ]
-            keys = handler._list_new_keys("arn:aws:s3:::ap", "audit/", "")
+            keys = handler._list_candidate_keys("arn:aws:s3:::ap", "audit/", 0)
 
         assert keys == ["audit/a.json", "audit/b.json"]
         assert mock_list.call_args.kwargs["ContinuationToken"] == "tok"
 
+    def test_file_older_than_watermark_is_not_listed(self):
+        """A file modified well before the watermark cannot hold a newer
+        record and is dropped from the candidate list."""
+        watermark = handler._audit_timestamp_ns({"timestamp": "2026-08-07T12:00:00Z"})
+        with patch.object(handler.s3_client, "list_objects_v2") as mock_list:
+            mock_list.return_value = {
+                "Contents": [
+                    {"Key": "audit/old.json", "LastModified": datetime(2020, 1, 1, tzinfo=timezone.utc)},
+                    {"Key": "audit/new.json", "LastModified": datetime(2026, 8, 7, 12, 1, tzinfo=timezone.utc)},
+                ],
+                "IsTruncated": False,
+            }
+            keys = handler._list_candidate_keys("arn:aws:s3:::ap", "audit/", watermark)
+
+        assert keys == ["audit/new.json"]
+
     def test_backlog_is_capped_per_run(self, monkeypatch):
         """MAX_KEYS_PER_RUN bounds the work so a backlog drains over several runs."""
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
         monkeypatch.setattr(handler, "MAX_KEYS_PER_RUN", 2)
 
         with patch.object(handler, "get_api_key", return_value="k"), \
@@ -508,10 +639,12 @@ class TestSchedulerPolling:
 
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
             mock_list.return_value = {
-                "Contents": [{"Key": "audit/%d.json" % i} for i in range(5)],
+                "Contents": [
+                    {"Key": "audit/%d.json" % i, "LastModified": datetime(2026, 8, 7, 9, i, tzinfo=timezone.utc)}
+                    for i in range(5)
+                ],
                 "IsTruncated": False,
             }
-            # Fresh stream per call — a single BytesIO would be consumed by file 1
             mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(self._audit_body())}
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
@@ -521,11 +654,11 @@ class TestSchedulerPolling:
 
     def test_stops_before_lambda_timeout(self, monkeypatch):
         """Processing stops early so the checkpoint is written before the timeout."""
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
         monkeypatch.setattr(handler, "SAFETY_THRESHOLD_MS", 30000)
 
         context = MagicMock()
-        # Plenty of time for the first file, then below the safety threshold
+        # Plenty of time for the first file, then below the safety threshold.
         context.get_remaining_time_in_millis.side_effect = [60000, 5000]
 
         with patch.object(handler, "get_api_key", return_value="k"), \
@@ -537,30 +670,37 @@ class TestSchedulerPolling:
 
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
             mock_list.return_value = {
-                "Contents": [{"Key": "audit/a.json"}, {"Key": "audit/b.json"}],
+                "Contents": [
+                    {"Key": "audit/a.json", "LastModified": datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)},
+                    {"Key": "audit/b.json", "LastModified": datetime(2026, 8, 7, 9, 1, tzinfo=timezone.utc)},
+                ],
                 "IsTruncated": False,
             }
-            mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(self._audit_body())}
+            bodies = {
+                "audit/a.json": self._audit_body(1, base_second=0),
+                "audit/b.json": self._audit_body(1, base_second=10),
+            }
+            mock_get_obj.side_effect = lambda **kw: {"Body": BytesIO(bodies[kw["Key"]])}
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, context)
 
         assert mock_ship.call_count == 1
         assert result["statusCode"] == 200
-        assert mock_put.call_args.kwargs["Value"] == "audit/a.json"
+        assert mock_put.call_args.kwargs["Value"] == str(self._ns("2026-08-07T09:00:00Z"))
 
     def test_checkpoint_write_failure_does_not_fail_invocation(self, monkeypatch):
         """Logs were already delivered — failing here would re-ship duplicates."""
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/last-key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-datadog/test/wm")
 
         with patch.object(handler.ssm_client, "put_parameter") as mock_put:
             mock_put.side_effect = Exception("AccessDenied")
-            handler._set_checkpoint("audit/a.json")  # must not raise
+            handler._set_checkpoint(12345)  # must not raise
 
     def test_checkpoint_disabled_warns_and_reprocesses(self, monkeypatch):
         """An unset checkpoint parameter name degrades to full re-processing."""
         monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "")
-        assert handler._get_checkpoint() == ""
-        handler._set_checkpoint("audit/a.json")  # no-op, must not raise
+        assert handler._get_checkpoint() == 0
+        handler._set_checkpoint(12345)  # no-op, must not raise
 
 
 class TestXmlAuditLogParsing:
