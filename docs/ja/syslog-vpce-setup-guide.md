@@ -72,7 +72,7 @@ aws cloudformation deploy \
 
 > **テンプレートの欠陥に関する補足**
 >
-> 2026-10-09 に観測しました。その時点の `main` では、このデプロイは `ROLLBACK_COMPLETE` で失敗します。EC2 がセキュリティグループの説明を拒否するためです（"Invalid security group description"）。テンプレートは `GroupDescription` を YAML の折り畳みスカラー `>` で書いており、末尾に改行が残ります。テンプレートが直るまでは、ローカルのコピーで `GroupDescription: >` を `GroupDescription: >-` に変えて、そのコピーをデプロイしてください。ロググループは `DeletionPolicy: Retain` なので、失敗したスタックは `/syslog/fsxn-admin-audit` を残します。再試行の前に、そのロググループ（`aws logs delete-log-group`）と `ROLLBACK_COMPLETE` のスタックを削除してください。ロググループが残ったままでの再試行は試していません。[2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)を参照してください。
+> 2026-10-09 に観測し、その後修正しました。修正前の `main` から取ったテンプレートのコピーでは、このデプロイは `ROLLBACK_COMPLETE` で失敗します。EC2 がセキュリティグループの説明を拒否するためです（"Invalid security group description"）。`GroupDescription` が YAML の折り畳みスカラー `>` で、末尾に改行が残っていました。現在のテンプレートは `>-` を使っています。これは 2026-10-09 の実行でローカルのコピーに加えてデプロイできた変更と同じで、EC2 が拒否する説明が戻ってくると `scripts/tests/test_cfn_security_group_description.py` が失敗します。古いコピーをデプロイして失敗した場合、ロググループは `DeletionPolicy: Retain` なので、失敗したスタックは `/syslog/fsxn-admin-audit` を残します。再試行の前に、そのロググループ（`aws logs delete-log-group`）と `ROLLBACK_COMPLETE` のスタックを削除してください。ロググループが残ったままでの再試行は試していません。[2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)を参照してください。
 
 デプロイ後、VPC Endpoint の ENI プライベート IP を取得します:
 
