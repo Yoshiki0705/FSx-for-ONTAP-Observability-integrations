@@ -1121,6 +1121,166 @@ def mask_cloudwatch_log_alarm_screenshots() -> list[str]:
     return unrecognized
 
 
+# ssd-auto-increase/ の撮影時サイズ (1x)
+SSD_AUTO_INCREASE_RAW_SIZE = (1900, 1200)
+# CloudTrail のイベント JSON 表示は等幅フォント。0 桁目の左端 x、行 1 の中心 y、
+# 文字送り、行送り (1x)
+CLOUDTRAIL_JSON_X0 = 308
+CLOUDTRAIL_JSON_Y1 = 116
+CLOUDTRAIL_JSON_PITCH = 8.44
+CLOUDTRAIL_JSON_LINE = 22
+
+
+def _json_chars_box(line: int, start: int, end: int) -> tuple[int, int, int, int]:
+    """CloudTrail のイベント JSON の行 line (1 始まり) の桁 [start, end) を覆う矩形。"""
+    x0 = CLOUDTRAIL_JSON_X0
+    pitch = CLOUDTRAIL_JSON_PITCH
+    y = CLOUDTRAIL_JSON_Y1 + CLOUDTRAIL_JSON_LINE * (line - 1)
+    return (int(x0 + start * pitch) - 2, y - 10, int(x0 + end * pitch) + 2, y + 10)
+
+
+def mask_ssd_auto_increase_screenshots() -> list[str]:
+    """ssd-auto-increase/ 配下スクリーンショットのマスク処理。
+
+    Terraform モジュール terraform/fsxn-ssd-auto-increase/ (T4) の 2026-10-09 の
+    実機検証で撮影したコンソール画面。撮影時はいずれも 1900x1200 (1x)。
+
+    マスク対象 (元画像の座標で塗りつぶしてから切り抜く):
+      - ファイルシステム ID (fs-...): ロググループ名、ログ本文、S3 のプレフィックス、
+        Lambda の説明と環境変数、DynamoDB のキー、SNS の表示名
+      - AWS アカウント ID: ARN、SNS トピックの所有者、CloudTrail の JSON
+      - 決定アーカイブのバケット名の乱数部分
+      - CloudTrail の JSON のアクセスキー ID (ASIA...)、ロール ID (AROA...)、
+        送信元 IP アドレス
+    切り抜きで除くもの:
+      - 上部ナビバー (y 0〜51: アカウント ID、IAM ロール名、ユーザー名) と下部フッター
+      - 01: 左のアラーム一覧 (他のスタックの名前を含む)
+      - 09: 左のテーブル一覧 (他のスタックの名前を含む)
+      - 13: 5 行目以降 (人の IAM ユーザーが呼んだ UpdateFileSystem の行)
+
+    切り抜きは冪等でないため、撮影時サイズのときだけ処理する。撮影時サイズでも
+    切り抜き後のサイズでもない画像はマスクできないので、ファイル名を返し、
+    main() が非 0 で終了する。
+
+    Returns:
+        撮影時サイズでも切り抜き後のサイズでもなかったファイル名の一覧。
+    """
+    subdir = SCRIPT_DIR / "ssd-auto-increase"
+    unrecognized: list[str] = []
+    box_t = tuple[int, int, int, int]
+    gray = CLOUDWATCH_LOG_ALARM_MASK_COLOR
+
+    # パンくずリストの "/fsx/ssd-auto-increase/<fs-id>" の fs-id
+    log_group_fs_id: box_t = (415, 62, 562, 84)
+    # パンくずリストの S3 のバケット名の乱数部分と fs-id のプレフィックス
+    s3_bucket_suffix: box_t = (388, 62, 456, 84)
+    s3_fs_id_prefix: box_t = (650, 62, 809, 84)
+    # 決定ログ 1 件目 5 行目の "file_system_id": "<fs-id>"
+    decision_fs_id: box_t = (1097, 384, 1263, 405)
+
+    json_masks: list[box_t] = [
+        _json_chars_box(5, 24, 45),  # principalId のロール ID
+        _json_chars_box(6, 29, 41),  # arn のアカウント ID
+        _json_chars_box(7, 22, 34),  # accountId
+        _json_chars_box(8, 24, 44),  # accessKeyId
+        _json_chars_box(12, 32, 53),  # sessionIssuer.principalId
+        _json_chars_box(13, 37, 49),  # sessionIssuer.arn のアカウント ID
+        _json_chars_box(14, 30, 42),  # sessionIssuer.accountId
+        _json_chars_box(27, 24, 37),  # sourceIPAddress
+        _json_chars_box(30, 40, 52),  # errorMessage のアカウント ID
+        _json_chars_box(38, 27, 39),  # recipientAccountId
+    ]
+
+    targets: list[tuple[str, list[box_t], box_t]] = [
+        # ARN 内のアカウント ID (履歴 1 行目のアクション)
+        ("01-alarm-history.png", [(1393, 911, 1495, 934)], (622, 95, 1880, 1075)),
+        ("02-decision-log-notify-only.png", [log_group_fs_id, decision_fs_id], (0, 52, 1900, 500)),
+        ("03-decision-log-approve.png", [log_group_fs_id, decision_fs_id], (0, 52, 1900, 500)),
+        (
+            "04-decision-log-auto-denied.png",
+            [
+                log_group_fs_id,
+                decision_fs_id,
+                (1061, 475, 1227, 496),  # 2 件目の file_system_id
+                (809, 526, 976, 547),  # 3 件目の file_system_id
+            ],
+            (0, 52, 1900, 580),
+        ),
+        ("05-function-log-latch.png", [], (0, 52, 1900, 620)),
+        ("06-archive-objects.png", [s3_bucket_suffix, s3_fs_id_prefix], (0, 52, 1900, 495)),
+        ("07-object-retention.png", [s3_bucket_suffix, s3_fs_id_prefix], (0, 52, 1900, 1110)),
+        ("08-bucket-object-lock.png", [s3_bucket_suffix], (0, 52, 1900, 880)),
+        # 返された項目のパーティションキー (fs-id)
+        ("09-lock-table-item.png", [(699, 827, 854, 851)], (621, 660, 1876, 876)),
+        (
+            "10-lambda-env.png",
+            [
+                (1055, 604, 1119, 628),  # DECISION_ARCHIVE_BUCKET の乱数部分
+                (1064, 760, 1217, 782),  # DECISION_LOG_GROUP の fs-id
+                (912, 799, 1067, 821),  # FILE_SYSTEM_ID
+                (1087, 1033, 1193, 1055),  # NOTIFY_TOPIC_ARN のアカウント ID
+            ],
+            (410, 400, 1740, 1108),
+        ),
+        (
+            "11-lambda-concurrency.png",
+            [
+                (1443, 230, 1541, 254),  # 関数 ARN のアカウント ID
+                (1473, 310, 1627, 331),  # 説明の fs-id
+            ],
+            (140, 95, 1740, 750),
+        ),
+        # ロール ARN のアカウント ID
+        ("12-iam-role-permissions.png", [(1208, 230, 1306, 254)], (305, 95, 1876, 682)),
+        ("13-cloudtrail-updatefilesystem.png", [], (245, 160, 1876, 498)),
+        ("14-cloudtrail-event-json.png", json_masks, (245, 95, 1876, 1105)),
+        (
+            "15-sns-notify-subscriptions.png",
+            [
+                (936, 303, 1034, 327),  # トピック ARN のアカウント ID
+                (1119, 323, 1259, 346),  # 表示名の fs-id (2 行目)
+                (731, 383, 835, 404),  # トピックの所有者
+                (934, 649, 1049, 672),  # エンドポイント (SQS ARN) のアカウント ID
+            ],
+            (305, 180, 1876, 686),
+        ),
+    ]
+
+    for filename, masks, crop_box in targets:
+        filepath = subdir / filename
+        if not filepath.exists():
+            print(f"  ⏭️  ssd-auto-increase/{filename}: ファイルが見つかりません")
+            continue
+
+        img = Image.open(filepath).convert("RGB")
+        print(f"  📐 ssd-auto-increase/{filename}: {img.width}x{img.height}")
+        cropped_size = (crop_box[2] - crop_box[0], crop_box[3] - crop_box[1])
+        if img.size == cropped_size:
+            print(f"  ℹ️  ssd-auto-increase/{filename}: マスク済み（スキップ）")
+            img.close()
+            continue
+        if img.size != SSD_AUTO_INCREASE_RAW_SIZE:
+            print(
+                f"  ❌ ssd-auto-increase/{filename}: 想定外のサイズのためマスクできません"
+                f"（想定 {SSD_AUTO_INCREASE_RAW_SIZE[0]}x{SSD_AUTO_INCREASE_RAW_SIZE[1]}）"
+            )
+            unrecognized.append(f"ssd-auto-increase/{filename}")
+            img.close()
+            continue
+
+        for box in masks:
+            mask_region(img, box, color=gray)
+        masked = img.crop(crop_box)
+        masked.save(filepath)
+        masked.close()
+        img.close()
+        print(
+            f"  ✅ ssd-auto-increase/{filename}: マスク完了"
+            "（リソース ID + ナビバー/フッター切り抜き）"
+        )
+    return unrecognized
+
+
 def main(target_dir: Path | None = None) -> None:
     """Run all masking operations.
 
@@ -1177,6 +1337,9 @@ def main(target_dir: Path | None = None) -> None:
 
     print("\n--- CloudWatch ログアラーム (Terraform T3) 分 ---")
     unmasked = mask_cloudwatch_log_alarm_screenshots()
+
+    print("\n--- SSD 自動拡張 (Terraform T4) 分 ---")
+    unmasked += mask_ssd_auto_increase_screenshots()
 
     # Phase 2: PNG metadata stripping (all files)
     print()
