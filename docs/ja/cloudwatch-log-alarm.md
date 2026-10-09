@@ -311,6 +311,8 @@ aws cloudwatch put-log-alarm \
 - 数学式（Metric Math）で複数メトリクスを組み合わせたい
 - 追加 IAM ロールを避けたい
 
+Terraform 版はフェーズ T3 の [`terraform/fsxn-log-alarm/`](../../terraform/fsxn-log-alarm/README.ja.md) にあります。固定した `hashicorp/aws` プロバイダーにネイティブの LogAlarm リソースがないため、メトリクスフィルター方式を使い、上の表の「メトリクスフィルター方式」の列（「Log Alarm (New)」の列ではなく）に対応します。データ駆動の `detections` マップがこのページの検知タイプを網羅し、EMS イベント `wafl.vol.autoSize.fail` のレシピを加えます。
+
 ---
 
 ## FSx for ONTAP 監査ログの検知パターン集

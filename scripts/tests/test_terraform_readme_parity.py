@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 KNOWN_READMES = (
     "terraform/fsxn-monitoring-dashboard/README.md",
     "terraform/fsxn-ontap-custom-metrics/README.md",
+    "terraform/fsxn-log-alarm/README.md",
 )
 
 FENCE = re.compile(r"^\s*(```|~~~)(.*)$")

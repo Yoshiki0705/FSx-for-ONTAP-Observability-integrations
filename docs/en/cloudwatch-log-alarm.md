@@ -307,6 +307,8 @@ aws cloudwatch put-log-alarm \
 - Need Metric Math to combine multiple metrics
 - Want to avoid additional IAM roles
 
+A Terraform equivalent exists as phase T3, [`terraform/fsxn-log-alarm/`](../../terraform/fsxn-log-alarm/README.md). It uses the metric-filter mechanism, because the pinned `hashicorp/aws` provider has no native LogAlarm resource, so it matches the "Metric Filter Approach" column of the table above rather than the "Log Alarm (New)" column. Its data-driven `detections` map covers the detection types on this page and adds a recipe for the EMS event `wafl.vol.autoSize.fail`.
+
 ---
 
 ## FSx for ONTAP Audit Log Detection Patterns
