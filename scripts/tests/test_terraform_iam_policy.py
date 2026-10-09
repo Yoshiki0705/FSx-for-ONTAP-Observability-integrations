@@ -78,6 +78,25 @@ MODULES: dict[str, dict[str, Any]] = {
         "wildcard_actions": {"LogsRead": {"logs:DescribeLogGroups"}},
         "control_action": "ec2:DescribeSubnets",
     },
+    "terraform/fsxn-log-alarm": {
+        "sections": {
+            "README.md": "### Required IAM permissions (estimated, unverified)",
+            "README.ja.md": "### 必要な IAM 権限（推定、未検証）",
+        },
+        "sids": ["Filters", "Alarms", "Topic"],
+        "prefix": "fsxn-log-alarm",
+        "wildcard_sids": set(),
+        "wildcard_actions": {},
+        # The metric-filter actions take the log-group resource type (the AWS
+        # service-authorization reference lists logs:PutMetricFilter,
+        # logs:DeleteMetricFilter and logs:DescribeMetricFilters all with the
+        # log-group resource type), but the log group is a caller-supplied input,
+        # not a name the module builds from name_prefix, so the statement is
+        # scoped to the account's log groups rather than to the prefix. Checked
+        # for the account, not the prefix suffix.
+        "log_group_scoped_sids": {"Filters"},
+        "control_action": "cloudwatch:DeleteAlarms",
+    },
 }
 
 # Actions the AWS service authorization reference lists with no resource type,
@@ -86,6 +105,13 @@ MODULES: dict[str, dict[str, Any]] = {
 # scoped to a resource ARN.
 # logs:DescribeLogGroups:
 #   https://docs.aws.amazon.com/service-authorization/latest/reference/list_logs.html
+#   The reference lists it as a List action with no resource type (confidence:
+#   documented, verified 2026-10-09 from the service-authorization reference,
+#   which was fetchable as text at the list_logs.html URL).
+# logs:DescribeMetricFilters is NOT here: the same reference lists it with the
+# log-group resource type (alongside logs:DescribeLogStreams and
+# logs:DescribeSubscriptionFilters), so the log-alarm module scopes it to the
+# log group rather than to Resource "*".
 NO_RESOURCE_TYPE_ACTIONS = {"logs:DescribeLogGroups"}
 
 ACTION = re.compile(r"`([a-z0-9]+:[A-Za-z]+)`")
@@ -178,6 +204,17 @@ def _statement_problems(spec: dict[str, Any], statement: dict[str, Any]) -> list
         if resource != "*":
             problems.append(f"{sid}: must use Resource '*'")
         return problems
+    if sid in spec.get("log_group_scoped_sids", set()):
+        # Scoped to the account's log groups, because the log group is a
+        # caller-supplied input rather than a name built from name_prefix.
+        if "123456789012" not in resource:
+            problems.append(f"{sid}: {resource} lacks the placeholder account")
+        if ":log-group:" not in resource:
+            problems.append(f"{sid}: {resource} is not a log-group ARN")
+        unscopable = sorted(actions & NO_RESOURCE_TYPE_ACTIONS)
+        if unscopable:
+            problems.append(f"{sid}: {unscopable} have no resource type and cannot be scoped to {resource}")
+        return problems
     unscopable = sorted(actions & NO_RESOURCE_TYPE_ACTIONS)
     if unscopable:
         problems.append(f"{sid}: {unscopable} have no resource type and cannot be scoped to {resource}")
@@ -233,6 +270,45 @@ def test_scoping_check_rejects_unscopable_and_widened_statements() -> None:
     # Positive control: the published shape passes.
     exact = {**narrowed, "Resource": "*"}
     assert _statement_problems(spec, exact) == []
+
+
+def test_log_group_scoped_branch_controls() -> None:
+    """Positive and negative controls for the log_group_scoped_sids branch.
+
+    The log-alarm module scopes its metric-filter actions to the account's log
+    groups rather than to a name_prefix, because the log group is a
+    caller-supplied input. This exercises that branch directly: the published
+    Filters shape passes, and a missing placeholder account, a non-log-group
+    ARN, and a no-resource-type action each fail.
+    """
+    spec = MODULES["terraform/fsxn-log-alarm"]
+    assert spec["log_group_scoped_sids"] == {"Filters"}
+    log_group_arn = "arn:aws:logs:ap-northeast-1:123456789012:log-group:*"
+    # Positive control: the published Filters statement passes.
+    published = {
+        "Sid": "Filters", "Effect": "Allow", "Resource": log_group_arn,
+        "Action": [
+            "logs:PutMetricFilter", "logs:DeleteMetricFilter",
+            "logs:DescribeMetricFilters",
+        ],
+    }
+    assert _statement_problems(spec, published) == []
+    # Negative control: a different account than the 123456789012 placeholder
+    # (000000000000 is the other allowlisted placeholder, so this is not a leak).
+    wrong_account = {
+        **published,
+        "Resource": "arn:aws:logs:ap-northeast-1:000000000000:log-group:*",
+    }
+    assert any("lacks the placeholder account" in p for p in _statement_problems(spec, wrong_account))
+    # Negative control: a non-log-group ARN (right account, wrong resource type).
+    wrong_resource = {
+        **published,
+        "Resource": "arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:fsxn-log-alarm-*",
+    }
+    assert any("is not a log-group ARN" in p for p in _statement_problems(spec, wrong_resource))
+    # Negative control: a no-resource-type action cannot sit in a scoped statement.
+    unscopable = {**published, "Action": ["logs:DescribeLogGroups"]}
+    assert any("no resource type" in p for p in _statement_problems(spec, unscopable))
 
 
 def test_dashboard_statement_services() -> None:

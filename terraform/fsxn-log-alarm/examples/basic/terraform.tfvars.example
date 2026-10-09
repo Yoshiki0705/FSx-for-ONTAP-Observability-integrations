@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (gitignored) and replace the placeholders.
+region         = "ap-northeast-1"
+log_group_name = "/syslog/fsxn-admin-audit"
+
+# Optional. Values shown are examples; omitted lines use the module defaults.
+# name_prefix        = "fsxn-log-alarm"
+# notification_email = "ops@example.com"
+# To match the CloudFormation template, pass an existing caller-owned topic ARN
+# instead of notification_email (the module then creates no topic):
+# alarm_sns_topic_arn = "arn:aws:sns:ap-northeast-1:123456789012:fsxn-security-alerts"
+# Encrypt the module-created topic (only used when the module creates one):
+# sns_kms_master_key_id = "alias/aws/sns"
+# tags               = { Environment = "dev" }

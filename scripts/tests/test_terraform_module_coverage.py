@@ -57,6 +57,7 @@ PRUNE = {
 KNOWN_MODULES = (
     "terraform/fsxn-monitoring-dashboard",
     "terraform/fsxn-ontap-custom-metrics",
+    "terraform/fsxn-log-alarm",
 )
 KNOWN_EXAMPLES = tuple(f"{m}/examples/basic" for m in KNOWN_MODULES)
 
