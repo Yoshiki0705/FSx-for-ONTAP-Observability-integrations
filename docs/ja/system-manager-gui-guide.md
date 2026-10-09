@@ -15,6 +15,16 @@
 >
 > Windows ファイルリソースマネージャーに慣れた運用担当者
 
+> **本ガイドの位置づけ**: 本ガイドは NetApp Console / System Manager の GUI 経路を扱います。
+> 本プロジェクトはこれを AWS ネイティブの既定に対する**代替**として位置づけています。既定の
+> GUI 経路は、セルフホストの [management-console/](../../management-console/)（Cognito/IAM）と、
+> 姉妹リポジトリで構築された Amplify Gen2 ファイルポータル
+> （[solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)）です。
+> NetApp Console / System Manager は、既に NetApp SaaS を利用しているチームに適した有効な
+> 選択肢として残ります。トレードオフは対称です — ネイティブ側は自分でデプロイ・運用する
+> アプリであり、NetApp Console は NSS アカウントを要するマネージド SaaS です。選び方は
+> [管理プレーンの Decision Tree](decision-tree-management-monitoring.md) を参照してください。
+
 ---
 
 ## 前提知識: System Manager vs NetApp BlueXP<!-- allow:naming --> vs NetApp Console<!-- allow:naming -->

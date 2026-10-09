@@ -28,6 +28,18 @@ SaaS プラットフォーム、ONTAP REST API のどれで受けるかは、軸
 >
 > ONTAP 9.17.1P6 / SINGLE_AZ_1 / NetApp Console + Link (Lambda)
 
+> **本プロジェクトの既定**: 管理プレーンの GUI については、AWS ネイティブ経路を既定とします —
+> セルフホストの [management-console/](../../management-console/README.md)（Cognito/IAM）と、
+> 姉妹リポジトリで構築された Amplify Gen2 ファイルポータル
+> （[solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)、
+> Console 相当の管理機能を対応付けた
+> [admin capability map](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/solutions/amplify-portal/docs/admin-capability-map.en.md) あり）。
+> このページが以降で詳説する NetApp Console / System Manager は、既に NetApp SaaS を利用して
+> いるチームに適した代替手段として有効です。トレードオフは対称です — ネイティブ側は自分で
+> デプロイ・運用するアプリ（姉妹ポータルは自前で組み立てる Amplify Gen2 アプリ）であり、
+> NetApp Console は NSS アカウントと Link/Console Agent を要するマネージド SaaS です。
+> 下のフローチャートは GUI か CLI かで分岐します。GUI 分岐を選んだ場合にこの既定を適用します。
+
 ---
 
 ## 検証で確認された事実
@@ -511,8 +523,14 @@ groups:
 - [イベントソースガイド](event-sources.md)
 - [パイプライン SLO 定義](pipeline-slo.md)
 - [ベンダー比較](vendor-comparison.md)
-- [NetApp Console 統合](../../integrations/netapp-console/)
-- [セルフホスト管理コンソール](../../management-console/README.md)
+- [セルフホスト管理コンソール](../../management-console/README.md) — AWS ネイティブ GUI（既定の GUI 経路）
+- [integrations/amplify-portal/](../../integrations/amplify-portal/) — 監査相関モジュール（まだ E2E 検証は済んでいません）
+- [NetApp Console 統合](../../integrations/netapp-console/) — 既に NetApp SaaS を利用しているチーム向けの代替
+
+### 姉妹リポジトリ（Amplify Gen2 ファイルポータル）
+- [solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) — React + Amplify Gen2 ファイルポータル（Cognito 認証、S3 Access Points を介した参照・処理・閲覧）
+- [Admin capability map](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/solutions/amplify-portal/docs/admin-capability-map.en.md) — Console 相当の管理機能をポータルに対応付け
+- [UI 選択ガイド](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/docs/file-portal-amplify-gen2.en.md)
 
 ### 関連リポジトリ
 

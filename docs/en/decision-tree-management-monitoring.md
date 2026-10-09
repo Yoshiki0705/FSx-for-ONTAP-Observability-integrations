@@ -28,6 +28,19 @@ All content is based on **hands-on verification on May 28, 2026**, with source l
 
 > **Test environment**: ONTAP 9.17.1P6 / SINGLE_AZ_1 / NetApp Console + Link (Lambda)
 
+> **Default this project uses**: for a management-plane GUI, the AWS-native path is the
+> default — the self-hosted [management-console/](../../management-console/README.md)
+> (Cognito/IAM) and the Amplify Gen2 file portal built in the sibling repo
+> ([solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal),
+> with an [admin capability map](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/solutions/amplify-portal/docs/admin-capability-map.en.md)
+> of Console-equivalent management features). NetApp Console / System Manager — the path
+> this page documents in detail below — remains a valid alternative, suited to teams
+> already using a NetApp SaaS relationship. The trade-offs are symmetric: the native
+> options are apps you deploy and operate yourself (the sibling portal is a self-assembled
+> Amplify Gen2 app), while NetApp Console is managed SaaS that needs an NSS account and the
+> Link/Console Agent. The flowchart below branches on GUI-vs-CLI; apply this default when
+> the GUI branch is taken.
+
 ---
 
 ## Verified Facts
@@ -509,8 +522,14 @@ groups:
 - [Event Sources Guide](event-sources.md)
 - [Pipeline SLO Definitions](pipeline-slo.md)
 - [Vendor Comparison](vendor-comparison.md)
-- [NetApp Console Integration](../../integrations/netapp-console/)
-- [Self-hosted Management Console](../../management-console/README.md)
+- [Self-hosted Management Console](../../management-console/README.md) — AWS-native GUI (default GUI path)
+- [integrations/amplify-portal/](../../integrations/amplify-portal/) — audit-correlation module (not yet verified end to end)
+- [NetApp Console Integration](../../integrations/netapp-console/) — alternative for teams already using NetApp SaaS
+
+### Sibling Repository (Amplify Gen2 file portal)
+- [solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) — React + Amplify Gen2 file portal (Cognito auth, S3-Access-Point-backed browse/process/view)
+- [Admin capability map](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/solutions/amplify-portal/docs/admin-capability-map.en.md) — Console-equivalent management features mapped to the portal
+- [UI selection guide](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/docs/file-portal-amplify-gen2.en.md)
 
 ### Related Repositories
 

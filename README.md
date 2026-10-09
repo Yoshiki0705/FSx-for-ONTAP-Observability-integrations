@@ -43,7 +43,9 @@ Both routes build CloudWatch dashboards and alarms. Choose by how you manage inf
 | I want to... | Guide | Time |
 |---|---|---|
 | Respond to ransomware at the storage layer | [Automated Incident Response](docs/en/automated-response-guide.md) | 20 min |
-| Manage FSx for ONTAP via browser GUI | [Management Console setup guide](management-console/docs/en/setup-guide.md) · [Management-plane decision tree](docs/en/decision-tree-management-monitoring.md) | 30 min |
+| Manage FSx for ONTAP via browser GUI (AWS-native default) | [Self-hosted Management Console setup guide](management-console/docs/en/setup-guide.md) · [Amplify Gen2 file portal (sibling repo)](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) · [Management-plane decision tree](docs/en/decision-tree-management-monitoring.md) | 30 min |
+
+> **GUI path, default first**: this project's default GUI options are AWS-native — the self-hosted [Management Console](management-console/) (Cognito/IAM) and the [Amplify Gen2 file portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) built in the sibling repo. NetApp Console remains a valid alternative for teams already using a NetApp SaaS relationship. Each has trade-offs: the native options are apps you deploy and operate yourself, while NetApp Console is a managed SaaS. See the [management-plane decision tree](docs/en/decision-tree-management-monitoring.md) for how to choose.
 
 ### Partner PoC
 
@@ -112,10 +114,12 @@ made.
 | [Sumo Logic](integrations/sumo-logic/) | ✅ E2E verified | HTTP Source |
 | [Honeycomb](integrations/honeycomb/) | ✅ E2E verified | Events Batch API |
 | [CrowdStrike Falcon LogScale](integrations/crowdstrike/) | ✅ HEC verified | Splunk HEC compatible |
-| [NetApp Console<!-- allow:naming -->](integrations/netapp-console/) | ✅ Verified | GUI management (SaaS) |
-| [Self-hosted Management Console](management-console/) | ✅ Validated | AWS-native GUI (Cognito/IAM) |
+| [Self-hosted Management Console](management-console/) | ✅ Validated | AWS-native GUI (Cognito/IAM) — **default GUI path** |
+| [NetApp Console<!-- allow:naming -->](integrations/netapp-console/) | ✅ Verified | GUI management (SaaS) — alternative for existing NetApp SaaS teams |
 | [Automated Incident Response](docs/en/automated-response-guide.md) | ✅ E2E verified | Storage-layer block/snapshot |
 | [Mackerel](integrations/mackerel/) | ✅ E2E verified (open beta) | OTLP/HTTP logs |
+
+> The AWS-native **GUI/file-management** default is the self-hosted [Management Console](management-console/) plus the [Amplify Gen2 file portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) implemented in the sibling repo (React + Amplify Gen2, Cognito auth, S3-Access-Point-backed browse/process/view). This repo's own [integrations/amplify-portal/](integrations/amplify-portal/) audit-correlation module references that app but is **not yet verified end to end**.
 
 ### Telemetry path coverage
 
@@ -208,7 +212,7 @@ documents, see the docs README in either language:
 
 | Repository | Description |
 |-----------|-------------|
-| [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | 17 industry use cases with FPolicy pipeline |
+| [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | 17 industry use cases with FPolicy pipeline — includes the [Amplify Gen2 file portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal) (AWS-native GUI for NAS data) |
 | [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) | Data Lake / Lakehouse integrations via S3 AP |
 | [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Access-aware Agentic RAG with Bedrock |
 | [FSx-for-ONTAP-Adoption-Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | **Which collection route to choose**, before building one |
