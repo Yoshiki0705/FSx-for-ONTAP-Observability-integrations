@@ -9,18 +9,45 @@
 
 ## はじめ方
 
+やりたいことに近いカテゴリの表から、最初に開くページを選んでください。方式がまだ決まっていなければ、最初の表から始めます。
+
+### 方式の決定
+
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
-| **そもそも FSx for ONTAP をどう監視するか決める** — 方式が未決の場合 | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 分 |
+| **そもそも FSx for ONTAP をどう監視するか決める** — 方式が未決の場合 | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/observability/README.md) | 10 分 |
+
+### CloudWatch による監視の構築
+
+どちらの経路も CloudWatch のダッシュボードとアラームを作ります。選ぶ基準はインフラの管理方法で、既に Terraform で state を持っているなら Terraform、スタックや StackSets でデプロイしているなら CloudFormation です。CloudFormation テンプレートがあるのはダッシュボードと容量アラーム（T1）、Qtree クォータ（T2 の一部）、ログアラーム（T3）で、SnapMirror のコレクターと SSD 自動拡張のサンプル（T4）は Terraform にしかありません。どちらを選んでも、監査ログを CloudWatch Logs へ届ける syslog の配信経路は CloudFormation テンプレートです。
+
+| やりたいこと | ガイド | 所要時間 |
+|---|---|---|
 | CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [Terraform による監視の展開ガイド](terraform-monitoring-guide.md)（モジュールの順序・前提条件・検証状況） · [ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) · [Qtree と SnapMirror のカスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#使い方)（2026-10-08 に実環境で確認、1 つの SVM の中の SnapMirror） · [ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md#使い方)（監査の検出を 2026-10-09 に実環境で確認） · [SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md#使い方)（元に戻せる経路を 2026-10-09 に実環境で確認、実際の拡張は `未確認`） · [監視設計](monitoring-design.md#t1-モジュールの使い方と範囲) | — |
+| CloudWatch による FSx for ONTAP の監視を CloudFormation で設定 | [監視設計の「CloudWatch による監視」](monitoring-design.md#cloudwatch-による監視)（テンプレートごとに作るもの・パラメータ・検証状況） · [ダッシュボードと容量・スループットのアラーム](../../shared/templates/fsxn-monitoring-dashboard.yaml)（2026-10-05 に実環境で確認） · [Qtree クォータのポーラー](../../shared/templates/qtree-quota-monitor.yaml)（2026-10-06 に実環境で確認） · [監査ログの配信経路のセットアップガイド](syslog-vpce-setup-guide.md)（[`syslog-vpce-cloudwatch.yaml`](../../shared/templates/syslog-vpce-cloudwatch.yaml)） · [ログアラーム](cloudwatch-log-alarm.md)（[`cloudwatch-log-alarm.yaml`](../../shared/templates/cloudwatch-log-alarm.yaml)。スタックの配備と OK への遷移を 2026-07-02 に確認。失敗アクセス・大量削除・特定ユーザーのクエリは LogAlarm のクエリとして `未確認`） | — |
+
+### ベンダーへのログ配信
+
+| やりたいこと | ガイド | 所要時間 |
+|---|---|---|
 | パイプラインを E2E で検証（初回） | [最小テストパス](quick-start-minimum.md) | 15 分 |
 | ベンダー統合を本番デプロイ | [デプロイガイド](deployment-guide.md) | 30 分 |
-| ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
-| 複数バックエンドにリダクション付きルーティング | [OTel Collector](../../integrations/otel-collector/) | 45 分 |
-| ブラウザ GUI で FSx for ONTAP を管理 | [Management Console](../../management-console/) · [管理プレーンの Decision Tree](decision-tree-management-monitoring.md) | 30 分 |
-| パートナー PoC を成功基準付きで実施 | [PoC 成功基準](poc-success-criteria.md) · [Solution Brief](partner-solution-brief.md) | — |
+| 複数バックエンドにリダクション付きルーティング | [OTel Collector のセットアップガイド](../../integrations/otel-collector/docs/ja/setup-guide.md) · [ルーティングとフィルタリングの例](../../integrations/otel-collector/docs/ja/routing-filtering-examples.md) | 45 分 |
 
 > **ワンコマンドセットアップ**: `bash integrations/<vendor>/scripts/setup-full-observability.sh`
+
+### セキュリティ対応と管理
+
+| やりたいこと | ガイド | 所要時間 |
+|---|---|---|
+| ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
+| ブラウザ GUI で FSx for ONTAP を管理 | [Management Console のセットアップガイド](../../management-console/docs/ja/setup-guide.md) · [管理プレーンの Decision Tree](decision-tree-management-monitoring.md) | 30 分 |
+
+### パートナー PoC
+
+| やりたいこと | ガイド | 所要時間 |
+|---|---|---|
+| パートナー PoC を成功基準付きで実施 | [PoC 成功基準](poc-success-criteria.md) · [Solution Brief](partner-solution-brief.md) | — |
 
 ## 本リポジトリが答えるものと答えないもの
 
@@ -34,7 +61,7 @@
 | 監査ログ / EMS イベント / FPolicy ファイル操作を自分のプラットフォームへ届ける方法 | **ここ。**[デプロイガイド](deployment-guide.md) |
 | CloudWatch の監視設計を Terraform で展開する手順と順序 | **ここ**。[Terraform による監視の展開ガイド](terraform-monitoring-guide.md) |
 | 最初に壊れるものと、実際にかかった費用 | **ここ**。環境と日付つきの実測 — [S3 AP スループット](s3ap-throughput-benchmark.md)、[コストモデル](cost-model.md) |
-| どの収集経路が自分の制約に合うか（CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST） | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) |
+| どの収集経路が自分の制約に合うか（CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST） | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/observability/README.md) |
 | 監査ベースの可観測性の限界（採用を決める前に知るべきもの） | Playbook。**監査ログの保存先が枯渇するとクライアントアクセスが停止する**（監視の劣化ではない）ことを含む |
 | 容量・性能・セキュリティガバナンス・ブロックストレージの設計判断 | Playbook のドメイン別。本リポジトリは可観測性のみ |
 | そもそも FSx for ONTAP が適切なストレージサービスか | Playbook。本リポジトリが答えられる立場にある問いではありません |
@@ -71,20 +98,20 @@
 
 | ベンダー | ステータス | 配信方式 |
 |--------|--------|------|
-| [Datadog](../../integrations/datadog/) | ✅ E2E 検証済み | Logs API v2 via Lambda |
-| [New Relic](../../integrations/new-relic/) | ✅ E2E 検証済み | Log API v1 via Lambda |
-| [Splunk (Serverless)](../../integrations/splunk-serverless/) | ✅ E2E 検証済み | HEC via Lambda |
-| [OTel Collector](../../integrations/otel-collector/) | ✅ E2E 検証済み | ベンダーニュートラル OTLP/HTTP（マルチバックエンド） |
-| [Grafana Cloud](../../integrations/grafana/) | ✅ E2E 検証済み | OTLP Gateway（Loki フォールバック） |
-| [Elastic](../../integrations/elastic/) | ✅ E2E 検証済み | Bulk API |
-| [Dynatrace](../../integrations/dynatrace/) | ✅ E2E 検証済み | Log Ingest API v2 |
-| [Sumo Logic](../../integrations/sumo-logic/) | ✅ E2E 検証済み | HTTP Source |
-| [Honeycomb](../../integrations/honeycomb/) | ✅ E2E 検証済み | Events Batch API |
-| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/) | ✅ HEC 検証済み | Splunk HEC 互換 |
-| [NetApp Console<!-- allow:naming -->](../../integrations/netapp-console/) | ✅ 検証済み | GUI 管理（SaaS） |
-| [セルフホスト Management Console](../../management-console/) | ✅ 検証済み | AWS ネイティブ GUI（Cognito/IAM） |
+| [Datadog](../../integrations/datadog/docs/ja/setup-guide.md) | ✅ E2E 検証済み | Logs API v2 via Lambda |
+| [New Relic](../../integrations/new-relic/docs/ja/setup-guide.md) | ✅ E2E 検証済み | Log API v1 via Lambda |
+| [Splunk (Serverless)](../../integrations/splunk-serverless/docs/ja/setup-guide.md) | ✅ E2E 検証済み | HEC via Lambda |
+| [OTel Collector](../../integrations/otel-collector/docs/ja/setup-guide.md) | ✅ E2E 検証済み | ベンダーニュートラル OTLP/HTTP（マルチバックエンド） |
+| [Grafana Cloud](../../integrations/grafana/docs/ja/setup-guide.md) | ✅ E2E 検証済み | OTLP Gateway（Loki フォールバック） |
+| [Elastic](../../integrations/elastic/docs/ja/setup-guide.md) | ✅ E2E 検証済み | Bulk API |
+| [Dynatrace](../../integrations/dynatrace/docs/ja/setup-guide.md) | ✅ E2E 検証済み | Log Ingest API v2 |
+| [Sumo Logic](../../integrations/sumo-logic/docs/ja/setup-guide.md) | ✅ E2E 検証済み | HTTP Source |
+| [Honeycomb](../../integrations/honeycomb/docs/ja/setup-guide.md) | ✅ E2E 検証済み | Events Batch API |
+| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/docs/ja/setup-guide.md) | ✅ HEC 検証済み | Splunk HEC 互換 |
+| [NetApp Console<!-- allow:naming -->](../../integrations/netapp-console/)（英語） | ✅ 検証済み | GUI 管理（SaaS） |
+| [セルフホスト Management Console](../../management-console/docs/ja/setup-guide.md) | ✅ 検証済み | AWS ネイティブ GUI（Cognito/IAM） |
 | [自動インシデント対応](automated-response-guide.md) | ✅ E2E 検証済み | ストレージ層 block/snapshot |
-| [Mackerel](../../integrations/mackerel/) | ✅ E2E 検証済み（オープンβ） | OTLP/HTTP ログ |
+| [Mackerel](../../integrations/mackerel/docs/ja/setup-guide.md) | ✅ E2E 検証済み（オープンβ） | OTLP/HTTP ログ |
 
 ### テレメトリ経路のカバレッジ
 
@@ -95,16 +122,16 @@ FSx for ONTAP は 3 種類のテレメトリを出力し、それぞれ専用の
 
 | ベンダー | 監査ログ | EMS イベント | FPolicy ファイル操作 |
 |----------|:--------:|:------------:|:--------------------:|
-| [Datadog](../../integrations/datadog/) | ✅ | ✅ | ✅ |
-| [OTel Collector](../../integrations/otel-collector/) | ✅ | ✅ | ✅ |
-| [Grafana Cloud](../../integrations/grafana/) | ✅ | ✅ | ✅ |
-| [Splunk (Serverless)](../../integrations/splunk-serverless/) | ✅ | 🔧 | 🔧 |
-| [New Relic](../../integrations/new-relic/) | ✅ | 🔧 | 🔧 |
-| [Elastic](../../integrations/elastic/) | ✅ | 🔧 | 🔧 |
-| [Dynatrace](../../integrations/dynatrace/) | ✅ | 🔧 | 🔧 |
-| [Sumo Logic](../../integrations/sumo-logic/) | ✅ | 🔧 | 🔧 |
-| [Honeycomb](../../integrations/honeycomb/) | ✅ | 🔧 | 🔧 |
-| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/) | ✅ | — | — |
+| [Datadog](../../integrations/datadog/docs/ja/setup-guide.md) | ✅ | ✅ | ✅ |
+| [OTel Collector](../../integrations/otel-collector/docs/ja/setup-guide.md) | ✅ | ✅ | ✅ |
+| [Grafana Cloud](../../integrations/grafana/docs/ja/setup-guide.md) | ✅ | ✅ | ✅ |
+| [Splunk (Serverless)](../../integrations/splunk-serverless/docs/ja/setup-guide.md) | ✅ | 🔧 | 🔧 |
+| [New Relic](../../integrations/new-relic/docs/ja/setup-guide.md) | ✅ | 🔧 | 🔧 |
+| [Elastic](../../integrations/elastic/docs/ja/setup-guide.md) | ✅ | 🔧 | 🔧 |
+| [Dynatrace](../../integrations/dynatrace/docs/ja/setup-guide.md) | ✅ | 🔧 | 🔧 |
+| [Sumo Logic](../../integrations/sumo-logic/docs/ja/setup-guide.md) | ✅ | 🔧 | 🔧 |
+| [Honeycomb](../../integrations/honeycomb/docs/ja/setup-guide.md) | ✅ | 🔧 | 🔧 |
+| [CrowdStrike Falcon LogScale](../../integrations/crowdstrike/docs/ja/setup-guide.md) | ✅ | — | — |
 
 | 記号 | 意味 |
 |:----:|------|
@@ -127,7 +154,7 @@ EMS / FPolicy / Firehose 経路を分けて記載しています。
 
 CrowdStrike は `template-ems.yaml` / `template-fpolicy.yaml` 自体を持たないため、
 スキップ対象もありません。現時点で EMS / FPolicy イベントを送る場合は、
-[OTel Collector](../../integrations/otel-collector/) 統合を取り込み口として使い、
+[OTel Collector](../../integrations/otel-collector/docs/ja/setup-guide.md) 統合を取り込み口として使い、
 LogScale を OTLP エクスポータのバックエンドとして設定してください。
 
 EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共有しています。`shared/python/ems_event.py`
@@ -162,7 +189,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 | アーキテクチャ | [アーキテクチャ](architecture.md) · [イベントソース](event-sources.md) · [S3 AP 仕様](s3ap-fsxn-specification.md) |
 | 運用 | [パイプライン SLO](pipeline-slo.md) · [運用ガイド](operational-guide.md) · [Runbook](runbooks/) |
 | セキュリティ | [サイバーレジリエンスマップ](cyber-resilience-capability-map.md) · [自動インシデント対応](automated-response-guide.md) · [データ分類](data-classification.md) |
-| エンタープライズ | [マルチアカウント](multi-account-deployment.md) · [クロスリージョン DR](cross-region-replication.md) · [PII リダクション](../../integrations/otel-collector/docs/en/pii-redaction-cookbook.md) |
+| エンタープライズ | [マルチアカウント](multi-account-deployment.md) · [クロスリージョン DR](cross-region-replication.md) · [PII リダクション](../../integrations/otel-collector/docs/ja/pii-redaction-cookbook.md) |
 | 監視 | [CloudWatch Log Alarm](cloudwatch-log-alarm.md) · [EMS 検知機能](ems-detection-capabilities.md) · [検知ユースケース](detection-use-cases.md) |
 
 <!-- docs-index:start -->
@@ -336,11 +363,10 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 | [FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns) | FPolicy パイプライン含む 17 業界ユースケース |
 | [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) | S3 AP 経由の Data Lake / Lakehouse 統合 |
 | [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Bedrock によるアクセス制御対応 Agentic RAG |
-| [FSx-for-ONTAP-Adoption-Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | **どの収集経路を選ぶか**。作り始める前に読むもの |
+| [FSx-for-ONTAP-Adoption-Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/observability/README.md) | **どの収集経路を選ぶか**。作り始める前に読むもの |
 
-最後のリンクはモジュールのハブで、個別ノートではありません（ノートは改名されます）。日本語版は
-ハブ冒頭の言語スイッチャから 1 クリックで開けます。言語別の URL を並べず単一の URL を指している
-のは、リンク先が再構成されたときに直す箇所を 1 か所に保つためです。経路を
+最後のリンクはモジュールのハブで、個別ノートではありません（ノートは改名されます）。リンク先は
+ハブの日本語ページで、[英語版](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md)もあります。経路を
 決めていない段階なら先に読んでください。本リポジトリが実装するのは 4 経路のうちの 1 つ
 （すでに運用している可観測性プラットフォームへログを送る形）であり、それが全ての状況で最適だと
 主張するものではありません。ハブには、転送経路を動かし始めてから現れる制約も記録されています。
@@ -364,9 +390,9 @@ cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
 - **技術スタック**: CloudFormation (YAML) · Terraform（[Terraform による監視の展開ガイド](terraform-monitoring-guide.md)、[ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md)、[カスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md)、[ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md)、[SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md)） · Python 3.12 Lambda · TypeScript · GitHub Actions CI
-- **コントリビュート**: [CONTRIBUTING.md](../../CONTRIBUTING.md) 参照
-- **変更履歴**: [CHANGELOG.md](../../CHANGELOG.md) 参照
-- **ロードマップ**: [ROADMAP.md](../../ROADMAP.md) 参照
+- **コントリビュート**: [CONTRIBUTING.md](../../CONTRIBUTING.md)（英語）参照
+- **変更履歴**: [CHANGELOG.md](../../CHANGELOG.md)（英語）参照
+- **ロードマップ**: [ROADMAP.md](../../ROADMAP.md)（英語）参照
 
 </details>
 
