@@ -844,6 +844,9 @@ A: SMB name-mapping ブロックは新しい接続に対して即時有効です
 **Q: 正当なユーザーをブロックしてしまうリスクはありますか？**
 A: はい — これは全ての自動応答システムに共通です。対策: (1) 検知閾値を保守的に設定、(2) 通知トピックでオペレーターに即時通知、(3) 自動解除付きの時間制限ブロックの実装、(4) 迅速な手動解除の手順書を整備。
 
+**Q: 本モジュールは AWS Backup の論理エアギャップボールトへのコピージョブに干渉しますか？**
+A: 現状のコードでは干渉しません。本モジュールのテンプレートと Lambda は ONTAP の name-mapping、export policy、NACL、セッションのみを操作し、AWS RAM の共有、AWS Backup のボールト、KMS のグラントには触れないため、ボールトへのコピーに反応しません。論理エアギャップボールトへのコピー中、CloudTrail には `userIdentity.invokedBy` が `backup.amazonaws.com` のイベントが記録されます。本モジュールを将来拡張してアカウント外への共有を取り消す、または RAM の共有を変更する場合は、`userIdentity.invokedBy = backup.amazonaws.com` を除外し、自動修復がボールトのコピージョブを失敗させないようにしてください。Cyber Resilience Patterns リポジトリの[自動修復との干渉](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/data-protection/aws-backup-logically-air-gapped-vault.md#%E8%87%AA%E5%8B%95%E4%BF%AE%E5%BE%A9%E3%81%A8%E3%81%AE%E5%B9%B2%E6%B8%89--interaction-with-automated-remediation)を参照してください。
+
 ---
 
 ## 関連情報
