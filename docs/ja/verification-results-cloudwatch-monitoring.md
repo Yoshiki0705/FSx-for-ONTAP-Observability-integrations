@@ -1109,7 +1109,7 @@ privileged-operations のグラフの 04:47 の 1 は、届いた `t3_qt7` の P
 | F8 | 監査ログの転送先が運ぶのはコマンド履歴（`kern_audit`）だけである。`wafl.vol.autoSize.fail` のような EMS イベントは、別の EMS 通知の転送先を通してだけ syslog に届く。セットアップガイドもモジュールの README もそれを設定していない | ドキュメントの範囲の空白 | `autosize-fail` のレシピが一致するのは、EMS を同じロググループに送った場合だけ。EMS の転送先は作成していない（承認された計画に無い）ため、未検証 |
 | F9 | ノードの接続が約 4–5 分無通信だった後、そのノードでの最初の操作が失われ、ONTAP は次の操作のために再接続した。3 回観測。損失を記録した EMS イベントも `AWS/Logs` の破棄のメトリクスも無かった | 配送経路で、3 回観測。仕組みはメトリクスの時刻からの推定 | 静かなノードでの特権の操作 1 回は検知されないことがある。セットアップガイドにこの挙動を記載した。対策は試していない |
 
-リソースの作成とアラームの配線には欠陥は見つかりませんでした。フィルター、アラーム、メトリクスの名前と名前空間は、書いたとおりに動きました。同梱の既定のパターンのうち 2 つは欠陥で（F3、F4）、`bulk-delete` は操作 1 回につき約 2 行を数えていました（F5）。この 3 つの既定値は、実行の後に `terraform/fsxn-log-alarm/variables.tf` で置き換え、それを確かめるオフラインのテストを加えました。CloudFormation テンプレート `shared/templates/cloudwatch-log-alarm.yaml` は、同じ `failed-access-attempts` のクエリ（`/Failure/`、`/denied/`、`/DENIED/`）と同じ `bulk-delete-operations` の語を持ち、`specific-user-activity` の例のユーザーは `admin` です。ここでは変更しておらず、後続課題です。
+リソースの作成とアラームの配線には欠陥は見つかりませんでした。フィルター、アラーム、メトリクスの名前と名前空間は、書いたとおりに動きました。同梱の既定のパターンのうち 2 つは欠陥で（F3、F4）、`bulk-delete` は操作 1 回につき約 2 行を数えていました（F5）。この 3 つの既定値は、実行の後に `terraform/fsxn-log-alarm/variables.tf` で置き換え、それを確かめるオフラインのテストを加えました。CloudFormation テンプレート `shared/templates/cloudwatch-log-alarm.yaml` は、同じ `failed-access-attempts` のクエリ（`/Failure/`、`/denied/`、`/DENIED/`）と同じ `bulk-delete-operations` の語を持ち、`specific-user-activity` の例のユーザーは `admin` です。この実行では変更していません。その後に変更済み: 3 つのクエリを上のパターンから Logs Insights のフィルタに書き換えました。LogAlarm のクエリとしては実行しておらず、`unverified` です。[組み込みの検知クエリ](cloudwatch-log-alarm.md#組み込みの検知クエリ)を参照してください。
 
 ### 後片付け（T3 の実行）
 
@@ -1161,7 +1161,7 @@ privileged-operations のグラフの 04:47 の 1 は、届いた `t3_qt7` の P
 | 結果が分かれたもの | 18 件中 1 件（M7） |
 | 未実施 | 18 件中 1 件（A7）。F8 による |
 | 残った項目付きで完了 | 18 件中 1 件（M9）。予定されたシークレットの削除と recovery queue のエントリ 1 つ |
-| モジュールの欠陥 | リソースの作成とアラームの配線: 見つかっていない。既定のパターン: 欠陥 2 つ（F3、F4）を実行の後に修正。`bulk-delete` は操作 1 回につき 1 行を数えるように変更（F5）。CloudFormation テンプレートの同等のクエリは変更していない（後続課題） |
+| モジュールの欠陥 | リソースの作成とアラームの配線: 見つかっていない。既定のパターン: 欠陥 2 つ（F3、F4）を実行の後に修正。`bulk-delete` は操作 1 回につき 1 行を数えるように変更（F5）。CloudFormation テンプレートの同等のクエリはこの実行では変更していない。その後に書き換え、`unverified` |
 
 ---
 

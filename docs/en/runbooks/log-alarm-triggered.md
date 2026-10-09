@@ -70,18 +70,20 @@ Unable to determine → Contact user's department
 
 ### 2.2 failed-access-attempts
 
+The query counts requests that ONTAP rejected with `Error: not authorized` (the user lacks the role for the command). It does not count failed logins: a wrong-password REST request (HTTP 401) wrote no audit line in the 2026-10-09 run ([record](../verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09)).
+
 **Verify**:
-- Failing username(s)
+- Rejected username(s) and their role (the `<user>:<role>` token of the line)
 - Client IP pattern (single concentrated IP vs distributed)
-- Failure reason (wrong password / account locked / insufficient permissions)
-- Recent password or account changes
+- Rejected commands (one task the role does not cover, or many different commands)
+- Recent role or account changes
 
 **Decision flow**:
 
 ```
-Single user typo → Contact user, assist with password reset
-Single IP mass failures → Suspected brute force → Escalate (Step 3)
-Distributed IPs → Suspected credential stuffing → Escalate (Step 3)
+Routine task by a user whose role lacks it → Correct the role or the automation
+Single IP, many different rejected commands → Suspected privilege probing → Escalate (Step 3)
+Several accounts or distributed IPs → Suspected stolen credentials → Escalate (Step 3)
 ```
 
 ### 2.3 bulk-delete-operations

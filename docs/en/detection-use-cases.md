@@ -81,9 +81,11 @@ CloudWatch Log Alarm enables creating alarms directly from CloudWatch Logs witho
 | Pattern | Query | Threshold | Use Case |
 |---------|-------|-----------|----------|
 | Sensitive path access | `filter @message like /\/vol\/data\/confidential/` | > 0 | Compliance |
-| Auth failure spike | `filter @message like /Failure/` | > 10 | Unauthorized access |
-| Bulk deletion | `filter @message like /DELETE/` | > 50 | Ransomware indicator |
-| Privileged user ops | `filter @message like /fsxadmin/` | > 0 | Internal controls |
+| Authorization-denial spike | `filter @message like /Error: not authorized/` | > 10 | Commands run without the required role |
+| Bulk deletion | `filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or ...` (6 terms) | > 50 | Ransomware indicator |
+| Privileged user ops | `filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/` | > 0 | Internal controls |
+
+The last three rows are the filters of the template's `failed-access-attempts`, `bulk-delete-operations` and `specific-user-activity` queries, translated from the patterns checked in the 2026-10-09 run and not run as LogAlarm queries (`unverified`). The full bulk-deletion filter and the status of each are in [Built-in Detection Queries](./cloudwatch-log-alarm.md#built-in-detection-queries).
 
 ### Deploy
 

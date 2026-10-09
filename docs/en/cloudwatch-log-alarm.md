@@ -61,7 +61,7 @@ system node systemshell -node * -command "top -d 1 -s 1" :: Success: 2 entries w
 
 > **Result field note**
 >
-> Observed on 2026-10-09 with ONTAP 9.18.1P6, during the run of the Terraform equivalent ([record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09)). A REST change operation writes two lines: one ending `:: Pending`, and one ending `:: Success:` or, when ONTAP rejects the request, `:: Error: not authorized for that command`. None of the 5,156 lines captured contained `Failure`, `denied` or `DENIED`, including the 5 rejections, and all but 6 contained `admin` (the role of the `fsx-control-plane` user, or inside `fsxadmin`). This template was not deployed in that run. Inferred, not tested: its `failed-access-attempts` query (`/Failure/`, `/denied/`, `/DENIED/`) and a `specific-user-activity` query on `admin` read the same lines, so they would behave the same way. The Terraform module's defaults were changed after that run to `"Error: not authorized"` and `"fsxadmin:fsxadmin" -"Pending"`; this template was not changed (follow-up).
+> Observed on 2026-10-09 with ONTAP 9.18.1P6, during the run of the Terraform equivalent ([record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09)). A REST change operation writes two lines: one ending `:: Pending`, and one ending `:: Success:` or, when ONTAP rejects the request, `:: Error: not authorized for that command`. None of the 5,156 lines captured contained `Failure`, `denied` or `DENIED`, including the 5 rejections, and all but 6 contained `admin` (the role of the `fsx-control-plane` user, or inside `fsxadmin`). This template was not deployed in that run. Its earlier `failed-access-attempts` terms (`/Failure/`, `/denied/`, `/DENIED/`) and a `specific-user-activity` query on `admin` read the same kind of lines. After the run, the template's three built-in queries were translated from the patterns checked there; see [Built-in Detection Queries](#built-in-detection-queries).
 
 > **File access audit logs** (NFS/SMB file operation records): To use Log Alarm with these, you need a custom pipeline that parses EVTX/XML via Lambda and forwards to CloudWatch Logs.
 
@@ -128,7 +128,24 @@ Examples:
 | Bulk file deletion | `filter @message like /DELETE/` | `count(*)` | `> 50` |
 | Specific user activity | `filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/` | `count(*)` | `> 0` |
 
-The authorization-failure and user-activity filters use substrings seen in real ONTAP 9.18.1P6 audit lines (see the result field note above); they replaced `/Failure/` and `/admin/` in this table, and were not run as Logs Insights queries. `/Error: not authorized/` matches requests that ONTAP rejected as not authorized for the command (HTTP 403 in that run), not failed logins: one wrong-password REST request (HTTP 401) wrote no audit line within the 40 seconds observed. `/DELETE/` counts both lines of each delete, so `> 50` corresponds to about 25 REST deletes. The template's own queries still use the earlier terms.
+The authorization-failure and user-activity filters use substrings seen in real ONTAP 9.18.1P6 audit lines (see the result field note above); they replaced `/Failure/` and `/admin/` in this table, and were not run as Logs Insights queries. `/Error: not authorized/` matches requests that ONTAP rejected as not authorized for the command (HTTP 403 in that run), not failed logins: one wrong-password REST request (HTTP 401) wrote no audit line within the 40 seconds observed. `/DELETE/` counts both lines of each delete, so `> 50` corresponds to about 25 REST deletes; the template's `bulk-delete-operations` query counts the result line only.
+
+### Built-in Detection Queries
+
+The filter lines of the template's built-in queries, after the change that followed the 2026-10-09 run. Each query starts with `fields @timestamp, @message` and aggregates with `count(*)`. "Source pattern" is the Terraform metric-filter pattern of the [T3 run](verification-results-cloudwatch-monitoring.md#filter-pattern-matches-on-real-lines-t3-run) that the filter was translated from, and the count is how many of the 5,156 captured lines that pattern matched with `aws logs test-metric-filter`.
+
+| `DetectionType` | Filter line | Source pattern (matches in 5,156 lines) | Status |
+|-----------------|-------------|------------------------------------------|--------|
+| `sensitive-file-access` | `filter @message like /${TargetPattern}/` | Not changed | Stack deployed and reached OK (E2E 2026-07-02); `DetectionType` not recorded |
+| `failed-access-attempts` | `filter @message like /Error: not authorized/` | `"Error: not authorized"` (5, all real rejections) | `unverified` |
+| `bulk-delete-operations` | `filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or @message like /delete.*::\sSuccess/ or @message like /delete.*::\sError/ or @message like /remove.*::\sSuccess/ or @message like /remove.*::\sError/` | `%DELETE.*::\sSuccess\|...\|remove.*::\sError%` (5, 1 per REST delete) | `unverified` |
+| `specific-user-activity` | `filter @message like /${TargetPattern}/ and @message not like /Pending/` | `"fsxadmin:fsxadmin" -"Pending"` (13, 1 per completed operation) | `unverified` |
+
+`unverified` means the filter was derived from the T3 run and has not been run as a LogAlarm query or a Logs Insights query; the counts belong to the metric-filter patterns, not to these filters. The `sensitive-file-access` status is what the E2E Validation Results (2026-07-02) section records: the stack deployed and the alarm moved from INSUFFICIENT_DATA to OK. That section does not say which `DetectionType` or `TargetPattern` was deployed, so it is not a verification of this query. In Logs Insights, a quoted `like` term is a substring match and a `/.../` term is a regular-expression match against any part of the line; both are case-sensitive ([filter command](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-Filter.html)). `/Error: not authorized/`, `/fsxadmin:fsxadmin/` and `/Pending/` contain no regular-expression metacharacters, so they match the same lines as the quoted metric-filter terms. The six `bulk-delete-operations` terms are the six alternatives of the T3 regular expression written as separate `like` terms. `scripts/tests/test_cfn_log_alarm_queries.py` pins the filter lines and checks them offline on audit-line shapes written from the record; that test does not use the Logs Insights engine.
+
+> **TargetPattern for specific-user-activity**: pass the `<user>:<role>` token as it appears in the audit line, for example `fsxadmin:fsxadmin`. With a bare `admin`, the filter also matches the `fsx-control-plane:admin` lines that the file system writes about 80 times a minute without operator activity (2026-10-09 run). The Pending exclusion drops the `:: Pending` line that each change operation writes before its result, so each operation counts once. It also drops any other line that contains `Pending`.
+
+> **Regular-expression note**: both `sensitive-file-access` and `specific-user-activity` insert `TargetPattern` between the `/` delimiters of a regular expression, so the value is read as a regex, not as a literal string. `.` matches any character and `\` starts an escape; escape them to match them literally. The default `/vol/data/confidential` contains `/`, the delimiter itself, and how Logs Insights parses `like //vol/data/confidential/` has not been checked (`unverified`); escape each `/` as `\/` or test the query in Logs Insights before relying on the alarm.
 
 The pattern:
 
@@ -353,11 +370,13 @@ Aggregation: `count(*)` / Threshold: `> 0`
 
 ```
 fields @timestamp, @message
-| filter @message like /admin/ and (@message like /volume/ or @message like /vserver/)
+| filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/ and (@message like /volume/ or @message like /vserver/)
 | limit 20
 ```
 
 Aggregation: `count(*)` / Threshold: `> 0`
+
+The user term is the `<user>:<role>` token, as in the `specific-user-activity` query; `/admin/` here would also match the `fsx-control-plane:admin` lines. Not run as a Logs Insights query (`unverified`).
 
 ### Pattern 4: Volume Offline/Unmount
 
@@ -460,7 +479,7 @@ Log Alarm uses M-out-of-N evaluation:
 | Use Case | N (Evaluate) | M (Alarm) | Rationale |
 |----------|-------------|-----------|-----------|
 | Sensitive file access | 3 | 1 | Alert on single detection |
-| Auth failure spike | 5 | 3 | Filter out typo noise |
+| Authorization-denial spike | 5 | 3 | Filter out one-off denials |
 | Bulk delete | 3 | 2 | Confirm sustained anomaly |
 | Monitored user | 3 | 1 | Alert on single detection |
 
@@ -679,7 +698,7 @@ Mapping the detections to ATT&CK gives SOC teams a shared vocabulary and clarifi
 | Snapshot delete (admin audit) | **T1490 Inhibit System Recovery** | Deleting Snapshots removes restore points before ransomware/destruction |
 | Bulk admin delete / `volume delete` | **T1485 Data Destruction** | Management-plane destruction of data/volumes |
 | Privileged-user / `security login` changes | **T1078 Valid Accounts**, **T1098 Account Manipulation** | Stolen-credential use, role/account tampering |
-| Failed access spike | **T1110 Brute Force** | Repeated auth failures |
+| Failed access spike | **T1110 Brute Force** (not covered by `failed-access-attempts`) | The query counts authorization denials only; a wrong-password REST request (HTTP 401) wrote no audit line in the 2026-10-09 run |
 | User-file encryption (ARP, Part 3) | **T1486 Data Encrypted for Impact** | Ransomware encryption at the storage layer |
 
 > Note the division of labor: T1486 (encryption) is ARP's job; **T1490 (Inhibit System Recovery)** — an attacker deleting Snapshots so you *can't* roll back the encryption — is exactly what the admin-audit Log Alarm adds. The two together close a gap either alone would leave.
@@ -705,7 +724,7 @@ A typo in a Logs Insights query produces a **silent no-match** — the alarm sit
 
 - EMS-over-syslog (`event notification destination create -syslog ...`) and admin-audit `cluster log-forwarding` are available on modern ONTAP 9.x; confirm the exact minor version on your FSx for ONTAP file system with `version` / `system node image show`.
 - **Multi-AZ vs Single-AZ**: node/stream naming differs (`FsxId...-01/-02` on Multi-AZ). Query the whole log group (see above) so AZ topology doesn't change your detection.
-- **`fsxadmin` scoping**: on FSx, `fsxadmin` is the primary admin. A `specific-user-activity` alarm on `fsxadmin` will match *all* admin activity — scope it to specific commands, or reserve it for genuinely separated roles.
+- **`fsxadmin` scoping**: on FSx for ONTAP, `fsxadmin` is the primary admin. A `specific-user-activity` alarm on `fsxadmin:fsxadmin` will match *all* of that user's completed operations — scope it to specific commands, or reserve it for genuinely separated roles. A bare `fsxadmin` also matches users whose role is `fsxadmin-readonly`.
 
 ### Service Quotas
 
@@ -738,12 +757,12 @@ Scheduled bulk operations (nightly backups, batch ETL, archive cleanup) can legi
 
 ```
 fields @timestamp, @message
-| filter @message like /delete/
+| filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or @message like /delete.*::\sSuccess/ or @message like /delete.*::\sError/ or @message like /remove.*::\sSuccess/ or @message like /remove.*::\sError/
 | stats count(*) as deletes by bin(5m)
 | sort deletes desc
 ```
 
-Read the top `deletes` values (your routine peak), then set the threshold above it — or exclude known service accounts / maintenance windows in the query.
+The filter is the `bulk-delete-operations` one, so the baseline counts what the alarm counts (one line per completed operation). Read the top `deletes` values (your routine peak), then set the threshold above it — or exclude known service accounts / maintenance windows in the query.
 
 ### Monitoring Scheduled Query Execution
 

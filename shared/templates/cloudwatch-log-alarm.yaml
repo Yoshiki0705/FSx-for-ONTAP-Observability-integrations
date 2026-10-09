@@ -1,4 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
+# The built-in failed-access-attempts, bulk-delete-operations and
+# specific-user-activity queries were changed after the 2026-10-09 live run of
+# the Terraform equivalent (terraform/fsxn-log-alarm/, T3) on ONTAP 9.18.1P6
+# audit lines. They are translated from the metric-filter patterns checked in
+# that run and have not been run as LogAlarm queries (unverified); the
+# 2026-07-02 E2E validation below predates them. Record:
+# docs/en/verification-results-cloudwatch-monitoring.md. Pinned by
+# scripts/tests/test_cfn_log_alarm_queries.py.
 Description: >
   CloudWatch Log Alarm for FSx for ONTAP Audit Logs.
   Uses the new AWS::CloudWatch::LogAlarm resource (July 2026) to create alarms
@@ -79,9 +87,9 @@ Parameters:
     Description: >
       Pre-built detection pattern or custom query.
       - sensitive-file-access: Alert on access to specific file paths
-      - failed-access-attempts: Alert on authentication/authorization failures
-      - bulk-delete-operations: Alert on mass file deletions (ransomware indicator)
-      - specific-user-activity: Alert on activity by a specific user
+      - failed-access-attempts: Alert on requests ONTAP rejected as not authorized (not failed logins)
+      - bulk-delete-operations: Alert on mass deletions, counted once per completed operation (ransomware indicator)
+      - specific-user-activity: Alert on completed operations by a specific user:role
       - custom: Use CustomQueryString and CustomAggregation
 
   TargetPattern:
@@ -90,9 +98,11 @@ Parameters:
     Description: >
       Target pattern for detection. Interpretation depends on DetectionType:
       - sensitive-file-access: file path prefix (e.g., /vol/data/confidential)
-      - failed-access-attempts: (ignored, matches all failures)
-      - bulk-delete-operations: (ignored, matches all deletes)
-      - specific-user-activity: username (e.g., admin or DOMAIN\\user)
+      - failed-access-attempts: (ignored, matches "Error: not authorized")
+      - bulk-delete-operations: (ignored, matches completed DELETE/delete/remove operations)
+      - specific-user-activity: the user:role token of the audit line
+        (e.g., fsxadmin:fsxadmin). A bare name such as admin also matches
+        the fsx-control-plane user's role admin on almost every line
       - custom: (ignored, uses CustomQueryString)
 
   CustomQueryString:
@@ -252,18 +262,26 @@ Resources:
     Properties:
       AlarmName: !Sub fsxn-failed-access-${AWS::StackName}
       AlarmDescription: >
-        FSx for ONTAP: Authentication or authorization failures exceeded threshold.
-        May indicate brute-force attempts, misconfigured permissions, or
-        unauthorized access attempts. Review source IP and user identity.
+        FSx for ONTAP: requests rejected by ONTAP authorization ("Error: not
+        authorized") exceeded threshold. May indicate misconfigured permissions
+        or attempts to run commands without the required role. Not a
+        failed-login detector: a wrong-password request (HTTP 401) wrote no
+        audit line in testing. Review source IP and user identity.
       ComparisonOperator: GreaterThanThreshold
       Threshold: !Ref AlarmThreshold
       QueryResultsToEvaluate: !Ref QueryResultsToEvaluate
       QueryResultsToAlarm: !Ref QueryResultsToAlarm
       TreatMissingData: notBreaching
       ScheduledQueryConfiguration:
+        # A rejected request ends ":: Error: not authorized for that command"
+        # (ONTAP 9.18.1P6, 2026-10-09). The earlier Failure/denied/DENIED terms
+        # matched none of the 5 real rejections. One line per rejected request:
+        # the ":: Pending" line does not carry the error. Translated from the
+        # T3 metric-filter pattern "Error: not authorized"; not run as a
+        # LogAlarm query.
         QueryString: |
           fields @timestamp, @message
-          | filter @message like /Failure/ or @message like /denied/ or @message like /DENIED/
+          | filter @message like /Error: not authorized/
         LogGroupIdentifiers:
           - !Ref LogGroupName
         ScheduledQueryRoleARN: !GetAtt ScheduledQueryExecutionRole.Arn
@@ -292,9 +310,16 @@ Resources:
       QueryResultsToAlarm: !Ref QueryResultsToAlarm
       TreatMissingData: notBreaching
       ScheduledQueryConfiguration:
+        # Each audited change writes a ":: Pending" line and then a result line
+        # (":: Success" or ":: Error"). The earlier DELETE/delete/remove terms
+        # counted both, so a threshold of 50 meant about 25 deletes. These terms
+        # match the same three words on the result line only, one line per
+        # completed operation. Translated from the T3 metric-filter regex
+        # %DELETE.*::\sSuccess|...|remove.*::\sError%, which matched 5 of 5,156
+        # real lines (1 per REST delete); not run as a LogAlarm query.
         QueryString: |
           fields @timestamp, @message
-          | filter @message like /DELETE/ or @message like /delete/ or @message like /remove/
+          | filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or @message like /delete.*::\sSuccess/ or @message like /delete.*::\sError/ or @message like /remove.*::\sSuccess/ or @message like /remove.*::\sError/
         LogGroupIdentifiers:
           - !Ref LogGroupName
         ScheduledQueryRoleARN: !GetAtt ScheduledQueryExecutionRole.Arn
@@ -315,17 +340,24 @@ Resources:
       AlarmName: !Sub fsxn-user-activity-${AWS::StackName}
       AlarmDescription: !Sub >
         FSx for ONTAP: Activity detected for monitored user "${TargetPattern}".
-        This alarm fires when the specified user performs any operation recorded
-        in audit logs. Used for privileged user monitoring or investigation.
+        This alarm fires when the specified user completes an operation recorded
+        in audit logs (the ":: Pending" line is not counted). Used for
+        privileged user monitoring or investigation.
       ComparisonOperator: GreaterThanThreshold
       Threshold: !Ref AlarmThreshold
       QueryResultsToEvaluate: !Ref QueryResultsToEvaluate
       QueryResultsToAlarm: !Ref QueryResultsToAlarm
       TreatMissingData: notBreaching
       ScheduledQueryConfiguration:
+        # Pass the "<user>:<role>" token of the audit line, e.g.
+        # fsxadmin:fsxadmin. A bare "admin" matched 5,150 of 5,156 real lines on
+        # 2026-10-09, mostly the file system's own fsx-control-plane traffic
+        # (role admin). The Pending exclusion counts each operation once.
+        # Translated from the T3 metric-filter pattern
+        # "fsxadmin:fsxadmin" -"Pending"; not run as a LogAlarm query.
         QueryString: !Sub |
           fields @timestamp, @message
-          | filter @message like /${TargetPattern}/
+          | filter @message like /${TargetPattern}/ and @message not like /Pending/
         LogGroupIdentifiers:
           - !Ref LogGroupName
         ScheduledQueryRoleARN: !GetAtt ScheduledQueryExecutionRole.Arn
@@ -432,13 +464,13 @@ Outputs:
       - !Sub 'Detects access to path pattern: ${TargetPattern}'
       - !If
         - IsFailedAccess
-        - 'Detects authentication/authorization failures'
+        - 'Detects requests rejected as not authorized'
         - !If
           - IsBulkDelete
-          - 'Detects bulk file deletion operations'
+          - 'Detects completed bulk delete operations'
           - !If
             - IsSpecificUser
-            - !Sub 'Detects activity by user: ${TargetPattern}'
+            - !Sub 'Detects completed operations by: ${TargetPattern}'
             - 'Custom detection query'
 
   ScheduledQueryRoleArn:

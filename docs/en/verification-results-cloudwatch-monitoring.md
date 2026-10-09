@@ -1109,7 +1109,7 @@ The log events image shows the two facts behind F4 and F5: a rejected request en
 | F8 | The audit destination carries only the command history (`kern_audit`). EMS events such as `wafl.vol.autoSize.fail` reach syslog only through a separate EMS notification destination, which neither the setup guide nor the module README sets up | Scope gap in the docs | The `autosize-fail` recipe matches only if EMS is routed into the same log group. No EMS destination was created (not in the approved plan), so this is unverified |
 | F9 | After a node's connection had been idle for about 4–5 minutes, the first operation on that node was lost; ONTAP reconnected for the next one. Observed 3 times. No EMS event and no `AWS/Logs` drop metric recorded the loss | Delivery path, observed 3 times; mechanism inferred from metric timing | A single privileged operation on a quiet node can go undetected. The setup guide now describes this. A mitigation was not tested |
 
-No defect was found in resource creation or alarm wiring: the filters, alarms, metric names and namespaces worked as written. Two shipped default patterns were defects (F3, F4), and `bulk-delete` counted about 2 lines per operation (F5). All three defaults were replaced after the run in `terraform/fsxn-log-alarm/variables.tf`, with offline tests that assert them. The CloudFormation template `shared/templates/cloudwatch-log-alarm.yaml` ships the same `failed-access-attempts` query (`/Failure/`, `/denied/`, `/DENIED/`) and the same `bulk-delete-operations` terms, and its `specific-user-activity` example user is `admin`. It was not changed here; that is a follow-up.
+No defect was found in resource creation or alarm wiring: the filters, alarms, metric names and namespaces worked as written. Two shipped default patterns were defects (F3, F4), and `bulk-delete` counted about 2 lines per operation (F5). All three defaults were replaced after the run in `terraform/fsxn-log-alarm/variables.tf`, with offline tests that assert them. The CloudFormation template `shared/templates/cloudwatch-log-alarm.yaml` ships the same `failed-access-attempts` query (`/Failure/`, `/denied/`, `/DENIED/`) and the same `bulk-delete-operations` terms, and its `specific-user-activity` example user is `admin`. It was not changed in this run. Changed afterwards: its three queries were translated from the patterns above into Logs Insights filters, which have not been run as LogAlarm queries (`unverified`); see [Built-in Detection Queries](cloudwatch-log-alarm.md#built-in-detection-queries).
 
 ### Cleanup (T3 Run)
 
@@ -1161,7 +1161,7 @@ An older log group and its syslog configuration, both from before this run, were
 | Mixed results | 1 of 18 (M7) |
 | Not run | 1 of 18 (A7), from F8 |
 | Done with remaining items | 1 of 18 (M9): the scheduled secret deletion and 1 recovery-queue entry |
-| Module defects | Resource creation and alarm wiring: none found. Default patterns: 2 defects (F3, F4), fixed after the run; `bulk-delete` changed to count 1 line per operation (F5). The CloudFormation template's equivalent queries are unchanged (follow-up) |
+| Module defects | Resource creation and alarm wiring: none found. Default patterns: 2 defects (F3, F4), fixed after the run; `bulk-delete` changed to count 1 line per operation (F5). The CloudFormation template's equivalent queries were not changed in this run; they were translated afterwards and are `unverified` |
 
 ---
 

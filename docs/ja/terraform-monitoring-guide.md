@@ -6,7 +6,7 @@
 
 Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開するには、`terraform/` にある監視用の 3 つのモジュールを次の順に適用します。T1 の `fsxn-monitoring-dashboard` は、ネイティブの `AWS/FSx` メトリクスに対するダッシュボードとアラームを作り、呼び出すのは AWS API だけです。T2 の `fsxn-ontap-custom-metrics` は、CloudWatch がネイティブでは公開しない Qtree のクォータ使用量と SnapMirror の健全性・遅延を公開します。T2 には、ファイルシステムの管理エンドポイントへ TCP 443 で届くサブネット、`fsxadmin-readonly` ロールを持つ ONTAP ユーザーとその認証情報を収めた Secrets Manager のシークレット、NAT ゲートウェイかインターフェイスエンドポイント経由で CloudWatch と Secrets Manager へ出る経路が要ります。T3 の `fsxn-log-alarm` は管理操作の監査イベントにアラームを掛けます。前提は、syslog VPC エンドポイント経路で監査ログを受け取っている CloudWatch Logs のロググループで、この経路は本リポジトリでは CloudFormation テンプレートとして提供しています。この経路が運ぶのは監査ログだけです。`wafl.vol.autoSize.fail` などの EMS イベントを同じロググループに届けるには EMS 通知先を別に設定する必要があり、その手順は文書化も検証もしていません（`未確認`）。閾値は T1 より前に決めます。4 つ目の T4 `fsxn-ssd-auto-increase` は、SSD 容量アラームを受けて容量を上げるガード付きのサンプルで、監視には要りません。使う場合は容量アラームの後に、既定の `notify_only` で追加します。第 1 世代のファイルシステムでは SSD 容量の拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まります。T1 と T2 には日付付きの実環境での実行記録があり、T3 は [2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行) で監査の検出 3 つを試験用の設定で確認しました。T4 は実装済みでオフラインの検証まで済んでおり、実環境では `未確認` です。実環境の結果はいずれも第 1 世代・HA ペア 1 つのファイルシステム 1 台でのもので、日付付きの記録へのリンクは [モジュールの一覧](#モジュールの一覧) にあります。
 
-`shared/templates/` に CloudFormation テンプレートがあるのは、T1（`fsxn-monitoring-dashboard.yaml`）、T2 の Qtree の部分（`qtree-quota-monitor.yaml`）、T3（`cloudwatch-log-alarm.yaml`）です。T3 のテンプレートの検出クエリは、2026-10-09 の実行の後に T3 で置き換えたパターンに合わせておらず、置き換え前のままです（[記録の判定](verification-results-cloudwatch-monitoring.md#判定t3-の実行)）。SnapMirror のコレクターと T4 は Terraform にしかありません。どちらを使うかは監視の内容ではなく、その環境がインフラをどう管理しているかで決まります。FAQ の「CloudFormation テンプレートとの関係」（[FAQ とよくある誤解](#faq-とよくある誤解)）を参照してください。
+`shared/templates/` に CloudFormation テンプレートがあるのは、T1（`fsxn-monitoring-dashboard.yaml`）、T2 の Qtree の部分（`qtree-quota-monitor.yaml`）、T3（`cloudwatch-log-alarm.yaml`）です。T3 のテンプレートの検出クエリは、2026-10-09 の実行の後に T3 で置き換えたパターンから後で書き換えたもので、LogAlarm のクエリとしては実行していません（`unverified`。[組み込みの検知クエリ](cloudwatch-log-alarm.md#組み込みの検知クエリ)）。SnapMirror のコレクターと T4 は Terraform にしかありません。どちらを使うかは監視の内容ではなく、その環境がインフラをどう管理しているかで決まります。FAQ の「CloudFormation テンプレートとの関係」（[FAQ とよくある誤解](#faq-とよくある誤解)）を参照してください。
 
 > **範囲に関する補足**
 >
@@ -36,13 +36,13 @@ Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開�
 | フェーズ | 目的 | モジュールのパス | 作るもの | 前提条件 | 実環境での検証 | 固定の方法 |
 |---|---|---|---|---|---|---|
 | T1 | ネイティブメトリクスのダッシュボードとアラーム | [`terraform/fsxn-monitoring-dashboard`](../../terraform/fsxn-monitoring-dashboard/README.ja.md) | ダッシュボード（ウィジェット 7 つ）、ファイルシステム容量とネットワークスループット使用率のアラーム、任意で有効にする CPU・ディスク・ボリューム単位のアラーム、任意の SNS トピック | AWS API のみ。ファイルシステム ID | `検証済み`。[2026-10-05](verification-results-cloudwatch-monitoring.md#テスト結果サマリー)、[2026-10-06〜07](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)（実データでの容量アラーム）、[2026-10-07](verification-results-cloudwatch-monitoring.md#2026-10-07-のダッシュボードとアラームの画面)（最小の IAM ポリシー）。第 1 世代、HA ペア 1 つ | タグ `terraform-fsxn-monitoring-dashboard-v0.1.1`（`v0.1.0` にはダッシュボード表示の不具合あり）。[モジュールの取得方法](../../terraform/fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) |
-| T2 | Qtree のクォータと SnapMirror の健全性・遅延 | [`terraform/fsxn-ontap-custom-metrics`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md) | VPC Lambda、スケジュール、デッドレターキュー、ロググループ、IAM ロール、Lambda のセキュリティグループ、任意のインターフェイスエンドポイント、最大 7 つのアラーム | 管理エンドポイントへ TCP 443 で届くサブネット。ファイルシステムのセキュリティグループへのインバウンドルール。`fsxadmin-readonly` のユーザーと Secrets Manager のシークレット。NAT ゲートウェイ、または `monitoring` と `secretsmanager` のエンドポイント | `検証済み`。[2026-10-08](verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。1 つの SVM 内の 2 ボリューム間の SnapMirror | リリースタグが公開されるまではコミット SHA。[モジュールの取得方法](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#モジュールの取得方法) |
-| T3 | 管理操作の監査イベントのアラーム（EMS イベントには別の転送の設定が要る） | [`terraform/fsxn-log-alarm`](../../terraform/fsxn-log-alarm/README.ja.md) | 検出ごとにメトリクスフィルター 1 つとメトリクスアラーム 1 つ（既定のレシピは 5 つ）、任意の SNS トピック | syslog VPC エンドポイント経路から監査ログが書き込まれる既存のロググループ。`autosize-fail` には、同じロググループへの EMS 通知先が別に要る（`未確認`） | 監査の検出 3 つを `検証済み`。[2026-10-09](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)。60 秒の試験用の期間と試験用の閾値で、`bulk-delete`、`privileged-operations`、REST の 403 を数える失敗アクセスの検出が OK → ALARM → OK。既定の 300 秒の期間、`autosize-fail`、`unauthorized-access` は `未確認`（[確認済みの範囲と未確認の範囲](#確認済みの範囲と未確認の範囲)） | リリースタグが公開されるまではコミット SHA。[モジュールの取得方法](../../terraform/fsxn-log-alarm/README.ja.md#モジュールの取得方法) |
-| T4 | ガード付き SSD 自動拡張（任意。監視には不要） | [`terraform/fsxn-ssd-auto-increase`](../../terraform/fsxn-ssd-auto-increase/README.ja.md) | VPC の外の Lambda、SSD 使用率のトリガーアラーム（第 2 世代では `aggregate_names` の要素ごとに 1 つ追加）、トリガー用と通知用の SNS トピック、1 時間ごとの再評価スケジュール、デッドレターキュー、DynamoDB のロックテーブル、判断ログと関数のロググループ、IAM ロール | モジュールの外で管理する S3 Object Lock のバケット（`auto` にはコンプライアンスモード）。必須の絶対上限 `max_storage_capacity_gib`。Terraform で管理するファイルシステムでは `storage_capacity` の `ignore_changes`。第 1 世代では拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まる | 実装済みで、オフラインの検証（ユニットテスト、`make terraform`、`terraform test`）まで。実環境は `未確認` | リリースタグが公開されるまではコミット SHA。[モジュールの入手](../../terraform/fsxn-ssd-auto-increase/README.ja.md#モジュールの入手)。設計は [capacity-automation-t4-design.md](capacity-automation-t4-design.md) |
+| T2 | Qtree のクォータと SnapMirror の健全性・遅延 | [`terraform/fsxn-ontap-custom-metrics`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md) | VPC Lambda、スケジュール、デッドレターキュー、ロググループ、IAM ロール、Lambda のセキュリティグループ、任意のインターフェイスエンドポイント、最大 7 つのアラーム | 管理エンドポイントへ TCP 443 で届くサブネット。ファイルシステムのセキュリティグループへのインバウンドルール。`fsxadmin-readonly` のユーザーと Secrets Manager のシークレット。NAT ゲートウェイ、または `monitoring` と `secretsmanager` のエンドポイント | `検証済み`。[2026-10-08](verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。1 つの SVM 内の 2 ボリューム間の SnapMirror | タグ `terraform-fsxn-ontap-custom-metrics-v0.1.0`。[モジュールの取得方法](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#モジュールの取得方法) |
+| T3 | 管理操作の監査イベントのアラーム（EMS イベントには別の転送の設定が要る） | [`terraform/fsxn-log-alarm`](../../terraform/fsxn-log-alarm/README.ja.md) | 検出ごとにメトリクスフィルター 1 つとメトリクスアラーム 1 つ（既定のレシピは 5 つ）、任意の SNS トピック | syslog VPC エンドポイント経路から監査ログが書き込まれる既存のロググループ。`autosize-fail` には、同じロググループへの EMS 通知先が別に要る（`未確認`） | 監査の検出 3 つを `検証済み`。[2026-10-09](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)。60 秒の試験用の期間と試験用の閾値で、`bulk-delete`、`privileged-operations`、REST の 403 を数える失敗アクセスの検出が OK → ALARM → OK。既定の 300 秒の期間、`autosize-fail`、`unauthorized-access` は `未確認`（[確認済みの範囲と未確認の範囲](#確認済みの範囲と未確認の範囲)） | タグ `terraform-fsxn-log-alarm-v0.1.0`。[モジュールの取得方法](../../terraform/fsxn-log-alarm/README.ja.md#モジュールの取得方法) |
+| T4 | ガード付き SSD 自動拡張（任意。監視には不要） | [`terraform/fsxn-ssd-auto-increase`](../../terraform/fsxn-ssd-auto-increase/README.ja.md) | VPC の外の Lambda、SSD 使用率のトリガーアラーム（第 2 世代では `aggregate_names` の要素ごとに 1 つ追加）、トリガー用と通知用の SNS トピック、1 時間ごとの再評価スケジュール、デッドレターキュー、DynamoDB のロックテーブル、判断ログと関数のロググループ、IAM ロール | モジュールの外で管理する S3 Object Lock のバケット（`auto` にはコンプライアンスモード）。必須の絶対上限 `max_storage_capacity_gib`。Terraform で管理するファイルシステムでは `storage_capacity` の `ignore_changes`。第 1 世代では拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まる | 実装済みで、オフラインの検証（ユニットテスト、`make terraform`、`terraform test`）まで。実環境は `未確認` | コミット SHA。タグ `terraform-fsxn-ssd-auto-increase-v0.1.0` は実環境での実行の後に作る計画で、まだ作成していない。[モジュールの入手](../../terraform/fsxn-ssd-auto-increase/README.ja.md#モジュールの入手)。設計は [capacity-automation-t4-design.md](capacity-automation-t4-design.md) |
 
 > **記録に関する補足**
 >
-> これらの実行より前に書かれたページ（モジュールの README や監視設計など）には、実環境での検証がこれからだと書かれたままの箇所があります。基準にするのは、この表からリンクしている日付付きの記録です。
+> ほかのページにモジュールの状態が違って書かれている場合、基準にするのは、この表からリンクしている日付付きの記録です。
 
 > **検証範囲に関する補足**
 >
@@ -141,7 +141,7 @@ module "fsx_ontap_dashboard" {
 # T2: qtree quota and SnapMirror metrics from the ONTAP REST API (VPC Lambda)
 # Defaults assume a NAT gateway; see "Network options" in the module README.
 module "fsx_ontap_custom_metrics" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
 
   file_system_id               = "fs-0123456789abcdef0"
   ontap_management_ip          = "198.51.100.10"
@@ -159,7 +159,7 @@ module "fsx_ontap_custom_metrics" {
 
 # T3: alarms on the admin audit log that the syslog VPC endpoint path writes
 module "fsx_ontap_log_alarm" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1"
 
   log_group_name     = "/syslog/fsxn-admin-audit"
   notification_email = "ops@example.com"
@@ -232,7 +232,7 @@ T2 のためのファイルシステムのセキュリティグループへの�
 
 **Q** CloudFormation テンプレートとの関係は?
 
-**A** T1 は `shared/templates/fsxn-monitoring-dashboard.yaml` に、T2 の Qtree コレクターは `shared/templates/qtree-quota-monitor.yaml` に、T3 は `shared/templates/cloudwatch-log-alarm.yaml` に対応します。SnapMirror のコレクターは T2 にしかなく、T4 にも対応するテンプレートはありません。CloudFormation のログアラームテンプレートはネイティブの `AWS::CloudWatch::LogAlarm` と Logs Insights のクエリを使い、T3 はメトリクスフィルターのパターンとメトリクスアラームを使います（[CloudFormation テンプレートとの意図的な差](../../terraform/fsxn-log-alarm/README.ja.md#cloudformation-テンプレートとの意図的な差)）。テンプレートの失敗アクセスのクエリは、T3 で置き換える前と同じ語（`Failure`、`denied`、`DENIED`）のままです。Terraform は、既に Terraform でレビューし state を持っているチームに向き、state のバックエンドとプロバイダーの版の固定が要ります。CloudFormation は、既にスタックや StackSets でデプロイしているチームに向き、テンプレートごとにスタックが 1 つ要ります。syslog の配信経路は、どちらを選んでも CloudFormation テンプレートです。
+**A** T1 は `shared/templates/fsxn-monitoring-dashboard.yaml` に、T2 の Qtree コレクターは `shared/templates/qtree-quota-monitor.yaml` に、T3 は `shared/templates/cloudwatch-log-alarm.yaml` に対応します。SnapMirror のコレクターは T2 にしかなく、T4 にも対応するテンプレートはありません。CloudFormation のログアラームテンプレートはネイティブの `AWS::CloudWatch::LogAlarm` と Logs Insights のクエリを使い、T3 はメトリクスフィルターのパターンとメトリクスアラームを使います（[CloudFormation テンプレートとの意図的な差](../../terraform/fsxn-log-alarm/README.ja.md#cloudformation-テンプレートとの意図的な差)）。テンプレートの失敗アクセス・大量削除・特定ユーザーのクエリは、T3 で置き換えたパターンから書き換えたもので、LogAlarm のクエリとしては `unverified` です。Terraform は、既に Terraform でレビューし state を持っているチームに向き、state のバックエンドとプロバイダーの版の固定が要ります。CloudFormation は、既にスタックや StackSets でデプロイしているチームに向き、テンプレートごとにスタックが 1 つ要ります。syslog の配信経路は、どちらを選んでも CloudFormation テンプレートです。
 
 > **選び方に関する補足**
 >
