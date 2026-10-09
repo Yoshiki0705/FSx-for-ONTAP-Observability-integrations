@@ -12,7 +12,7 @@
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
 | **そもそも FSx for ONTAP をどう監視するか決める** — 方式が未決の場合 | [Adoption Playbook — 可観測性](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 分 |
-| CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [Terraform による監視の展開ガイド](terraform-monitoring-guide.md)（モジュールの順序・前提条件・検証状況） · [ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) · [Qtree と SnapMirror のカスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#使い方)（実環境は `未確認`） · [ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md#使い方)（実環境は `未確認`） · [SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md#使い方)（実環境は `未確認`） · [監視設計](monitoring-design.md#t1-モジュールの使い方と範囲) | — |
+| CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [Terraform による監視の展開ガイド](terraform-monitoring-guide.md)（モジュールの順序・前提条件・検証状況） · [ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) · [Qtree と SnapMirror のカスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#使い方)（実環境は `未確認`） · [ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md#使い方)（監査の検出を 2026-10-09 に実環境で確認） · [SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md#使い方)（実環境は `未確認`） · [監視設計](monitoring-design.md#t1-モジュールの使い方と範囲) | — |
 | パイプラインを E2E で検証（初回） | [最小テストパス](quick-start-minimum.md) | 15 分 |
 | ベンダー統合を本番デプロイ | [デプロイガイド](deployment-guide.md) | 30 分 |
 | ランサムウェアにストレージ層で対応 | [自動インシデント対応](automated-response-guide.md) | 20 分 |
@@ -271,7 +271,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 **アプローチの選択**
 
 - [Amazon FSx for NetApp ONTAP の監視設計](monitoring-design.md)
-- [Terraform による Amazon FSx for NetApp ONTAP の CloudWatch 監視は 3 つのモジュールを順に適用して構成する](terraform-monitoring-guide.md)
+- [Terraform による Amazon FSx for NetApp ONTAP の CloudWatch 監視は 3 つのモジュールを順に適用して構成し、SSD 自動拡張は任意の 4 つ目として加える](terraform-monitoring-guide.md)
 - [Amazon FSx for NetApp ONTAP の監視のためのサイジングとヘッドルーム](sizing-and-headroom.md)
 - [Amazon FSx for NetApp ONTAP の監視を起点にした容量自動化](capacity-automation.md)
 - [Amazon FSx for NetApp ONTAP の T4 ガード付き SSD 自動拡張の実装設計](capacity-automation-t4-design.md)

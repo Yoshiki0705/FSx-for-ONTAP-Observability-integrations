@@ -207,7 +207,7 @@ python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v
 cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
-- **Tech stack**: CloudFormation (YAML) · Terraform ([monitoring guide](docs/en/terraform-monitoring-guide.md): dashboard, custom-metrics and log-alarm modules) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
+- **Tech stack**: CloudFormation (YAML) · Terraform ([monitoring guide](docs/en/terraform-monitoring-guide.md): dashboard, custom-metrics and log-alarm modules, plus the optional SSD auto-increase module) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Changelog**: See [CHANGELOG.md](CHANGELOG.md)
 - **Roadmap**: See [ROADMAP.md](ROADMAP.md)
