@@ -61,7 +61,7 @@ FSx for ONTAP のデータが S3（DataSync 経由）または別の FSx ファ�
 
 > **範囲に関する補足**
 >
-> このパターンの SnapMirror 側はプレースホルダーです。`_check_snapmirror_lag()` は提供しておらず、このページの内容は実際の関係に対して一度も実行していません。コレクターは転送先ファイルシステムの管理エンドポイントをポーリングする必要があります。ONTAP REST のリファレンスは、`GET /api/snapmirror/relationships` が返すのは転送先エンドポイントが現在のクラスターまたは SVM にある関係だと説明しているためです（[ONTAP 9.18.1 のリファレンス](https://docs.netapp.com/us-en/ontap-restapi-9181/get-snapmirror-relationships.html)、確度: `文書化済み`）。そのコレクターは T2 の Terraform モジュール [`terraform/fsxn-ontap-custom-metrics/`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md) が実装しています（オフラインで検証済み、実環境は `未確認`）。`FSxONTAP/SnapMirror` のメトリクス名は [monitoring-design.md](monitoring-design.md#メトリクスカタログ) にあります。このパターンの `FSxONTAP/Lakehouse` のアラームはそれを読みません。
+> このパターンの SnapMirror 側はプレースホルダーです。`_check_snapmirror_lag()` は提供しておらず、このページの内容は実際の関係に対して一度も実行していません。コレクターは転送先ファイルシステムの管理エンドポイントをポーリングする必要があります。ONTAP REST のリファレンスは、`GET /api/snapmirror/relationships` が返すのは転送先エンドポイントが現在のクラスターまたは SVM にある関係だと説明しているためです（[ONTAP 9.18.1 のリファレンス](https://docs.netapp.com/us-en/ontap-restapi-9181/get-snapmirror-relationships.html)、確度: `文書化済み`）。そのコレクターは T2 の Terraform モジュール [`terraform/fsxn-ontap-custom-metrics/`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md) が実装しています（オフラインで検証済み、2026-10-08 のサンプル実行 1 回で、1 つの SVM の中の関係について実環境でも検証済み）。`FSxONTAP/SnapMirror` のメトリクス名は [monitoring-design.md](monitoring-design.md#メトリクスカタログ) にあります。このパターンの `FSxONTAP/Lakehouse` のアラームはそれを読みません。
 
 ### 実装
 

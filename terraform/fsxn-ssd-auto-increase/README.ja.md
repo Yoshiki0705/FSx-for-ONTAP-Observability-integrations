@@ -48,7 +48,7 @@
 
 計画中のタグは `terraform-fsxn-ssd-auto-increase-v0.1.0` です。**まだ作成されていません**。[検証状況](#検証状況)のライブ実行の後に作る計画です。それまではコミット SHA で git ソースか下のアーカイブ URL をピン留めしてください。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
 
-Lambda ソースはモジュールディレクトリの外、`shared/lambda/ssd_auto_increase/` にあります。`//subdirectory` ソースでは Terraform がパッケージ全体をダウンロードして展開し、サブディレクトリからモジュールを読む ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)) ため、下のどちらのソースでも `../../shared` が解決します。
+Lambda ソースはモジュールディレクトリの外、`shared/lambda/ssd_auto_increase/` にあります。`//subdirectory` ソースでは Terraform がパッケージ全体をダウンロードして展開し、サブディレクトリからモジュールを読む ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)) ため、下のどのソースでも `../../shared` が解決します。
 
 ```hcl
 # Git source pinned to a commit
@@ -58,7 +58,7 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ssd-auto-increase"
 ```
 
-スパースチェックアウトは両方のディレクトリを含める必要があります。さもないと `shared/lambda/ssd_auto_increase` が存在せず `archive_file` がプラン時に失敗します。
+次の手順はスパースチェックアウトで、コミットの時点のモジュールのディレクトリを取り出します。その後、このコピーの `terraform/fsxn-ssd-auto-increase` のローカルパスを `source` に指定します。スパースチェックアウトは両方のディレクトリを含める必要があります。さもないと `shared/lambda/ssd_auto_increase` が存在せず `archive_file` がプラン時に失敗します。
 
 ```bash
 git init fsx-ssd-auto-increase && cd fsx-ssd-auto-increase
@@ -67,6 +67,10 @@ git sparse-checkout set terraform/fsxn-ssd-auto-increase shared/lambda/ssd_auto_
 git fetch --depth 1 --filter=blob:none origin <commit-sha>
 git checkout FETCH_HEAD
 ```
+
+> **取得手順に関する補足**
+>
+> コミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。`?ref=main&depth=1` を指定した git ソースでも、`terraform init` がダウンロードしたコピーにはモジュールの隣に `shared/lambda/ssd_auto_increase/` がありました。そのコピーから `plan` は実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
 
 ## 使い方
 
