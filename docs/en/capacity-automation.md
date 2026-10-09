@@ -4,11 +4,11 @@
 
 > **Status / audience / evidence tiers**
 >
-> Status: design. The guarded SSD auto-increase sample (T4) is implemented at `terraform/fsxn-ssd-auto-increase/` and offline-verified; live verification is pending, so nothing on this page has run against a file system. Audience: AWS users deciding whether, and how far, monitoring of Amazon FSx for NetApp ONTAP should act on its own. The T4 state machine, archive schema, IAM statements and test plan are in the companion [T4 implementation design](capacity-automation-t4-design.md). Evidence tiers: `documented` (stated on the cited AWS or NetApp page, re-read 2026-10-07), `code-inspected` (read from the AWS sample code downloaded on 2026-10-07, not executed), `verified-in-repo` (a dated record in [CloudWatch monitoring verification results](verification-results-cloudwatch-monitoring.md)), `hypothesis` (inferred, not checked), `open` (not answered by any source read). Values use placeholders (`fs-0123456789abcdef0`, `123456789012`, `ap-northeast-1`).
+> Status: design. The guarded SSD auto-increase sample (T4) is implemented at `terraform/fsxn-ssd-auto-increase/` and offline-verified. Its reversible paths ran against one first-generation file system on 2026-10-09 ([record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09)); the real increase and the other options on this page have not run against a file system. Audience: AWS users deciding whether, and how far, monitoring of Amazon FSx for NetApp ONTAP should act on its own. The T4 state machine, archive schema, IAM statements and test plan are in the companion [T4 implementation design](capacity-automation-t4-design.md). Evidence tiers: `documented` (stated on the cited AWS or NetApp page, re-read 2026-10-07), `code-inspected` (read from the AWS sample code downloaded on 2026-10-07, not executed), `verified-in-repo` (a dated record in [CloudWatch monitoring verification results](verification-results-cloudwatch-monitoring.md)), `hypothesis` (inferred, not checked), `open` (not answered by any source read). Values use placeholders (`fs-0123456789abcdef0`, `123456789012`, `ap-northeast-1`).
 
 ## Executive summary
 
-Three options exist for acting on an SSD capacity alarm: (a) the AWS dynamic-scaling sample as published, (b) the T4 guarded sample in this repository (implemented, offline-verified, live verification pending), and (c) an alert plus a manual runbook. They differ mainly in who sets the upper bound and who approves the change. On a first-generation file system every increase is permanent, and each change to SSD capacity, IOPS or throughput starts a shared 6-hour cooldown, so the bound and the approval step matter more than the speed of the reaction. T4 adds a required ceiling, a `notify_only` default and IAM scoped to one file system; it is offered to teams that choose to automate, not as a default to switch on. Throughput capacity changes stay an alert plus a human-approved runbook, because each change fails over the file server. Volume autosize is configured in ONTAP and watched with an EMS log alarm; the AWS volume API has no autosize field ([UpdateOntapVolumeConfiguration](https://docs.aws.amazon.com/fsx/latest/APIReference/API_UpdateOntapVolumeConfiguration.html), `documented`).
+Three options exist for acting on an SSD capacity alarm: (a) the AWS dynamic-scaling sample as published, (b) the T4 guarded sample in this repository (implemented, offline-verified, reversible paths live-verified on 2026-10-09), and (c) an alert plus a manual runbook. They differ mainly in who sets the upper bound and who approves the change. On a first-generation file system every increase is permanent, and each change to SSD capacity, IOPS or throughput starts a shared 6-hour cooldown, so the bound and the approval step matter more than the speed of the reaction. T4 adds a required ceiling, a `notify_only` default and IAM scoped to one file system; it is offered to teams that choose to automate, not as a default to switch on. Throughput capacity changes stay an alert plus a human-approved runbook, because each change fails over the file server. Volume autosize is configured in ONTAP and watched with an EMS log alarm; the AWS volume API has no autosize field ([UpdateOntapVolumeConfiguration](https://docs.aws.amazon.com/fsx/latest/APIReference/API_UpdateOntapVolumeConfiguration.html), `documented`).
 
 > **Scope note**
 >
@@ -18,7 +18,7 @@ Three options exist for acting on an SSD capacity alarm: (a) the AWS dynamic-sca
 
 | Layer | API | Reversible? | This project's choice |
 |---|---|---|---|
-| SSD storage capacity | `UpdateFileSystem` `StorageCapacity` | First generation: no. Second generation: yes, but a decrease takes hours to weeks and is billed at both sizes while it runs | Guarded sample T4 (implemented; live verification pending) |
+| SSD storage capacity | `UpdateFileSystem` `StorageCapacity` | First generation: no. Second generation: yes, but a decrease takes hours to weeks and is billed at both sizes while it runs | Guarded sample T4 (implemented; reversible paths live-verified, real increase not run) |
 | Provisioned SSD IOPS | `UpdateFileSystem` `OntapConfiguration.DiskIopsConfiguration` | Changes share the 6-hour cooldown | Handled inside T4 only as far as an SSD increase requires |
 | Throughput capacity | `UpdateFileSystem` `ThroughputCapacity` or `ThroughputCapacityPerHAPair` | Yes, by another change after the cooldown; each change fails over the file server | Alert plus a human-approved runbook |
 | Volume size | `UpdateVolume` `SizeInMegabytes` | Yes | Manual or Terraform |
@@ -47,7 +47,7 @@ Sources: [storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTA
 
 ## Automation options
 
-| Aspect | (a) AWS sample as published | (b) T4 guarded sample (implemented, live verification pending) | (c) Alert plus manual runbook |
+| Aspect | (a) AWS sample as published | (b) T4 guarded sample (implemented, reversible paths live-verified) | (c) Alert plus manual runbook |
 |---|---|---|---|
 | Setup | Deploy the CloudFormation template and upload the Lambda zip to your bucket | Terraform module `terraform/fsxn-ssd-auto-increase/` | Alarms from T1 or the dashboard template; a runbook |
 | IaC form | CloudFormation | Terraform; CloudFormation not planned | Any |
@@ -57,9 +57,9 @@ Sources: [storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTA
 | IAM scope | `fsx:UpdateFileSystem` and `fsx:DescribeFileSystems` on `"*"` (`code-inspected`) | `fsx:UpdateFileSystem` on one file system ARN (the action lists `file-system` as its resource type, `documented`; policy simulation planned) | The operator's own role |
 | Terraform drift | Not addressed (CloudFormation sample) | Requires `ignore_changes` on the file system resource | The operator updates the Terraform value with the change |
 | Increment | Growth-based, 10% to `MaxIncrementPercent` (default 100%) | Fixed percentage with ceil, never below 10% | The operator decides |
-| Status / evidence | Published by AWS; reviewed here as `code-inspected`, not executed | Implemented in `terraform/fsxn-ssd-auto-increase/`; offline-verified (`terraform test` and the Lambda unit suites); live verification pending | Runbooks on this page; not executed here |
+| Status / evidence | Published by AWS; reviewed here as `code-inspected`, not executed | Implemented in `terraform/fsxn-ssd-auto-increase/`; offline-verified (`terraform test` and the Lambda unit suites); reversible paths live-verified on 2026-10-09 on one first-generation file system, with no capacity change ([record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09)); the real increase not run | Runbooks on this page; not executed here |
 
-Constraints, stated for each option. (a) suits teams that accept the service maximum as the bound and want an AWS-published template; it has no customer ceiling or approval mode, and its CloudWatch alarm acts only on a state change. (b) suits teams that need a ceiling and an approval stage, or manage the file system with Terraform; it is implemented in `terraform/fsxn-ssd-auto-increase/` and offline-verified, with live verification still pending, and adds a Lambda function, a scheduler, two SNS topics (trigger and notification), a DynamoDB lock table, two log groups and an existing Object Lock bucket to operate. (c) suits teams with an on-call rotation and slow growth; it depends on someone reacting within the headroom computed in [sizing-and-headroom.md](sizing-and-headroom.md#headroom-formula).
+Constraints, stated for each option. (a) suits teams that accept the service maximum as the bound and want an AWS-published template; it has no customer ceiling or approval mode, and its CloudWatch alarm acts only on a state change. (b) suits teams that need a ceiling and an approval stage, or manage the file system with Terraform; it is implemented in `terraform/fsxn-ssd-auto-increase/`, offline-verified, and live-verified on its reversible paths, with the real increase not yet run, and adds a Lambda function, a scheduler, two SNS topics (trigger and notification), a DynamoDB lock table, two log groups and an existing Object Lock bucket for T4's own decision record (not file system data; [why S3 Object Lock, not SnapLock](capacity-automation-t4-design.md#faq)) to operate. (c) suits teams with an on-call rotation and slow growth; it depends on someone reacting within the headroom computed in [sizing-and-headroom.md](sizing-and-headroom.md#headroom-formula).
 
 > **Evidence note**
 >
@@ -96,7 +96,7 @@ The parameter list with defaults and the remaining findings are in the [T4 imple
 
 ## T4 guarded module
 
-Status: implemented at `terraform/fsxn-ssd-auto-increase/`, offline-verified; live verification pending. A CloudWatch alarm on `StorageCapacityUtilization` (SSD, plus one per `Aggregate` on second generation) invokes a Lambda function through a trigger SNS topic, and an hourly schedule re-evaluates while the alarm stays in ALARM. The function calls AWS APIs only and runs outside a VPC. The guards, in summary:
+Status: implemented at `terraform/fsxn-ssd-auto-increase/`, offline-verified, and live-verified on 2026-10-09 for `notify_only`, `approve` and `auto` behind an explicit IAM deny, with no capacity change ([record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09)). The real increase has not run. A CloudWatch alarm on `StorageCapacityUtilization` (SSD, plus one per `Aggregate` on second generation) invokes a Lambda function through a trigger SNS topic, and an hourly schedule re-evaluates while the alarm stays in ALARM. The function calls AWS APIs only and runs outside a VPC. The guards, in summary:
 
 - Ceiling: a required absolute ceiling in GiB with no default, checked against the documented per-file-system maximum for the deployment type and HA-pair count by Terraform variable validation and a precondition at deploy time, and again by the function before each request.
 - Mode: `notify_only` (default) computes and reports only; `approve` emails the computed command for a person to run; `auto` calls the API.
@@ -218,19 +218,19 @@ aws fsx describe-file-systems \
 
 ## Verification plan
 
-The deploy-time ceiling-validation row below has been executed (`terraform test`); the live-infrastructure rows, which touch a real file system, bucket or policy simulator, have not been executed yet. Expected evidence for each T4 row, and the completion criteria, are in the [T4 test plan](capacity-automation-t4-design.md#test-plan).
+The deploy-time ceiling-validation row below has been executed (`terraform test`). The reversible T4 rows were run on 2026-10-09 against one first-generation, single-HA-pair file system ([record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09)); the governance-mode archive row, the archive positive controls, the real increase and `ignore_changes` were not. Expected evidence for each T4 row, and the completion criteria, are in the [T4 test plan](capacity-automation-t4-design.md#test-plan).
 
-| Test | Reversible | What it shows |
-|---|---|---|
-| T4 `notify_only` and `approve`, alarm forced with `aws cloudwatch set-alarm-state` | Yes | Reports and decision records without any `UpdateFileSystem` call |
-| T4 `auto` behind an explicit IAM deny on `fsx:UpdateFileSystem` | Yes, after the archive's 1-day retention | The call reaches authorization; the error latches `blocked` and is reported once; the next scheduled run makes no call |
-| IAM policy simulation of the scoped Allow | Yes (read-only API) | The Allow matches only the configured file system and trigger alarm |
-| Scheduled run while the alarm is OK, and two concurrent runs | Yes | No call while OK; at most one call from two invocations |
-| Deploy-time ceiling validation (`terraform test`) — executed | Yes | A ceiling outside the documented maximum fails the plan |
-| Decision archive in governance mode | Yes, with a short retention on a disposable bucket | Records are protected from the function role and from identities without the bypass permission |
-| Decision archive in compliance mode | No before the retain-until date (1 day in the test) | Records cannot be deleted even by an identity holding `s3:BypassGovernanceRetention` |
-| Real increase | No on first generation: at least 10% is kept until the file system is deleted, and the 6-hour cooldown starts | The full sequence through `UPDATED_OPTIMIZING` to `COMPLETED`; run only with explicit approval or on a disposable file system, outside the completion criteria |
-| Terraform `ignore_changes` after an out-of-band change | Yes on a disposable file system | `terraform plan` shows no change to `storage_capacity`. A plan without the lifecycle block proposes a decrease; run it only on a disposable file system |
+| Test | Reversible | What it shows | Result on 2026-10-09 |
+|---|---|---|---|
+| T4 `notify_only` and `approve`, alarm forced with `aws cloudwatch set-alarm-state` | Yes | Reports and decision records without any `UpdateFileSystem` call | ✅ Both modes, with no call. The alarm was driven by lowering the threshold below current utilization, not with `set-alarm-state` |
+| T4 `auto` behind an explicit IAM deny on `fsx:UpdateFileSystem` | Yes, after the archive's 1-day retention | The call reaches authorization; the error latches `blocked` and is reported once; the next scheduled run makes no call | ✅ One denied call, one `blocked` report, no call or report on the next run; an operator clear re-evaluated and latched again |
+| IAM policy simulation of the scoped Allow | Yes (read-only API) | The Allow matches only the configured file system and trigger alarm | ✅ On the deployed execution role (`simulate-principal-policy`) |
+| Scheduled run while the alarm is OK, and two concurrent runs | Yes | No call while OK; at most one call from two invocations | ✅ Reserved concurrency serialized the two invocations; the lease paths were run separately |
+| Deploy-time ceiling validation (`terraform test`) — executed | Yes | A ceiling outside the documented maximum fails the plan | ✅ Offline. `auto` with `GOVERNANCE` also failed the plan live |
+| Decision archive in governance mode | Yes, with a short retention on a disposable bucket | Records are protected from the function role and from identities without the bypass permission | Not run; only one compliance-mode bucket was used |
+| Decision archive in compliance mode | No before the retain-until date (1 day in the test) | Records cannot be deleted even by an identity holding `s3:BypassGovernanceRetention` | ⚠️ An administrator's delete with the bypass header was refused; the positive controls were not run |
+| Real increase | No on first generation: at least 10% is kept until the file system is deleted, and the 6-hour cooldown starts | The full sequence through `UPDATED_OPTIMIZING` to `COMPLETED`; run only with explicit approval or on a disposable file system, outside the completion criteria | Not run |
+| Terraform `ignore_changes` after an out-of-band change | Yes on a disposable file system | `terraform plan` shows no change to `storage_capacity`. A plan without the lifecycle block proposes a decrease; run it only on a disposable file system | Not run |
 
 ## Staged adoption
 
@@ -239,7 +239,7 @@ The deploy-time ceiling-validation row below has been executed (`terraform test`
 3. Adopt the throughput and volume autosize runbooks, and the EMS alarm for `wafl.vol.autoSize.fail`.
 4. Deploy T4 in `notify_only` and compare its reports with operator decisions for some weeks.
 5. Switch to `approve`.
-6. Switch to `auto` only with a validated ceiling, a compliance-mode decision archive whose retention check passes, an operator named for manual disposition and for clearing a `blocked` latch, and `ignore_changes` in place on any Terraform-managed file system.
+6. Switch to `auto` only with a validated ceiling, a compliance-mode decision archive whose retention check passes, an operator named for manual disposition and for clearing a `blocked` latch, and `ignore_changes` in place on any Terraform-managed file system. Before the switch, `auto` can be tried behind an explicit IAM deny; that procedure, the latch clear and how to read the archive retention are in the [module README](../../terraform/fsxn-ssd-auto-increase/README.md#testing-and-operating-a-deployment).
 
 > **Notification note**
 >
@@ -266,7 +266,7 @@ A: The next plan proposes to, unless `ignore_changes` covers `storage_capacity`.
 A: The capacity is usable, but AWS documents that the update stays in `UPDATED_OPTIMIZING` while storage optimization runs and becomes `COMPLETED` afterwards ([monitoring storage capacity increases](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/monitoring-storage-capacity-increase.html), `documented`). Report the operation as finished only at `COMPLETED`.
 
 **Q: Is the AWS sample unsafe**?
-A: It suits teams that accept the service maximum as the bound and want increases driven by the alarm. The options differ in their guards: the sample has a cooldown with retries and growth-based increments; T4 adds a ceiling, an approval stage and IAM scoped to one file system, and is implemented and offline-verified with live verification still pending.
+A: It suits teams that accept the service maximum as the bound and want increases driven by the alarm. The options differ in their guards: the sample has a cooldown with retries and growth-based increments; T4 adds a ceiling, an approval stage and IAM scoped to one file system; it is implemented, offline-verified, and live-verified on its reversible paths, and its real increase has not run.
 
 ## Related Documents
 

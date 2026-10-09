@@ -4,7 +4,7 @@
 
 ## Overview
 
-This page records six runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08). On 2026-10-09 the Terraform log-alarm module (phase T3) was applied to a log group fed by the syslog VPC endpoint path, and its alarms were driven with real ONTAP audit lines: [Terraform Log-Alarm Module Run on 2026-10-09](#terraform-log-alarm-module-run-on-2026-10-09).
+This page records seven runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08). On 2026-10-09 the Terraform log-alarm module (phase T3) was applied to a log group fed by the syslog VPC endpoint path, and its alarms were driven with real ONTAP audit lines: [Terraform Log-Alarm Module Run on 2026-10-09](#terraform-log-alarm-module-run-on-2026-10-09). Later on 2026-10-09 the Terraform SSD auto-increase module (phase T4) was applied in `notify_only`, `approve` and `auto`, with `auto` kept behind an explicit IAM deny so that no storage capacity changed: [Terraform SSD Auto-Increase Module Run on 2026-10-09](#terraform-ssd-auto-increase-module-run-on-2026-10-09).
 
 On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module in this run. A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
 
@@ -1165,6 +1165,193 @@ An older log group and its syslog configuration, both from before this run, were
 
 ---
 
+## Terraform SSD Auto-Increase Module Run on 2026-10-09
+
+On 2026-10-09 (UTC), the Terraform module `terraform/fsxn-ssd-auto-increase/` (phase T4) was applied to one first-generation `SINGLE_AZ_1` FSx for ONTAP file system with one HA pair and 1,024 GiB of SSD storage. This is a sample run on one file system. The run covered the reversible rows of the [T4 test plan](capacity-automation-t4-design.md#test-plan): `notify_only` on a real OK → ALARM transition, `approve`, the alarm-OK branch, and `auto` behind an explicit IAM deny on `fsx:UpdateFileSystem`, with the lock, fail-closed and archive checks around it. The one real +10% increase was not run.
+
+The guards behaved as designed. The function made 4 `UpdateFileSystem` calls in the whole run, all from `auto` behind the deny, all `AccessDenied`, and at most one per evaluation that reached the call. The file system stayed at 1,024 GiB with the same 4 administrative actions as before the run. Every archive object read back was in compliance mode with a retain-until date of its creation time plus 1 day, and a delete with the bypass header by an administrator was refused. No module code defect was found and no code was changed. Three behaviours differ from the design's wording: a report on every evaluation that makes no call (F1), `lock_state` `calling` in an `archive_retention_unproven` report (F2), and no decision-log line or archive object for a run stopped by the `blocked` latch (F3).
+
+| Item | Value |
+|------|-------|
+| Verification date | 2026-10-09, 11:55:59Z to 12:57:03Z (UTC), including a pause for screenshots from 12:40Z to 12:55Z |
+| Verification environment | Test environment (`ap-northeast-1`), sample run on one file system, with a disposable compliance-mode archive bucket with a 1-day default retention |
+| Scope | Deployment, IAM policy simulation of the execution role, `notify_only`, `approve`, the alarm-OK branch, `auto` behind an explicit IAM deny (the `blocked` latch, an operator clear, two concurrent invocations, lease contention and expiry), deploy-time and run-time fail-closed checks, archive retention, and cleanup. The real increase, test plan row (e), was not in scope |
+| Result | 18 of 20 checks passed. 1 passed with a deviation in how it was reached (L3). Cleanup (M1) is done with the archive bucket left in place until its retention passes |
+
+These results come from one run on one first-generation, single-HA-pair file system at 3.5% SSD utilization, with a ceiling set to the minimum valid increase (1,127 GiB) and a trigger threshold lowered to 3% for the test. They show that the guards stop or allow a call as designed on that file system. They do not show a real increase, the cooldown after one, second-generation or multi-HA-pair behaviour, or behaviour over weeks of hourly re-evaluation.
+
+### Environment and Deployment (T4 Run)
+
+| Item | Value |
+|------|-------|
+| AWS Region | `ap-northeast-1` |
+| File system | `fs-0123456789abcdef0` (placeholder), `SINGLE_AZ_1` (first generation), 1 HA pair, `StorageCapacity` 1,024 GiB, throughput 128 MBps, SSD IOPS `AUTOMATIC` (3,072) |
+| ONTAP version | 9.18.1. T4 calls AWS APIs only, so no ONTAP API was used |
+| Baseline | SSD `StorageCapacityUtilization` 3.50–3.51% over the hour before the run. 4 `FILE_SYSTEM_UPDATE` administrative actions, all `COMPLETED`, the latest at 2026-10-06T05:18:26Z, more than 6 hours before the run, so no cooldown applied |
+| Source revision | The module as merged in `9aa4224` (#124), unchanged during the run |
+| Terraform / providers | Terraform v1.15.8, `hashicorp/aws` 6.67.0, `hashicorp/archive` 2.8.1 |
+| Archive bucket | Created by the account owner before the run, outside Terraform, as the module expects: Object Lock enabled, default retention `COMPLIANCE` 1 day, versioning enabled, all four public access block settings on, SSE-S3 |
+| Report reader | A scratch SQS queue (SQS-managed encryption) subscribed with raw delivery to the module's notification topic, so reports could be read without an email subscription |
+| Deployer | AWS IAM Identity Center (SSO) session with administrator access |
+
+Ceiling arithmetic: `ceil(1024 × 1.10)` = 1,127 GiB, and `increase_percent = 10` gives the same value, so with the ceiling at 1,127 GiB the only target the function can compute is the minimum valid increase. The module was called from a scratch root configuration:
+
+```hcl
+module "ssd_auto_increase" {
+  source = "<local path to terraform/fsxn-ssd-auto-increase>"
+
+  name_prefix                         = "fsxn-t4-verify"
+  file_system_id                      = "fs-0123456789abcdef0"
+  max_storage_capacity_gib            = 1127
+  mode                                = var.mode                      # notify_only, approve, auto
+  trigger_threshold_percent           = var.trigger_threshold_percent # 80, lowered to 3 for the test
+  increase_percent                    = 10
+  log_retention_days                  = 1
+  decision_archive_bucket             = "<archive-bucket-name>"
+  decision_archive_required_mode      = var.required_mode                       # COMPLIANCE
+  decision_archive_min_retention_days = var.decision_archive_min_retention_days # 1, set to 2 in V2
+  tags = { Purpose = "t4-live-verification" }
+}
+```
+
+The first `terraform plan` proposed 18 resources: the module's 15 and the 3 for the report queue. It created and changed no `aws_fsx_*` resource; the file system was only read through the data source. Each later plan changed only the trigger alarm or the function's environment, as listed in [Check Results](#check-results-t4-run).
+
+The explicit deny, attached out of band as an inline policy on the execution role before any `auto` apply, and removed at cleanup after `mode` was back to `notify_only`:
+
+```json
+{"Version":"2012-10-17","Statement":[{"Sid":"T4VerifyDenyUpdateFileSystem","Effect":"Deny","Action":"fsx:UpdateFileSystem","Resource":"*"}]}
+```
+
+Terraform plans did not touch this policy, because the module's role defines no inline policy of that name.
+
+### Check Results (T4 Run)
+
+| # | Check | Result | Time (UTC) |
+|---|-------|--------|------------|
+| E1 | `terraform plan` and `apply`, `notify_only`, threshold 80 | ✅ PASS. 18 added, no `aws_fsx_*` change. The trigger alarm reached OK at 12:00:50Z | 11:59Z → 12:00:50Z |
+| S1 | `aws iam simulate-principal-policy` on the deployed execution role | ✅ PASS. `fsx:UpdateFileSystem` `allowed` on the configured file system, `implicitDeny` on a fabricated file-system ARN and on another real file system in the account. `cloudwatch:DescribeAlarms` `allowed` on the trigger alarm, `implicitDeny` on another alarm. `s3:PutObject` `allowed` on the prefix, `implicitDeny` outside it. `s3:GetObjectRetention` and `s3:GetBucketObjectLockConfiguration` `allowed`. `s3:DeleteObject`, `s3:DeleteObjectVersion`, `s3:PutObjectRetention` and `s3:BypassGovernanceRetention` `implicitDeny`. `sns:Publish` `allowed` on the notification topic and `implicitDeny` on the trigger topic. `cloudwatch:GetMetricData` and `fsx:DescribeFileSystems` `allowed` on `*`. Identity policy only; no SCP or resource-policy context was passed | After E1 |
+| N1 | Scheduled-event invocation with the alarm OK, before the bucket existed | ✅ PASS (fail-open as designed). Decision `alarm_not_in_alarm`; decision log `archive_result=write_failed`; the report named the `NoSuchBucket` gap; lock released; no `fsx:DescribeFileSystems` and no `UpdateFileSystem` by the function in CloudTrail | 12:02:11Z |
+| N2 | Scheduled-event invocation with the alarm OK and the real bucket | ✅ PASS. Decision `alarm_not_in_alarm`, one decision log line and one archive object, no lock item left, no `UpdateFileSystem`. One report was sent (F1) | 12:10:54Z |
+| N3 | `notify_only` end to end on a real OK → ALARM transition (threshold lowered to 3%, plan 0 added, 1 changed) | ✅ PASS. The alarm went to ALARM on real data 50 seconds after the update, with no `set-alarm-state`, and invoked the function once through the trigger topic. Decision `increase`, `mode=notify_only`, current 1,024, target 1,127, ceiling 1,127, cooldown clear, one archive object and one report. Lambda `Invocations` was 1 in that minute, so the report did not invoke the function again | 12:12:45Z → 12:13:37Z |
+| N4 | `approve` (plan: only the function's `MODE` and fingerprint changed) | ✅ PASS. The report carried the computed `aws fsx update-file-system ... --storage-capacity 1127 --client-request-token <correlation-id>` command. It was not run. Lock released | 12:16:06Z |
+| D0 | Explicit IAM deny in place before any `auto` apply | ✅ PASS. The simulation returned `explicitDeny` from the inline policy at 12:16:55Z and again 86 seconds later | 12:16:55Z → 12:18:21Z |
+| V1 | Deploy-time fail-closed: `mode = auto` with `decision_archive_required_mode = GOVERNANCE` | ✅ PASS. `terraform plan` exited 1 with the precondition message `mode = auto requires decision_archive_required_mode = COMPLIANCE.`; nothing applied | 12:17:51Z |
+| V2 | Run-time fail-closed: `auto` with `decision_archive_min_retention_days = 2` against the 1-day bucket | ✅ PASS. Decision `archive_retention_unproven`, "default retention is 1 day(s), required at least 2"; one decision log line, no archive object, one report, lock released, no call (F2) | 12:19:02Z |
+| L1 | `auto` behind the deny, retention minimum back to 1 | ✅ PASS. One `UpdateFileSystem`, `AccessDenied` (explicit deny) in CloudTrail at 12:21:07Z. Archive: `1-decision.json` (intent) and `2-rejected.json` (`deterministic_rejection`, `AccessDeniedException`) under one correlation ID. 2 reports: the pre-call report and the `blocked` report. Lock item `blocked` with the error code and the fingerprint, `report_sent` true. `StorageCapacity` still 1,024 | 12:21:03Z |
+| L2 | Next run while latched | ✅ PASS. `{"decision": "blocked"}`; no call, no report, lock item unchanged. Only the function's own log recorded the run (F3) | 12:22:00Z |
+| L3 | Operator clear of the latch, then two concurrent asynchronous invocations | ⚠️ PASS with a deviation. The clear (`disposition = cleared` with evidence text, conditional on `state = blocked`) was applied by the first invocation, archived as `3-reconciled.json` under the original correlation ID, and followed by a re-evaluation that made one denied call and latched again. The second invocation hit the new latch and made no call. Lambda recorded `Throttles` 2 for that minute: reserved concurrency 1 serialized the pair, so the DynamoDB lock was not contended. At most one call came from the two invocations, as the test plan requires, but the "evaluation already running" path was reached in L4 instead | 12:23:26Z → 12:23:30Z |
+| L4 | Valid lease held by another owner (a fake `evaluating` item, lease 600 s) | ✅ PASS. `{"decision": "evaluation_already_running"}`, item unchanged, no call | 12:28:11Z |
+| L5 | Expired lease (`expires_at` set 60 s in the past) | ✅ PASS. The new evaluation took over, named the superseded owner in its pre-call report, ran every guard, made one denied call and latched `blocked` | 12:28:13Z |
+| V3 | Run-time fail-closed: intent `PutObject` denied by a second inline deny on the archive bucket | ✅ PASS. Decision `archive_retention_unproven`, "intent write failed"; no archive object, lock released, one report, no call. The second deny was removed at 12:31:45Z | 12:29:27Z → 12:31:45Z |
+| R1 | Retention of the archived versions | ✅ PASS for each version read (the alarm-OK, `notify_only` and L1 objects): `COMPLIANCE`, retain-until = creation time + 1 day. 12 versions and 0 delete markers at the end of the run | 12:10Z → 12:55Z |
+| R2 | Delete of an archived version by the administrator, with `--bypass-governance-retention` | ✅ PASS (negative half only). Exit 254, "Access Denied because object protected by object lock"; `head-object` still showed the version in `COMPLIANCE` | Between V3 and L6 |
+| L6 | Re-latch for the screenshots | ✅ PASS. One denied call, `blocked` | 12:32:58Z |
+| X1 | `UpdateFileSystem` tally and file-system state | ✅ PASS. 4 CloudTrail events since 11:50Z, at 12:21:07Z (L1), 12:23:28Z (L3), 12:28:14Z (L5) and 12:33:00Z (L6), all `AccessDenied` from the function role with `requestParameters` null. None for N1–N4, V1–V3, L2, L4 or the second invocation of L3. `StorageCapacity` 1,024 GiB, `AVAILABLE`, the same 4 administrative actions | 12:35:03Z, re-checked at cleanup |
+| M1 | Cleanup, with re-read | ✅ Done, with the archive bucket left in place (see [Cleanup](#cleanup-t4-run)) | 12:55Z → 12:57:03Z |
+
+### Alarm State Transitions (T4 Run)
+
+From the alarm history of `fsxn-t4-verify-ssd-utilization`, UTC.
+
+| Time | Type | Detail |
+|------|------|--------|
+| 12:00:22Z | ConfigurationUpdate | Created, threshold 80% |
+| 12:00:50Z | StateUpdate | INSUFFICIENT_DATA → OK |
+| 12:12:45Z | ConfigurationUpdate | Threshold 3% |
+| 12:13:35Z | StateUpdate | OK → ALARM, on real data at 3.51% |
+| 12:13:36Z | Action | Published to the trigger topic |
+
+The alarm stayed in ALARM for the rest of the run. Its return to OK was not observed: the threshold went back to 80% at 12:55Z and the alarm was destroyed at 12:57Z. Every later evaluation was started with `aws lambda invoke` and a scheduled-event payload; an invocation by the EventBridge schedule rule itself is not part of this record.
+
+### Console Records (T4 Run)
+
+The screenshots below were taken in the Japanese-language console during the pause. The console navigation bar and footer are cropped. File-system IDs, the AWS account ID, the archive bucket's name suffix, a CloudTrail access key ID, role IDs and the source IP address are masked in gray.
+
+![Alarm detail of fsxn-t4-verify-ssd-utilization, 3-hour range: StorageCapacityUtilization flat at about 3.51% above the threshold line at 3%, the state timeline showing insufficient data, then OK, then ALARM from about 12:13, and the history tab listing created at 12:00:22, insufficient data to OK at 12:00:50, updated at 12:12:45, OK to ALARM at 12:13:35 and the trigger-topic action at 12:13:36](../screenshots/ssd-auto-increase/01-alarm-history.png)
+
+![Decision log stream of the notify_only evaluation: one JSON line with decision increase, mode notify_only, current_gib 1024, target_gib 1127, ceiling 1127, cooldown_state clear, lock_state none, iops_mode AUTOMATIC, the trigger alarm in ALARM, the 4 completed FILE_SYSTEM_UPDATE actions, archive_result written and utilization 3.51](../screenshots/ssd-auto-increase/02-decision-log-notify-only.png)
+
+![Decision log stream of the approve evaluation: the same fields with mode approve and archive_result written](../screenshots/ssd-auto-increase/03-decision-log-approve.png)
+
+![Decision log stream of the L1 correlation ID: sequence 1 decision increase with mode auto and lock_state calling, sequence 2 rejected with error_class deterministic_rejection and error_code AccessDeniedException, and sequence 3 reconciled with source operator and resulting_state cleared, written when the latch was cleared in L3](../screenshots/ssd-auto-increase/04-decision-log-auto-denied.png)
+
+![Function log filtered with "AccessDeniedException" ?"latch": four evaluations at 12:21:07, 12:23:28, 12:28:14 and 12:33:00, each ending rejected, blocked, AccessDeniedException; the 12:23:28 one reports blocked_cleared from operator_cleared with the re-evaluation result](../screenshots/ssd-auto-increase/05-function-log-latch.png)
+
+![S3 console, the archive prefix for the L1 correlation ID: 1-decision.json (1.0 KB), 2-rejected.json (105 B) and 3-reconciled.json (126 B)](../screenshots/ssd-auto-increase/06-archive-objects.png)
+
+![Object 2-rejected.json: legal hold off; Object Lock retention mode compliance, retain-until 2026/10/10 09:21:07 PM JST, retention type fixed](../screenshots/ssd-auto-increase/07-object-retention.png)
+
+![Archive bucket properties: Object Lock enabled, default retention enabled, default retention mode compliance, default retention period 1 day](../screenshots/ssd-auto-increase/08-bucket-object-lock.png)
+
+![DynamoDB scan of fsxn-t4-verify-lock: one item, keyed by the masked file system ID, with error_code AccessDenie(dException), the config fingerprint and the owner of the L6 evaluation](../screenshots/ssd-auto-increase/09-lock-table-item.png)
+
+![Lambda environment variables while in auto: DECISION_ARCHIVE_MIN_RETENTION_DAYS 1, DECISION_ARCHIVE_REQUIRED_MODE COMPLIANCE, INCREASE_PERCENT 10, INDETERMINATE_RECONCILE_HOURS 6, MAX_STORAGE_CAPACITY_GIB 1127, MODE auto, and the lock table, notification topic and trigger alarm names](../screenshots/ssd-auto-increase/10-lambda-env.png)
+
+![Lambda function overview with EventBridge and SNS triggers, the description "Guarded SSD auto-increase evaluator for <masked> (mode auto)", and the concurrency panel showing reserved concurrency 1](../screenshots/ssd-auto-increase/11-lambda-concurrency.png)
+
+![IAM role fsxn-t4-verify-role with two inline policies: fsxn-t4-verify-policy from the module and t4-verify-deny-update, the out-of-band deny](../screenshots/ssd-auto-increase/12-iam-role-permissions.png)
+
+![CloudTrail event history filtered on UpdateFileSystem: the four newest events at 21:33:00, 21:28:14, 21:23:28 and 21:21:07 JST, all by fsxn-t4-verify-evaluator. Older rows, which belong to other identities, are cropped](../screenshots/ssd-auto-increase/13-cloudtrail-updatefilesystem.png)
+
+![CloudTrail record of the 12:33:00Z UpdateFileSystem event: AssumedRole fsxn-t4-verify-role session fsxn-t4-verify-evaluator, errorCode AccessDenied, an errorMessage saying the role session is not authorized to perform fsx:UpdateFileSystem (cut off at the panel edge), requestParameters null and responseElements null](../screenshots/ssd-auto-increase/14-cloudtrail-event-json.png)
+
+![SNS topic fsxn-t4-verify-notify with one confirmed subscription, protocol SQS, to the scratch report queue, and no email subscription](../screenshots/ssd-auto-increase/15-sns-notify-subscriptions.png)
+
+### Findings (T4 Run)
+
+| # | Finding | Kind | Effect on this record |
+|---|---------|------|-----------------------|
+| F1 | Every evaluation that makes no call and ends through the common release path sends one SNS report: observed for `alarm_not_in_alarm` in N1 and N2, and by reading the handler also for `administrative_action_in_progress`, `cooldown_active` and `ceiling_reached`. With the default `rate(1 hour)` that is up to 24 reports a day while nothing happens. The design's report guard says "before the call and at each later state change" | Behaviour differs from the design wording; observed for the alarm-OK branch, `code-inspected` for the others. Noise only; no call is made | Not changed: reporting only on a state change would change what operators receive, which is a decision for the module owner. The module README now describes the hourly report |
+| F2 | The `archive_retention_unproven` decision log line and report carry `"lock_state": "calling"` (V2, V3). The item never left `evaluating` and was released. The value is prefilled for `auto` before the archive check runs | Report content, observed twice | Not changed. The README says to read the decision, not `lock_state`, for this outcome |
+| F3 | A run stopped by the `blocked` latch writes no decision log line and no archive object, only a line in the function's own log (L2, L3 second invocation). The design's lock-state table says it "logs `blocked`", and the decision-archive row expects every evaluation, including `blocked` decisions, to have its event sequence | Behaviour differs from the design wording, observed | The `blocked` decision itself is archived under the original correlation ID. Later latched runs are not, so this part of the decision-archive row is not met. The README now says where a latched run is recorded |
+| F4 | CloudTrail records a call denied at authorization with `requestParameters` null, so the `ClientRequestToken` cannot be read from a denied event | AWS behaviour, observed 4 times | Whether CloudTrail shows the token for an accepted call stays `open` |
+| F5 | CloudTrail shows the error code `AccessDenied`; the SDK raises `AccessDeniedException`. The function classifies the SDK code, so it latched as `deterministic_rejection` | Naming difference, observed | None. Read the function log or the archive, not only CloudTrail, to see the classification |
+| F6 | Two asynchronous invocations started together were serialized by reserved concurrency 1: Lambda throttled the overlap and its asynchronous queue retried it | Lambda behaviour, observed once | The DynamoDB lock was exercised separately in L4 and L5 |
+
+No defect was found in the module code or in its IAM policy for the paths run. The scoped Allow was shown by simulation only; the deny run shows that the call reached authorization, not that the Allow works, and the live positive control for it is the real increase. After the run, `scripts/tests/test_terraform_iam_policy.py` gained an offline check that a statement not registered as a no-resource-type action cannot put a scopable action on `Resource: "*"`.
+
+### Cleanup (T4 Run)
+
+| Step | Result | Time (UTC) |
+|------|--------|------------|
+| Apply the default variables | 0 added, 2 changed: alarm threshold 3% → 80%, `MODE` `auto` → `notify_only`. `MODE` read back as `notify_only` | 12:55Z |
+| Remove the inline deny | `delete-role-policy`, after `MODE` was confirmed `notify_only`; only the module's policy remained. The S3 deny had been removed at 12:31:45Z | 12:55:32Z |
+| `terraform destroy` | `plan -destroy` 18 to destroy, no `aws_fsx_*`; 18 destroyed; `terraform state list` empty | → 12:57:03Z |
+| Re-read | Function, role, table, alarm, both topics, both queues, schedule rule and both log groups not found. The module retains none of its log groups | After 12:57:03Z |
+| File system | `StorageCapacity` 1,024 GiB, `AVAILABLE`, the same 4 administrative actions as the baseline | After 12:57:03Z |
+| CloudTrail | Still exactly the 4 `AccessDenied` `UpdateFileSystem` events of the run | After 12:57:03Z |
+
+One item remains: the archive bucket, with 12 object versions and 0 delete markers. The latest retain-until date across the versions is 2026-10-10T12:33:00.194Z. Until then no version can be deleted, and so the bucket cannot be deleted. After it, the account owner deletes each version with `delete-object --version-id` and then the bucket with `delete-bucket`.
+
+### What Remains Unverified (T4 Run)
+
+| Item | Status | Reason |
+|------|--------|--------|
+| Real increase, test plan row (e): `accepted`, `capacity_available`, `terminal`, the request ID matched to CloudTrail, the lock released only after `terminal` | Not run | Irreversible on first generation; outside the approved scope. It is also the live positive control for the scoped Allow |
+| Cooldown after a change | Unit tests only | No change was made, and the baseline's last change was more than 6 hours old |
+| Second generation, `aggregate_names` alarms, more than one HA pair | Not run | The test file system is first generation with one HA pair |
+| Email delivery of reports and the `approve` command | Not run | No email subscription; reports were read through SQS |
+| Minimum IAM policy for the deploying identity (`examples/basic/iam-policy.json`) | Not verified | The deployer had administrator access |
+| Archive control identity A (positive control on a bucket without Object Lock) and the positive half of identity B (bypass delete on a governance-mode bucket) | Not run | Only one disposable bucket was approved |
+| `archive_retention_unproven` for a governance-mode bucket or a bucket without default retention at run time in `auto` | Not run | The deploy-time precondition (V1) and the shorter-period case (V2) were run instead |
+| Clearing the latch by a configuration-fingerprint change | Unit tests only | The latch was cleared by an operator disposition (L3). Before V3 the item was deleted instead |
+| Two invocations contending for the DynamoDB lock at the same time | Not observed | Reserved concurrency serialized them (F6); the lease paths were run one at a time (L4, L5) |
+| Invocation by the EventBridge schedule rule, and the alarm's return to OK | Not observed | See [Alarm State Transitions](#alarm-state-transitions-t4-run) |
+| `USER_PROVISIONED` IOPS, `ceiling_exceeds_service_maximum`, `iops_exceeds_maximum` | Unit tests only | The file system uses `AUTOMATIC` IOPS |
+
+### Judgment (T4 Run)
+
+| Item | Value |
+|------|-------|
+| Judgment | ✅ Within the scope of this sample run, on one first-generation, single-HA-pair file system: `notify_only` on a real alarm transition, `approve`, the alarm-OK branch, `auto` behind an explicit IAM deny with the `blocked` latch and an operator clear, at most one call per evaluation, lease contention and take-over, deploy-time and run-time fail-closed checks, and compliance-mode retention of the archived versions read are verified. No storage capacity changed. The real increase is unverified |
+| Passing checks | 18 of 20 (E1, S1, N1–N4, D0, V1–V3, L1, L2, L4–L6, R1, R2, X1) |
+| Passed with a deviation | 1 of 20 (L3), from F6 |
+| Done with remaining items | 1 of 20 (M1): the archive bucket stays until 2026-10-10T12:33:00.194Z |
+| T4 completion criteria | Not all met. The `notify_only`, `approve`, IAM-deny, policy-simulation, alarm-OK, concurrency and deploy-time validation rows pass. The decision-archive row is open: the positive controls for identities A and B were not run, and latched runs are not archived (F3) |
+| Module code defects | None found. No code was changed. F1–F3 are differences from the design wording, recorded in the module README |
+
+---
+
 ## Related Documents
 
 - [Monitoring Design](monitoring-design.md): the dashboard template, the Terraform T1 module, and the qtree quota monitor, with confidence tiers that cite this record
@@ -1172,5 +1359,7 @@ An older log group and its syslog configuration, both from before this run, were
 - [Terraform module: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md): inputs, outputs, and verification status
 - [Terraform module: fsxn-ontap-custom-metrics](../../terraform/fsxn-ontap-custom-metrics/README.md): the T2 qtree and SnapMirror poller, with its verification status
 - [Terraform module: fsxn-log-alarm](../../terraform/fsxn-log-alarm/README.md): the T3 log-alarm module, with its verification status
+- [Terraform module: fsxn-ssd-auto-increase](../../terraform/fsxn-ssd-auto-increase/README.md): the T4 guarded SSD auto-increase sample, with its verification status and operating procedures
+- [T4 Guarded SSD Auto-Increase: Implementation Design](capacity-automation-t4-design.md#test-plan): the test plan and completion criteria the T4 run was checked against
 - [Syslog VPC Endpoint Setup Guide](syslog-vpce-setup-guide.md): the delivery path the T3 run used
 - [CloudWatch Log Alarm](cloudwatch-log-alarm.md): the separate log-alarm template and its 2026-07-02 E2E record

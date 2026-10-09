@@ -4,7 +4,7 @@
 
 ## 実施概要
 
-このページは 6 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。2026-10-08 には、Terraform のカスタムメトリクスモジュール（フェーズ T2、Qtree と SnapMirror）を適用し、1 つの SVM の中の関係で SnapMirror のアラームを動かしました: [2026-10-08 の Terraform カスタムメトリクスモジュールの実行](#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。2026-10-09 には、Terraform のログアラームモジュール（フェーズ T3）を syslog VPC エンドポイント経路のロググループに適用し、実際の ONTAP の監査ログの行でアラームを動かしました。記録は [2026-10-09 の Terraform ログアラームモジュールの実行](#2026-10-09-の-terraform-ログアラームモジュールの実行)にあります。
+このページは 7 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。2026-10-08 には、Terraform のカスタムメトリクスモジュール（フェーズ T2、Qtree と SnapMirror）を適用し、1 つの SVM の中の関係で SnapMirror のアラームを動かしました: [2026-10-08 の Terraform カスタムメトリクスモジュールの実行](#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。2026-10-09 には、Terraform のログアラームモジュール（フェーズ T3）を syslog VPC エンドポイント経路のロググループに適用し、実際の ONTAP の監査ログの行でアラームを動かしました。記録は [2026-10-09 の Terraform ログアラームモジュールの実行](#2026-10-09-の-terraform-ログアラームモジュールの実行)にあります。同じ 2026-10-09 の後刻に、Terraform の SSD 自動拡張モジュール（フェーズ T4）を `notify_only`・`approve`・`auto` で適用しました。`auto` は明示的な IAM の拒否の後ろで動かしたので、ストレージ容量は変わっていません。記録は [2026-10-09 の Terraform SSD 自動拡張モジュールの実行](#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)にあります。
 
 2026-10-05（UTC）に、CloudFormation のダッシュボードテンプレート `shared/templates/fsxn-monitoring-dashboard.yaml` と Terraform モジュール `terraform/fsxn-monitoring-dashboard/` を、実在する Amazon FSx for NetApp ONTAP ファイルシステム 1 つに対してデプロイしました。対象は第 1 世代、`SINGLE_AZ_1`、HA ペア 1 つです。ダッシュボードのすべての系列がデータを返し、すべてのアラームが INSUFFICIENT_DATA を抜けて OK に達しました。Terraform のボリューム単位のアラーム 2 つは、ALARM に遷移させてから OK に戻すところまで確認しました。ファイルシステムの容量アラーム（CloudFormation と Terraform）は ALARM に遷移させられませんでした。閾値の下限（50%）が、観測した利用率（約 3.5%）を上回るためです（[F1](#所見) を参照）。この実行では、テンプレートとモジュールに欠陥は見つかっていません。2026-10-07 に見つかったダッシュボードの表示の欠陥は、[所見](#所見) の補足に記載しています。
 
@@ -1165,6 +1165,193 @@ privileged-operations のグラフの 04:47 の 1 は、届いた `t3_qt7` の P
 
 ---
 
+## 2026-10-09 の Terraform SSD 自動拡張モジュールの実行
+
+2026-10-09（UTC）に、Terraform モジュール `terraform/fsxn-ssd-auto-increase/`（フェーズ T4）を、第 1 世代 `SINGLE_AZ_1`、HA ペア 1 つ、SSD ストレージ 1,024 GiB の FSx for ONTAP ファイルシステム 1 つに適用しました。これは 1 つのファイルシステムでのサンプル実行です。実行したのは [T4 のテスト計画](capacity-automation-t4-design.md#テスト計画)のうち元に戻せる行です。実際の OK → ALARM の遷移での `notify_only`、`approve`、アラームが OK のときの分岐、`fsx:UpdateFileSystem` への明示的な IAM の拒否の後ろでの `auto` と、その周りのロック・fail-closed・アーカイブの確認を行いました。+10% の実際の拡張は実行していません。
+
+ガードは設計どおりに動きました。実行全体で関数が呼んだ `UpdateFileSystem` は 4 回で、すべて拒否の後ろの `auto` からの呼び出しで、すべて `AccessDenied` でした。呼び出しに達した評価 1 回あたり最大 1 回です。ファイルシステムは 1,024 GiB のままで、管理アクションは実行前と同じ 4 件でした。読み直したアーカイブのオブジェクトはすべてコンプライアンスモードで、保持期限は作成時刻 + 1 日でした。管理者がバイパスのヘッダーを付けて削除しても拒否されました。モジュールのコードに欠陥は見つからず、コードは変更していません。設計の記述と違う挙動が 3 つあります。呼び出しをしない評価のたびにレポートが出ること（F1）、`archive_retention_unproven` のレポートの `lock_state` が `calling` であること（F2）、`blocked` のラッチで止まった実行が判断ログの行もアーカイブのオブジェクトも残さないこと（F3）です。
+
+| 項目 | 値 |
+|------|-----|
+| 検証日時 | 2026-10-09、11:55:59Z から 12:57:03Z（UTC）。12:40Z から 12:55Z に画面の撮影のための中断を含む |
+| 検証環境 | テスト環境（`ap-northeast-1`）。ファイルシステム 1 つでのサンプル実行。使い捨てのコンプライアンスモードのアーカイブバケット（既定の保持期間 1 日）を使用 |
+| 範囲 | デプロイ、実行ロールの IAM ポリシーのシミュレーション、`notify_only`、`approve`、アラームが OK のときの分岐、明示的な IAM の拒否の後ろでの `auto`（`blocked` のラッチ、オペレーターによる解除、同時の 2 回の呼び出し、リースの競合と期限切れ）、デプロイ時と実行時の fail-closed の確認、アーカイブの保持、後片付け。実際の拡張（テスト計画の行 (e)）は範囲外 |
+| 結果 | 確認項目 20 件中 18 件が合格。1 件は到達の仕方が想定と違う形で合格（L3）。後片付け（M1）は完了し、アーカイブバケットは保持期間が過ぎるまで残した |
+
+この結果は、SSD の利用率 3.5% の第 1 世代・HA ペア 1 つのファイルシステム 1 つでの 1 回の実行から得たものです。上限は最小の有効な拡張量（1,127 GiB）に、トリガーの閾値はテストのために 3% に下げています。示すのは、このファイルシステムでガードが設計どおりに呼び出しを止める、または通すことです。実際の拡張、その後のクールダウン、第 2 世代や HA ペアが 2 つ以上のファイルシステムでの挙動、数週間にわたる 1 時間ごとの再評価での挙動は示しません。
+
+### 環境とデプロイした構成（T4 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| AWS リージョン | `ap-northeast-1` |
+| ファイルシステム | `fs-0123456789abcdef0`（プレースホルダー）、`SINGLE_AZ_1`（第 1 世代）、HA ペア 1 つ、`StorageCapacity` 1,024 GiB、スループット 128 MBps、SSD IOPS `AUTOMATIC`（3,072） |
+| ONTAP のバージョン | 9.18.1。T4 は AWS の API だけを呼ぶので、ONTAP の API は使っていない |
+| 実行前の状態 | 実行前の 1 時間の SSD の `StorageCapacityUtilization` は 3.50–3.51%。`FILE_SYSTEM_UPDATE` の管理アクションが 4 件、すべて `COMPLETED`。最新は 2026-10-06T05:18:26Z で実行の 6 時間以上前なので、クールダウンは掛かっていない |
+| ソースのリビジョン | `9aa4224`（#124）でマージしたモジュール。実行中に変更していない |
+| Terraform とプロバイダー | Terraform v1.15.8、`hashicorp/aws` 6.67.0、`hashicorp/archive` 2.8.1 |
+| アーカイブバケット | モジュールの想定どおり、実行の前にアカウントの所有者が Terraform の外で作成。Object Lock 有効、既定の保持は `COMPLIANCE` で 1 日、バージョニング有効、パブリックアクセスのブロックの 4 つの設定がすべて有効、SSE-S3 |
+| レポートの読み取り | メールのサブスクリプションなしでレポートを読むため、作業用の SQS キュー（SQS マネージドの暗号化）を、モジュールの通知トピックに raw delivery でサブスクライブした |
+| デプロイした主体 | 管理者権限の AWS IAM Identity Center（SSO）のセッション |
+
+上限の計算: `ceil(1024 × 1.10)` = 1,127 GiB で、`increase_percent = 10` でも同じ値になります。上限を 1,127 GiB にしたので、関数が計算できる目標値は最小の有効な拡張量だけです。モジュールは作業用のルート構成から呼びました。
+
+```hcl
+module "ssd_auto_increase" {
+  source = "<local path to terraform/fsxn-ssd-auto-increase>"
+
+  name_prefix                         = "fsxn-t4-verify"
+  file_system_id                      = "fs-0123456789abcdef0"
+  max_storage_capacity_gib            = 1127
+  mode                                = var.mode                      # notify_only, approve, auto
+  trigger_threshold_percent           = var.trigger_threshold_percent # 80, lowered to 3 for the test
+  increase_percent                    = 10
+  log_retention_days                  = 1
+  decision_archive_bucket             = "<archive-bucket-name>"
+  decision_archive_required_mode      = var.required_mode                       # COMPLIANCE
+  decision_archive_min_retention_days = var.decision_archive_min_retention_days # 1, set to 2 in V2
+  tags = { Purpose = "t4-live-verification" }
+}
+```
+
+最初の `terraform plan` が示したのは 18 個のリソースで、モジュールの 15 個とレポート用キューの 3 個です。`aws_fsx_*` のリソースは作成も変更もしておらず、ファイルシステムはデータソースで読んだだけです。その後の plan で変わったのはトリガーのアラームか関数の環境変数だけで、内訳は[確認項目の結果](#確認項目の結果t4-の実行)にあります。
+
+明示的な拒否は、`auto` を適用する前に実行ロールのインラインポリシーとしてモジュールの外から付け、後片付けで `mode` を `notify_only` に戻してから外しました。
+
+```json
+{"Version":"2012-10-17","Statement":[{"Sid":"T4VerifyDenyUpdateFileSystem","Effect":"Deny","Action":"fsx:UpdateFileSystem","Resource":"*"}]}
+```
+
+モジュールのロールはこの名前のインラインポリシーを定義していないので、Terraform の plan はこのポリシーに触れませんでした。
+
+### 確認項目の結果（T4 の実行）
+
+| # | 確認項目 | 結果 | 時刻（UTC） |
+|---|---------|------|------------|
+| E1 | `notify_only`、閾値 80 での `terraform plan` と `apply` | ✅ 合格。18 個を追加し、`aws_fsx_*` の変更なし。トリガーのアラームは 12:00:50Z に OK に達した | 11:59Z → 12:00:50Z |
+| S1 | デプロイした実行ロールに対する `aws iam simulate-principal-policy` | ✅ 合格。`fsx:UpdateFileSystem` は設定したファイルシステムで `allowed`、架空のファイルシステムの ARN とアカウント内の別の実在するファイルシステムで `implicitDeny`。`cloudwatch:DescribeAlarms` はトリガーのアラームで `allowed`、別のアラームで `implicitDeny`。`s3:PutObject` はプレフィックスの中で `allowed`、外で `implicitDeny`。`s3:GetObjectRetention` と `s3:GetBucketObjectLockConfiguration` は `allowed`。`s3:DeleteObject`・`s3:DeleteObjectVersion`・`s3:PutObjectRetention`・`s3:BypassGovernanceRetention` は `implicitDeny`。`sns:Publish` は通知トピックで `allowed`、トリガーのトピックで `implicitDeny`。`cloudwatch:GetMetricData` と `fsx:DescribeFileSystems` は `*` で `allowed`。ID ベースのポリシーだけの評価で、SCP やリソースポリシーの文脈は渡していない | E1 の後 |
+| N1 | バケットがまだ無い状態で、アラームが OK のときのスケジュールのイベントでの呼び出し | ✅ 合格（設計どおりの fail-open）。決定は `alarm_not_in_alarm`。判断ログは `archive_result=write_failed`。レポートは `NoSuchBucket` の欠落を明示。ロックは解放。CloudTrail に関数による `fsx:DescribeFileSystems` と `UpdateFileSystem` は無い | 12:02:11Z |
+| N2 | 実在するバケットで、アラームが OK のときのスケジュールのイベントでの呼び出し | ✅ 合格。決定は `alarm_not_in_alarm`。判断ログ 1 行とアーカイブのオブジェクト 1 つ。ロックの項目は残らず、`UpdateFileSystem` も無い。レポートが 1 通出た（F1） | 12:10:54Z |
+| N3 | 実際の OK → ALARM の遷移での `notify_only` の一連の流れ（閾値を 3% に下げた。plan は 0 個追加、1 個変更） | ✅ 合格。アラームは更新の 50 秒後に実データで ALARM になり（`set-alarm-state` は使っていない）、トリガーのトピック経由で関数を 1 回呼んだ。決定は `increase`、`mode=notify_only`、現在値 1,024、目標値 1,127、上限 1,127、クールダウンなし。アーカイブのオブジェクト 1 つとレポート 1 通。その 1 分の Lambda の `Invocations` は 1 なので、レポートが関数を再び呼んではいない | 12:12:45Z → 12:13:37Z |
+| N4 | `approve`（plan で変わったのは関数の `MODE` とフィンガープリントだけ） | ✅ 合格。レポートに、計算したコマンド `aws fsx update-file-system ... --storage-capacity 1127 --client-request-token <correlation-id>` が入っていた。コマンドは実行していない。ロックは解放 | 12:16:06Z |
+| D0 | `auto` を適用する前の明示的な IAM の拒否 | ✅ 合格。シミュレーションは 12:16:55Z とその 86 秒後に、インラインポリシーによる `explicitDeny` を返した | 12:16:55Z → 12:18:21Z |
+| V1 | デプロイ時の fail-closed: `mode = auto` と `decision_archive_required_mode = GOVERNANCE` | ✅ 合格。`terraform plan` は事前条件のメッセージ `mode = auto requires decision_archive_required_mode = COMPLIANCE.` で終了コード 1。何も適用していない | 12:17:51Z |
+| V2 | 実行時の fail-closed: 1 日のバケットに対して `auto`、`decision_archive_min_retention_days = 2` | ✅ 合格。決定は `archive_retention_unproven`、"default retention is 1 day(s), required at least 2"。判断ログ 1 行、アーカイブのオブジェクトなし、レポート 1 通、ロックは解放、呼び出しなし（F2） | 12:19:02Z |
+| L1 | 拒否の後ろでの `auto`、保持の最小値は 1 に戻した | ✅ 合格。`UpdateFileSystem` が 1 回、CloudTrail では 12:21:07Z に `AccessDenied`（明示的な拒否）。アーカイブには 1 つの相関 ID の下に `1-decision.json`（intent）と `2-rejected.json`（`deterministic_rejection`、`AccessDeniedException`）。レポートは呼び出し前のレポートと `blocked` のレポートの 2 通。ロックの項目はエラーコードとフィンガープリントを持つ `blocked` で、`report_sent` は true。`StorageCapacity` は 1,024 のまま | 12:21:03Z |
+| L2 | ラッチが掛かった状態での次の実行 | ✅ 合格。`{"decision": "blocked"}`。呼び出しなし、レポートなし、ロックの項目は変わらない。この実行を記録したのは関数自身のログだけ（F3） | 12:22:00Z |
+| L3 | オペレーターによるラッチの解除と、同時に始めた 2 回の非同期の呼び出し | ⚠️ 想定と違う形で合格。解除（`state = blocked` を条件に、根拠の文字列付きで `disposition = cleared`）は 1 回目の呼び出しが適用し、元の相関 ID の下に `3-reconciled.json` として記録した。続く再評価は拒否される呼び出しを 1 回行い、再びラッチを掛けた。2 回目の呼び出しは新しいラッチに当たり、呼び出しをしなかった。その 1 分の Lambda の `Throttles` は 2 で、予約済み同時実行数 1 が 2 回を順番に並べたため、DynamoDB のロックは競合していない。テスト計画のとおり 2 回の呼び出しから出た呼び出しは最大 1 回だが、"evaluation already running" の経路は L4 で確かめた | 12:23:26Z → 12:23:30Z |
+| L4 | 別の所有者が持つ有効なリース（偽の `evaluating` の項目、リース 600 秒） | ✅ 合格。`{"decision": "evaluation_already_running"}`。項目は変わらず、呼び出しなし | 12:28:11Z |
+| L5 | 期限切れのリース（`expires_at` を 60 秒前に設定） | ✅ 合格。新しい評価がロックを引き継ぎ、呼び出し前のレポートに引き継ぎ元の所有者を記載し、すべてのガードを実行し、拒否される呼び出しを 1 回行って `blocked` のラッチを掛けた | 12:28:13Z |
+| V3 | 実行時の fail-closed: アーカイブバケットへの 2 つ目のインラインの拒否で、intent の `PutObject` を拒否 | ✅ 合格。決定は `archive_retention_unproven`、"intent write failed"。アーカイブのオブジェクトなし、ロックは解放、レポート 1 通、呼び出しなし。2 つ目の拒否は 12:31:45Z に外した | 12:29:27Z → 12:31:45Z |
+| R1 | アーカイブしたバージョンの保持 | ✅ 読んだバージョン（アラームが OK のとき、`notify_only`、L1 のオブジェクト）ごとに合格。`COMPLIANCE`、保持期限 = 作成時刻 + 1 日。実行の終わりの時点で 12 バージョン、削除マーカー 0 | 12:10Z → 12:55Z |
+| R2 | 管理者による、`--bypass-governance-retention` を付けたアーカイブのバージョンの削除 | ✅ 合格（否定側だけ）。終了コード 254、"Access Denied because object protected by object lock"。`head-object` でバージョンは `COMPLIANCE` のまま残っていた | V3 と L6 の間 |
+| L6 | 画面の撮影のためにラッチを掛け直す | ✅ 合格。拒否される呼び出しが 1 回、`blocked` | 12:32:58Z |
+| X1 | `UpdateFileSystem` の集計とファイルシステムの状態 | ✅ 合格。11:50Z 以降の CloudTrail のイベントは 4 件で、12:21:07Z（L1）、12:23:28Z（L3）、12:28:14Z（L5）、12:33:00Z（L6）。すべて関数のロールからの `AccessDenied` で、`requestParameters` は null。N1–N4、V1–V3、L2、L4、L3 の 2 回目の呼び出しのイベントは無い。`StorageCapacity` は 1,024 GiB、`AVAILABLE`、管理アクションは同じ 4 件 | 12:35:03Z。後片付けで再確認 |
+| M1 | 後片付けと読み直し | ✅ 完了。アーカイブバケットは残した（[後片付け](#後片付けt4-の実行)を参照） | 12:55Z → 12:57:03Z |
+
+### アラームの状態遷移（T4 の実行）
+
+`fsxn-t4-verify-ssd-utilization` のアラームの履歴から。時刻は UTC です。
+
+| 時刻 | 種類 | 内容 |
+|------|------|------|
+| 12:00:22Z | ConfigurationUpdate | 作成、閾値 80% |
+| 12:00:50Z | StateUpdate | INSUFFICIENT_DATA → OK |
+| 12:12:45Z | ConfigurationUpdate | 閾値 3% |
+| 12:13:35Z | StateUpdate | OK → ALARM。実データ 3.51% による |
+| 12:13:36Z | Action | トリガーのトピックに発行 |
+
+アラームは実行の残りの間 ALARM のままでした。OK への復帰は観測していません。閾値は 12:55Z に 80% に戻し、アラームは 12:57Z に削除しました。その後の評価はすべて、スケジュールのイベントのペイロードを渡した `aws lambda invoke` で始めています。EventBridge のスケジュールのルール自体による呼び出しは、この記録に含みません。
+
+### コンソールでの記録（T4 の実行）
+
+以下の画面は、中断の間に日本語のコンソールで撮影しました。コンソールのナビゲーションバーとフッターは切り抜いています。ファイルシステム ID、AWS アカウント ID、アーカイブバケットの名前の末尾、CloudTrail のアクセスキー ID、ロール ID、送信元の IP アドレスは灰色でマスクしています。
+
+![fsxn-t4-verify-ssd-utilization のアラームの詳細、3 時間の範囲。StorageCapacityUtilization は閾値の 3% の線の上で約 3.51% のまま平らに推移し、状態のタイムラインはデータ不足、OK、12:13 ごろからの ALARM の順。履歴タブには 12:00:22 の作成、12:00:50 のデータ不足から OK、12:12:45 の更新、12:13:35 の OK から ALARM、12:13:36 のトリガーのトピックへのアクションが並ぶ](../screenshots/ssd-auto-increase/01-alarm-history.png)
+
+![notify_only の評価の判断ログのストリーム。JSON 1 行に、decision increase、mode notify_only、current_gib 1024、target_gib 1127、ceiling 1127、cooldown_state clear、lock_state none、iops_mode AUTOMATIC、ALARM のトリガーのアラーム、完了した FILE_SYSTEM_UPDATE の 4 件、archive_result written、utilization 3.51](../screenshots/ssd-auto-increase/02-decision-log-notify-only.png)
+
+![approve の評価の判断ログのストリーム。同じ項目で mode approve、archive_result written](../screenshots/ssd-auto-increase/03-decision-log-approve.png)
+
+![L1 の相関 ID の判断ログのストリーム。sequence 1 は mode auto、lock_state calling の decision increase、sequence 2 は error_class deterministic_rejection、error_code AccessDeniedException の rejected、sequence 3 は L3 でラッチを解除したときに書いた source operator、resulting_state cleared の reconciled](../screenshots/ssd-auto-increase/04-decision-log-auto-denied.png)
+
+!["AccessDeniedException" ?"latch" で絞り込んだ関数のログ。12:21:07、12:23:28、12:28:14、12:33:00 の 4 回の評価が、いずれも rejected、blocked、AccessDeniedException で終わる。12:23:28 の評価は operator_cleared による blocked_cleared と再評価の結果を記録している](../screenshots/ssd-auto-increase/05-function-log-latch.png)
+
+![S3 コンソールの、L1 の相関 ID のアーカイブのプレフィックス。1-decision.json（1.0 KB）、2-rejected.json（105 B）、3-reconciled.json（126 B）](../screenshots/ssd-auto-increase/06-archive-objects.png)
+
+![オブジェクト 2-rejected.json。リーガルホールドは無効。オブジェクトロックの保持モードはコンプライアンスモード、保持期日は 2026/10/10 09:21:07 PM JST、保持タイプは固定保持](../screenshots/ssd-auto-increase/07-object-retention.png)
+
+![アーカイブバケットのプロパティ。オブジェクトロック有効、デフォルトの保持有効、デフォルトの保持モードはコンプライアンス、デフォルトの保持期間は 1 日](../screenshots/ssd-auto-increase/08-bucket-object-lock.png)
+
+![fsxn-t4-verify-lock のスキャン結果。マスクしたファイルシステム ID をキーとする項目が 1 つ。error_code は AccessDenie(dException)、config のフィンガープリントと、L6 の評価の owner](../screenshots/ssd-auto-increase/09-lock-table-item.png)
+
+![auto のときの Lambda の環境変数。DECISION_ARCHIVE_MIN_RETENTION_DAYS 1、DECISION_ARCHIVE_REQUIRED_MODE COMPLIANCE、INCREASE_PERCENT 10、INDETERMINATE_RECONCILE_HOURS 6、MAX_STORAGE_CAPACITY_GIB 1127、MODE auto と、ロックのテーブル・通知トピック・トリガーのアラームの名前](../screenshots/ssd-auto-increase/10-lambda-env.png)
+
+![Lambda 関数の概要。EventBridge と SNS のトリガー、説明 "Guarded SSD auto-increase evaluator for <masked> (mode auto)"、予約された同時実行 1 を示す同時実行のパネル](../screenshots/ssd-auto-increase/11-lambda-concurrency.png)
+
+![IAM ロール fsxn-t4-verify-role のインラインポリシー 2 つ。モジュールの fsxn-t4-verify-policy と、モジュールの外から付けた拒否の t4-verify-deny-update](../screenshots/ssd-auto-increase/12-iam-role-permissions.png)
+
+![UpdateFileSystem で絞り込んだ CloudTrail のイベント履歴。新しい順に 21:33:00、21:28:14、21:23:28、21:21:07 JST の 4 件で、すべて fsxn-t4-verify-evaluator による。別の主体のものである古い行は切り抜いている](../screenshots/ssd-auto-increase/13-cloudtrail-updatefilesystem.png)
+
+![12:33:00Z の UpdateFileSystem イベントの CloudTrail のレコード。AssumedRole の fsxn-t4-verify-role のセッション fsxn-t4-verify-evaluator、errorCode AccessDenied、ロールのセッションに fsx:UpdateFileSystem を実行する権限が無いと述べる errorMessage（パネルの端で途切れている）、requestParameters null、responseElements null](../screenshots/ssd-auto-increase/14-cloudtrail-event-json.png)
+
+![SNS トピック fsxn-t4-verify-notify。作業用のレポートのキューへの、プロトコル SQS の確認済みのサブスクリプションが 1 つで、メールのサブスクリプションは無い](../screenshots/ssd-auto-increase/15-sns-notify-subscriptions.png)
+
+### 所見（T4 の実行）
+
+| # | 所見 | 種類 | この記録への影響 |
+|---|------|------|------------------|
+| F1 | 呼び出しをせず、共通の解放の経路で終わる評価は、そのたびに SNS のレポートを 1 通送る。`alarm_not_in_alarm` で N1 と N2 で観測し、ハンドラーを読む限り `administrative_action_in_progress`・`cooldown_active`・`ceiling_reached` も同じ。既定の `rate(1 hour)` では、何も起きていない間も 1 日最大 24 通になる。設計のレポートのガードは「呼び出しの前と、その後の状態の変化ごと」と書いている | 設計の記述と違う挙動。アラームが OK のときの分岐で観測し、ほかは `code-inspected`。ノイズで、呼び出しは起きない | 変更していない。状態の変化のときだけレポートするようにすると、オペレーターが受け取るものが変わり、その判断はモジュールの所有者のもの。1 時間ごとのレポートはモジュールの README に記載した |
+| F2 | `archive_retention_unproven` の判断ログの行とレポートが `"lock_state": "calling"` を持つ（V2、V3）。項目は `evaluating` から一度も出ず、解放されている。この値は、アーカイブの確認の前に `auto` 向けに先に埋めている | レポートの内容。2 回観測 | 変更していない。README に、この結果では `lock_state` ではなく決定を読むよう記載した |
+| F3 | `blocked` のラッチで止まった実行は、判断ログの行もアーカイブのオブジェクトも書かず、関数自身のログに 1 行を書くだけ（L2、L3 の 2 回目の呼び出し）。設計のロック状態の表は「`blocked` をログに記録する」と書き、判断アーカイブの行は `blocked` の決定を含むすべての評価に一連のイベントがあることを期待している | 設計の記述と違う挙動。観測 | `blocked` の決定そのものは元の相関 ID の下にアーカイブされている。その後のラッチが掛かった実行はアーカイブされないので、判断アーカイブの行のこの部分は満たしていない。ラッチが掛かった実行がどこに記録されるかは README に記載した |
+| F4 | 認可で拒否された呼び出しを、CloudTrail は `requestParameters` が null のまま記録する。そのため拒否されたイベントからは `ClientRequestToken` を読めない | AWS の挙動。4 回観測 | 受け付けられた呼び出しで CloudTrail がトークンを示すかどうかは `open` のまま |
+| F5 | CloudTrail のエラーコードは `AccessDenied` で、SDK が投げるのは `AccessDeniedException`。関数は SDK のコードで分類するので、`deterministic_rejection` としてラッチを掛けた | 名前の違い。観測 | 影響なし。分類を見るには CloudTrail だけでなく、関数のログかアーカイブを読む |
+| F6 | 同時に始めた 2 回の非同期の呼び出しは、予約済み同時実行数 1 で順番に並んだ。Lambda は重なった分をスロットリングし、非同期のキューが再試行した | Lambda の挙動。1 回観測 | DynamoDB のロックは L4 と L5 で別に確かめた |
+
+実行した経路では、モジュールのコードにも IAM ポリシーにも欠陥は見つかっていません。範囲を絞った Allow はシミュレーションでだけ示しました。拒否の後ろでの実行が示すのは呼び出しが認可に達したことで、Allow が機能することではありません。その実環境での陽性対照は実際の拡張です。実行の後に、`scripts/tests/test_terraform_iam_policy.py` に、リソースタイプの無いアクションとして登録していないステートメントが、範囲を絞れるアクションを `Resource: "*"` に置けないことをオフラインで確かめる検査を足しました。
+
+### 後片付け（T4 の実行）
+
+| 手順 | 結果 | 時刻（UTC） |
+|------|------|------------|
+| 既定の変数で適用 | 0 個追加、2 個変更。アラームの閾値 3% → 80%、`MODE` `auto` → `notify_only`。`MODE` は `notify_only` と読み直した | 12:55Z |
+| インラインの拒否を外す | `MODE` が `notify_only` であることを確かめてから `delete-role-policy`。残ったのはモジュールのポリシーだけ。S3 の拒否は 12:31:45Z に外していた | 12:55:32Z |
+| `terraform destroy` | `plan -destroy` は 18 個を削除、`aws_fsx_*` なし。18 個を削除。`terraform state list` は空 | → 12:57:03Z |
+| 読み直し | 関数、ロール、テーブル、アラーム、2 つのトピック、2 つのキュー、スケジュールのルール、2 つのロググループは見つからない。モジュールは自分のロググループをどれも残さない | 12:57:03Z の後 |
+| ファイルシステム | `StorageCapacity` 1,024 GiB、`AVAILABLE`、管理アクションは実行前と同じ 4 件 | 12:57:03Z の後 |
+| CloudTrail | 実行中の `AccessDenied` の `UpdateFileSystem` イベント 4 件のまま | 12:57:03Z の後 |
+
+残った項目は 1 つで、アーカイブバケットです。オブジェクトのバージョンが 12 個、削除マーカーが 0 個あります。バージョンの中で最も遅い保持期限は 2026-10-10T12:33:00.194Z です。それまではどのバージョンも削除できないので、バケットも削除できません。その後に、アカウントの所有者が `delete-object --version-id` で各バージョンを削除し、`delete-bucket` でバケットを削除します。
+
+### 未検証の範囲（T4 の実行）
+
+| 項目 | 状況 | 理由 |
+|------|------|------|
+| 実際の拡張（テスト計画の行 (e)）: `accepted`、`capacity_available`、`terminal`、CloudTrail と照合したリクエスト ID、`terminal` の後でだけのロックの解放 | 未実施 | 第 1 世代では元に戻せず、承認した範囲の外。範囲を絞った Allow の実環境での陽性対照でもある |
+| 変更の後のクールダウン | 単体テストのみ | 変更をしておらず、実行前の最後の変更は 6 時間以上前 |
+| 第 2 世代、`aggregate_names` のアラーム、HA ペアが 2 つ以上 | 未実施 | 検証対象は第 1 世代で HA ペアは 1 つ |
+| レポートと `approve` のコマンドのメールでの配信 | 未実施 | メールのサブスクリプションなし。レポートは SQS で読んだ |
+| デプロイする主体の最小の IAM ポリシー（`examples/basic/iam-policy.json`） | 未検証 | デプロイした主体は管理者権限 |
+| アーカイブの対照の主体 A（Object Lock の無いバケットでの陽性対照）と、主体 B の陽性側（ガバナンスモードのバケットでのバイパスによる削除） | 未実施 | 承認された使い捨てのバケットは 1 つだけ |
+| `auto` の実行時の、ガバナンスモードのバケットや既定の保持の無いバケットでの `archive_retention_unproven` | 未実施 | 代わりにデプロイ時の事前条件（V1）と、短い期間の場合（V2）を実行した |
+| 設定のフィンガープリントの変更によるラッチの解除 | 単体テストのみ | ラッチはオペレーターの disposition で解除した（L3）。V3 の前は項目を削除した |
+| DynamoDB のロックを同時に奪い合う 2 回の呼び出し | 観測していない | 予約済み同時実行数が 2 回を順番に並べた（F6）。リースの経路は 1 回ずつ実行した（L4、L5） |
+| EventBridge のスケジュールのルールによる呼び出しと、アラームの OK への復帰 | 観測していない | [アラームの状態遷移](#アラームの状態遷移t4-の実行)を参照 |
+| `USER_PROVISIONED` の IOPS、`ceiling_exceeds_service_maximum`、`iops_exceeds_maximum` | 単体テストのみ | ファイルシステムの IOPS は `AUTOMATIC` |
+
+### 判定（T4 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| 判定 | ✅ このサンプル実行の範囲、つまり第 1 世代・HA ペア 1 つのファイルシステム 1 つで、実際のアラームの遷移での `notify_only`、`approve`、アラームが OK のときの分岐、`blocked` のラッチとオペレーターによる解除を含む明示的な IAM の拒否の後ろでの `auto`、評価 1 回あたり最大 1 回の呼び出し、リースの競合と引き継ぎ、デプロイ時と実行時の fail-closed の確認、読んだアーカイブのバージョンのコンプライアンスモードでの保持を検証した。ストレージ容量は変わっていない。実際の拡張は未検証 |
+| 合格 | 20 件中 18 件（E1、S1、N1–N4、D0、V1–V3、L1、L2、L4–L6、R1、R2、X1） |
+| 想定と違う形で合格 | 20 件中 1 件（L3）。F6 による |
+| 残った項目付きで完了 | 20 件中 1 件（M1）: アーカイブバケットは 2026-10-10T12:33:00.194Z まで残る |
+| T4 の完了条件 | すべては満たしていない。`notify_only`、`approve`、IAM の拒否、ポリシーのシミュレーション、アラームが OK のとき、同時実行、デプロイ時の検証の行は合格。判断アーカイブの行は未完了で、主体 A と B の陽性対照を実行しておらず、ラッチが掛かった実行はアーカイブされない（F3） |
+| モジュールのコードの欠陥 | 見つかっていない。コードは変更していない。F1–F3 は設計の記述との違いで、モジュールの README に記載した |
+
+---
+
 ## 関連ドキュメント
 
 - [監視設計](monitoring-design.md): ダッシュボードテンプレート、Terraform T1 モジュール、Qtree クォータ監視。確信度の階層がこの記録を引用している
@@ -1172,5 +1359,7 @@ privileged-operations のグラフの 04:47 の 1 は、届いた `t3_qt7` の P
 - [Terraform モジュール: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md): 入力・出力・検証状況
 - [Terraform モジュール: fsxn-ontap-custom-metrics](../../terraform/fsxn-ontap-custom-metrics/README.ja.md): T2 の Qtree と SnapMirror のポーラーと、その検証状況
 - [Terraform モジュール: fsxn-log-alarm](../../terraform/fsxn-log-alarm/README.ja.md): T3 のログアラームモジュールと、その検証状況
+- [Terraform モジュール: fsxn-ssd-auto-increase](../../terraform/fsxn-ssd-auto-increase/README.ja.md): T4 のガード付き SSD 自動拡張サンプルと、その検証状況と運用手順
+- [T4 ガード付き SSD 自動拡張: 実装設計](capacity-automation-t4-design.md#テスト計画): T4 の実行を照らし合わせたテスト計画と完了条件
 - [Syslog VPC Endpoint セットアップガイド](syslog-vpce-setup-guide.md): T3 の実行で使った配送経路
 - [CloudWatch ログアラーム](cloudwatch-log-alarm.md): 別のログアラームテンプレートと、その 2026-07-02 の E2E 記録
