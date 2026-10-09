@@ -140,12 +140,12 @@ CloudWatch Log Alarm は「ログ内の文字列に直接アラートする」�
 
 | `DetectionType` | フィルタ行 | 元のパターン（5,156 行中の一致数） | 状態 |
 |-----------------|-----------|-----------------------------------|------|
-| `sensitive-file-access` | `filter @message like /${TargetPattern}/` | 変更なし | E2E 2026-07-02（INSUFFICIENT_DATA → OK） |
+| `sensitive-file-access` | `filter @message like /${TargetPattern}/` | 変更なし | スタックを配備し OK まで遷移（E2E 2026-07-02）。`DetectionType` は記録なし |
 | `failed-access-attempts` | `filter @message like /Error: not authorized/` | `"Error: not authorized"`（5、実際の拒否のすべて） | `unverified` |
 | `bulk-delete-operations` | `filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or @message like /delete.*::\sSuccess/ or @message like /delete.*::\sError/ or @message like /remove.*::\sSuccess/ or @message like /remove.*::\sError/` | `%DELETE.*::\sSuccess\|...\|remove.*::\sError%`（5、REST の削除 1 回につき 1） | `unverified` |
 | `specific-user-activity` | `filter @message like /${TargetPattern}/ and @message not like /Pending/` | `"fsxadmin:fsxadmin" -"Pending"`（13、完了した操作 1 回につき 1） | `unverified` |
 
-`unverified` は、T3 の実行から導いたフィルタで、LogAlarm のクエリとしても Logs Insights のクエリとしても実行していないことを示します。件数はメトリクスフィルターのパターンのもので、これらのフィルタのものではありません。Logs Insights の `like` と `not like` は大文字と小文字を区別する部分一致で（[filter コマンド](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-Filter.html)）、引用符で囲んだメトリクスフィルターの語と同じです。`bulk-delete-operations` の 6 つの語は、T3 の正規表現の 6 つの選択肢を別々の `like` の語として書いたものです。`scripts/tests/test_cfn_log_alarm_queries.py` はフィルタ行を固定し、記録をもとに書いた監査ログの行の形でオフラインに確かめます。このテストは Logs Insights のエンジンを使いません。
+`unverified` は、T3 の実行から導いたフィルタで、LogAlarm のクエリとしても Logs Insights のクエリとしても実行していないことを示します。件数はメトリクスフィルターのパターンのもので、これらのフィルタのものではありません。`sensitive-file-access` の状態は「E2E 検証結果（2026-07-02）」節の記録どおりで、スタックを配備し、アラームが INSUFFICIENT_DATA から OK へ遷移したことを示します。同節はどの `DetectionType` と `TargetPattern` で配備したかを書いていないので、このクエリの検証ではありません。Logs Insights では、引用符で囲んだ `like` の語は部分一致、`/.../` の語は行のどこかに対する正規表現の一致で、どちらも大文字と小文字を区別します（[filter コマンド](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-Filter.html)）。`/Error: not authorized/`、`/fsxadmin:fsxadmin/`、`/Pending/` は正規表現のメタ文字を含まないので、引用符で囲んだメトリクスフィルターの語と同じ行に一致します。`bulk-delete-operations` の 6 つの語は、T3 の正規表現の 6 つの選択肢を別々の `like` の語として書いたものです。`scripts/tests/test_cfn_log_alarm_queries.py` はフィルタ行を固定し、記録をもとに書いた監査ログの行の形でオフラインに確かめます。このテストは Logs Insights のエンジンを使いません。
 
 > **specific-user-activity の TargetPattern に関する補足**: 監査ログの行に現れる `<user>:<role>` の語を渡します。例は `fsxadmin:fsxadmin` です。`admin` だけにすると、オペレーターの操作がなくてもファイルシステムが 1 分に約 80 行書く `fsx-control-plane:admin` の行にも一致します（2026-10-09 の実行）。Pending の除外は、変更の操作ごとに結果の前に書かれる `:: Pending` の行を落とすので、操作 1 回を 1 回と数えます。`Pending` を含むほかの行も落とします。
 
