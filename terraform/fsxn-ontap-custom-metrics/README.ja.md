@@ -74,11 +74,14 @@ SnapMirror の値の規則は次のとおりです。`healthy` がない、ま�
 
 ## モジュールの取得方法
 
-予定しているタグは `terraform-fsxn-ontap-custom-metrics-v0.1.0` ですが、**まだ作成していません**。[検証状況](#検証状況)に記した実環境での実行の後に作る予定です。それまでは、下の git ソースかアーカイブ URL でコミット SHA を固定してください。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。
+このモジュールは `terraform-fsxn-ontap-custom-metrics-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-ontap-custom-metrics-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-ontap-custom-metrics-v0.1.0) として公開しています。タグは版を固定するもので、[検証状況](#検証状況)に記した検証の範囲は変えません。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。
 
-Lambda のソースはモジュールのディレクトリの外、`shared/lambda/ontap_metrics/` にあります。`//subdirectory` 形式のソースでは、Terraform はパッケージ全体をダウンロードして展開し、その後でサブディレクトリからモジュールを読みます（[module ブロックのリファレンス](https://developer.hashicorp.com/terraform/language/block/module)）。そのため下のどちらのソースでも `../../shared` を解決できます。コードブロック内のコメントは英語のままで、上から順に「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
+Lambda のソースはモジュールのディレクトリの外、`shared/lambda/ontap_metrics/` にあります。`//subdirectory` 形式のソースでは、Terraform はパッケージ全体をダウンロードして展開し、その後でサブディレクトリからモジュールを読みます（[module ブロックのリファレンス](https://developer.hashicorp.com/terraform/language/block/module)）。そのため下のどのソースでも `../../shared` を解決できます。コードブロック内のコメントは英語のままで、上から順に「タグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
 
@@ -86,19 +89,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ontap-custom-metrics"
 ```
 
-sparse checkout では両方のディレクトリを含めます。含めないと `shared/lambda/ontap_metrics` が存在せず、plan の時点で `archive_file` が失敗します。
+次の手順は sparse checkout で、タグの時点のモジュールのディレクトリを取り出します。その後、このコピーの `terraform/fsxn-ontap-custom-metrics` のローカルパスを `source` に指定します。コミットに固定する場合は、タグ名をコミット SHA に置き換えます。sparse checkout では両方のディレクトリを含めます。含めないと `shared/lambda/ontap_metrics` が存在せず、plan の時点で `archive_file` が失敗します。
 
 ```bash
 git init fsx-ontap-custom-metrics && cd fsx-ontap-custom-metrics
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-ontap-custom-metrics shared/lambda/ontap_metrics
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-ontap-custom-metrics-v0.1.0
 git checkout FETCH_HEAD
 ```
 
-> **SHA を指定した取得に関する補足**
+> **取得手順に関する補足**
 >
-> ダッシュボードのモジュールの sparse checkout はタグを取得します。上のようにコミット SHA を取得する手順は、このモジュールでは実行していません（`unverified`）。`source` に git ソースを書く場合、ダッシュボードのモジュールの README に記録したとおり、SHA と `depth=1` は組み合わせられません。タグを作った後は、`<commit-sha>` の代わりにタグを使ってください。
+> タグを作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。タグそのものの取得は、このモジュールでは実行していません。`?ref=main&depth=1` を指定した git ソースでも、`terraform init` がダウンロードしたコピーにはモジュールの隣に `shared/lambda/ontap_metrics/` がありました。そのコピーから `plan` は実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
 
 ## 使い方
 
@@ -208,7 +211,7 @@ terraform apply
 
 ```hcl
 module "ontap_custom_metrics" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
 
   file_system_id               = "fs-0123456789abcdef0"
   ontap_management_ip          = "198.51.100.10"

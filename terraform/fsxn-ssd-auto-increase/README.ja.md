@@ -46,11 +46,14 @@
 
 ## モジュールの入手
 
-計画中のタグは `terraform-fsxn-ssd-auto-increase-v0.1.0` です。**まだ作成されていません**。[検証状況](#検証状況)のライブ実行の後に作る計画です。それまではコミット SHA で git ソースか下のアーカイブ URL をピン留めしてください。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
+このモジュールは `terraform-fsxn-ssd-auto-increase-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-ssd-auto-increase-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-ssd-auto-increase-v0.1.0) として公開しています。タグは版を固定するもので、検証を主張するものではありません。[検証状況](#検証状況)に記したとおり、ライブは `unverified` のままです。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
 
-Lambda ソースはモジュールディレクトリの外、`shared/lambda/ssd_auto_increase/` にあります。`//subdirectory` ソースでは Terraform がパッケージ全体をダウンロードして展開し、サブディレクトリからモジュールを読む ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)) ため、下のどちらのソースでも `../../shared` が解決します。
+Lambda ソースはモジュールディレクトリの外、`shared/lambda/ssd_auto_increase/` にあります。`//subdirectory` ソースでは Terraform がパッケージ全体をダウンロードして展開し、サブディレクトリからモジュールを読む ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)) ため、下のどのソースでも `../../shared` が解決します。
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=terraform-fsxn-ssd-auto-increase-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
 
@@ -58,15 +61,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ssd-auto-increase"
 ```
 
-スパースチェックアウトは両方のディレクトリを含める必要があります。さもないと `shared/lambda/ssd_auto_increase` が存在せず `archive_file` がプラン時に失敗します。
+次の手順はスパースチェックアウトで、タグの時点のモジュールのディレクトリを取り出します。その後、このコピーの `terraform/fsxn-ssd-auto-increase` のローカルパスを `source` に指定します。コミットに固定する場合は、タグ名をコミット SHA に置き換えます。スパースチェックアウトは両方のディレクトリを含める必要があります。さもないと `shared/lambda/ssd_auto_increase` が存在せず `archive_file` がプラン時に失敗します。
 
 ```bash
 git init fsx-ssd-auto-increase && cd fsx-ssd-auto-increase
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-ssd-auto-increase shared/lambda/ssd_auto_increase
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-ssd-auto-increase-v0.1.0
 git checkout FETCH_HEAD
 ```
+
+> **取得手順に関する補足**
+>
+> タグを作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。タグそのものの取得は、このモジュールでは実行していません。`?ref=main&depth=1` を指定した git ソースでも、`terraform init` がダウンロードしたコピーにはモジュールの隣に `shared/lambda/ssd_auto_increase/` がありました。そのコピーから `plan` は実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
 
 ## 使い方
 
@@ -117,7 +124,7 @@ terraform apply
 
 ```hcl
 module "ssd_auto_increase" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=terraform-fsxn-ssd-auto-increase-v0.1.0&depth=1"
 
   file_system_id           = "fs-0123456789abcdef0"
   max_storage_capacity_gib = 2048

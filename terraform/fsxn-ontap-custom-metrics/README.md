@@ -74,11 +74,14 @@ Lambda execution role, created by the module (the deployer needs `iam:PassRole` 
 
 ## Obtaining the module
 
-The planned tag is `terraform-fsxn-ontap-custom-metrics-v0.1.0`. It is **not yet created**; it is planned after the live run in [Verification status](#verification-status). Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. Download sizes were not measured for this module; [the dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module) records them for the same repository.
+The module is versioned with git tags of the form `terraform-fsxn-ontap-custom-metrics-vX.Y.Z`. The current version is `terraform-fsxn-ontap-custom-metrics-v0.1.0`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-ontap-custom-metrics-v0.1.0). A tag pins a version; it does not change the scope of verification described in [Verification status](#verification-status). The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. Download sizes were not measured for this module; [the dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module) records them for the same repository.
 
-The Lambda source is outside the module directory, in `shared/lambda/ontap_metrics/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for both sources below.
+The Lambda source is outside the module directory, in `shared/lambda/ontap_metrics/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for the sources below.
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
 
@@ -86,19 +89,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ontap-custom-metrics"
 ```
 
-A sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ontap_metrics` does not exist:
+The steps below check out the module directory at the tag with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-ontap-custom-metrics` in this copy. To pin a commit instead, replace the tag name with a commit SHA. The sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ontap_metrics` does not exist:
 
 ```bash
 git init fsx-ontap-custom-metrics && cd fsx-ontap-custom-metrics
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-ontap-custom-metrics shared/lambda/ontap_metrics
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-ontap-custom-metrics-v0.1.0
 git checkout FETCH_HEAD
 ```
 
-> **Fetch-by-SHA note**
+> **Fetch note**
 >
-> The dashboard module's sparse checkout fetches a tag; fetching a commit SHA as above was not run for this module (`unverified`). With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the dashboard module README. Once the tag exists, use it in place of `<commit-sha>`.
+> Before the tag was created, these steps were run with a commit SHA in place of the tag name, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. The fetch of the tag itself has not been run for this module. A git source with `?ref=main&depth=1` also placed `shared/lambda/ontap_metrics/` next to the module in the copy that `terraform init` downloaded; `plan` was not run from it. With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module).
 
 ## Usage
 
@@ -208,7 +211,7 @@ In your own root configuration, copy [`examples/basic/`](examples/basic/) and re
 
 ```hcl
 module "ontap_custom_metrics" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
 
   file_system_id               = "fs-0123456789abcdef0"
   ontap_management_ip          = "198.51.100.10"

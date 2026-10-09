@@ -44,9 +44,12 @@ Each audited ONTAP change operation writes two lines, one ending `:: Pending` an
 
 ## Obtaining the module
 
-The planned tag is `terraform-fsxn-log-alarm-v0.1.0`. It is **not yet created**, and when to create it has not been decided. The default patterns were replaced after the 2026-10-09 run, and the new `bulk-delete` pattern has not run on a live alarm. Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. Download sizes were not measured for this module; [the dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module) records them for the same repository.
+The module is versioned with git tags of the form `terraform-fsxn-log-alarm-vX.Y.Z`. The current version is `terraform-fsxn-log-alarm-v0.1.0`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-log-alarm-v0.1.0). A tag pins a version; it is not a verification claim. Live verification stays limited to the scope of the 2026-10-09 record in [Verification status](#verification-status), three audit detections. The tag carries the default patterns replaced after that run; the new `bulk-delete` default has not run on a live alarm, and `autosize-fail` on a real EMS event, the default 300-second period, SNS notification, and the deployer IAM policy are `unverified`. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. Download sizes were not measured for this module; [the dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module) records them for the same repository.
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=<commit-sha>"
 
@@ -54,15 +57,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-log-alarm"
 ```
 
-The steps below check out only the module directory at a commit with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-log-alarm` in this copy. Once the tag exists, use it in place of `<commit-sha>`.
+The steps below check out only the module directory at the tag with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-log-alarm` in this copy. To pin a commit instead, replace the tag name with a commit SHA. The module has no code outside its directory, so no other path is needed.
 
 ```bash
 git init fsx-ontap-log-alarm && cd fsx-ontap-log-alarm
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-log-alarm
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-log-alarm-v0.1.0
 git checkout FETCH_HEAD
 ```
+
+> **Fetch note**
+>
+> Before the tag was created, these steps were run with a commit SHA in place of the tag name, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. The fetch of the tag itself has not been run for this module. With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module).
 
 ## Usage
 
@@ -104,7 +111,7 @@ In your own root configuration, copy [`examples/basic/`](examples/basic/) and re
 
 ```hcl
 module "fsx_ontap_log_alarm" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1"
 
   log_group_name     = "/syslog/fsxn-admin-audit"
   notification_email = "ops@example.com"
