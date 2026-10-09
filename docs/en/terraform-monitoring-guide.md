@@ -54,7 +54,7 @@ This table is the only place on this page with per-module status. Other sections
 2. Apply T1 ([`fsxn-monitoring-dashboard`](../../terraform/fsxn-monitoring-dashboard/README.md#prerequisites)). Most common blocker: provider constraints intersect, so a root that pins `hashicorp/aws` below 6.67.0 (for example `~> 6.60.0`) fails `terraform init` with "no available releases match the given constraints".
 3. Apply T2 ([`fsxn-ontap-custom-metrics`](../../terraform/fsxn-ontap-custom-metrics/README.md#prerequisites)). Most common blocker: TCP 443 from the Lambda subnets to the management endpoint. The ingress rule on the file system security group is added outside Terraform after apply.
 4. Build the T3 delivery path with the [syslog VPC endpoint setup guide](syslog-vpce-setup-guide.md) and the CloudFormation template `shared/templates/syslog-vpce-cloudwatch.yaml`. Most common blocker: ONTAP log forwarding must point at the syslog endpoint before any event arrives ([Step 3](syslog-vpce-setup-guide.md#step-3-configure-ontap-log-forwarding)).
-5. Apply T3 ([`fsxn-log-alarm`](../../terraform/fsxn-log-alarm/README.md#prerequisites)). Most common blocker: `log_group_name` must equal the log group the delivery path writes to (template default `/syslog/fsxn-admin-audit`).
+5. Apply T3 ([`fsxn-log-alarm`](../../terraform/fsxn-log-alarm/README.md#prerequisites)). Most common blocker: `log_group_name` must equal the log group the delivery path writes to (template default `/syslog/fsxn-admin-audit`). Before apply, set the user and the path that two of the detections watch; the defaults are examples (see the [detection note](#minimal-root-module)).
 6. Optionally, add T4 once it is released, starting in `notify_only`. Most common blocker: a Terraform-managed file system needs `ignore_changes` on its storage capacity first ([Terraform-managed file systems](capacity-automation.md#terraform-managed-file-systems)).
 
 > **Provider version note**
@@ -98,7 +98,7 @@ flowchart TD
 
 ## Minimal root module
 
-All values below are placeholders; replace them before use. The T2 network defaults assume a NAT gateway.
+All values below are placeholders; replace them before use. The T2 network defaults assume a NAT gateway. As written, the example is for a PoC: T2 does not verify the management endpoint's TLS certificate, and the three SNS topics are not encrypted. The TLS note and the notification note after the block list what to change for production.
 
 ```hcl
 terraform {
@@ -142,6 +142,11 @@ module "fsx_ontap_custom_metrics" {
   subnet_ids                   = ["subnet-0123456789abcdef0"]
   qtree_svm_name               = "svm-prod-01"
   notification_email           = "ops@example.com"
+
+  # PoC only: with these two empty, the poller does not verify the TLS
+  # certificate (CERT_NONE). For production, set both.
+  # ca_cert_path      = "/opt/certs/ontap-ca.pem"
+  # ca_cert_layer_arn = "arn:aws:lambda:ap-northeast-1:123456789012:layer:ontap-ca:1"
 }
 
 # T3: alarms on the log group that the syslog VPC endpoint path writes to
@@ -150,6 +155,23 @@ module "fsx_ontap_log_alarm" {
 
   log_group_name     = "/syslog/fsxn-admin-audit"
   notification_email = "ops@example.com"
+
+  # Setting detections replaces all five default recipes. Replace the user
+  # and the path below; copy failed-access and bulk-delete from the README
+  # if you want them.
+  detections = {
+    autosize-fail = {
+      pattern = "\"wafl.vol.autoSize.fail\""
+    }
+    privileged-operations = {
+      pattern            = "\"<monitored-user>\""
+      evaluation_periods = 3
+    }
+    unauthorized-access = {
+      pattern            = "\"<protected-path>\""
+      evaluation_periods = 3
+    }
+  }
 }
 ```
 
@@ -159,9 +181,17 @@ The ingress rule on the file system security group for T2 (source: the `lambda_s
 >
 > Each module accepts a git source, an archive URL, or a relative local path. An absolute local path for T2 failed in the 2026-10-08 run, because its Lambda source (`shared/lambda/ontap_metrics/`) sits outside the module directory. A sparse checkout for T2 must include `shared/lambda/ontap_metrics`.
 
+> **TLS note**
+>
+> With `ca_cert_path` and `ca_cert_layer_arn` empty, as in the example, the T2 poller does not verify the management endpoint's TLS certificate and logs a warning. That is acceptable for a PoC only. For production, put the CA certificate that signs the management endpoint's certificate in a Lambda layer and set both inputs (the commented lines in the example; [TLS and topic encryption note](../../terraform/fsxn-ontap-custom-metrics/README.md#prerequisites) in the T2 README).
+
 > **Notification note**
 >
-> This example creates three SNS topics and sends three email confirmations. T3 accepts a topic you already own through `alarm_sns_topic_arn`; T1 and T2 have no such input. The T2 heartbeat alarms go to ALARM right after apply and to OK after the first poll (observed on 2026-10-08).
+> This example creates three SNS topics and sends three email confirmations. None of the three topics is encrypted at rest. T1 and T2 accept neither a KMS key nor an existing topic ARN; where every topic must be encrypted, leave `notification_email` empty on T1 and T2 and route the alarm state changes to an encrypted topic from your own configuration, as the T2 README describes. T3 encrypts the topic it creates when `sns_kms_master_key_id` is set, or takes a topic you own through `alarm_sns_topic_arn` and creates none. A CloudWatch alarm cannot publish to a topic encrypted with the AWS managed key `alias/aws/sns`; use a customer managed key whose key policy allows CloudWatch to use it ([AWS re:Post Knowledge Center](https://repost.aws/knowledge-center/cloudwatch-configure-alarm-sns)). The T2 heartbeat alarms go to ALARM right after apply and to OK after the first poll (observed on 2026-10-08).
+
+> **Detection note**
+>
+> Setting `detections` replaces the five default recipes as a whole. The defaults for `privileged-operations` (`"admin"`) and `unauthorized-access` (`"/vol/data/confidential"`) are examples; left in place, they apply without error and watch a user and a path unrelated to your environment. The example keeps `autosize-fail` and replaces those two; the thresholds and evaluation windows of all five are in [Detection recipes](../../terraform/fsxn-log-alarm/README.md#detection-recipes).
 
 > **Naming note**
 >
@@ -197,30 +227,37 @@ Not verified:
 
 ## FAQ and common misconceptions
 
-**Q: Is this one module or several?**
-A: Three independent modules. You can call them from one root, as in the example above, or from separate roots with separate state. T1 alone is a valid start. T3 depends on the syslog delivery path, not on T1 or T2.
+**Q** Is this one module or several?
 
-**Q: How do these modules relate to the CloudFormation templates?**
-A: T1 corresponds to `shared/templates/fsxn-monitoring-dashboard.yaml`, the T2 qtree collector to `shared/templates/qtree-quota-monitor.yaml` (the SnapMirror collector exists only in T2), and T3 to `shared/templates/cloudwatch-log-alarm.yaml`. The CloudFormation log-alarm template uses the native `AWS::CloudWatch::LogAlarm` with a Logs Insights query; T3 uses a metric filter pattern plus a metric alarm ([deliberate differences](../../terraform/fsxn-log-alarm/README.md#deliberate-differences-from-the-cloudformation-template)). Terraform suits teams that already review and hold state in Terraform; it needs a state backend and provider pinning. CloudFormation suits teams that already deploy with stacks or StackSets; it needs one stack per template. The syslog delivery path is a CloudFormation template in both cases.
+**A** Three independent modules. You can call them from one root, as in the example above, or from separate roots with separate state. T1 alone is a valid start. T3 depends on the syslog delivery path, not on T1 or T2.
+
+**Q** How do these modules relate to the CloudFormation templates?
+
+**A** T1 corresponds to `shared/templates/fsxn-monitoring-dashboard.yaml`, the T2 qtree collector to `shared/templates/qtree-quota-monitor.yaml` (the SnapMirror collector exists only in T2), and T3 to `shared/templates/cloudwatch-log-alarm.yaml`. The CloudFormation log-alarm template uses the native `AWS::CloudWatch::LogAlarm` with a Logs Insights query; T3 uses a metric filter pattern plus a metric alarm ([deliberate differences](../../terraform/fsxn-log-alarm/README.md#deliberate-differences-from-the-cloudformation-template)). Terraform suits teams that already review and hold state in Terraform; it needs a state backend and provider pinning. CloudFormation suits teams that already deploy with stacks or StackSets; it needs one stack per template. The syslog delivery path is a CloudFormation template in both cases.
 
 > **Choice note**
 >
 > Choose by where your infrastructure state already lives. Neither option replaces the other. Mixing them works too: for example, the syslog delivery path as a CloudFormation stack and T1 to T3 in Terraform, which is the order on this page.
 
-**Q: Does this work on a second-generation file system?**
-A: It has not been tested. On T1, set `file_server_names` so the opt-in alarms use the documented dimension set ([second-generation file systems](../../terraform/fsxn-monitoring-dashboard/README.md#second-generation-file-systems)). Apply in a non-production account first.
+**Q** Does this work on a second-generation file system?
 
-**Q: Which file system does the SnapMirror collector poll?**
-A: The destination. Use one T2 instance per destination file system, each with its own management IP, credential, network path and `name_prefix`. The module never calls the source file system. A relationship across two file systems is untested ([cross-file-system SnapMirror](../../terraform/fsxn-ontap-custom-metrics/README.md#cross-file-system-snapmirror)).
+**A** It has not been tested. On T1, set `file_server_names` so the opt-in alarms use the documented dimension set ([second-generation file systems](../../terraform/fsxn-monitoring-dashboard/README.md#second-generation-file-systems)). Apply in a non-production account first.
 
-**Q: Is SSD auto-increase recommended?**
-A: Not as a default. T4 is in progress and starts in `notify_only`. An alarm plus a runbook remains a valid option. Compare the options in [capacity-automation.md](capacity-automation.md).
+**Q** Which file system does the SnapMirror collector poll?
 
-**Q: My file system itself is managed by Terraform. Does that change anything?**
-A: The monitoring modules take the file system ID as an input and do not manage the file system. If any automation changes `storage_capacity`, add `ignore_changes` in the code that builds the file system ([Terraform-managed file systems](capacity-automation.md#terraform-managed-file-systems)).
+**A** The destination. Use one T2 instance per destination file system, each with its own management IP, credential, network path and `name_prefix`. The module never calls the source file system. A relationship across two file systems is untested ([cross-file-system SnapMirror](../../terraform/fsxn-ontap-custom-metrics/README.md#cross-file-system-snapmirror)).
 
-**Q: Where do I ask a question this page does not answer?**
-A: In [GitHub Discussions, Q&A category](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/discussions/categories/q-a). Answered threads stay searchable for the next person with the same question. Report defects in a module or document as Issues.
+**Q** Is SSD auto-increase recommended?
+
+**A** Not as a default. T4 is in progress and starts in `notify_only`. An alarm plus a runbook remains a valid option. Compare the options in [capacity-automation.md](capacity-automation.md).
+
+**Q** My file system itself is managed by Terraform. Does that change anything?
+
+**A** The monitoring modules take the file system ID as an input and do not manage the file system. If any automation changes `storage_capacity`, add `ignore_changes` in the code that builds the file system ([Terraform-managed file systems](capacity-automation.md#terraform-managed-file-systems)).
+
+**Q** Where do I ask a question this page does not answer?
+
+**A** In [GitHub Discussions, Q&A category](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/discussions/categories/q-a). Answered threads stay searchable for the next person with the same question. Report defects in a module or document as Issues.
 
 ## Related Documents
 

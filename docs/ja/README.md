@@ -271,7 +271,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 **アプローチの選択**
 
 - [Amazon FSx for NetApp ONTAP の監視設計](monitoring-design.md)
-- [Terraform による Amazon FSx for NetApp ONTAP の CloudWatch 監視: 3 つのモジュールを順に適用する構成](terraform-monitoring-guide.md)
+- [Terraform による Amazon FSx for NetApp ONTAP の CloudWatch 監視は 3 つのモジュールを順に適用して構成する](terraform-monitoring-guide.md)
 - [Amazon FSx for NetApp ONTAP の監視のためのサイジングとヘッドルーム](sizing-and-headroom.md)
 - [Amazon FSx for NetApp ONTAP の監視を起点にした容量自動化](capacity-automation.md)
 - [Amazon FSx for NetApp ONTAP の T4 ガード付き SSD 自動拡張の実装設計](capacity-automation-t4-design.md)
