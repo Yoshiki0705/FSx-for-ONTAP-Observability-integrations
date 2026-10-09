@@ -75,7 +75,9 @@ Resources:
   SyslogVpceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: >
+      # >- (strip), not >: a trailing newline is not a valid EC2 description
+      # character and the stack rolls back. See test_cfn_security_group_description.py.
+      GroupDescription: >-
         Allow syslog traffic from FSx for ONTAP nodes to CloudWatch Logs
         VPC Endpoint. Uses VPC CIDR as source (FSx node ENIs are internal).
       VpcId: !Ref VpcId
