@@ -63,6 +63,10 @@ system node systemshell -node * -command "top -d 1 -s 1" :: Success: 2 entries w
 - `system node systemshell ...` — 実行コマンド
 - `Success` / `Failure` — 結果
 
+> **結果のフィールドに関する補足**
+>
+> 2026-10-09 に、ONTAP 9.18.1P6 で、Terraform 版の実行中に観測しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)）。REST の変更の操作は 2 行を書きます。`:: Pending` で終わる行と、`:: Success:` で終わる行、または ONTAP が要求を拒否したときは `:: Error: not authorized for that command` で終わる行です。取り込んだ 5,156 行のどれにも `Failure`、`denied`、`DENIED` は無く（拒否 5 件を含む）、6 行を除くすべてが `admin` を含んでいました（`fsx-control-plane` ユーザーのロール、または `fsxadmin` の一部）。この実行ではこのテンプレートはデプロイしていません。次の点は推定であり、試していません。テンプレートの `failed-access-attempts` のクエリ（`/Failure/`、`/denied/`、`/DENIED/`）と、`admin` に対する `specific-user-activity` のクエリは同じ行を読むため、同じように振る舞うと考えられます。Terraform 版のモジュールの既定値は、その実行の後に `"Error: not authorized"` と `"fsxadmin:fsxadmin" -"Pending"` に変更しました。このテンプレートは変更していません（後続課題）。
+
 > **ファイルアクセス監査ログ**（NFS/SMB のファイル操作記録）を CloudWatch Logs に配信して Log Alarm を使いたい場合は、Lambda で EVTX/XML をパースして CloudWatch Logs に転送するカスタムパイプラインが必要です。
 
 ## 概要
@@ -124,9 +128,11 @@ CloudWatch Log Alarm は「ログ内の文字列に直接アラートする」�
 | ユースケース | クエリのフィルタ部分 | 集約式 | 閾値 |
 |-------------|-------------------|--------|------|
 | 機密ファイルへのアクセス | `filter @message like /confidential/` | `count(*)` | `> 0` |
-| 認証失敗の急増 | `filter @message like /Failure/` | `count(*)` | `> 10` |
+| 認証失敗の急増 | `filter @message like /Error: not authorized/` | `count(*)` | `> 10` |
 | 大量ファイル削除 | `filter @message like /DELETE/` | `count(*)` | `> 50` |
-| 特定ユーザーの操作 | `filter @message like /admin/` | `count(*)` | `> 0` |
+| 特定ユーザーの操作 | `filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/` | `count(*)` | `> 0` |
+
+認証失敗と特定ユーザーの操作のフィルタは、実際の ONTAP 9.18.1P6 の監査ログの行にあった文字列を使っています（上の結果のフィールドに関する補足を参照）。この表の `/Failure/` と `/admin/` を置き換えたもので、Logs Insights のクエリとしては実行していません。`/DELETE/` は削除 1 回につき 2 行を数えるため、`> 50` は REST の削除約 25 回にあたります。テンプレート自身のクエリは、以前の語のままです。
 
 つまり:
 

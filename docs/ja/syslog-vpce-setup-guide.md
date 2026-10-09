@@ -70,6 +70,10 @@ aws cloudformation deploy \
 | Log Group | `/syslog/fsxn-admin-audit`（90 日保持） |
 | Resource Policy | `syslog.logs.amazonaws.com` による書き込み許可 |
 
+> **テンプレートの欠陥に関する補足**
+>
+> 2026-10-09 に観測しました。その時点の `main` では、このデプロイは `ROLLBACK_COMPLETE` で失敗します。EC2 がセキュリティグループの説明を拒否するためです（"Invalid security group description"）。テンプレートは `GroupDescription` を YAML の折り畳みスカラー `>` で書いており、末尾に改行が残ります。テンプレートが直るまでは、ローカルのコピーで `GroupDescription: >` を `GroupDescription: >-` に変えて、そのコピーをデプロイしてください。ロググループは `DeletionPolicy: Retain` なので、失敗したスタックは `/syslog/fsxn-admin-audit` を残します。再試行の前に、そのロググループ（`aws logs delete-log-group`）と `ROLLBACK_COMPLETE` のスタックを削除してください。ロググループが残ったままでの再試行は試していません。[2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)を参照してください。
+
 デプロイ後、VPC Endpoint の ENI プライベート IP を取得します:
 
 ```bash
@@ -104,7 +108,7 @@ python3 shared/scripts/create-syslog-configuration.py \
 
 > **注記**
 >
-> 2026 年 6 月時点で AWS CLI / boto3 に `put-syslog-configuration` コマンドがないため、本スクリプトは raw SigV4 署名で API を直接呼び出します。CLI がアップデートされ次第、`aws logs put-syslog-configuration` コマンドに移行可能です。
+> 本スクリプトは SigV4 で直接署名して API を呼び出します。AWS CLI と boto3 に syslog configuration のコマンドが無かった時期に書いたもので、2026-10-09 にも HTTP 200 を返しました。AWS CLI 2.36.5 には `aws logs put-syslog-configuration`、`list-syslog-configurations`、`delete-syslog-configuration` があります（パラメータは `--log-group-identifier` と `--vpc-endpoint-id`）。2026-10-09 に AWS に対して実行したのは `list` と `delete` です。`put` は実行しておらず、引数なしでローカルで呼ぶと CLI が `--log-group-identifier` を求めたことでコマンドの存在を確認しただけです。
 >
 > **代替**
 >
@@ -116,6 +120,10 @@ python3 shared/scripts/create-syslog-configuration.py \
 
 FSx for ONTAP の管理エンドポイントに SSH（または REST API）でアクセスし、syslog 転送先を設定します。
 
+> **ポートの選択に関する補足**
+>
+> 各 Option の最初のコマンドは、ポート 6514 の TLS の転送先を作ります。2026-10-09 の実行では、その転送先は 201 を返した後に何も届けず、TLS を使わないポート 1514 の転送先は作成から約 3 秒で最初の行を届けました（[プロトコル選択](#プロトコル選択)の TLS での配送に関する補足を参照）。そのため、各 Option に 1514 の形も載せています。ポート 1514 では、変更の操作の要求本文を含む監査ログの行が、VPC 内の ONTAP とエンドポイントの間を暗号化されずに流れます。6514 を使い続ければそれは避けられますが、自分の環境で TLS の配送を動かす必要が出ることがあります。1514 を使うと、通信経路の暗号化と引き換えに、この実行で届いた経路を使うことになります。どちらを選ぶかは、環境ごとのセキュリティの判断です。どちらのポートでも、頼る前に[行の到着の確認](#行の到着の確認)を実行してください。
+
 ### Option A: REST API 経由（推奨 — 自動化向き）
 
 ```bash
@@ -126,6 +134,20 @@ curl -sk -u fsxadmin:<PASSWORD> \
     "address": "'$VPCE_IP'",
     "port": 6514,
     "protocol": "tcp_encrypted",
+    "facility": "local7"
+  }'
+```
+
+検証用の代替として、TLS を使わないポート 1514 の形です。2026-10-09 に届いたのはこの呼び出しです。
+
+```bash
+curl -sk -u fsxadmin:<PASSWORD> \
+  -X POST "https://<FSx-Management-IP>/api/security/audit/destinations?force=true" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "'$VPCE_IP'",
+    "port": 1514,
+    "protocol": "tcp_unencrypted",
     "facility": "local7"
   }'
 ```
@@ -148,12 +170,45 @@ FsxId*> security audit log-forwarding create \
 FsxId*> security audit log-forwarding show
 ```
 
+検証用の代替として、TLS を使わないポート 1514 の形です。2026-10-09 の実行で使ったのは Option A の REST の形で、この CLI の形は実行していません。
+
+```bash
+FsxId*> security audit log-forwarding create \
+  -destination <VPCE_IP> \
+  -port 1514 \
+  -protocol tcp-unencrypted \
+  -facility local7
+```
+
+### 行の到着の確認
+
+転送先の作成自体が変更の操作なので、作成の操作が自分の監査ログの行を書きます。2026-10-09 の実行では、1514 の転送先の `Pending` の行が、呼び出しから約 3 秒でストリーム `<VPCE_ID>_Syslog_<region>` にありました。6514 の転送先では、約 4 分たってもストリームはできませんでした。すでにあるストリームは、新しい転送先が届けていることを示しません。ストリームの名前はエンドポイントから付くため、再実行や、6514 を試した後の 1514 のように、前に一度でも届いていれば残っています。代わりに、転送先を作る直前の時刻から、転送先自身の行を探してください（コードブロック内の英語のコメントは、上から「転送先を作る前に、エポックからのミリ秒で時刻を控える」「作った後に、その転送先自身の監査ログの行を探す（REST と CLI のどちらの形でも）」という意味です）。
+
+```bash
+# Before creating the destination: note the time in milliseconds since the epoch
+START_MS=$(( $(date +%s) * 1000 ))
+
+# After creating it: look for its own audit line (REST or CLI form)
+aws logs filter-log-events \
+  --log-group-name /syslog/fsxn-admin-audit \
+  --start-time "$START_MS" \
+  --filter-pattern '?"audit/destinations" ?"log-forwarding create"' \
+  --query 'events[].message' \
+  --region ap-northeast-1
+```
+
+転送先を作ってから数分たっても一覧が空なら、新しい転送先は届けていません。[ログの不着](#ログの不着)を参照してください。この検索は 2026-10-09 の実行の後に書いたもので、その実行では使っていません。探しているのは、その実行で REST の形について観測した行です。CLI の形の行は取り込んでいません。
+
 ### プロトコル選択
 
 | プロトコル | ポート | ONTAP パラメータ | 推奨用途 |
 |-----------|--------|-----------------|---------|
-| TCP + TLS | 6514 | `tcp-encrypted` | **本番環境（推奨）** — 暗号化あり |
-| TCP Plaintext | 1514 | `tcp-unencrypted` | 初期検証用フォールバック |
+| TCP + TLS | 6514 | `tcp-encrypted` | 本番環境。行が届くことを確認してから使う（下の補足を参照） |
+| TCP Plaintext | 1514 | `tcp-unencrypted` | 検証用。2026-10-09 の実行で届いた設定 |
+
+> **TLS での配送に関する補足**
+>
+> 2026-10-09 に観測しました。エンドポイントの IP を指定し、ポート 6514・`tcp_encrypted` で転送先を作ると、`POST` は 201 を返し、ONTAP は `verify_server: true` を設定しましたが、約 4 分間ロググループには何も届かず、ONTAP はそれについて EMS イベントを書きませんでした。代わりに `syslog-logs.<region>.amazonaws.com` で指定すると、クラスターがその名前を解決できないため "Cannot resolve the destination host" で拒否されました。ポート 1514・`tcp_unencrypted` は、作成から約 3 秒で最初の行を届けました。原因は推定で、確認していません。ONTAP の証明書の確認が、IP アドレスとエンドポイントの証明書の名前を照合できないと考えられます。転送先を作ったら、頼る前にその転送先自身の監査ログの行が届くことを確認してください（[行の到着の確認](#行の到着の確認)）。
 
 > **検証での知見**
 >
@@ -162,7 +217,7 @@ FsxId*> security audit log-forwarding show
 > **本番環境向けセキュリティ強化**
 > - **Security Group を FSx サブネット CIDR に限定**: テンプレートデフォルトの VPC CIDR (`10.0.0.0/16`) を、FSx for ONTAP が配置されたサブネットの CIDR（例: `10.0.3.0/24`）に狭めてください。
 > - **認証情報の取り扱い**: `curl -u fsxadmin:<PASSWORD>` のようにコマンドラインにパスワードを渡すのは検証用です。本番では Secrets Manager から取得し、環境変数経由で渡してください。
-> - **TLS を使用**: 本番では `tcp-encrypted` (ポート 6514) を使用してください。PrivateLink 内であっても defense-in-depth として暗号化を推奨します。
+> - **TLS を使用**: 本番では `tcp-encrypted` (ポート 6514) を優先し、行が届くことを確認してください（上の TLS での配送に関する補足を参照）。PrivateLink 内であっても defense-in-depth として暗号化を推奨します。
 
 ---
 
@@ -170,11 +225,27 @@ FsxId*> security audit log-forwarding show
 
 ### ログ生成（管理操作の実行）
 
+Step 3 の転送先の `POST` 自体が変更の操作なので、最初に届くのはその行です。GET の要求が監査されるのは、GET の監査を有効にしている場合だけです。2026-10-09 には `GET /api/security/audit` が `http: false` を返し、GET は行を書きませんでした。変更の操作は 1 回ごとに 2 行を書きます。`:: Pending` で終わる行と、結果（`:: Success:` か `:: Error: ...`）で終わる行です。行を任意に発生させるには、テスト用ボリュームに Qtree を作って削除します（コードブロック内の英語のコメントは、上から「GET の監査が有効か。"http": false なら REST の GET は監査ログの行を書かない」「変更の操作は監査される。テスト用ボリュームに Qtree を作る」「もう一度削除する。ボリュームの UUID と Qtree の ID を調べてから DELETE する」という意味です）。
+
 ```bash
-# Any REST API operation produces an audit log entry
+# Is GET auditing on? ("http": false means REST GETs write no audit line)
 curl -sk -u fsxadmin:<PASSWORD> \
-  https://<FSx-Management-IP>/api/storage/volumes?fields=name \
-  --max-time 10 > /dev/null
+  "https://<FSx-Management-IP>/api/security/audit" --max-time 10
+
+# A change operation is audited: create a qtree on a test volume
+curl -sk -u fsxadmin:<PASSWORD> -X POST \
+  "https://<FSx-Management-IP>/api/storage/qtrees" \
+  -H "Content-Type: application/json" \
+  -d '{"svm":{"name":"<SVM_NAME>"},"volume":{"name":"<TEST_VOLUME>"},"name":"audit_probe"}' \
+  --max-time 10
+
+# Delete it again: look up the volume UUID and qtree ID, then DELETE
+curl -sk -u fsxadmin:<PASSWORD> \
+  "https://<FSx-Management-IP>/api/storage/qtrees?name=audit_probe&fields=id,volume.uuid" \
+  --max-time 10
+curl -sk -u fsxadmin:<PASSWORD> -X DELETE \
+  "https://<FSx-Management-IP>/api/storage/qtrees/<VOLUME_UUID>/<QTREE_ID>" \
+  --max-time 10
 ```
 
 ### CloudWatch Logs での確認
@@ -198,8 +269,8 @@ aws logs get-log-events \
 **期待される出力**（実際の検証結果）:
 
 ```
-<190>Jun 28 02:06:40 FsxId09ffe72a3b2b7dbbd-01: ... [kern_audit:info:6392]
-  ... FsxId09ffe72a3b2b7dbbd:http ... POST /api/storage/volumes ... :: Success
+<190>Jun 28 02:06:40 FsxId0123456789abcdef0-01: ... [kern_audit:info:6392]
+  ... FsxId0123456789abcdef0:http ... POST /api/storage/volumes ... :: Success
 ```
 
 ---
@@ -215,6 +286,14 @@ aws logs get-log-events \
 | ONTAP 転送先が未設定 | `security audit log-forwarding show` | Step 3 を実行 |
 | fsxadmin ロック | REST API で "User is not authorized" | パスワードリセット（下記参照） |
 | ONTAP → VPCE 疎通不可 | `force=true` なしでエラー | SG 確認 + `force=true` で再作成 |
+| 6514 `tcp-encrypted` の転送先を作ったが何も届かない | 転送先の作成から数分たってもログストリームが無い。EMS のエラーも無い | Step 3 の TLS での配送に関する補足を参照。2026-10-09 の実行ではポート 1514 `tcp-unencrypted` で届いた |
+| 1 つの操作だけが無く、次の操作はある | 操作は成功したが、ロググループにその行が無い。ONTAP の `GET /api/security/audit/messages` と見比べる | [無通信の接続の後の最初の操作の欠落](#無通信の接続の後の最初の操作の欠落)を参照 |
+
+### 無通信の接続の後の最初の操作の欠落
+
+2026-10-09 に、HA ペア 1 つのファイルシステムの 1 つのノードで 3 回観測しました。ノードが約 4–5 分何も送らなかった後、エンドポイントがその接続を閉じました（`AWS/Logs` の `SyslogConnectionsClosed`）。次の操作（`fsxadmin` による Qtree の作成）は HTTP 201 を返し、ロググループには届きませんでした。1 回目では、ONTAP 自身の `GET /api/security/audit/messages` がその操作を一覧に出しました。残りの 2 回では読んでいません。そのうち 2 回では、約 20 秒後の操作は届きました。その 2 回のうち 1 回では同じ分に `SyslogConnectionsEstablished` が増え、もう 1 回ではそのメトリクスを読んでいません。損失を記録した EMS イベントは無く、アカウントには `SyslogMessagesDropped` の系列がありませんでした。仕組みはメトリクスの時刻からの推定で、確認していません。
+
+静かなノードでの 1 回の操作がロググループに無いことがあるため、1 行に依存するアラームはそれを見逃すことがあります。確認した 1 回では、ONTAP 自身の監査ログ（`GET /api/security/audit/messages`）にエントリが残っていました。対策（たとえば、各ノードの接続を保つ定期的な書き込み）は試していません。
 
 ### fsxadmin アカウントがロックされた場合
 
@@ -239,18 +318,32 @@ aws fsx update-file-system \
 
 ## クリーンアップ
 
+作成した転送先はすべて削除してください。フォールバックの 1514 の転送先を残すと、エンドポイントを削除した後もその IP を指し続けます。2026-10-09 には、クラスターに、すでに存在しないエンドポイントの IP を指す転送先が 2 つ（1514 と 6514）あり、アカウントには存在しないエンドポイントに対する syslog configuration が残っていました（コードブロック内の英語のコメントは、上から「ONTAP の転送先を一覧し、作成したものをそれぞれ削除する」「syslog configuration を削除する」「CloudFormation スタックを削除する」「ロググループを手で削除する。スタックはロググループに DeletionPolicy: Retain を設定しているため、スタックを削除しても監査の履歴は意図的に残る」という意味です）。
+
 ```bash
-# 1. Remove the ONTAP forwarding destination
+# 1. List the ONTAP forwarding destinations, then remove each one you created
+curl -sk -u fsxadmin:<PASSWORD> \
+  "https://<FSx-Management-IP>/api/security/audit/destinations" \
+  --max-time 10
 curl -sk -u fsxadmin:<PASSWORD> \
   -X DELETE "https://<FSx-Management-IP>/api/security/audit/destinations/<VPCE_IP>/6514" \
   --max-time 10
+curl -sk -u fsxadmin:<PASSWORD> \
+  -X DELETE "https://<FSx-Management-IP>/api/security/audit/destinations/<VPCE_IP>/1514" \
+  --max-time 10
 
-# 2. Delete the CloudFormation stack
+# 2. Delete the syslog configuration
+aws logs delete-syslog-configuration \
+  --log-group-identifier "<LOG_GROUP_ARN>" \
+  --vpc-endpoint-id $VPCE_ID \
+  --region ap-northeast-1
+
+# 3. Delete the CloudFormation stack
 aws cloudformation delete-stack \
   --stack-name fsxn-syslog-vpce-admin-audit \
   --region ap-northeast-1
 
-# 3. Delete the log group by hand. The stack sets DeletionPolicy: Retain on it,
+# 4. Delete the log group by hand. The stack sets DeletionPolicy: Retain on it,
 #    so deleting the stack deliberately leaves the audit history in place.
 aws logs delete-log-group \
   --log-group-name /syslog/fsxn-admin-audit \
@@ -286,13 +379,17 @@ aws cloudwatch put-metric-alarm \
 | `SyslogMessagesDropped` | 配信失敗で破棄されたメッセージ数 | > 0 (5 分間) |
 | `IncomingLogEvents` | 受信ログイベント数 | < 1 (1 時間) で「ログ到着停止」検知 |
 
+> **syslog のメトリクスに関する補足**
+>
+> 2026-10-09 に観測しました。その実行の間、`AWS/Logs` にはディメンションの無い `SyslogConnectionsEstablished` と `SyslogConnectionsClosed`、ロググループごとの `SyslogMessagesReceived` がありました。`SyslogMessagesDropped` の系列は無く、[無通信の接続の後の最初の操作の欠落](#無通信の接続の後の最初の操作の欠落)の 3 回の損失のときも無かったため、上のアラームではそれを捉えられませんでした。
+
 > **ヒント**
 >
-> ONTAP の fsx-control-plane は定期的にアクセスチェックを実行するため、通常はログが常時到着します。1 時間以上ログがない場合、VPCE 接続や ONTAP 設定に問題がある可能性があります。
+> ONTAP の fsx-control-plane は定期的にアクセスチェックを実行するため、クラスター全体としては通常ログが常時到着します。ノードごとには当てはまりません。2026-10-09 には 1 つのノードが約 4–5 分何も送らなかったことが 3 回あり、そのたびに直後の最初の操作が失われました（[無通信の接続の後の最初の操作の欠落](#無通信の接続の後の最初の操作の欠落)）。1 時間以上まったくログがない場合、VPCE 接続や ONTAP 設定に問題がある可能性があります。
 
 ### その他の次のステップ
 
-- **CloudWatch Alarms** — 特定操作（権限昇格、ユーザー作成等）をメトリクスフィルタで検知
+- **CloudWatch Alarms** — 特定操作（権限昇格、ユーザー作成等）をメトリクスフィルタで検知。たとえば Terraform モジュール [`terraform/fsxn-log-alarm/`](../../terraform/fsxn-log-alarm/README.ja.md) を使う。既定のパターンを使う前に、その検証状況を確認する
 - **Subscription Filter** — CloudWatch Logs → Lambda → Datadog/Splunk/SIEM へ二次配信
 - **S3 Export** — 長期保存用に S3 へエクスポート（Glacier 移行可）
 - **CloudWatch Logs Insights** — 管理操作の分析クエリ

@@ -989,6 +989,129 @@ def mask_cloudwatch_monitoring_screenshots() -> None:
         )
 
 
+# cloudwatch-log-alarm/ のマスク色。背景に溶け込ませず、伏せた箇所だと分かる灰色
+CLOUDWATCH_LOG_ALARM_MASK_COLOR = (215, 215, 215)
+# ログイベント一覧のメッセージ列は等幅フォント。1 文字目の左端 x と文字送り (1x)
+CLOUDWATCH_LOG_EVENTS_X0 = 601
+CLOUDWATCH_LOG_EVENTS_PITCH = 7.22
+
+
+def _log_chars_box(line_y: int, start: int, end: int) -> tuple[int, int, int, int]:
+    """ログメッセージ 1 行の文字位置 [start, end) を覆う矩形を返す。
+
+    コンソールは連続する空白を 1 つに詰めて表示するため、文字位置は
+    詰めた後の文字列で数える (例: "<190>Oct  9" は "<190>Oct 9")。
+    """
+    x0 = CLOUDWATCH_LOG_EVENTS_X0
+    pitch = CLOUDWATCH_LOG_EVENTS_PITCH
+    return (
+        int(x0 + start * pitch) - 1,
+        line_y - 9,
+        int(x0 + end * pitch) + 2,
+        line_y + 9,
+    )
+
+
+def mask_cloudwatch_log_alarm_screenshots() -> None:
+    """cloudwatch-log-alarm/ 配下スクリーンショットのマスク処理。
+
+    Terraform モジュール terraform/fsxn-log-alarm/ (T3) の 2026-10-09 の
+    実機検証で撮影した CloudWatch コンソール画面 (1x)。
+    対象ファイル:
+      - 01-alarm-list.png (撮影時 1900x1000)
+      - 02-bulk-delete-history.png (撮影時 1900x1000)
+      - 03-metric-filters.png (撮影時 1900x1900)
+      - 04-log-events-error-and-delete.png (撮影時 1900x1200)
+    05〜08 の GetMetricWidgetImage のグラフは ID を含まないため対象外。
+
+    マスク対象 (元画像の座標で塗りつぶしてから切り抜く):
+      03:
+        - ロググループの ARN の 1 行目 (AWS アカウント ID を含む)
+      04:
+        - パンくずリストのログストリーム名 (VPC エンドポイント ID を含む)
+        - 各ログ行の FsxId... (ファイルシステム ID) 4 か所、送信元 IP:port
+        - DELETE 行の qtree パスに含まれるボリューム UUID
+        - 4 件目の要求本文に含まれる SVM 名
+        - 最下部で途中まで見えている 13 件目は切り抜きで除去
+      共通:
+        - 上部ナビバー (y 0〜51: アカウント ID、IAM ロール名、ユーザー名) と
+          下部フッターを切り抜きで除去
+
+    切り抜きは冪等でないため、撮影時サイズのときだけ処理する。
+    """
+    subdir = SCRIPT_DIR / "cloudwatch-log-alarm"
+    box_t = tuple[int, int, int, int]
+    gray = CLOUDWATCH_LOG_ALARM_MASK_COLOR
+
+    log_masks: list[box_t] = [(462, 62, 802, 85)]
+    # 12 件のログイベント。1 件 3 行、行の中心 y は 283 + 71k (+20, +40)
+    delete_entries = {0, 1, 4, 5, 6, 7, 8, 9, 10, 11}
+    for k in range(12):
+        y1 = 283 + 71 * k
+        y2 = y1 + 20
+        # 1 行目: "<190>Oct 9 hh:mm:ss FsxId...-02: FsxId...-02: ..."
+        log_masks.append(_log_chars_box(y1, 20, 42))
+        log_masks.append(_log_chars_box(y1, 47, 69))
+        # 2 行目: ":: FsxId...:http :: <ip>:<port> :: FsxId...:<user>:<role> :: ..."
+        log_masks.append(_log_chars_box(y2, 3, 25))
+        log_masks.append(_log_chars_box(y2, 34, 50))
+        log_masks.append(_log_chars_box(y2, 54, 76))
+        if k in delete_entries:
+            # "DELETE /api/storage/qtrees/<volume-uuid>/<id>?" の UUID
+            log_masks.append(_log_chars_box(y2, 125, 161))
+    # 4 件目 (POST qtree の 403) の 3 行目: {"name":"<svm-name>"} の SVM 名
+    log_masks.append(_log_chars_box(283 + 71 * 3 + 40, 9, 25))
+
+    targets: list[tuple[str, tuple[int, int], list[box_t], box_t]] = [
+        ("01-alarm-list.png", (1900, 1000), [], (0, 52, 1900, 964)),
+        ("02-bulk-delete-history.png", (1900, 1000), [], (0, 52, 1900, 964)),
+        (
+            "03-metric-filters.png",
+            (1900, 1900),
+            [(300, 283, 790, 303)],
+            (0, 52, 1900, 1862),
+        ),
+        (
+            "04-log-events-error-and-delete.png",
+            (1900, 1200),
+            log_masks,
+            (0, 52, 1900, 1124),
+        ),
+    ]
+
+    for filename, raw_size, masks, crop_box in targets:
+        filepath = subdir / filename
+        if not filepath.exists():
+            print(f"  ⏭️  cloudwatch-log-alarm/{filename}: ファイルが見つかりません")
+            continue
+
+        img = Image.open(filepath).convert("RGB")
+        print(f"  📐 cloudwatch-log-alarm/{filename}: {img.width}x{img.height}")
+        cropped_size = (crop_box[2] - crop_box[0], crop_box[3] - crop_box[1])
+        if img.size == cropped_size:
+            print(f"  ℹ️  cloudwatch-log-alarm/{filename}: マスク済み（スキップ）")
+            img.close()
+            continue
+        if img.size != raw_size:
+            print(
+                f"  ⚠️  cloudwatch-log-alarm/{filename}: 想定外のサイズのためスキップ"
+                f"（想定 {raw_size[0]}x{raw_size[1]}）"
+            )
+            img.close()
+            continue
+
+        for box in masks:
+            mask_region(img, box, color=gray)
+        masked = img.crop(crop_box)
+        masked.save(filepath)
+        masked.close()
+        img.close()
+        print(
+            f"  ✅ cloudwatch-log-alarm/{filename}: マスク完了"
+            "（リソース ID + ナビバー/フッター切り抜き）"
+        )
+
+
 def main(target_dir: Path | None = None) -> None:
     """Run all masking operations.
 
@@ -1042,6 +1165,9 @@ def main(target_dir: Path | None = None) -> None:
 
     print("\n--- CloudWatch 監視ダッシュボード (Terraform T1) 分 ---")
     mask_cloudwatch_monitoring_screenshots()
+
+    print("\n--- CloudWatch ログアラーム (Terraform T3) 分 ---")
+    mask_cloudwatch_log_alarm_screenshots()
 
     # Phase 2: PNG metadata stripping (all files)
     print()
