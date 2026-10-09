@@ -147,9 +147,9 @@ The 6 hours count in full because the worst case is common: an increase has just
 | Volume inode utilization (metric math `100 * FilesUsed / FilesCapacity`, as in T1) | 80 | 90 | none | A volume that exhausts its inodes accepts no more data ([volume-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-storage-capacity.html)) | thresholds `derived`; behaviour `documented` |
 | `NetworkThroughputUtilization`, `FileServerDiskThroughputUtilization`, `FileServerDiskIopsUtilization`, `CPUUtilization` | 80 | 90 | none | T1 defaults to 80. The NetApp reference defaults to 90 for its performance alarms ([CloudWatch-Monitoring-FSx README](https://github.com/NetApp/FSx-ONTAP-monitoring/tree/main/CloudWatch-Monitoring-FSx)); this is another reference's default, not an AWS rule | `derived` |
 | `FileServerDiskThroughputBalance`, `FileServerDiskIopsBalance` (throughput capacity < 512 MBps only) | < 50 | < 20 | none | Credits that run out drop disk performance to the baseline. AWS publishes no threshold | `derived`; `open` |
-| SnapMirror lag (planned T2, `SnapMirrorLagSecondsMax`) | > 1.5 × transfer schedule interval | > 3 × interval | none | One missed transfer is a warning; two or more is critical | `derived` |
-| SnapMirror unhealthy count (planned T2, `SnapMirrorUnhealthyCount`) | none | > 0 | none | Same default as the NetApp reference | `documented` (that reference's README) |
-| Poller heartbeat (planned T2, `CollectorSucceeded`) | none | missing for 2 periods | none | `TreatMissingData: breaching`, so a poller that is not invoked raises the alarm | `derived` |
+| SnapMirror lag (T2 alarm `snapmirror_lag` on `SnapMirrorLagSecondsMax`; critical tier = `snapmirror_lag_threshold_seconds`, default 10800 for a 1-hour schedule) | > 1.5 × transfer schedule interval | > 3 × interval | none | One missed transfer is a warning; two or more is critical | `derived` |
+| SnapMirror unhealthy count (T2 alarm `snapmirror_unhealthy` on `SnapMirrorUnhealthyCount`, threshold fixed at 0) | none | > 0 | none | Same default as the NetApp reference | `documented` (that reference's README) |
+| Poller heartbeat (T2 alarm `heartbeat` per collector on `CollectorSucceeded`; period follows `poll_interval_minutes`) | none | missing for 2 periods | none | `TreatMissingData: breaching`, so a poller that is not invoked raises the alarm | `derived` |
 
 > **Volume note**
 >

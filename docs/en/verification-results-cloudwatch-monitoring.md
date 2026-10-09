@@ -4,7 +4,7 @@
 
 ## Overview
 
-This page records four runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07).
+This page records five runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08).
 
 On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module in this run. A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
 
@@ -709,9 +709,211 @@ The images do not show SNS notification (no email was set), an ALARM state on th
 
 ---
 
+## Terraform Custom-Metrics Module Run on 2026-10-08
+
+On 2026-10-08 (UTC), the Terraform module `terraform/fsxn-ontap-custom-metrics/` (phase T2) was applied to a first-generation `SINGLE_AZ_1` FSx for ONTAP file system with one HA pair, with both collectors on and a 1-minute poll. This is a sample run on one file system. The SnapMirror relationship ran between two test volumes in the same SVM on that file system, because the file system already had the documented maximum number of SVMs and a destination SVM could not be created (see [Environment and Deployment (T2 Run)](#environment-and-deployment-t2-run)). SnapMirror between two SVMs and between two file systems (cluster peering, polling the destination file system across clusters) remains unverified.
+
+Both collectors published every series listed in the module README, and the values matched what ONTAP returned. The SnapMirror unhealthy alarm went OK → ALARM → OK when a failed manual transfer made ONTAP report the relationship as unhealthy and a later transfer made it healthy again. The lag alarm went OK → ALARM → OK as lag grew past the 300-second test threshold and an update transfer reset it. Both heartbeat alarms went to ALARM before the first poll and to OK after it. One planned expectation did not hold: an uninitialized relationship was expected to count as unhealthy, but ONTAP 9.18.1P6 reported it as `healthy: true`, and the collector published that value (F1). No defect was found in the module code, and no code was changed.
+
+| Item | Value |
+|------|-------|
+| Verification date | 2026-10-08T01:00Z to 03:11Z (UTC), including a pause of about 30 minutes for an SSO sign-in (01:11Z to 01:42Z) |
+| Verification environment | Test environment (`ap-northeast-1`), sample run with one SVM, two test volumes, one qtree with a tree quota, and one SnapMirror relationship inside that SVM |
+| Scope | Module deployment, both collectors, the heartbeat, Lambda-errors and DLQ alarms, qtree series against the ONTAP quota report, the SnapMirror unhealthy and lag alarm transitions, and cleanup. ONTAP REST calls were made from a bastion host to prepare the test objects, drive the relationship, and read state back |
+| Result | 12 of 15 checks passed. 1 expectation not met (S1, F1), 1 step rejected by a service limit (M1), and cleanup done with 2 volume recovery-queue entries left in place (M6) |
+
+These values come from one run on one first-generation, single-HA-pair file system, at a 1-minute poll interval and a 300-second lag threshold chosen for the test. They show that the collectors read real ONTAP responses and that the alarms evaluate the published series. They do not show behavior between two file systems, at the default 5-minute interval, at scale, or on second-generation or multi-HA-pair file systems.
+
+### Environment and Deployment (T2 Run)
+
+| Item | Value |
+|------|-------|
+| AWS Region | `ap-northeast-1` |
+| File system | `fs-0123456789abcdef0` (placeholder), `SINGLE_AZ_1` (first generation), 1 HA pair, 128 MBps, 1024 GiB SSD |
+| ONTAP version | NetApp Release 9.18.1P6 |
+| SVM | `<svm-name>` (placeholder, `svm-0123456789abcdef0`), one of the 6 SVMs on the file system |
+| Source revision | `5b9b4ce` on the module's feature branch, before merge. No code was changed for or after the run |
+| Terraform / providers | Terraform v1.15.8, `hashicorp/aws` 6.67.0 and `hashicorp/archive` 2.8.1 from the lock file of `examples/basic/` |
+| Test volumes | `t2_sm_src`: RW, 1024 MiB, UNIX security style, snapshot policy none, tiering policy `NONE`. `t2_sm_dst`: DP, 1024 MiB, tiering policy `NONE`. Both created with `aws fsx create-volume` and deleted with `SkipFinalBackup=true` |
+| Qtree and quota | Qtree `t2_qt` in `t2_sm_src` with a tree quota rule, hard limit 104857600 bytes (100 MiB); quotas on |
+| SnapMirror relationship | `<svm-name>:t2_sm_src` → `<svm-name>:t2_sm_dst`, policy `MirrorAllSnapshots` (async), no transfer schedule. Source and destination in the same SVM; no SVM peer was created |
+| ONTAP user for the poller | `t2-metrics-ro`, application `http`, role `fsxadmin-readonly`, cluster scope, created with `POST /api/security/accounts`. Its credentials in a Secrets Manager secret as `{"username": ..., "password": ...}`, encrypted with the default key `aws/secretsmanager` |
+| Lambda placement and routes | The file system's subnet, which has no NAT gateway. Configured routes, inferred rather than traced (see the network path note below): `PutMetricData` through the module's `monitoring` interface endpoint, Secrets Manager through an existing interface endpoint in the VPC |
+| Deployer | AWS IAM Identity Center (SSO) session with administrator access |
+
+The original procedure first attempted to create a destination SVM. At 01:02:26Z `aws fsx create-storage-virtual-machine` returned `ServiceLimitExceeded`: the file system already had 6 SVMs, which the [SVM limit table](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-svms.html) lists as the maximum for one HA pair at 128 MBps. Nothing was created. With approval, the destination DP volume was placed in the same SVM as the source, with no destination SVM and no SVM peer.
+
+The module was called from a scratch root configuration with a relative local `source` (see F2) and these inputs. `notification_email` was not set, so no SNS topic was created.
+
+```hcl
+name_prefix                      = "fsxn-t2check"
+file_system_id                   = "fs-0123456789abcdef0"
+ontap_management_ip              = "<management-ip>"
+ontap_credentials_secret_arn     = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:fsxn-t2-ontap-readonly-XXXXXX"
+vpc_id                           = "vpc-0123456789abcdef0"
+subnet_ids                       = ["subnet-0123456789abcdef0"]
+create_monitoring_endpoint       = true
+create_secretsmanager_endpoint   = false
+aws_api_egress_cidr_blocks       = ["<vpc-cidr>"]
+qtree_svm_name                   = "<svm-name>"
+poll_interval_minutes            = 1
+snapmirror_lag_threshold_seconds = 300
+log_retention_days               = 1
+tags                             = { Purpose = "t2-live-verification" }
+```
+
+`terraform plan` reported 23 to add, including the `monitoring` endpoint, the endpoint security group, the egress rule for the VPC CIDR, and 7 alarms; no Secrets Manager endpoint and no SNS topic. `terraform apply` added 23 resources. The longest were the Lambda function (2 minutes 20 seconds, for the VPC attachment), the DLQ (1 minute 32 seconds), and the `monitoring` endpoint (45 seconds). Reserved concurrency 1 was accepted; the account had enough unreserved concurrency.
+
+> **Security note**
+>
+> The file system's security group is a pre-existing test-environment setting that allows all inbound traffic from `0.0.0.0/0`, and the existing Secrets Manager endpoint uses the same group. No ingress rule was therefore added for the Lambda security group, and the README's ingress-rule step and revoke-before-destroy step were not exercised. The SVM's `default` export policy allows `0.0.0.0/0` read/write, and the qtree data write used it without a change. Neither is a recommended setting. The module's own Lambda security group allowed egress only to the management IP (`/32`) and the VPC CIDR.
+
+### Check Results (T2 Run)
+
+| # | Check | Result | Time (UTC) |
+|---|-------|--------|------------|
+| M0 | Pre-checks: identity, file system, SVMs, VPC endpoints, security groups, ONTAP read-only baseline | ✅ PASS. The default `GET /api/snapmirror/relationships` view (what the collector reads) returned 0 records; the source-side view (`list_destinations_only=true`) held 3 pre-existing FSxN_OnPre relationships, left untouched. 0 volume recovery-queue entries, no `t2*` account or volume | From 01:00:04Z, before M1 |
+| M1 | Create a destination SVM | ⛔ `ServiceLimitExceeded` (6 SVMs, the documented maximum at 128 MBps). Nothing created; the relationship moved into one SVM | 01:02:26Z |
+| M2 | Test volumes, qtree, 100 MiB tree quota, read-only ONTAP user, secret | ✅ PASS. One DP-volume request was rejected (`BadRequest`: junction path, storage efficiency, snapshot policy and security style cannot be set on a DP volume) and retried without those parameters. As `t2-metrics-ro`, the cluster, SnapMirror and quota-report `GET`s returned 200 | 01:07:34Z → 01:09:32Z |
+| M3 | `terraform init -lockfile=readonly`, `validate`, `plan` | ✅ PASS. 23 to add, after two retries: an absolute-path `source` (F2) and an expired SSO token | 01:42:21Z |
+| M4 | `terraform apply` | ✅ PASS. 23 added | 01:42:45Z → 01:46:50Z |
+| M5 | Heartbeat alarms: ALARM before the first poll, OK after it | ✅ PASS | 01:44:37Z, 01:45:46Z → 01:47:37Z, 01:47:46Z |
+| S1 | Uninitialized relationship → `SnapMirrorUnhealthyCount` 1, `snapmirror-unhealthy` ALARM | ❌ Expectation not met. ONTAP reported `healthy: true`; the collector published healthy 1 and count 0, and the alarm stayed OK (F1) | 01:48:40Z → 01:50:55Z |
+| S2 | Initialize → healthy 1, count 0, lag series appear | ✅ PASS. First lag datum 22 s | 01:52:31Z → 01:53:52Z |
+| S3 | Lag past 300 s without a schedule → `snapmirror-lag-high` ALARM | ✅ PASS | 01:58:52Z |
+| S4 | Update transfer → lag drops, lag alarm OK | ✅ PASS. 682 → 23 s; OK at 02:09:52Z, ALARM again at 02:10:52Z because nothing schedules transfers | 02:04:30Z → 02:10:52Z |
+| S1b | Substitute for S1: failed manual transfer → unhealthy; recovering transfer → healthy; unhealthy alarm OK → ALARM → OK | ✅ PASS | 02:12:56Z → 02:27:52Z |
+| S5-1 | Qtree series against the ONTAP quota report | ✅ PASS. 40.1641% (42115072 / 104857600) | From 02:03Z |
+| S5-2 | Published series and dimension names against the README tables and cost formulas | ✅ PASS. 6 series in each namespace | 02:29Z → 02:30Z |
+| S5-3 | Lambda errors and throttles, ONTAP authentication errors, DLQ | ✅ PASS. Errors 0, Throttles 0 over 43 invocations, no HTTP 401 or 403, DLQ 0 | 02:29Z → 02:30Z |
+| M6 | Cleanup, with re-read | ⚠️ Done with exceptions. All 23 Terraform-managed resources, the test SnapMirror relationship, both test volumes, the qtree, the quota rule, and the ONTAP user were removed. Three classes of artifacts remain (see [Cleanup](#cleanup-t2-run)): 2 volume recovery-queue entries, left in place because a purge is irreversible and was not approved; the secret, scheduled for deletion after a 7-day recovery window; and the 12 custom metric series, under CloudWatch retention | 02:32:26Z → 03:10:54Z |
+
+At the deployed commit, the offline checks also passed: `pytest` on `shared/lambda/ontap_metrics/tests` (45 passed) and `make terraform` (exit 0; `terraform test` 15 passed and 43 passed for the two modules).
+
+### Alarm State Transitions (T2 Run)
+
+From the alarm history (`StateUpdate`) and alarm state reads, UTC. Every alarm name starts with `fsxn-t2check-`. The time in brackets in a state reason is the start of the 300-second window CloudWatch evaluated.
+
+| Alarm | Transition | Time | Values in the state reason |
+|-------|-----------|------|----------------------------|
+| `snapmirror-heartbeat` | First evaluation → ALARM | 01:44:37Z | No datapoints for 2 periods, missing data treated as breaching |
+| `qtree-heartbeat` | First evaluation → ALARM | 01:45:46Z | Same as above |
+| `dlq-depth` | First evaluation → OK | 01:45:52Z | Missing data treated as not breaching |
+| `snapmirror-heartbeat` | ALARM → OK | 01:47:37Z | After the first poll |
+| `qtree-heartbeat` | ALARM → OK | 01:47:46Z | 1 datapoint [1.0], not less than 1.0 |
+| `qtree-quota-high` | INSUFFICIENT_DATA → OK | 01:47:47Z | 0.0 |
+| `lambda-errors` | INSUFFICIENT_DATA → OK | 01:47:50Z | 0.0 |
+| `snapmirror-unhealthy` | INSUFFICIENT_DATA → OK | 01:47:52Z | 0.0, no relationship yet |
+| `snapmirror-lag-high` | INSUFFICIENT_DATA → OK | 01:53:52Z | 22.0 (01:48), not > 300 |
+| `snapmirror-lag-high` | OK → ALARM | 01:58:52Z | 322.0 (01:53), > 300 |
+| `snapmirror-lag-high` | ALARM → OK | 02:09:52Z | 263.0 (02:04), not > 300 |
+| `snapmirror-lag-high` | OK → ALARM | 02:10:52Z | 323.0 (02:05), > 300 |
+| `snapmirror-unhealthy` | OK → ALARM | 02:19:52Z | 2 datapoints, 1.0 (02:14) and 1.0 (02:09), > 0 |
+| `snapmirror-unhealthy` | ALARM → OK | 02:27:52Z | 0.0 (02:22), not > 0 |
+| `snapmirror-lag-high` | ALARM → OK | 02:27:52Z | 275.0, not > 300 |
+| `snapmirror-lag-high` | OK → ALARM | 02:28:52Z | 335.0, > 300 |
+
+The alarm history shows each alarm evaluated every minute over the last 300 seconds, not on 5-minute boundaries. The lag alarm reached ALARM 57 seconds after the first datum above the threshold was published (322 s at 01:57:55Z). It returned to OK 5 minutes 7 seconds after the update transfer ended, because the 300-second window had to stop containing the pre-update maximum (682 s at 02:03) before the Maximum dropped. The unhealthy alarm reached ALARM 5 minutes 58 seconds after the first unhealthy datum (02:13:54Z), as expected for 2 evaluation periods of 300 seconds, and returned to OK 5 minutes 38 seconds after the recovering transfer. With no transfer schedule, the lag alarm fired again each time lag passed 300 seconds after a transfer.
+
+### Observed Metrics (T2 Run)
+
+SnapMirror series by the minute of the datum. Per-relationship series carry `FileSystemId`, `SourcePath=<svm-name>:t2_sm_src` and `DestinationPath=<svm-name>:t2_sm_dst`. In the values read, the per-relationship `SnapMirrorLagSeconds` matched `SnapMirrorLagSecondsMax`.
+
+| Time (UTC) | Relationship state read from ONTAP | `SnapMirrorRelationshipHealthy` | `SnapMirrorUnhealthyCount` | `SnapMirrorLagSecondsMax` (s) |
+|------------|------------------------------------|:---:|:---:|-------------------------------|
+| 01:46–01:47 | No relationship | No series | 0 | Not published |
+| 01:48–01:50 | `uninitialized`, `healthy: true`, no `lag_time` | 1 | 0 | Not published |
+| 01:52 | `snapmirrored` after the initialize at 01:52:31Z, `lag_time` PT10S | 1 | 0 | 22 |
+| 01:53–02:03 | No transfer | 1 | 0 | 82, 142, … 322 (01:57) … 682 (02:03), +60 per poll |
+| 02:04 | Update transfer, 43074608 bytes in 13 seconds | 1 | 0 | 23 |
+| 02:05–02:12 | No transfer | 1 | 0 | 83 … 263 (02:08), 323 (02:09) … |
+| 02:13–02:21 | Failed transfer: `transfer.state: failed`, `healthy: false`, 2 `unhealthy_reason` codes | 0 | 1 | Kept growing, 1043 at 02:21 |
+| 02:22 on | Recovering transfer at 02:22:14Z, `healthy: true` | 1 | 0 | 35 at 02:22 |
+
+`SnapMirrorRelationshipsTruncated` was 0 on every poll. The failed transfer was a manual transfer request naming a source snapshot that does not exist; ONTAP returned the reason codes 6619937 (failed to create the snapshot) and 6619987 (the source volume does not have that snapshot). While the relationship was unhealthy, every poll logged a warning with the relationship UUID, `state=snapmirrored`, both paths and both reason codes, the log format the module README describes.
+
+Qtree series for `t2_qt` (`SvmName`, `VolumeName=t2_sm_src`, `QtreeName=t2_qt`): `QtreeQuotaLimitBytes` was 104857600 on every poll. `QtreeQuotaUsedBytes` was 0 until 02:02 and 42115072 from 02:03, after a 40 MiB file was written over a temporary NFSv3 mount from the bastion host at 02:03:41Z. ONTAP's quota report 20 seconds later showed the same 42115072 bytes used. `QtreeQuotaUsedPercent` went from 0 to 40.1641 (42115072 / 104857600 × 100), and `QtreeQuotaUsedPercentMax` matched it, because only one qtree had a hard limit. The volume's default tree record (empty qtree name, no hard limit) got no series, as documented. `QtreeQuotaReportTruncated` was 0.
+
+`list-metrics` returned 6 series in each namespace. `FSxONTAP/SnapMirror`: `CollectorSucceeded`, `SnapMirrorLagSeconds`, `SnapMirrorLagSecondsMax`, `SnapMirrorRelationshipHealthy`, `SnapMirrorRelationshipsTruncated`, `SnapMirrorUnhealthyCount`. `FSxONTAP/Qtree`: `CollectorSucceeded`, `QtreeQuotaLimitBytes`, `QtreeQuotaReportTruncated`, `QtreeQuotaUsedBytes`, `QtreeQuotaUsedPercent`, `QtreeQuotaUsedPercentMax`. That matches the README cost formulas (SnapMirror 2 × 1 + 3 + 1 = 6, qtree 3 × 1 + 2 + 1 = 6), and the dimension names match the README tables. `CollectorSucceeded` was 1 for both collectors on every poll.
+
+The function ran 43 times. Every run logged a qtree success line and a SnapMirror summary line; there were 0 `[ERROR]` lines, 0 HTTP 401 or 403, 0 tracebacks and 0 timeouts. Durations were 327–568 ms, and the maximum memory used was 96 MB of 256 MB. The read-only user `t2-metrics-ro` served every request the collectors make. Each run also logged two urllib3 `InsecureRequestWarning` lines, and the cold start logged the module's TLS warning, because `ca_cert_path` was empty, as documented. The log line `Found credentials in environment variables.` is boto3 reading the Lambda role's credentials, not ONTAP credentials.
+
+> **Network path note**
+>
+> The Secrets Manager call went through the existing endpoint and `PutMetricData` through the module's `monitoring` endpoint. This is inferred, not traced: the subnet has no NAT gateway, the Lambda security group allowed egress only to the VPC CIDR and the management IP, and the datapoints arrived.
+
+### Findings (T2 Run)
+
+| # | Finding | Kind | Effect on this record |
+|---|---------|------|-----------------------|
+| F1 | On ONTAP 9.18.1P6 an uninitialized relationship reported `healthy: true` with no `lag_time`. The module therefore published healthy 1, count 0, and no lag datum: `snapmirror-unhealthy` stayed OK and `snapmirror-lag-high` stayed INSUFFICIENT_DATA | ONTAP behavior, observed once; a monitoring gap, not a module code defect | A relationship that is created but never initialized raises neither SnapMirror alarm. Closing that gap needs a new signal, for example a count of `uninitialized` relationships or treating a missing `lag_time` as breaching. That changes the metric catalog and is a design decision, so it is recorded and not implemented. S1b replaced S1 as the unhealthy test |
+| F2 | With `source` given as an absolute local path, `terraform init` installed the module as a `file://` source and a symlink under `.terraform/modules/`, and `archive_file` then resolved `${path.module}/../../shared` against the symlink and failed (`lstat .terraform/shared/lambda/ontap_metrics/__pycache__: no such file or directory`). A relative local path worked | Terraform behavior with this module's path to `shared/`, observed once | Use a relative local path, the git source, or the archive URL. The sources the README documents were not affected |
+| F3 | `terraform destroy` spent 22 minutes 3 seconds on `aws_security_group.lambda`, waiting for the Lambda network interface to be released after the function was deleted | Observed once | Allow for a destroy of this length. The README had said the duration was not measured |
+| F4 | At a 1-minute poll and a 300-second period: unhealthy alarm ALARM 5 minutes 58 seconds after the first unhealthy datum and OK 5 minutes 38 seconds after the recovering transfer; lag alarm ALARM 57 seconds after the first datum above the threshold and OK 5 minutes 7 seconds after the update | CloudWatch evaluation, observed once | Inferred: after a transfer, the lag alarm returns to OK within up to one alarm period plus up to one minute. Without a transfer schedule it fires again one threshold later |
+| F5 | Both heartbeat alarms went to ALARM about 1.5–2.5 minutes after creation, before the first poll, and to OK within about 1 minute of the first poll | Documented behavior, now observed | An ALARM right after `apply` is expected. Inferred, not exercised: with `notification_email` set, it would send an ALARM and then an OK notification |
+| F6 | The first-generation 128 MBps file system already had 6 SVMs, the documented maximum, so no destination SVM could be created | Service limit, documented | The relationship ran inside one SVM. SVM peering and SnapMirror between two file systems remain unverified |
+
+No defect was found in the module code, and no code was changed.
+
+### Cleanup (T2 Run)
+
+| Step | Result | Time (UTC) |
+|------|--------|------------|
+| Check for rules outside Terraform that reference the Lambda security group | Only the module's own endpoint security group referenced it; nothing to revoke | Before 02:32:26Z |
+| First `terraform destroy -auto-approve` | Exit 1: SSO `GetRoleCredentials` timed out on the network. Nothing was destroyed and the state still held every resource | 02:32:26Z → 02:34:02Z |
+| Second `terraform destroy -auto-approve` | Exit 0, 23 destroyed. `aws_security_group.lambda` took 22 minutes 3 seconds (F3), the `monitoring` endpoint 2 minutes 51 seconds, the DLQ 51 seconds | 02:43:57Z → 03:06:28Z |
+| Delete the SnapMirror relationship (with release on the source) | HTTP 200. Destination view 0 records; the source-side list shows only the 3 relationships of another SVM that existed before the run; 0 snapshots left on `t2_sm_src` | 03:06:49Z |
+| Delete the secret | `delete-secret --recovery-window-in-days 7`; deletion date 2026-10-15T03:07:27Z | 03:07:27Z |
+| Delete both test volumes (`SkipFinalBackup=true`) | Both `VolumeNotFound` by 03:10:03Z | 03:09:08Z → 03:10:03Z |
+| Delete the ONTAP user `t2-metrics-ro` | HTTP 200; 0 `t2*` accounts | 03:09:24Z |
+| Local and bastion temporary files | `terraform.tfvars`, state and plan files removed; the password scratch files and the bastion's one-time key and mount point removed earlier | After the second destroy |
+| Re-read | AWS: 0 state entries. No alarm, log group, function, rule, queue, IAM role or security group with prefix `fsxn-t2check`; no network interface with either former module security group; no `monitoring` endpoint; the 5 pre-existing VPC endpoints available; both test volumes `VolumeNotFound`; 6 SVMs. ONTAP: the default `GET /api/snapmirror/relationships` view returned 0 records (the t2 relationship gone); the source-side view (`list_destinations_only=true`) held the 3 pre-existing FSxN_OnPre relationships only, the 2 pre-existing SVM peers only, 0 `t2*` volumes, qtrees and accounts, 0 quota rules in `<svm-name>`; the bastion paths are gone | 03:10:49Z → 03:10:54Z |
+
+Three items remain by design:
+
+- 2 volume recovery-queue entries, for `t2_sm_dst` and `t2_sm_src`, were not purged, because a purge is irreversible and was not approved. The aggregate had 282951680 bytes (about 270 MiB) less available than at the baseline. Inferred, not verified: that space is held by the two entries until ONTAP expires them. The default retention was not checked in this run; see [Return to OK and the Volume Recovery Queue](#return-to-ok-and-the-volume-recovery-queue) for the documented behavior.
+- The secret is scheduled for deletion on 2026-10-15T03:07:27Z (7-day recovery window).
+- The 12 custom metric series (6 per namespace) hold datapoints from 01:46Z to about 02:44Z. Custom metrics cannot be deleted; the data ages out under CloudWatch retention, which was not re-checked in this run.
+
+No export policy, IAM outside the module, or security group outside the module was changed. The other NFS mounts on the bastion host and the pre-existing SnapMirror relationships and SVM peers were not touched.
+
+### What Remains Unverified (T2 Run)
+
+| Item | Status | Reason |
+|------|--------|--------|
+| SnapMirror between two SVMs (SVM peering) and between two file systems (cluster peering, polling the destination file system across clusters) | Not run | F6: the relationship ran inside one SVM |
+| An alarm for a relationship that was never initialized | Not covered by the module | F1 |
+| Second-generation file systems and file systems with more than one HA pair | Not run | The test file system is first generation with one HA pair |
+| Deployer IAM policy `examples/basic/iam-policy.json` | Not verified | The deployer had administrator access |
+| README ingress-rule step and revoke-before-destroy step (the `DependencyViolation` path) | Not exercised | The file system's security group already allowed all inbound traffic |
+| `qtree-quota-high` ALARM transition | Not driven | Usage reached 40.16%, below the threshold of 85 |
+| Heartbeat failure path (`CollectorSucceeded` = 0) | Not driven | Both collectors succeeded on every poll |
+| SVM-scoped ONTAP user | Not tested | The user was cluster-scoped `fsxadmin-readonly` |
+| `security login create` over SSH from the README prerequisites | Not run | The user was created with `POST /api/security/accounts` |
+| SNS notification delivery | Not exercised | `notification_email` was not set |
+| TLS verification with a CA certificate (`ca_cert_path`, `ca_cert_layer_arn`) | Not run | Both were empty |
+| Default 5-minute poll and default 10800-second lag threshold | Not run | 1 minute and 300 seconds were used to shorten the test |
+| More than one page, the `snapmirror_max_relationships` cap, a truncation value of 1 | Not exercised | 1 relationship and 2 quota records; truncation 0 |
+| Throttling under reserved concurrency 1 | Not observed | Throttles 0 |
+| Release of the 2 recovery-queue entries when they expire | Not observed | The entries were left in place |
+
+### Judgment (T2 Run)
+
+| Item | Value |
+|------|-------|
+| Judgment | ✅ Within the scope of this sample run, on one first-generation, single-HA-pair file system with a SnapMirror relationship inside one SVM: deployment, both collectors' series against real ONTAP responses, the heartbeat ALARM before the first poll and OK after it, the SnapMirror unhealthy alarm OK → ALARM → OK, and the lag alarm OK → ALARM → OK are verified. An uninitialized relationship raises no alarm (F1). SnapMirror between two SVMs and between two file systems, and the `qtree-quota-high` ALARM path, are unverified |
+| Passing checks | 12 of 15 (M0, M2–M5, S2, S3, S4, S1b, S5-1–S5-3) |
+| Expectation not met | 1 of 15 (S1), from F1 |
+| Rejected by a service limit | 1 of 15 (M1), from F6 |
+| Done with remaining items | 1 of 15 (M6): 2 recovery-queue entries, the scheduled secret deletion, and the custom metric data |
+| Module code defects | None found. No code was changed |
+
+---
+
 ## Related Documents
 
 - [Monitoring Design](monitoring-design.md): the dashboard template, the Terraform T1 module, and the qtree quota monitor, with confidence tiers that cite this record
 - [AWS-Native Alternative Matrix](native-alternative-matrix.md): System Manager view → CloudWatch metric → template mapping
 - [Terraform module: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md): inputs, outputs, and verification status
+- [Terraform module: fsxn-ontap-custom-metrics](../../terraform/fsxn-ontap-custom-metrics/README.md): the T2 qtree and SnapMirror poller, with its verification status
 - [CloudWatch Log Alarm](cloudwatch-log-alarm.md): the separate log-alarm template and its 2026-07-02 E2E record

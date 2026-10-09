@@ -85,6 +85,15 @@ TARGETS: list[Target] = [
         "management-console/lambda/dashboard_importer.py",
         "lambda_handler",
     ),
+    # The qtree poller is also the ONTAP REST client of the Terraform module
+    # terraform/fsxn-ontap-custom-metrics, which zips the same directory, so
+    # both deployment paths run one source file.
+    Target(
+        "shared/templates/qtree-quota-monitor.yaml",
+        "QuotaMonitorFunction",
+        "shared/lambda/ontap_metrics/qtree_quota_poller.py",
+        "lambda_handler",
+    ),
 ]
 
 

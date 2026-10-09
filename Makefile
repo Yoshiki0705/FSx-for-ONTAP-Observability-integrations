@@ -58,6 +58,7 @@ SHARED_TEST_DIRS := \
   scripts/verification/tests \
   shared/lambda-layers/ems-parser/tests \
   shared/lambda-layers/log-parser/tests \
+  shared/lambda/ontap_metrics/tests \
   shared/python/tests \
   shared/scripts/tests
 
@@ -89,8 +90,11 @@ TF_EXAMPLE_DIRS := $(patsubst %/versions.tf,%,$(wildcard terraform/*/examples/*/
 # test there widened the gap. First run found 13 ruff findings and 2 bandit
 # B310. scripts/tests/test_lint_scope_coverage.py now fails if a directory
 # holding Python appears in PYTEST_DIRS but not here.
+# shared/lambda/ontap_metrics is listed on its own rather than as shared/lambda:
+# shared/lambda/authorizers has never been in scope, and widening to it is a
+# separate change (recorded in CHANGELOG as a follow-up).
 PY_SRC := integrations shared/python shared/lambda-layers scripts \
-          shared/scripts management-console
+          shared/scripts management-console shared/lambda/ontap_metrics
 
 # cfn-lint: W = warnings (advisory). E3006 = AWS::CloudWatch::LogAlarm is GA
 # (2026-07) but not yet in the cfn-lint resource spec; deployment is verified

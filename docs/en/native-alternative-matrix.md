@@ -30,7 +30,7 @@ This document maps every major feature of ONTAP System Manager, NetApp Workload 
 | **SMB Share Management** | ONTAP REST API | `ontap_response.py` (name-mapping deny for blocking) | ⚠️ Blocking only |
 | **EMS Event Viewer** | CloudWatch Logs (syslog VPC EP) | `syslog-vpce-cloudwatch.yaml` | ✅ |
 | **ARP Status** | EMS → Observability pipeline | 9 vendor integrations + EMS webhook | ✅ |
-| **SnapMirror Management** | Amazon FSx console + ONTAP REST API | Docs (manual procedure) | ⚠️ No automation; health/lag monitoring designed as a custom metric polled from the destination file system (planned T2, not implemented, see [monitoring-design.md](monitoring-design.md#metric-catalog)) |
+| **SnapMirror Management** | Amazon FSx console + ONTAP REST API | Docs (manual procedure) | ⚠️ No automation; health/lag monitoring as a custom metric polled from the destination file system: Terraform module `terraform/fsxn-ontap-custom-metrics/` (T2, offline-verified, live `unverified`; no CloudFormation equivalent), see [monitoring-design.md](monitoring-design.md#metric-catalog) |
 | **QoS Policy** | ONTAP REST API | — | ❌ Out of scope |
 | **Network (LIF/DNS)** | FSx Console + ONTAP REST API | — | ❌ Infrastructure management |
 | **FPolicy Configuration** | ONTAP REST API | FPolicy server (Fargate) + scripts | ✅ |

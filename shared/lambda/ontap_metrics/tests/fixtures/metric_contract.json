@@ -1,0 +1,14 @@
+[
+  {"namespace": "FSxONTAP/Qtree", "metric": "QtreeQuotaUsedPercent", "dimensions": ["SvmName", "VolumeName", "QtreeName"], "unit": "Percent", "alarm": false},
+  {"namespace": "FSxONTAP/Qtree", "metric": "QtreeQuotaUsedBytes", "dimensions": ["SvmName", "VolumeName", "QtreeName"], "unit": "Bytes", "alarm": false},
+  {"namespace": "FSxONTAP/Qtree", "metric": "QtreeQuotaLimitBytes", "dimensions": ["SvmName", "VolumeName", "QtreeName"], "unit": "Bytes", "alarm": false},
+  {"namespace": "FSxONTAP/Qtree", "metric": "QtreeQuotaUsedPercentMax", "dimensions": ["SvmName"], "unit": "Percent", "alarm": true},
+  {"namespace": "FSxONTAP/Qtree", "metric": "QtreeQuotaReportTruncated", "dimensions": ["SvmName"], "unit": "Count", "alarm": false},
+  {"namespace": "FSxONTAP/Qtree", "metric": "CollectorSucceeded", "dimensions": ["FileSystemId", "Collector"], "unit": "Count", "alarm": true},
+  {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorRelationshipHealthy", "dimensions": ["FileSystemId", "SourcePath", "DestinationPath"], "unit": "Count", "alarm": false},
+  {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorLagSeconds", "dimensions": ["FileSystemId", "SourcePath", "DestinationPath"], "unit": "Seconds", "alarm": false},
+  {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorUnhealthyCount", "dimensions": ["FileSystemId"], "unit": "Count", "alarm": true},
+  {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorLagSecondsMax", "dimensions": ["FileSystemId"], "unit": "Seconds", "alarm": true},
+  {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorRelationshipsTruncated", "dimensions": ["FileSystemId"], "unit": "Count", "alarm": false},
+  {"namespace": "FSxONTAP/SnapMirror", "metric": "CollectorSucceeded", "dimensions": ["FileSystemId", "Collector"], "unit": "Count", "alarm": true}
+]
