@@ -42,7 +42,7 @@ The dated records behind each module's status are linked from this table.
 
 > **Record note**
 >
-> Pages written before these runs, including the module READMEs and the monitoring design, may still say that live verification is pending. The dated records linked in this table are the reference.
+> If another page states a different status for a module, the dated records linked in this table are the reference.
 
 > **Verification scope note**
 >
