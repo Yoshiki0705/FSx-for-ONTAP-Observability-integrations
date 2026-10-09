@@ -12,7 +12,7 @@
 | I want to... | Guide | Time |
 |---|---|---|
 | **Decide how to monitor FSx for ONTAP at all** — not settled on an approach yet | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 min |
-| Monitor FSx for ONTAP with CloudWatch using Terraform | [Terraform module](terraform/fsxn-monitoring-dashboard/README.md#usage) · [Monitoring design](docs/en/monitoring-design.md#t1-module-usage-and-scope) | — |
+| Monitor FSx for ONTAP with CloudWatch using Terraform | [Terraform monitoring guide](docs/en/terraform-monitoring-guide.md) ([日本語](docs/ja/terraform-monitoring-guide.md)): module order, prerequisites, verification status · [Terraform module](terraform/fsxn-monitoring-dashboard/README.md#usage) · [Monitoring design](docs/en/monitoring-design.md#t1-module-usage-and-scope) | — |
 | Validate the pipeline end-to-end (first time) | [Minimum Test Path](docs/en/quick-start-minimum.md) | 15 min |
 | Deploy a vendor integration to production | [Deployment Guide](docs/en/deployment-guide.md) | 30 min |
 | Respond to ransomware at the storage layer | [Automated Incident Response](docs/en/automated-response-guide.md) | 20 min |
@@ -33,6 +33,7 @@ judged the others.
 | Question | Where it is answered |
 |----------|----------------------|
 | How do I get audit logs, EMS events or FPolicy file operations to my platform | **Here.** [Deployment Guide](docs/en/deployment-guide.md) |
+| How do I deploy the CloudWatch monitoring design with Terraform, and in what order | **Here**. [Terraform monitoring guide](docs/en/terraform-monitoring-guide.md) |
 | What breaks first, and what did it actually cost | **Here.** Measured, with environment and dates — e.g. [S3 AP throughput](docs/en/s3ap-throughput-benchmark.md), [cost model](docs/en/cost-model.md) |
 | Which collection route suits my constraints (CloudWatch / Harvest + Prometheus / SaaS / ONTAP REST) | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) |
 | What are the limits of audit-based observability before I commit to it | Playbook — including that **a full audit destination stops client access** rather than degrading monitoring |
@@ -206,7 +207,7 @@ python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v
 cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
-- **Tech stack**: CloudFormation (YAML) · Terraform ([module](terraform/fsxn-monitoring-dashboard/README.md)) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
+- **Tech stack**: CloudFormation (YAML) · Terraform ([monitoring guide](docs/en/terraform-monitoring-guide.md): dashboard, custom-metrics and log-alarm modules) · Python 3.12 Lambda · TypeScript · GitHub Actions CI
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Changelog**: See [CHANGELOG.md](CHANGELOG.md)
 - **Roadmap**: See [ROADMAP.md](ROADMAP.md)
