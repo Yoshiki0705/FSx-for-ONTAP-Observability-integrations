@@ -44,9 +44,12 @@
 
 ## モジュールの取得方法
 
-予定しているタグは `terraform-fsxn-log-alarm-v0.1.0` ですが、**まだ作成していません**。作成の時期は決めていません。既定のパターンは 2026-10-09 の実行の後に置き換えており、新しい `bulk-delete` のパターンは実際のアラームでは動かしていません。それまでは、下の git ソースかアーカイブ URL でコミット SHA を固定してください。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。コードブロック内のコメントは英語のままで、上から順に「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
+このモジュールは `terraform-fsxn-log-alarm-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-log-alarm-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-log-alarm-v0.1.0) として公開しています。タグは版を固定するもので、検証を主張するものではありません。実環境での検証は、[検証状況](#検証状況)に記した 2026-10-09 の記録の範囲、つまり監査の 3 つの検知に限られたままです。タグには、その実行の後に置き換えた既定のパターンが入っています。新しい `bulk-delete` の既定は実際のアラームでは動かしておらず、実際の EMS イベントでの `autosize-fail`、`unauthorized-access`、既定の 300 秒の期間、SNS の通知、デプロイ用の IAM ポリシーは `unverified` です。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。コードブロック内のコメントは英語のままで、上から順に「タグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=<commit-sha>"
 
@@ -54,15 +57,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-log-alarm"
 ```
 
-下の手順は、sparse checkout でモジュールのディレクトリだけをコミットで取り出します。その後 `source` をこのコピー内の `terraform/fsxn-log-alarm` のローカルパスにします。タグを作った後は、`<commit-sha>` の代わりにタグを使ってください。
+下の手順は、sparse checkout でタグの時点のモジュールのディレクトリだけを取り出します。その後 `source` をこのコピー内の `terraform/fsxn-log-alarm` のローカルパスにします。コミットに固定する場合は、タグ名をコミット SHA に置き換えます。このモジュールはディレクトリの外にコードを持たないため、ほかのパスは要りません。
 
 ```bash
 git init fsx-ontap-log-alarm && cd fsx-ontap-log-alarm
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-log-alarm
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-log-alarm-v0.1.0
 git checkout FETCH_HEAD
 ```
+
+> **取得手順に関する補足**
+>
+> タグを作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。タグそのものの取得は、このモジュールでは実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
 
 ## 使い方
 
@@ -104,7 +111,7 @@ terraform apply
 
 ```hcl
 module "fsx_ontap_log_alarm" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1"
 
   log_group_name     = "/syslog/fsxn-admin-audit"
   notification_email = "ops@example.com"

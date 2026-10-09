@@ -8,7 +8,7 @@ A VPC Lambda function that polls the ONTAP REST API of one Amazon FSx for NetApp
 
 Offline: `make terraform` runs `terraform fmt -check`, `terraform init -lockfile=readonly`, `terraform validate`, and `terraform test` (a mock `aws` provider and `command = plan`; the `archive` provider builds the real Lambda zip). It also runs `init` and `validate` on [`examples/basic/`](examples/basic/). The Lambda source in `shared/lambda/ontap_metrics/` has pytest unit tests against mocked urllib3 and boto3, with SnapMirror records shaped like the example response in the ONTAP 9.18.1 REST API reference. One test file asserts that every alarm reads a (namespace, metric, dimension names) tuple from `shared/lambda/ontap_metrics/tests/fixtures/metric_contract.json`, and the Python tests assert that the collectors emit exactly the series in that file.
 
-Live: not run. The module has not been applied to an AWS account, so everything that depends on a real file system is `unverified`: ONTAP REST responses from a real cluster, the network path, the deployer IAM policy, and every alarm transition. The planned SnapMirror check uses a relationship between two SVMs on one file system, on test volumes, and drives it from healthy to unhealthy and back to healthy while `SnapMirrorUnhealthyCount` and the `snapmirror-unhealthy` alarm follow. That run exercises the collector and alarms but not SnapMirror between two file systems (cluster peering, polling the destination file system across clusters), which will stay unverified. Until that run is recorded, apply the module in a non-production account first.
+Live: one sample run on 2026-10-08 (UTC) in `ap-northeast-1` ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#terraform-custom-metrics-module-run-on-2026-10-08), [日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)), on one first-generation `SINGLE_AZ_1` file system with one HA pair (ONTAP 9.18.1P6), with both collectors on, a 1-minute poll, and a 300-second lag threshold chosen for the test. The file system already had the documented maximum of 6 SVMs, so the SnapMirror relationship ran between two test volumes in one SVM. Within that scope, these are `verified`: deployment, both collectors' series against real ONTAP responses, the heartbeat alarms going to ALARM before the first poll and to OK after it, the `snapmirror-unhealthy` alarm going OK → ALARM → OK (a failed manual transfer, then a recovering one), and the `snapmirror-lag-high` alarm going OK → ALARM → OK. Finding F1: an uninitialized relationship reported `healthy: true` with no `lag_time`, so neither SnapMirror alarm fired for it (observed once). Closing that gap needs a new signal, which is a metric-catalog change and is not implemented. Still `unverified`: SnapMirror between two SVMs and between two file systems (cluster peering, polling the destination file system across clusters), the `qtree-quota-high` ALARM path (usage reached 40.16%, below the threshold of 85), the deployer IAM policy (the run used administrator access), the ingress-rule and revoke-before-destroy steps, SNS notification, CA-verified TLS, the default 5-minute poll and 10800-second lag threshold, and second-generation and multi-HA-pair file systems. Since the revision that ran, only the module READMEs have changed. This is a sample run, not a production estimate; on another file-system shape, apply the module in a non-production account first.
 
 ## What it creates
 
@@ -74,11 +74,14 @@ Lambda execution role, created by the module (the deployer needs `iam:PassRole` 
 
 ## Obtaining the module
 
-The planned tag is `terraform-fsxn-ontap-custom-metrics-v0.1.0`. It is **not yet created**; it is planned after the live run in [Verification status](#verification-status). Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. Download sizes were not measured for this module; [the dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module) records them for the same repository.
+The module is versioned with git tags of the form `terraform-fsxn-ontap-custom-metrics-vX.Y.Z`. The current version is `terraform-fsxn-ontap-custom-metrics-v0.1.0`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-ontap-custom-metrics-v0.1.0). A tag pins a version; it does not change the scope of verification described in [Verification status](#verification-status). The module is not on the Terraform Registry, because it is a subdirectory of a larger repository. Download sizes were not measured for this module; [the dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module) records them for the same repository.
 
-The Lambda source is outside the module directory, in `shared/lambda/ontap_metrics/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for both sources below.
+The Lambda source is outside the module directory, in `shared/lambda/ontap_metrics/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for the sources below.
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
 
@@ -86,19 +89,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ontap-custom-metrics"
 ```
 
-A sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ontap_metrics` does not exist:
+The steps below check out the module directory at the tag with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-ontap-custom-metrics` in this copy. To pin a commit instead, replace the tag name with a commit SHA. The sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ontap_metrics` does not exist:
 
 ```bash
 git init fsx-ontap-custom-metrics && cd fsx-ontap-custom-metrics
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-ontap-custom-metrics shared/lambda/ontap_metrics
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-ontap-custom-metrics-v0.1.0
 git checkout FETCH_HEAD
 ```
 
-> **Fetch-by-SHA note**
+> **Fetch note**
 >
-> The dashboard module's sparse checkout fetches a tag; fetching a commit SHA as above was not run for this module (`unverified`). With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the dashboard module README. Once the tag exists, use it in place of `<commit-sha>`.
+> Before the tag was created, these steps were run with a commit SHA in place of the tag name, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. The fetch of the tag itself has not been run for this module. A git source with `?ref=main&depth=1` also placed `shared/lambda/ontap_metrics/` next to the module in the copy that `terraform init` downloaded; `plan` was not run from it. With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module).
 
 ## Usage
 
@@ -157,7 +160,7 @@ aws ec2 describe-vpc-endpoints --filters Name=vpc-id,Values=vpc-0123456789abcdef
   --query 'VpcEndpoints[].{Service:ServiceName,PrivateDns:PrivateDnsEnabled,State:State}' --output table
 ```
 
-CloudWatch Logs needs no endpoint or NAT in one observed case: on 2026-10-06 the CloudFormation qtree template ran in a subnet with no NAT gateway and only `monitoring` and `secretsmanager` interface endpoints, and its log lines were read from the log group ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#qtree-quota-monitor-run-on-2026-10-06)). No AWS page read for this module states it, and this module has not been run (`unverified` here).
+CloudWatch Logs needs no endpoint or NAT in one observed case: on 2026-10-06 the CloudFormation qtree template ran in a subnet with no NAT gateway and only `monitoring` and `secretsmanager` interface endpoints, and its log lines were read from the log group ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#qtree-quota-monitor-run-on-2026-10-06)). The 2026-10-08 run of this module was in a subnet with no NAT gateway as well, with the module's `monitoring` endpoint and an existing `secretsmanager` endpoint, and the function's log lines were read from its log group ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#terraform-custom-metrics-module-run-on-2026-10-08)). No AWS page read for this module states it, so this rests on those two observations.
 
 ### Required IAM permissions (estimated, unverified)
 
@@ -208,7 +211,7 @@ In your own root configuration, copy [`examples/basic/`](examples/basic/) and re
 
 ```hcl
 module "ontap_custom_metrics" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
 
   file_system_id               = "fs-0123456789abcdef0"
   ontap_management_ip          = "198.51.100.10"
@@ -259,7 +262,7 @@ aws ec2 describe-security-groups --filters Name=ip-permission.group-id,Values=<l
   --query 'SecurityGroups[].{Id:GroupId,Name:GroupName}' --output table
 ```
 
-Rows from the first command are Lambda network interfaces that are still being released after the function was deleted. That clears by itself; the duration was not measured for this module. Run `terraform destroy` again afterwards. Rows from the second command are security groups that still reference the Lambda security group in an inbound rule. That does not clear by itself: remove the rule from each listed group, then run `terraform destroy` again.
+Rows from the first command are Lambda network interfaces that are still being released after the function was deleted. That clears by itself; in the 2026-10-08 run, `terraform destroy` waited 22 minutes 3 seconds on the Lambda security group for it (observed once, [record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#terraform-custom-metrics-module-run-on-2026-10-08)). Run `terraform destroy` again afterwards. Rows from the second command are security groups that still reference the Lambda security group in an inbound rule. That does not clear by itself: remove the rule from each listed group, then run `terraform destroy` again.
 
 ## Inputs
 

@@ -48,7 +48,7 @@ It does **not** create the decision-archive S3 bucket. That is an existing Objec
 
 The planned tag is `terraform-fsxn-ssd-auto-increase-v0.1.0`. It is **not yet created**; it is planned after the live run in [Verification status](#verification-status). Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository.
 
-The Lambda source is outside the module directory, in `shared/lambda/ssd_auto_increase/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for both sources below.
+The Lambda source is outside the module directory, in `shared/lambda/ssd_auto_increase/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for the sources below.
 
 ```hcl
 # Git source pinned to a commit
@@ -58,7 +58,7 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ssd-auto-increase"
 ```
 
-A sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ssd_auto_increase` does not exist:
+The steps below check out the module directory at a commit with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-ssd-auto-increase` in this copy. The sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ssd_auto_increase` does not exist:
 
 ```bash
 git init fsx-ssd-auto-increase && cd fsx-ssd-auto-increase
@@ -67,6 +67,10 @@ git sparse-checkout set terraform/fsxn-ssd-auto-increase shared/lambda/ssd_auto_
 git fetch --depth 1 --filter=blob:none origin <commit-sha>
 git checkout FETCH_HEAD
 ```
+
+> **Fetch note**
+>
+> These steps were run with a commit SHA, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. A git source with `?ref=main&depth=1` also placed `shared/lambda/ssd_auto_increase/` next to the module in the copy that `terraform init` downloaded; `plan` was not run from it. With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module).
 
 ## Usage
 

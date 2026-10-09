@@ -8,7 +8,7 @@ Amazon FSx for NetApp ONTAP のファイルシステム 1 つの ONTAP REST API 
 
 オフラインの検証では、`make terraform` が `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、`terraform test`（モックの `aws` プロバイダーと `command = plan` による。`archive` プロバイダーは実際の Lambda の zip を作ります）を実行します。[`examples/basic/`](examples/basic/) に対しても `init` と `validate` を実行します。`shared/lambda/ontap_metrics/` の Lambda のソースには、urllib3 と boto3 をモックにした pytest の単体テストがあり、SnapMirror のレコードは ONTAP 9.18.1 REST API リファレンスのレスポンス例の形に合わせています。テストファイルの 1 つは、すべてのアラームが `shared/lambda/ontap_metrics/tests/fixtures/metric_contract.json` にある（名前空間、メトリクス、ディメンション名）の組を読むことを確認し、Python のテストは、コレクターが発行する系列がそのファイルと完全に一致することを確認します。
 
-実環境での検証はまだ行っていません。AWS アカウントへ適用していないため、実際のファイルシステムに依存するもの、つまり実クラスターの ONTAP REST のレスポンス、ネットワーク経路、デプロイ用の IAM ポリシー、すべてのアラームの状態遷移は `unverified` です。予定している SnapMirror の確認では、1 つのファイルシステムの 2 つの SVM の間でテスト用ボリュームの関係を組み、関係を健全から非健全にして健全に戻す間に `SnapMirrorUnhealthyCount` と `snapmirror-unhealthy` アラームが追随することを見ます。この確認で分かるのは収集処理とアラームの動作で、2 つのファイルシステム間の SnapMirror（クラスターピアリングと、別クラスターの宛先ファイルシステムのポーリング）は未確認のまま残ります。その実行を記録するまでは、まず本番以外のアカウントで適用してください。
+実環境での検証は、2026-10-08（UTC）に `ap-northeast-1` で行ったサンプル実行 1 回です（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)、[English](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#terraform-custom-metrics-module-run-on-2026-10-08)）。対象は第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステム 1 つ（ONTAP 9.18.1P6）で、2 つのコレクターを両方とも有効にし、ポーリング間隔 1 分、遅延の閾値はテスト用に 300 秒にしました。ファイルシステムの SVM の数が文書化された上限の 6 に達していたため、SnapMirror の関係は 1 つの SVM の中の 2 つのテスト用ボリュームの間で組みました。この範囲で `verified` なのは、デプロイ、実際の ONTAP の応答に対する両方のコレクターの系列、最初のポーリングの前のハートビートのアラームの ALARM とその後の OK、`snapmirror-unhealthy` アラームの OK → ALARM → OK（手動の転送を失敗させ、その後の転送で回復）、`snapmirror-lag-high` アラームの OK → ALARM → OK です。所見 F1: 初期化していない関係は `healthy: true` で `lag_time` を持たないと報告され、その関係ではどちらの SnapMirror アラームも発報しませんでした（1 回観測）。このギャップを塞ぐには新しいシグナルが必要で、メトリクスカタログの変更になるため実装していません。`unverified` のまま残るのは、2 つの SVM の間と 2 つのファイルシステムの間の SnapMirror（クラスターピアリングと、別クラスターの宛先ファイルシステムのポーリング）、`qtree-quota-high` の ALARM の経路（使用率は 40.16% で、閾値の 85 に届かなかった）、デプロイ用の IAM ポリシー（実行は管理者権限で行った）、インバウンドルールの追加と destroy の前の取り消しの手順、SNS の通知、CA 証明書で検証する TLS、既定のポーリング間隔 5 分と遅延の閾値 10800 秒、第 2 世代と複数 HA ペアのファイルシステムです。実行したリビジョンから変わったのはモジュールの README だけです。これはサンプル実行で、本番での見積りではありません。形の異なるファイルシステムでは、まず本番以外のアカウントで適用してください。
 
 ## 作成されるリソース
 
@@ -74,11 +74,14 @@ SnapMirror の値の規則は次のとおりです。`healthy` がない、ま�
 
 ## モジュールの取得方法
 
-予定しているタグは `terraform-fsxn-ontap-custom-metrics-v0.1.0` ですが、**まだ作成していません**。[検証状況](#検証状況)に記した実環境での実行の後に作る予定です。それまでは、下の git ソースかアーカイブ URL でコミット SHA を固定してください。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。
+このモジュールは `terraform-fsxn-ontap-custom-metrics-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-ontap-custom-metrics-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-ontap-custom-metrics-v0.1.0) として公開しています。タグは版を固定するもので、[検証状況](#検証状況)に記した検証の範囲は変えません。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。
 
-Lambda のソースはモジュールのディレクトリの外、`shared/lambda/ontap_metrics/` にあります。`//subdirectory` 形式のソースでは、Terraform はパッケージ全体をダウンロードして展開し、その後でサブディレクトリからモジュールを読みます（[module ブロックのリファレンス](https://developer.hashicorp.com/terraform/language/block/module)）。そのため下のどちらのソースでも `../../shared` を解決できます。コードブロック内のコメントは英語のままで、上から順に「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
+Lambda のソースはモジュールのディレクトリの外、`shared/lambda/ontap_metrics/` にあります。`//subdirectory` 形式のソースでは、Terraform はパッケージ全体をダウンロードして展開し、その後でサブディレクトリからモジュールを読みます（[module ブロックのリファレンス](https://developer.hashicorp.com/terraform/language/block/module)）。そのため下のどのソースでも `../../shared` を解決できます。コードブロック内のコメントは英語のままで、上から順に「タグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
 
@@ -86,19 +89,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ontap-custom-metrics"
 ```
 
-sparse checkout では両方のディレクトリを含めます。含めないと `shared/lambda/ontap_metrics` が存在せず、plan の時点で `archive_file` が失敗します。
+次の手順は sparse checkout で、タグの時点のモジュールのディレクトリを取り出します。その後、このコピーの `terraform/fsxn-ontap-custom-metrics` のローカルパスを `source` に指定します。コミットに固定する場合は、タグ名をコミット SHA に置き換えます。sparse checkout では両方のディレクトリを含めます。含めないと `shared/lambda/ontap_metrics` が存在せず、plan の時点で `archive_file` が失敗します。
 
 ```bash
 git init fsx-ontap-custom-metrics && cd fsx-ontap-custom-metrics
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-ontap-custom-metrics shared/lambda/ontap_metrics
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-ontap-custom-metrics-v0.1.0
 git checkout FETCH_HEAD
 ```
 
-> **SHA を指定した取得に関する補足**
+> **取得手順に関する補足**
 >
-> ダッシュボードのモジュールの sparse checkout はタグを取得します。上のようにコミット SHA を取得する手順は、このモジュールでは実行していません（`unverified`）。`source` に git ソースを書く場合、ダッシュボードのモジュールの README に記録したとおり、SHA と `depth=1` は組み合わせられません。タグを作った後は、`<commit-sha>` の代わりにタグを使ってください。
+> タグを作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。タグそのものの取得は、このモジュールでは実行していません。`?ref=main&depth=1` を指定した git ソースでも、`terraform init` がダウンロードしたコピーにはモジュールの隣に `shared/lambda/ontap_metrics/` がありました。そのコピーから `plan` は実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
 
 ## 使い方
 
@@ -157,7 +160,7 @@ aws ec2 describe-vpc-endpoints --filters Name=vpc-id,Values=vpc-0123456789abcdef
   --query 'VpcEndpoints[].{Service:ServiceName,PrivateDns:PrivateDnsEnabled,State:State}' --output table
 ```
 
-CloudWatch Logs については、エンドポイントも NAT も不要だった例が 1 つあります。2026-10-06 に CloudFormation の qtree テンプレートを、NAT ゲートウェイがなく `monitoring` と `secretsmanager` のインターフェイスエンドポイントだけがあるサブネットで実行し、ロググループからログの行を読めました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の実行)）。このモジュールのために読んだ AWS のページにはその記述がなく、このモジュールでは実行していません（ここでは `unverified`）。
+CloudWatch Logs については、エンドポイントも NAT も不要だった例が 1 つあります。2026-10-06 に CloudFormation の qtree テンプレートを、NAT ゲートウェイがなく `monitoring` と `secretsmanager` のインターフェイスエンドポイントだけがあるサブネットで実行し、ロググループからログの行を読めました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の実行)）。2026-10-08 のこのモジュールの実行も NAT ゲートウェイのないサブネットで、モジュールの `monitoring` エンドポイントと既存の `secretsmanager` エンドポイントを使い、関数のロググループからログの行を読めました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)）。このモジュールのために読んだ AWS のページにはその記述がないため、この 2 つの観測が根拠です。
 
 ### 必要な IAM 権限（推定、未検証）
 
@@ -208,7 +211,7 @@ terraform apply
 
 ```hcl
 module "ontap_custom_metrics" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=<commit-sha>"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
 
   file_system_id               = "fs-0123456789abcdef0"
   ontap_management_ip          = "198.51.100.10"
@@ -259,7 +262,7 @@ aws ec2 describe-security-groups --filters Name=ip-permission.group-id,Values=<l
   --query 'SecurityGroups[].{Id:GroupId,Name:GroupName}' --output table
 ```
 
-1 つ目のコマンドに行が出る場合、それは関数の削除後にまだ解放中の Lambda のネットワークインターフェイスです。時間がたてば解消します。このモジュールでは所要時間を測っていません。解消した後で `terraform destroy` を再実行してください。2 つ目のコマンドに行が出る場合、それはインバウンドのルールでまだ Lambda のセキュリティグループを参照しているセキュリティグループです。これは時間がたっても解消しないので、一覧の各グループからそのルールを削除してから `terraform destroy` を再実行してください。
+1 つ目のコマンドに行が出る場合、それは関数の削除後にまだ解放中の Lambda のネットワークインターフェイスです。時間がたてば解消します。2026-10-08 の実行では、`terraform destroy` が Lambda のセキュリティグループでこの解放を 22 分 3 秒待ちました（1 回観測、[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)）。解消した後で `terraform destroy` を再実行してください。2 つ目のコマンドに行が出る場合、それはインバウンドのルールでまだ Lambda のセキュリティグループを参照しているセキュリティグループです。これは時間がたっても解消しないので、一覧の各グループからそのルールを削除してから `terraform destroy` を再実行してください。
 
 ## 入力
 
