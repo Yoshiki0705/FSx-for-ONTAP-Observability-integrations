@@ -808,6 +808,9 @@ A: SMB name-mapping blocks are effective immediately for new connections. Existi
 **Q: Is there a risk of blocking legitimate users?**
 A: Yes — this is true for any automated response system. Mitigations: (1) set detection thresholds conservatively, (2) use the notification topic to alert operators immediately, (3) implement time-limited blocks with auto-unblock, (4) maintain a runbook for rapid manual reversal.
 
+**Q: Does this module interfere with an AWS Backup logically air-gapped vault copy job?**
+A: Not as written. The templates and Lambda functions in this module act on ONTAP name-mapping, export policies, NACLs, and sessions only; they do not touch AWS RAM shares, AWS Backup vaults, or KMS grants, so they do not react to vault copy activity. During a copy into a logically air-gapped vault, CloudTrail records events with `userIdentity.invokedBy` set to `backup.amazonaws.com`. If you ever extend this module to revoke external resource sharing or modify RAM shares, exclude `userIdentity.invokedBy = backup.amazonaws.com` so that remediation does not fail a vault copy job. See [Interaction with Automated Remediation](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/data-protection/aws-backup-logically-air-gapped-vault.md#%E8%87%AA%E5%8B%95%E4%BF%AE%E5%BE%A9%E3%81%A8%E3%81%AE%E5%B9%B2%E6%B8%89--interaction-with-automated-remediation) in the Cyber Resilience Patterns repository.
+
 
 ---
 
