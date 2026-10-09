@@ -59,6 +59,7 @@ SHARED_TEST_DIRS := \
   shared/lambda-layers/ems-parser/tests \
   shared/lambda-layers/log-parser/tests \
   shared/lambda/ontap_metrics/tests \
+  shared/lambda/ssd_auto_increase/tests \
   shared/python/tests \
   shared/scripts/tests
 
@@ -94,7 +95,8 @@ TF_EXAMPLE_DIRS := $(patsubst %/versions.tf,%,$(wildcard terraform/*/examples/*/
 # shared/lambda/authorizers has never been in scope, and widening to it is a
 # separate change (recorded in CHANGELOG as a follow-up).
 PY_SRC := integrations shared/python shared/lambda-layers scripts \
-          shared/scripts management-console shared/lambda/ontap_metrics
+          shared/scripts management-console shared/lambda/ontap_metrics \
+          shared/lambda/ssd_auto_increase
 
 # cfn-lint: W = warnings (advisory). E3006 = AWS::CloudWatch::LogAlarm is GA
 # (2026-07) but not yet in the cfn-lint resource spec; deployment is verified

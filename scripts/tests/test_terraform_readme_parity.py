@@ -30,6 +30,7 @@ KNOWN_READMES = (
     "terraform/fsxn-monitoring-dashboard/README.md",
     "terraform/fsxn-ontap-custom-metrics/README.md",
     "terraform/fsxn-log-alarm/README.md",
+    "terraform/fsxn-ssd-auto-increase/README.md",
 )
 
 FENCE = re.compile(r"^\s*(```|~~~)(.*)$")

@@ -1,0 +1,168 @@
+# fsxn-ssd-auto-increase (Terraform)
+
+🌐 [日本語](README.ja.md) | **English**
+
+A non-VPC Lambda function that raises the SSD capacity of one Amazon FSx for NetApp ONTAP file system, only inside a required absolute ceiling and only after every guard passes. This is phase T4 of the Terraform plan in [monitoring-design.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/monitoring-design.md) ([日本語](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/monitoring-design.md)). The behaviour is specified in [capacity-automation-t4-design.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/capacity-automation-t4-design.md); the option comparison and the irreversibility facts are in [capacity-automation.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/capacity-automation.md).
+
+This module shares no runtime code with the T2 custom-metrics module. T2 is an ONTAP-REST poller inside a VPC; T4 calls AWS APIs only and runs outside any VPC, so it has no security groups and no interface endpoints, and no per-AZ ENI charge.
+
+## Verification status
+
+Offline: `make terraform` runs `terraform fmt -check`, `terraform init -lockfile=readonly`, `terraform validate`, and `terraform test` (a mock `aws` provider and `command = plan`; the `archive` provider builds the real Lambda zip). It also runs `init` and `validate` on [`examples/basic/`](examples/basic/). The Lambda source in `shared/lambda/ssd_auto_increase/` has pytest unit tests against mocked boto3 (`fsx`, `cloudwatch`, `sns`, `s3`, `dynamodb`, `logs`) covering the guards and lock-state transitions in the design test plan, including the second pre-call snapshot (both guards reran), post-call archive-write failures pended as for `accepted`, the idempotent pending replay, the per-mode bucket-default retention matrix, blocked-report retry, the administrative-action status matrix, the `GetMetricData` utilization query (its dimensions, the value carried into reports and archive events, and the classification of a missing value), and multi-invocation chains (take-over with a new token, ceiling-reached release, delayed visibility over several runs, and a new token only after `not_accepted`). These are offline tests over mocks; the live rows in the design test plan (real file system, bucket, policy simulator) remain unrun.
+
+Live: not run. The module has not been applied to an AWS account, so everything that depends on a real file system is `unverified`: the alarm transitions, the deployer IAM policy, the Object Lock retention proof, and the one real increase. The live-verification workflow runs the reversible paths (notify_only, auto behind an IAM deny, lock and ceiling checks, policy simulation) first and keeps the one irreversible +10% increase gated on explicit approval. Until that run is recorded, apply the module in a non-production account first.
+
+## What it creates
+
+- `aws_lambda_function` `<name_prefix>-evaluator` (Python 3.12, 256 MB, 300 s timeout, reserved concurrency 1, handler `ssd_auto_increase_handler.lambda_handler`), outside any VPC, packaged by `data "archive_file"` from `shared/lambda/ssd_auto_increase/` (tests excluded).
+- `aws_cloudwatch_event_rule` with `reevaluation_schedule` (default `rate(1 hour)`), its target and `aws_lambda_permission`. The schedule is needed because CloudWatch alarm actions fire only on a state change, so an alarm staying in ALARM would not re-trigger the function.
+- `aws_sqs_queue` `<name_prefix>-dlq` (14-day retention, `alias/aws/sqs`) as the function's dead-letter queue.
+- `aws_dynamodb_table` `<name_prefix>-lock` (`PAY_PER_REQUEST`, hash key `file_system_id`, no TTL) as the single-flight lock store. `expires_at` is the lease-takeover comparison value, decided in the function by comparing it to the current time; the table carries no TTL, so a durable state (`submitted`, `optimizing`, `indeterminate`, `manual_disposition_required`, `blocked`) is never deleted by the service before its designed release.
+- `aws_cloudwatch_log_group` `/fsx/ssd-auto-increase/<file-system-id>` (`log_retention_days`) as the decision log. This is operational history, not the audit record.
+- `aws_cloudwatch_log_group` `/aws/lambda/<name_prefix>-evaluator` (`log_retention_days`) as the function's own log group, created and retention-managed by the module rather than left to Lambda's default never-expire group.
+- `aws_iam_role` `<name_prefix>-role` with an inline policy (table below).
+- `aws_sns_topic` `<name_prefix>-trigger` with one Lambda subscription (the alarm invokes the function through it) and `<name_prefix>-notify` for reports and approve emails, with an email subscription only when `notification_email` is set. The function never publishes to the trigger topic, so a report cannot invoke the function again.
+- `aws_cloudwatch_metric_alarm` `<name_prefix>-ssd-utilization` on `AWS/FSx` `StorageCapacityUtilization` (`StorageTier=SSD`, `DataType=All`), plus one per `aggregate_names` entry on second generation.
+
+It does **not** create the decision-archive S3 bucket. That is an existing Object Lock bucket (`decision_archive_bucket`) administered outside the module; the function gets `s3:PutObject` on the prefix plus read-only retention checks and never sets or changes retention. Compliance-mode retention cannot be shortened, so it is a long-lived commitment the operator owns.
+
+## Guards
+
+| Guard | Behaviour |
+|---|---|
+| Ceiling | `max_storage_capacity_gib` is a required absolute ceiling, validated at deploy time (variable validation plus a precondition against the shape maximum) and re-checked at run time against `DescribeFileSystems` |
+| Mode | `notify_only` (default) computes and reports; `approve` emails the command; `auto` calls the API. `auto` requires `decision_archive_required_mode = COMPLIANCE` |
+| Alarm state | Every invocation reads the trigger alarm with `DescribeAlarms` and acts only while at least one is in ALARM |
+| Target | `target = min(ceiling, max(ceil(current × 1.10), ceil(current × (1 + increase_percent / 100))))`; no call when the ceiling leaves no room for the 10% minimum |
+| Administrative actions | No call while a `FILE_SYSTEM_UPDATE` is active or a `STORAGE_OPTIMIZATION` is not completed, read before and again immediately before the call |
+| Cooldown | Defers when the last SSD, IOPS or throughput change is less than 6 hours ago |
+| IOPS mode | `AUTOMATIC`: no IOPS argument. `USER_PROVISIONED`: `Iops = max(current, 3 × target)`, latching `blocked` when it exceeds the Region maximum |
+| Single-flight | A DynamoDB conditional put keyed on the file system ID, plus reserved concurrency 1 on the function |
+| Audit record | One S3 Object Lock object per event, retention proven at run time; fail-closed in `auto`, fail-open reporting the gap in `notify_only` and `approve` |
+
+> **Plan-time note**
+>
+> Whether the provider reads `ha_pairs` at plan time for every deployment type is `open` (design "Ceiling note"). The run-time ceiling re-check in the Lambda covers the case where the precondition could not evaluate, so it is kept regardless.
+
+## Obtaining the module
+
+The planned tag is `terraform-fsxn-ssd-auto-increase-v0.1.0`. It is **not yet created**; it is planned after the live run in [Verification status](#verification-status). Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository.
+
+The Lambda source is outside the module directory, in `shared/lambda/ssd_auto_increase/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for both sources below.
+
+```hcl
+# Git source pinned to a commit
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
+
+# Archive URL pinned to a commit (no git needed)
+source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ssd-auto-increase"
+```
+
+A sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ssd_auto_increase` does not exist:
+
+```bash
+git init fsx-ssd-auto-increase && cd fsx-ssd-auto-increase
+git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
+git sparse-checkout set terraform/fsxn-ssd-auto-increase shared/lambda/ssd_auto_increase
+git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git checkout FETCH_HEAD
+```
+
+## Usage
+
+The sections below follow the order of a first deployment: prerequisites, permissions, input values, deployment, and removal.
+
+### Prerequisites
+
+- Terraform `>= 1.11.0`; `hashicorp/aws` `>= 6.67.0` and `hashicorp/archive` `>= 2.8.1` (tested with 6.67.0 and 2.8.1).
+- An existing S3 bucket with Object Lock default retention, administered outside this module. For `auto` the bucket must be in compliance mode with at least `decision_archive_min_retention_days`; `notify_only` and `approve` accept a governance bucket and the retention check reports the gap without blocking.
+- The file system's deployment type and HA-pair count must be one this design lists (`SINGLE_AZ_1`, `MULTI_AZ_1`, `MULTI_AZ_2`, `SINGLE_AZ_2`). A map lookup on an unknown type fails the plan on purpose.
+
+> **Mode note**
+>
+> `mode` defaults to `notify_only`, so deploying the module changes nothing on the file system. Move to `approve` and then `auto` after observing the decisions. An SNS email subscription stays pending until the recipient confirms it, so confirm it before relying on `approve`.
+
+### Required IAM permissions (estimated, unverified)
+
+These are the permissions for the identity that runs `terraform apply`, derived from the resources the module creates. They have not been run with a role limited to them; expect to add actions after a first apply.
+
+| Resource | Actions |
+|---|---|
+| `aws_lambda_function`, `aws_lambda_permission` | `lambda:CreateFunction`, `lambda:GetFunction`, `lambda:GetFunctionConfiguration`, `lambda:UpdateFunctionCode`, `lambda:UpdateFunctionConfiguration`, `lambda:PutFunctionConcurrency`, `lambda:DeleteFunctionConcurrency`, `lambda:DeleteFunction`, `lambda:AddPermission`, `lambda:RemovePermission`, `lambda:GetPolicy`, `lambda:ListVersionsByFunction`, `lambda:GetFunctionCodeSigningConfig`, `lambda:TagResource`, `lambda:UntagResource`, `lambda:ListTags` |
+| `aws_iam_role` and its policy | `iam:CreateRole`, `iam:GetRole`, `iam:DeleteRole`, `iam:PassRole`, `iam:PutRolePolicy`, `iam:GetRolePolicy`, `iam:DeleteRolePolicy`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`, `iam:ListInstanceProfilesForRole`, `iam:TagRole`, `iam:UntagRole` |
+| `aws_sqs_queue` | `sqs:CreateQueue`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`, `sqs:DeleteQueue`, `sqs:TagQueue`, `sqs:UntagQueue`, `sqs:ListQueueTags` |
+| `aws_dynamodb_table` | `dynamodb:CreateTable`, `dynamodb:DescribeTable`, `dynamodb:DeleteTable`, `dynamodb:UpdateTimeToLive`, `dynamodb:DescribeTimeToLive`, `dynamodb:TagResource`, `dynamodb:UntagResource`, `dynamodb:ListTagsOfResource` |
+| `aws_cloudwatch_log_group` (scoped to the account's log groups) | `logs:CreateLogGroup`, `logs:DeleteLogGroup`, `logs:PutRetentionPolicy`, `logs:ListTagsForResource`, `logs:TagResource`, `logs:UntagResource` |
+| `aws_cloudwatch_event_rule`, `aws_cloudwatch_event_target` | `events:PutRule`, `events:DescribeRule`, `events:DeleteRule`, `events:PutTargets`, `events:RemoveTargets`, `events:ListTargetsByRule`, `events:ListTagsForResource`, `events:TagResource`, `events:UntagResource` |
+| `aws_cloudwatch_metric_alarm` | `cloudwatch:PutMetricAlarm`, `cloudwatch:DescribeAlarms`, `cloudwatch:DeleteAlarms`, `cloudwatch:ListTagsForResource`, `cloudwatch:TagResource`, `cloudwatch:UntagResource` |
+| `aws_sns_topic`, `aws_sns_topic_subscription` | `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:ListTagsForResource`, `sns:TagResource`, `sns:UntagResource`, `sns:DeleteTopic`, `sns:Subscribe`, `sns:GetSubscriptionAttributes`, `sns:Unsubscribe` |
+| Reading the file system at plan time (`Resource: "*"`) | `fsx:DescribeFileSystems` |
+
+The policy is in [`examples/basic/iam-policy.json`](examples/basic/iam-policy.json). Scoped statements use the names the module builds from `name_prefix` (`fsxn-ssd-auto-increase-*` by default); replace `123456789012`, `ap-northeast-1` and the prefix before use. `fsx:DescribeFileSystems` sits on `Resource: "*"` because the [service authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html) lists it without a resource type. The deployer never calls `fsx:UpdateFileSystem`; only the function's execution role does, and the module scopes that grant to the one caller-supplied file-system ARN (`arn:aws:fsx:...:file-system/fs-...`). The `logs` statement is scoped to the account's log groups because the decision log group is built from the file-system ID, not from `name_prefix`.
+
+### Deploying from examples/basic
+
+Run these from the directory that contains `terraform/` (a full clone or the sparse checkout above). In `terraform.tfvars`, set the required values and any optional inputs.
+
+```bash
+cd terraform/fsxn-ssd-auto-increase/examples/basic
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars: region, file_system_id, max_storage_capacity_gib, bucket
+terraform init
+terraform plan
+terraform apply
+```
+
+In your own root configuration, copy [`examples/basic/`](examples/basic/) and replace `source = "../.."` with one of the sources in [Obtaining the module](#obtaining-the-module):
+
+```hcl
+module "ssd_auto_increase" {
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
+
+  file_system_id           = "fs-0123456789abcdef0"
+  max_storage_capacity_gib = 2048
+  decision_archive_bucket  = "<object-lock-bucket-name>"
+}
+```
+
+### Removing
+
+```bash
+terraform destroy
+```
+
+The decision-archive bucket is outside this module and is not removed. A compliance-mode bucket's objects cannot be deleted before their retain-until date.
+
+## Inputs
+
+| Name | Type | Default | Notes |
+|---|---|---|---|
+| `file_system_id` | string | required | `^fs-[0-9a-f]{17}$` |
+| `max_storage_capacity_gib` | number | required | Whole number 1024–1048576; validated against the shape maximum |
+| `mode` | string | `notify_only` | `notify_only` / `approve` / `auto`; `auto` requires COMPLIANCE |
+| `trigger_threshold_percent` | number | `80` | 1–100 |
+| `increase_percent` | number | `10` | Whole number 10–100; never below the 10% minimum |
+| `reevaluation_schedule` | string | `rate(1 hour)` | `rate(...)` or `cron(...)` |
+| `log_retention_days` | number | `365` | A value CloudWatch Logs accepts |
+| `indeterminate_reconcile_hours` | number | `6` | Whole number 1–24 |
+| `decision_archive_bucket` | string | required | Existing Object Lock bucket name |
+| `decision_archive_prefix` | string | `fsx-ssd-auto-increase/` | Key prefix for archive objects |
+| `decision_archive_required_mode` | string | `COMPLIANCE` | `COMPLIANCE` / `GOVERNANCE` |
+| `decision_archive_min_retention_days` | number | `365` | Minimum retain-until period in days |
+| `aggregate_names` | list(string) | `[]` | Second-generation Aggregate names; one trigger alarm each |
+| `notification_email` | string | `""` | Empty skips the email subscription |
+| `name_prefix` | string | `"fsxn-ssd-auto-increase"` | 1–48 characters, plays the role of the stack name |
+| `tags` | map(string) | `{}` | Every taggable resource |
+
+## Outputs
+
+| Name | Description |
+|---|---|
+| `lambda_function_name`, `lambda_function_arn`, `lambda_role_arn` | Function and execution role |
+| `trigger_topic_arn`, `notification_topic_arn` | The two SNS topics |
+| `lock_table_name`, `lock_table_arn` | The DynamoDB single-flight lock table |
+| `decision_log_group_name` | The decision log group (operational history) |
+| `dead_letter_queue_url`, `dead_letter_queue_arn` | The DLQ for failed invocations |
+| `schedule_rule_arn` | The EventBridge schedule rule |
+| `trigger_alarm_arns` | Trigger alarm ARNs keyed by file-system and aggregate/<name> |
+| `config_fingerprint` | Hash of the ceiling, increase percent, mode and archive mode |
