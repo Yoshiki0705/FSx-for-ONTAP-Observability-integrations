@@ -4,7 +4,7 @@
 
 ## Overview
 
-This page records five runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08).
+This page records six runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08). On 2026-10-09 the Terraform log-alarm module (phase T3) was applied to a log group fed by the syslog VPC endpoint path, and its alarms were driven with real ONTAP audit lines: [Terraform Log-Alarm Module Run on 2026-10-09](#terraform-log-alarm-module-run-on-2026-10-09).
 
 On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module in this run. A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
 
@@ -910,10 +910,267 @@ No export policy, IAM outside the module, or security group outside the module w
 
 ---
 
+## Terraform Log-Alarm Module Run on 2026-10-09
+
+On 2026-10-09 (UTC), the Terraform module `terraform/fsxn-log-alarm/` (phase T3) was applied to a CloudWatch Logs log group that received the admin audit log of one first-generation `SINGLE_AZ_1` FSx for ONTAP file system with one HA pair, through the syslog VPC endpoint path of [syslog-vpce-setup-guide.md](syslog-vpce-setup-guide.md). This is a sample run on one file system. Audit lines were produced by REST calls from a bastion host against a test volume and a test ONTAP user.
+
+The mechanism works: every alarm left INSUFFICIENT_DATA, and `bulk-delete`, `privileged-operations` and `failed-access-rest403` went OK → ALARM → OK when matching lines arrived. Each OK → ALARM transition came 13 to 74 seconds after the first matching operation, depending on where in the 60-second period the line fell; the return to OK followed in a later minute without a match (per-alarm values under [Alarm State Transitions](#alarm-state-transitions-t3-run)). Two default patterns shipped at `50f1f18` did not fit real ONTAP audit lines. The `privileged-operations` default `"admin"` matched 5,150 of 5,156 lines and its alarm stayed in ALARM on the file system's own management traffic, written by the user `fsx-control-plane` (F3). The `failed-access` default `?"Failure" ?"denied" ?"DENIED"` matched none of the 5 real authorization failures (F4). The `autosize-fail` recipe was not fired by a real `wafl.vol.autoSize.fail` event: it was checked only with `aws logs test-metric-filter` against a line built from the NetApp EMS reference, and the audit destination does not carry EMS events at all (F8). On the delivery side, port 6514 with TLS delivered nothing (F6), the shared syslog template on `main` failed to create its stack (F1), and the first operation after an idle period of about 4–5 minutes was lost three times (F9). The run used the module at `50f1f18` unchanged. After the run, the `failed-access`, `privileged-operations` and `bulk-delete` defaults were replaced with patterns checked against the captured lines (F3–F5).
+
+| Item | Value |
+|------|-------|
+| Verification date | 2026-10-09, before 03:55Z to 05:31Z (UTC), including a pause for screenshots after 04:48:55Z |
+| Verification environment | Test environment (`ap-northeast-1`), sample run with one test volume, one test ONTAP user, and one syslog VPC endpoint |
+| Scope | Syslog delivery path (template, syslog configuration, ONTAP audit destination), audit-line shapes, `test-metric-filter` on the real lines, module deployment, alarm transitions for 6 detections, and cleanup. EMS delivery to syslog was not in scope |
+| Result | 10 of 18 checks passed and 1 passed after a workaround (M1, F1). 4 expectations not met (M3, A5, A6, D1), 1 check with mixed results (M7), 1 not run (A7), and cleanup done with 2 items left in place (M9) |
+
+These results come from one run on one first-generation, single-HA-pair file system, with a 60-second period and thresholds chosen for the test. They show that the module's metric filters and alarms evaluate real audit lines delivered through the syslog VPC endpoint. They do not show EMS delivery, behavior at the module's default 300-second period, behavior under load, or behavior on second-generation or multi-HA-pair file systems.
+
+### Environment and Deployment (T3 Run)
+
+| Item | Value |
+|------|-------|
+| AWS Region | `ap-northeast-1` |
+| File system | `fs-0123456789abcdef0` (placeholder), `SINGLE_AZ_1` (first generation), 1 HA pair |
+| ONTAP version | NetApp Release 9.18.1P6 |
+| SVM | `<svm-name>` (placeholder), an existing SVM on the file system |
+| Source revision | `50f1f18` on `main` (after #123). The module was not changed for the run; three default patterns were replaced after it (F3–F5) |
+| Terraform / provider | Terraform v1.15.8, `hashicorp/aws` 6.67.0 |
+| Syslog path | Stack `fsxn-t3check-syslog` from a scratch copy of `shared/templates/syslog-vpce-cloudwatch.yaml` whose only change was the security group description (F1). `LogRetentionDays=1`, log group `/syslog/fsxn-t3check-audit`, one interface endpoint in the file system's subnet. No `syslog-logs` endpoint existed in the VPC before the run, so there was no private DNS conflict |
+| Syslog configuration | `shared/scripts/create-syslog-configuration.py` (HTTP 200) |
+| ONTAP audit destination | Endpoint IP, port 1514, `tcp_unencrypted`, facility `local7`. A second destination on port 6514 with `tcp_encrypted` delivered nothing (M3) |
+| Audit settings | `GET /api/security/audit` returned `cli: false`, `http: false`, `ontapi: false`, so GET requests were not audited. Left unchanged |
+| Test volume | `t3_audit_vol`, 1024 MiB, junction path `/t3_audit_vol`, storage efficiency off, snapshot policy none, tiering policy `NONE`. Created with `aws fsx create-volume` (the call needs `JunctionPath`; the first call without it returned `BadRequest`) |
+| ONTAP users | `fsxadmin` for change operations. `t3-alarm-ro`, application `http`, password authentication, role `fsxadmin-readonly`, to produce authorization failures. Its password in a Secrets Manager secret, with a resource policy on that secret only that let the bastion host's role read it |
+| Deployer | AWS IAM Identity Center (SSO) session with administrator access |
+
+The module was called from a scratch root configuration with `source` set to the absolute local path of the module at `50f1f18`, with these detections. Every detection used a 60-second period, 1 of 1 evaluation periods, and threshold 0 unless noted. `notification_email` and `alarm_sns_topic_arn` were not set, so no SNS topic was created and no alarm had actions.
+
+```hcl
+log_group_name = "/syslog/fsxn-t3check-audit"
+name_prefix    = "fsxn-t3check"
+detections = {
+  autosize-fail            = { pattern = "\"wafl.vol.autoSize.fail\"", threshold = 0, period_seconds = 60 }
+  failed-access            = { pattern = "?\"Failure\" ?\"denied\" ?\"DENIED\"", threshold = 0, period_seconds = 60 }
+  failed-access-rest403    = { pattern = "\"Error: not authorized\"", threshold = 0, period_seconds = 60 }
+  bulk-delete              = { pattern = "?\"DELETE\" ?\"delete\" ?\"remove\"", threshold = 2, period_seconds = 60 }
+  privileged-operations    = { pattern = "\"fsxadmin:fsxadmin\" -\"Pending\"", threshold = 0, period_seconds = 60 }
+  privileged-default-admin = { pattern = "\"admin\"", threshold = 0, period_seconds = 60 }
+}
+tags = { Purpose = "t3-live-verification" }
+```
+
+`autosize-fail`, `failed-access` and `bulk-delete` keep the patterns shipped at `50f1f18`. `failed-access-rest403` and `privileged-operations` use the patterns proposed from the `test-metric-filter` results (M7); they are now the `failed-access` and `privileged-operations` defaults. `privileged-default-admin` keeps the shipped `privileged-operations` pattern `"admin"` to observe F3 on a live alarm. `unauthorized-access` was left out because its shipped pattern is a placeholder path.
+
+### Check Results (T3 Run)
+
+| # | Check | Result | Time (UTC) |
+|---|-------|--------|------------|
+| M0 | Pre-checks: identity, file system, VPC endpoints, ONTAP audit destinations and audit settings | ✅ PASS. No `syslog-logs` endpoint in the VPC. ONTAP held 2 stale audit destinations (ports 1514 and 6514) pointing at the IP of an endpoint that no longer existed; recorded and, with approval, deleted at cleanup. Why they were left behind was not determined | Before 03:55:03Z |
+| M1 | Deploy `shared/templates/syslog-vpce-cloudwatch.yaml` as shipped | ⚠️ Passed after a workaround. The stack failed (`ROLLBACK_COMPLETE`): EC2 rejected the security group description (F1). The rollback left the log group behind because it is retained; it was deleted before the retry. The scratch copy with the one-line fix created the stack in about 1 minute 40 seconds | 03:55:03Z; 03:59:43Z → 04:01:21Z |
+| M2 | Create the syslog configuration | ✅ PASS. HTTP 200. `aws logs list-syslog-configurations` listed it (F2) | 04:02:30Z |
+| M3 | ONTAP destination on port 6514, `tcp_encrypted`, addressed by the endpoint IP | ❌ Not met. `POST` returned 201 (ONTAP set `verify_server: true`), but the log group had 0 streams after about 4 minutes and no EMS event reported an error. The hostname form was rejected because the cluster cannot resolve it (F6) | 04:03:40Z → 04:07:36Z |
+| M4 | ONTAP destination on port 1514, `tcp_unencrypted` | ✅ PASS. The first line, the `Pending` line of this very `POST`, arrived about 3 seconds later | 04:07:33Z → 04:07:36Z |
+| M5 | Test volume, test ONTAP user, secret | ✅ PASS with a deviation. `fsxadmin` could not assign the role `readonly` (403, "not authorized for that command"); the cluster's roles were `autosupport`, `backup`, `fsxadmin`, `fsxadmin-readonly`, `none`, `snaplock`. The user was created with `fsxadmin-readonly` | 04:05:54Z → 04:14:09Z |
+| M6 | Audit-line shapes for a change operation, a GET, a 403, and a 401 | ✅ PASS (observed). Each change operation wrote 2 lines, `:: Pending` and then `:: Success:` or `:: Error: not authorized for that command`. A GET wrote no line. A 401 from a wrong password wrote no line within 40 seconds. The account-create line showed the password as `***` | 04:09:36Z → 04:18:07Z |
+| M7 | `aws logs test-metric-filter` with the shipped patterns on the real lines | ⚠️ Mixed. `bulk-delete` matched the REST deletes (2 lines each); `privileged-operations` `"admin"` matched almost every line (F3); `failed-access` matched no real failure (F4); `autosize-fail` matched no real line, as expected without EMS; `unauthorized-access` matched nothing, as expected for its placeholder path. Details in [Filter-Pattern Matches on Real Lines](#filter-pattern-matches-on-real-lines-t3-run) | 04:17Z, 04:20Z, and before 05:24:40Z |
+| M8 | `terraform apply` | ✅ PASS. 12 added (6 metric filters, 6 alarms) in about 3 seconds; all alarms INSUFFICIENT_DATA at 04:23:18Z | 04:23:15Z |
+| A1 | Every alarm leaves INSUFFICIENT_DATA | ✅ PASS. 5 to OK, `privileged-default-admin` to ALARM | 04:24:09Z → 04:25:05Z |
+| A2 | `privileged-operations` (`"fsxadmin:fsxadmin" -"Pending"`): OK → ALARM on an `fsxadmin` change operation, then OK | ✅ PASS, three times | 04:37:19Z, 04:40:19Z, 04:48:19Z |
+| A3 | `bulk-delete` (shipped pattern, threshold 2): OK → ALARM → OK on 4 REST qtree deletes | ✅ PASS. 4 matching lines in the 04:39 minute and 4 in the 04:40 minute | 04:40:05Z → 04:42:05Z |
+| A4 | `failed-access-rest403` (`"Error: not authorized"`): OK → ALARM → OK on 3 rejected requests | ✅ PASS. 3 lines in the 04:41 minute | 04:42:09Z → 04:44:09Z |
+| A5 | `failed-access` (shipped pattern) reaches ALARM on the same 3 rejected requests | ❌ Not met. The metric was 0 in every minute that had a datapoint (F4) | 04:41Z on |
+| A6 | `privileged-default-admin` (shipped `"admin"`) stays OK while no operator acts | ❌ Not met. ALARM from 04:24:53Z, on the `fsx-control-plane` management traffic, and still ALARM at the screenshot (F3) | 04:24:53Z on |
+| A7 | `autosize-fail` reaches ALARM on a real `wafl.vol.autoSize.fail` event | ⏭️ Not run. No real event was produced, and the audit destination carries no EMS events (F8). The alarm stayed OK | — |
+| D1 | Every change operation reaches the log group | ❌ Not met. The first operation after the endpoint closed an idle connection was lost, three times (F9) | 04:26:37Z, 04:35:39Z, 04:47:21Z |
+| M9 | Cleanup, with re-read | ⚠️ Done with 2 items left in place (see [Cleanup (T3 Run)](#cleanup-t3-run)) | 05:24:40Z → 05:31Z |
+
+### Delivery Path Observations (T3 Run)
+
+Port 6514 with `tcp_encrypted` delivered nothing while it was the only destination pointing at the new endpoint (04:03:40Z to 04:07:33Z), and it contributed nothing afterwards: while both destinations existed, the 780 events of 04:07–04:17 had 780 distinct ONTAP sequence numbers, so no line arrived twice. ONTAP set `verify_server: true` on that destination and wrote no EMS event about a failed session. Inferred, not confirmed: ONTAP's server-certificate check cannot match an IP address against the endpoint certificate's name, and the hostname form is not available because the cluster cannot resolve `syslog-logs.<region>.amazonaws.com`. Port 1514 with `tcp_unencrypted` delivered within about 3 seconds.
+
+The log group received about 80 lines per minute of management activity that no operator started (user `fsx-control-plane`, role `admin`), for example `set -privilege diagnostic`, `security login unlock -username diag`, `POST /api/private/cli` and `Logging out`. That traffic is what the shipped `"admin"` pattern matches (F3).
+
+Three operations never reached the log group. Each returned HTTP 201. For the first, ONTAP's own `GET /api/security/audit/messages` listed the operation on node `-02` (its `Pending` and success entries, at 04:26:37Z); that listing was not read for the other two. Each was the first operation after a `SyslogConnectionsClosed` datapoint, and node `-02`'s forwarded lines stopped before each one:
+
+| Operation | Lost (UTC) | `SyslogConnectionsClosed` before it | Next operation, delivered |
+|-----------|-----------|--------------------------------------|---------------------------|
+| `fsxadmin` POST qtree `t3_qt1` | 04:26:37Z | 04:22 (node `-02`'s last line 04:17:53Z) | Not driven; node `-02` reconnected at 04:27 on its next line |
+| `fsxadmin` POST qtree `t3_qt2` | 04:35:39Z | 04:32 (node `-02`'s last line 04:27:56Z) | POST `t3_qt3`, 20 seconds later, delivered at 04:36:05Z |
+| `fsxadmin` POST qtree `t3_qt6` | 04:47:21Z | 04:46 (node `-02`'s last line 04:41:13Z) | POST `t3_qt7`, 18 seconds later, delivered |
+
+`SyslogConnectionsEstablished` and `SyslogConnectionsClosed` in `AWS/Logs` have no dimension; `SyslogMessagesReceived` is per log group and had no datapoint for 04:26. The account had no `SyslogMessagesDropped` series, so no AWS metric counted the losses. Inferred from the metric timing, not confirmed: the endpoint closes a connection that has been idle for about 4–5 minutes, ONTAP notices only on its next write, and the line written into the closed connection is lost. That each closed connection was node `-02`'s is part of the same inference, drawn from the dimensionless `SyslogConnectionsClosed` times falling 4–5 minutes after node `-02`'s last line. Node `-01` did not show this in the run; `fsx-control-plane` activity reached it every 5–6 minutes.
+
+### Alarm State Transitions (T3 Run)
+
+From the alarm history (`StateUpdate`), UTC. Every alarm name starts with `fsxn-t3check-`.
+
+| Alarm | Transition | Time | Cause |
+|-------|-----------|------|-------|
+| `failed-access-rest403` | INSUFFICIENT_DATA → OK | 04:24:09Z | First evaluation, no match |
+| `privileged-operations` | INSUFFICIENT_DATA → OK | 04:24:19Z | Same |
+| `failed-access` | INSUFFICIENT_DATA → OK | 04:24:39Z | Same |
+| `autosize-fail` | INSUFFICIENT_DATA → OK | 04:24:50Z | Same |
+| `privileged-default-admin` | INSUFFICIENT_DATA → ALARM | 04:24:53Z | `fsx-control-plane` lines; no operator activity |
+| `bulk-delete` | INSUFFICIENT_DATA → OK | 04:25:05Z | First evaluation, no match |
+| `privileged-operations` | OK → ALARM | 04:37:19Z | `Success:` line of POST `t3_qt3`, ingested 04:36:05Z |
+| `privileged-operations` | ALARM → OK | 04:38:19Z | No match in the next minute |
+| `bulk-delete` | OK → ALARM | 04:40:05Z | 4 lines in the 04:39 minute, > 2 |
+| `privileged-operations` | OK → ALARM | 04:40:19Z | Qtree creates and deletes |
+| `bulk-delete` | ALARM → OK | 04:42:05Z | 0 lines |
+| `failed-access-rest403` | OK → ALARM | 04:42:09Z | 3 lines in the 04:41 minute |
+| `privileged-operations` | ALARM → OK | 04:42:19Z | 0 lines |
+| `failed-access-rest403` | ALARM → OK | 04:44:09Z | 0 lines |
+| `privileged-operations` | OK → ALARM | 04:48:19Z | `Success:` line of POST `t3_qt7` |
+
+`failed-access` and `autosize-fail` stayed OK. `privileged-default-admin` did not leave ALARM.
+
+Time from the first matching operation to the state change, per OK → ALARM transition. The ingestion time was read only for the `t3_qt3` line; the other rows are measured from the time of the REST call, which is a few seconds earlier than ingestion.
+
+| Alarm | Operation (UTC) | OK → ALARM (UTC) | Elapsed |
+|-------|-----------------|------------------|---------|
+| `privileged-operations` | `t3_qt3` `Success:` line ingested 04:36:05Z | 04:37:19Z | 74 s |
+| `privileged-operations` | POST `t3_qt4` and `t3_qt5` at 04:39:17Z | 04:40:19Z | about 62 s |
+| `bulk-delete` | First qtree DELETE at 04:39:52Z | 04:40:05Z | about 13 s |
+| `failed-access-rest403` | Rejected POSTs from 04:41:04Z to 04:41:13Z | 04:42:09Z | about 56–65 s |
+| `privileged-operations` | POST `t3_qt7` at 04:47:39Z | 04:48:19Z | about 40 s |
+
+Each alarm's state changes fell on the same second of the minute throughout the run (`bulk-delete` at :05, `failed-access-rest403` at :09, `privileged-operations` at :19), so the elapsed time depends on how close to that second the line arrived.
+
+Sum per 60 seconds in `FSxONTAP/LogAlarm`, minutes with a datapoint (`get-metric-data`, read before 04:47Z):
+
+| Metric | Values |
+|--------|--------|
+| `fsxn-t3check-failed-access-rest403` | 04:41 = 3, else 0 |
+| `fsxn-t3check-bulk-delete` | 04:39 = 4, 04:40 = 4, else 0 |
+| `fsxn-t3check-privileged-operations` | 04:36 = 1, 04:39 = 4, 04:40 = 2, else 0 |
+| `fsxn-t3check-privileged-default-admin` | 04:23 = 5, 04:27 = 387, 04:28 = 5, 04:33 = 376, 04:36 = 2, 04:37 = 16, 04:38 = 16, 04:39 = 368, 04:40 = 4, 04:41 = 87, 04:43 = 5, 04:44 = 373 |
+| `fsxn-t3check-failed-access`, `fsxn-t3check-autosize-fail` | 0 in every minute with a datapoint |
+
+A minute in which no line arrived at all has no datapoint: `default_value = "0"` is emitted only when lines arrive and none matches. `privileged-default-admin` stayed in ALARM across gaps of 1–4 minutes. Inferred, not checked: CloudWatch reused the last breaching datapoint over the sparse data, so `treat_missing_data = "notBreaching"` did not bring it back to OK.
+
+![CloudWatch alarm list filtered by fsxn-t3check: 6 metric alarms, all with no actions. privileged-default-admin in ALARM since 04:24:53, the other 5 OK, with conditions such as fsxn-t3check-bulk-delete>2 for 1 datapoint within 1 minute. Console navigation bar and footer cropped](../screenshots/cloudwatch-log-alarm/01-alarm-list.png)
+
+The alarm list was captured during the pause, after `privileged-operations` returned to OK at 04:49:19Z. `privileged-default-admin` shows ALARM with its last state update at 04:24:53Z.
+
+![Alarm detail of fsxn-t3check-bulk-delete, 3-hour range in UTC: the Count graph peaks at 4 around 04:40 above the dashed threshold line at 2, the state timeline shows INSUFFICIENT_DATA, then OK, a short ALARM band, and OK again, and the History tab lists the updates at 04:42:05 (ALARM to OK) and 04:40:05 (OK to ALARM)](../screenshots/cloudwatch-log-alarm/02-bulk-delete-history.png)
+
+The four graphs below were rendered with CloudWatch `GetMetricWidgetImage` for 04:20Z to 04:52Z. Minutes without a datapoint are left blank, and lines join only consecutive minutes that have datapoints, so a datapoint between two gaps shows as an isolated dot.
+
+![fsxn-t3check-privileged-default-admin, Sum per 1 minute, alarm when greater than 0: spikes of about 370 to 390 at 04:27, 04:33, 04:39, 04:44 and 04:50, and smaller values between, mostly from fsx-control-plane traffic plus the fsxadmin test operations](../screenshots/cloudwatch-log-alarm/05-graph-privileged-default-admin.png)
+
+![fsxn-t3check-privileged-operations, Sum per 1 minute, alarm when greater than 0: 1 at 04:36, 4 at 04:39, 2 at 04:40, 1 at 04:47, 0 elsewhere](../screenshots/cloudwatch-log-alarm/06-graph-privileged-operations.png)
+
+![fsxn-t3check-failed-access-rest403, Sum per 1 minute, alarm when greater than 0: 3 at 04:41, 0 elsewhere](../screenshots/cloudwatch-log-alarm/07-graph-failed-access-rest403.png)
+
+![fsxn-t3check-bulk-delete, Sum per 1 minute, alarm when greater than 2: 4 at 04:39 and 04:40, above the threshold line at 2, 0 elsewhere](../screenshots/cloudwatch-log-alarm/08-graph-bulk-delete.png)
+
+The privileged-operations graph shows 1 at 04:47, from the delivered POST `t3_qt7`; the `get-metric-data` read above was taken before that minute.
+
+### Filter-Pattern Matches on Real Lines (T3 Run)
+
+`aws logs test-metric-filter` was run on the captured lines: 780 events from 04:07Z to 04:17Z first, then all 5,156 events from 04:07Z to 05:24Z. Matching is by substring, so `"admin"` also matches inside `fsxadmin` and `fsxadmin-readonly`.
+
+| Pattern | Role | Matches in 5,156 real lines | What matched |
+|---------|------|----------------------------|--------------|
+| `"admin"` | Shipped `privileged-operations` | 5,150 | Every line except 6 `autosupport` console lines |
+| `?"Failure" ?"denied" ?"DENIED"` | Shipped `failed-access` | 0 | None, including the 5 real 403 lines |
+| `?"DELETE" ?"delete" ?"remove"` | Shipped `bulk-delete` | 10 | 5 REST qtree deletes × 2 lines (`Pending`, `Success:`) |
+| `"wafl.vol.autoSize.fail"` | Shipped `autosize-fail` | 0 | No real EMS line exists in this log group (F8) |
+| `"/vol/data/confidential"` | Shipped `unauthorized-access` (placeholder path) | 0 | — |
+| `"fsxadmin:fsxadmin" -"Pending"` | Candidate for `privileged-operations`; now its default | 13 | 1 line per completed `fsxadmin` change operation, success or error |
+| `"Error: not authorized"` | Candidate for `failed-access`; now its default | 5 | All 5 real 403 lines, 1 per rejected request |
+| `"DELETE /api/" -"Pending"` | Candidate for `bulk-delete` | 5 | 1 line per completed REST delete. ONTAP CLI deletes were not exercised |
+| `%DELETE.*::\sSuccess\|DELETE.*::\sError\|delete.*::\sSuccess\|delete.*::\sError\|remove.*::\sSuccess\|remove.*::\sError%` | Candidate for `bulk-delete`; now its default | 5 | 1 line per completed REST delete, from the same three terms as the shipped pattern on the result line only |
+| `?"DELETE" ?"delete" ?"remove" -"Pending"` | Tried for `bulk-delete` | 2,945 | Not usable: the exclusion acted as one more OR alternative |
+
+The last two rows were added after the run, between 07:15Z and 07:22Z on 2026-10-09, with `aws logs test-metric-filter` in batches of up to 50 events; the three shipped `failed-access`, `bulk-delete` and `privileged-operations` patterns and the other three candidates were re-run then and gave the same counts. At 07:59Z the five defaults as now shipped were run once more on the same inputs: `autosize-fail` and `unauthorized-access` matched 0 of the 5,156 lines, and the other three gave the counts in the table. The inputs were the 5,156 captured lines and 13 masked sample lines kept with the raw evidence: 4 `fsxadmin` qtree lines, 1 rejected `fsxadmin` account create, 2 `t3-alarm-ro` lines (`Pending` and the rejection), 4 `fsx-control-plane` lines, and the 2 constructed EMS lines. On the 13 masked lines, `"Error: not authorized"` matched the 2 rejections; `"fsxadmin:fsxadmin" -"Pending"` matched the 3 `fsxadmin` result lines (qtree create, qtree delete, rejected account create); the regular-expression pattern matched only the qtree delete's `Success:` line; the shipped `?"Failure" ?"denied" ?"DENIED"` matched none, and `"admin"` matched 11. A form of the regular expression with parentheses and spaces was rejected by the API (`InvalidParameterException`, "Invalid character(s) in term"); the [filter pattern syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html) supports neither. On constructed lines, not captured ones, the regular expression also matched an ONTAP CLI-style `volume delete ... :: Success` line and a rejected `DELETE`, and did not match `:: Pending` lines or a completed `POST`.
+
+`?"Error:" ?"Failure" ?"denied" ?"DENIED"` was also tried on the first 780 lines. It matched the 2 real 403 lines in that window but 72 lines in total: 68 `fsx-control-plane` lines ending `Error: Failed to convert Windows name to SID ...` and 2 ending `Error: entry doesn't exist`. `"Error:"` alone is therefore too broad on this file system.
+
+For `autosize-fail`, two lines were built from the `Unable to grow volume ...` message text in the [ONTAP 9.18.1 EMS reference](https://docs.netapp.com/us-en/ontap-ems-9181/wafl-vol-events.html). The pattern matched the line whose header carries the event name in brackets, by analogy with the captured `[kern_audit:info:...]` header, and did not match the line with the message text only. The header layout is an assumption; no real EMS line was captured.
+
+![Metric filters tab of the log group /syslog/fsxn-t3check-audit: 6 metric filters, retention 1 day, syslog ingestion 1 configured. Filter cards show autosize-fail with "wafl.vol.autoSize.fail", bulk-delete with ?"DELETE" ?"delete" ?"remove", failed-access with ?"Failure" ?"denied" ?"DENIED" and failed-access-rest403 with "Error: not authorized", each emitting to FSxONTAP/LogAlarm with metric value 1 and default value 0. The log group ARN is masked](../screenshots/cloudwatch-log-alarm/03-metric-filters.png)
+
+![Log events of the syslog stream filtered with ?"DELETE /api/storage/qtrees" ?"Error: not authorized": each REST qtree delete by fsxadmin appears twice, ending ":: Pending" and ":: Success:", and the two rejected requests, POST /api/security/accounts by fsxadmin and POST /api/storage/qtrees by t3-alarm-ro with role fsxadmin-readonly, end with ":: Error: not authorized for that command". File system IDs, source IP addresses and ports, volume UUIDs, the SVM name and the stream name are masked in gray](../screenshots/cloudwatch-log-alarm/04-log-events-error-and-delete.png)
+
+The log events image shows the two facts behind F4 and F5: a rejected request ends `:: Error: not authorized for that command` and contains none of `Failure`, `denied` or `DENIED`, and every change operation appears twice.
+
+### Findings (T3 Run)
+
+| # | Finding | Kind | Effect on this record |
+|---|---------|------|-----------------------|
+| F1 | `shared/templates/syslog-vpce-cloudwatch.yaml` on `main` cannot create its stack. `GroupDescription` uses the YAML folded scalar `>`, which keeps a trailing newline (confirmed by loading the template with PyYAML), and EC2 rejects the newline ("Invalid security group description"). Changing `>` to `>-` fixes it | Template defect, observed once; not in the T3 module | The run used a scratch copy with that change. The template on `main` was not changed in this run (`shared/` needs approval); the fix is a follow-up. The setup guide now states the workaround |
+| F2 | The guide and `create-syslog-configuration.py` say the AWS CLI and boto3 have no syslog-configuration commands (June 2026). AWS CLI 2.36.5 ran `list-syslog-configurations` and `delete-syslog-configuration` during the run. `put-syslog-configuration` was not run against AWS. Called locally without arguments at 07:14Z, after the cleanup, the same CLI asked for `--log-group-identifier`, while a made-up subcommand name returned "Found invalid choice" and suggested `put-syslog-configuration`, so the command exists in 2.36.5. The Python SDK model in botocore 1.43.36 defines all three operations. The script also sends `allowAllSyslogSources`, which that model does not define; the call still returned 200 | Documentation out of date | The setup guide now names the CLI commands. The script was not changed |
+| F3 | The shipped `privileged-operations` pattern `"admin"` matched 5,150 of 5,156 real lines: every `fsx-control-plane` line carries role `admin`, and every `fsxadmin` line contains `admin`. With threshold 0 its alarm was in ALARM from the first evaluation without any operator activity | Module default-pattern defect, observed | The default shipped at `50f1f18` is not a usable detection on an FSx for ONTAP audit log group. Fixed after the run: the default is now `"fsxadmin:fsxadmin" -"Pending"` (replace with the `<user>:<role>` token to watch), which gave 1 line per completed operation and drove A2 |
+| F4 | The shipped `failed-access` pattern matched none of the 5 real authorization failures, which end `:: Error: not authorized for that command`. One wrong-password REST request (HTTP 401) wrote no audit line within 40 seconds | Module default-pattern defect, observed | The default shipped at `50f1f18` cannot fire on REST authorization failures. Fixed after the run: the default is now `"Error: not authorized"`, which caught all 5 and drove A4. It counts authorization denials only. No failed login was seen in this log, so neither pattern is known to detect password guessing |
+| F5 | Each change operation is logged twice, `:: Pending` and then the result. Thresholds therefore count lines, not operations: `bulk-delete`'s threshold of 50 corresponds to about 25 REST deletes. `"delete"` and `"remove"` also match any command text that contains them | Log format, observed | Changed after the run: the `bulk-delete` default now matches the same three terms on the result line only, a regular-expression pattern that gave 1 line per completed REST delete in `test-metric-filter`. It has not run on a live alarm, CLI deletes were not captured, and it counts toward the CloudWatch Logs limit of 5 regular-expression filter patterns per log group |
+| F6 | Port 6514 with `tcp_encrypted`, addressed by the endpoint IP, delivered nothing in about 4 minutes; ONTAP reported no error. The hostname form was rejected with "Cannot resolve the destination host" | Delivery path, observed once | The guide presented 6514 as the production setting without a caveat; it now says what happened here. Cause (TLS name check against an IP) is inferred |
+| F7 | The ONTAP 9.18.1 EMS reference lists `wafl.vol.autoSize.fail` with severity NOTICE. `docs/en/ems-detection-capabilities.md`, the module README and the module comment say `error` | Documentation, from the reference; not observed on a real event | Not changed in this run; a follow-up across those files |
+| F8 | The audit destination carries only the command history (`kern_audit`). EMS events such as `wafl.vol.autoSize.fail` reach syslog only through a separate EMS notification destination, which neither the setup guide nor the module README sets up | Scope gap in the docs | The `autosize-fail` recipe matches only if EMS is routed into the same log group. No EMS destination was created (not in the approved plan), so this is unverified |
+| F9 | After a node's connection had been idle for about 4–5 minutes, the first operation on that node was lost; ONTAP reconnected for the next one. Observed 3 times. No EMS event and no `AWS/Logs` drop metric recorded the loss | Delivery path, observed 3 times; mechanism inferred from metric timing | A single privileged operation on a quiet node can go undetected. The setup guide now describes this. A mitigation was not tested |
+
+No defect was found in resource creation or alarm wiring: the filters, alarms, metric names and namespaces worked as written. Two shipped default patterns were defects (F3, F4), and `bulk-delete` counted about 2 lines per operation (F5). All three defaults were replaced after the run in `terraform/fsxn-log-alarm/variables.tf`, with offline tests that assert them. The CloudFormation template `shared/templates/cloudwatch-log-alarm.yaml` ships the same `failed-access-attempts` query (`/Failure/`, `/denied/`, `/DENIED/`) and the same `bulk-delete-operations` terms, and its `specific-user-activity` example user is `admin`. It was not changed here; that is a follow-up.
+
+### Cleanup (T3 Run)
+
+| Step | Result | Time (UTC) |
+|------|--------|------------|
+| `terraform destroy` | 12 destroyed (6 alarms, 6 metric filters). Re-read: 0 alarms and 0 metric filters with prefix `fsxn-t3check` | 05:24:40Z |
+| Delete the ONTAP audit destinations | The run's 6514 and 1514 destinations and the 2 stale ones from M0, each HTTP 200. Re-read: 0 records | 05:24:56Z |
+| Delete the test qtrees | ONTAP had reused qtree IDs after the earlier deletes; 3 deletes returned 200 after 2 returned 404 for IDs that did not exist. Re-read: only the volume's default qtree (ID 0) | After 05:24:56Z |
+| Delete the ONTAP user `t3-alarm-ro` | HTTP 200; re-read 0 records | After 05:24:56Z |
+| Delete the test volume (`SkipFinalBackup=true`) | `VolumeNotFound` at the 05:31Z re-read | 05:26:33Z |
+| Delete the secret | `delete-secret` with a 7-day recovery window; deletion date 2026-10-16T05:26:35Z. Its resource policy goes with it | 05:26:35Z |
+| Delete the syslog configuration | `aws logs delete-syslog-configuration`, exit 0. The listing then showed only an older configuration for an endpoint that no longer exists, which existed before the run and was not touched | Before 05:27:37Z |
+| Delete the stack `fsxn-t3check-syslog` | `DELETE_COMPLETE` in about 3.5 minutes. Re-read: the stack, the endpoint and the security group return not found | 05:27:37Z → 05:31:08Z |
+| Delete the log group `/syslog/fsxn-t3check-audit` | Exit 0; it is retained by the stack, so it was deleted by hand | 05:31Z |
+| Local files | State, plan and `.terraform/` removed; no `terraform.tfvars` was used | After the destroy |
+
+Two items remain:
+
+- The secret is scheduled for deletion on 2026-10-16T05:26:35Z.
+- The volume recovery-queue entry for `t3_audit_vol` was listed and not purged, because a purge is irreversible and was not approved. ONTAP removes it when its retention expires; the retention was not checked in this run.
+
+An older log group and its syslog configuration, both from before this run, were not touched. The custom metrics in `FSxONTAP/LogAlarm` cannot be deleted and age out under CloudWatch retention.
+
+### What Remains Unverified (T3 Run)
+
+| Item | Status | Reason |
+|------|--------|--------|
+| `autosize-fail` on a real `wafl.vol.autoSize.fail` event | Not run | No EMS destination to syslog was created (F8); the pattern was checked only on a constructed line |
+| EMS notification destination to the syslog endpoint, and the real EMS line format | Not run | Not in the approved plan (F8) |
+| Port 6514 with TLS | Not delivered | F6; a CA or hostname setup that would let ONTAP verify the endpoint was not tried |
+| Shipped default period of 300 seconds and the shipped thresholds and N/M values | Not run | 60 seconds and 1 of 1 were used to shorten the test |
+| `unauthorized-access` (file-path pattern) | Not run | Its shipped pattern is a placeholder, and file access is not in the admin audit log |
+| ONTAP CLI (SSH) change and delete operations | Not exercised | Only REST calls were made. The new `bulk-delete` default matched a constructed CLI-style line, not a captured one |
+| New `bulk-delete` default on a live alarm | Not run | Chosen after the run; checked with `test-metric-filter` only |
+| SNS notification on ALARM and OK | Not exercised | No topic was configured |
+| Deployer IAM policy `examples/basic/iam-policy.json` | Not verified | The deployer had administrator access |
+| Mitigation for F9, for example a periodic write that keeps each node's connection active | Not tested | — |
+| Why ONTAP held 2 stale destinations before the run | Not determined | They were recorded and deleted |
+| Second-generation and multi-HA-pair file systems | Not run | The test file system is first generation with one HA pair |
+
+### Judgment (T3 Run)
+
+| Item | Value |
+|------|-------|
+| Judgment | ⚠️ Within the scope of this sample run, on one first-generation, single-HA-pair file system with delivery on port 1514: deployment, every alarm leaving INSUFFICIENT_DATA, and OK → ALARM → OK on real audit lines for `bulk-delete`, `privileged-operations` and `failed-access-rest403` are verified. Two default patterns shipped at `50f1f18` did not work on real lines (F3, F4) and were replaced after the run. `autosize-fail` on a real EMS event, EMS delivery, and TLS delivery are unverified |
+| Passing checks | 10 of 18 (M0, M2, M4, M5, M6, M8, A1–A4) |
+| Passed after a workaround | 1 of 18 (M1), from F1 |
+| Expectation not met | 4 of 18 (M3 from F6, A5 from F4, A6 from F3, D1 from F9) |
+| Mixed results | 1 of 18 (M7) |
+| Not run | 1 of 18 (A7), from F8 |
+| Done with remaining items | 1 of 18 (M9): the scheduled secret deletion and 1 recovery-queue entry |
+| Module defects | Resource creation and alarm wiring: none found. Default patterns: 2 defects (F3, F4), fixed after the run; `bulk-delete` changed to count 1 line per operation (F5). The CloudFormation template's equivalent queries are unchanged (follow-up) |
+
+---
+
 ## Related Documents
 
 - [Monitoring Design](monitoring-design.md): the dashboard template, the Terraform T1 module, and the qtree quota monitor, with confidence tiers that cite this record
 - [AWS-Native Alternative Matrix](native-alternative-matrix.md): System Manager view → CloudWatch metric → template mapping
 - [Terraform module: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md): inputs, outputs, and verification status
 - [Terraform module: fsxn-ontap-custom-metrics](../../terraform/fsxn-ontap-custom-metrics/README.md): the T2 qtree and SnapMirror poller, with its verification status
+- [Terraform module: fsxn-log-alarm](../../terraform/fsxn-log-alarm/README.md): the T3 log-alarm module, with its verification status
+- [Syslog VPC Endpoint Setup Guide](syslog-vpce-setup-guide.md): the delivery path the T3 run used
 - [CloudWatch Log Alarm](cloudwatch-log-alarm.md): the separate log-alarm template and its 2026-07-02 E2E record

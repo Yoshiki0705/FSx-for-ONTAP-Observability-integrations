@@ -94,26 +94,46 @@ variable "detections" {
       threshold         = 0
       alarm_description = "FSx for ONTAP: volume auto-resize failed (EMS wafl.vol.autoSize.fail). Space exhaustion may be imminent; expand the volume or free space."
     }
-    # Template failed-access-attempts: OR of failure/denied terms.
+    # Template failed-access-attempts. ONTAP REST authorization failures end
+    # ":: Error: not authorized for that command" (observed on ONTAP 9.18.1P6);
+    # the template's Failure/denied/DENIED terms matched none of them. One line
+    # per rejected request: the Pending line does not carry the error. This
+    # counts authorization denials only: one wrong-password REST request
+    # (HTTP 401) wrote no audit line within the 40 seconds observed, so do not
+    # rely on it to detect failed logins. Threshold and N/M are the earlier defaults and
+    # have not been run (the run used a 60-second period and 1 of 1).
     failed-access = {
-      pattern             = "?\"Failure\" ?\"denied\" ?\"DENIED\""
+      pattern             = "\"Error: not authorized\""
       threshold           = 10
       evaluation_periods  = 3
       datapoints_to_alarm = 3
-      alarm_description   = "FSx for ONTAP: authentication or authorization failures above threshold. May indicate brute-force attempts or misconfigured permissions."
+      alarm_description   = "FSx for ONTAP: requests rejected by ONTAP authorization (\"Error: not authorized\") above threshold. May indicate misconfigured permissions or attempts to run commands without the required role. Not a failed-login detector: a wrong-password request (HTTP 401) wrote no audit line in testing."
     }
-    # Template bulk-delete-operations: OR of delete/remove terms.
+    # Template bulk-delete-operations: the DELETE/delete/remove terms, matched
+    # only on the result line (":: Success" or ":: Error"), so the threshold
+    # counts operations. Each audited change writes a ":: Pending" line and a
+    # result line; the plain OR of the three terms counted both. Filter-pattern
+    # OR terms cannot be combined with an exclusion, hence the regex, which
+    # counts toward the 5-regex-filter-patterns-per-log-group quota.
+    # Threshold and N/M are the earlier defaults and have not been run: 50 now
+    # means 50 completed deletes in a period, where the earlier pattern
+    # reached 50 at about 25 REST deletes.
     bulk-delete = {
-      pattern             = "?\"DELETE\" ?\"delete\" ?\"remove\""
+      pattern             = "%DELETE.*::\\sSuccess|DELETE.*::\\sError|delete.*::\\sSuccess|delete.*::\\sError|remove.*::\\sSuccess|remove.*::\\sError%"
       threshold           = 50
       evaluation_periods  = 3
       datapoints_to_alarm = 2
       alarm_description   = "FSx for ONTAP: bulk file deletion detected. High deletion rates may indicate ransomware or an accidental recursive delete."
     }
-    # Template specific-user-activity (privileged-user monitoring). Replace the
-    # term with the user to watch.
+    # Template specific-user-activity (privileged-user monitoring): completed
+    # change operations by the fsxadmin user, whose audit lines carry the
+    # "FsxId...:fsxadmin:fsxadmin" user:role token; the Pending line is
+    # excluded so each operation counts once. A bare "admin" also matched the
+    # file system's own fsx-control-plane traffic (role admin), 5,150 of 5,156
+    # lines in the 2026-10-09 run.
+    # Replace "fsxadmin:fsxadmin" with the "<user>:<role>" token to watch.
     privileged-operations = {
-      pattern             = "\"admin\""
+      pattern             = "\"fsxadmin:fsxadmin\" -\"Pending\""
       threshold           = 0
       evaluation_periods  = 3
       datapoints_to_alarm = 1
