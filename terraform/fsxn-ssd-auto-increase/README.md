@@ -24,7 +24,7 @@ Live: on 2026-10-09 the module was applied to one first-generation `SINGLE_AZ_1`
 - `aws_sns_topic` `<name_prefix>-trigger` with one Lambda subscription (the alarm invokes the function through it) and `<name_prefix>-notify` for reports and approve emails, with an email subscription only when `notification_email` is set. The function never publishes to the trigger topic, so a report cannot invoke the function again.
 - `aws_cloudwatch_metric_alarm` `<name_prefix>-ssd-utilization` on `AWS/FSx` `StorageCapacityUtilization` (`StorageTier=SSD`, `DataType=All`), plus one per `aggregate_names` entry on second generation.
 
-It does **not** create the decision-archive S3 bucket. That is an existing Object Lock bucket (`decision_archive_bucket`) administered outside the module; the function gets `s3:PutObject` on the prefix plus read-only retention checks and never sets or changes retention. Compliance-mode retention cannot be shortened, so it is a long-lived commitment the operator owns.
+It does **not** create the decision-archive S3 bucket. That is an existing Object Lock bucket (`decision_archive_bucket`) administered outside the module, holding T4's own decision record and no file system data ([why S3 Object Lock, not SnapLock](../../docs/en/capacity-automation-t4-design.md#faq)); the function gets `s3:PutObject` on the prefix plus read-only retention checks and never sets or changes retention. Compliance-mode retention cannot be shortened, so it is a long-lived commitment the operator owns.
 
 ## Guards
 

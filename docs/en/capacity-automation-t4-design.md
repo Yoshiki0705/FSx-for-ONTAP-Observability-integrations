@@ -208,6 +208,8 @@ Manual disposition. `not_accepted` needs two checks made after the window: no ma
 
 ## Decision archive
 
+The decision archive is T4's own record of when, and on what grounds, the function called or did not call `UpdateFileSystem`; it holds no file system data ([why S3 Object Lock and not a SnapLock volume](#faq)).
+
 Each event is its own object at `<prefix><file-system-id>/<correlation-id>/<sequence>-<event>.json`, written with `If-None-Match: *` so that a retry cannot replace an event ([PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html), `documented`; how that condition behaves on an Object Lock bucket is not tested). The decision log gets one line per event with the same fields.
 
 | Event | Written | Contents | When the write fails |
@@ -325,6 +327,15 @@ an `archive_retention_unproven` report carries `lock_state` `calling`.
 T4 counts as complete when the `notify_only`, `approve`, IAM-deny, policy simulation, alarm-OK, concurrency, deploy-time ceiling validation and decision-archive rows pass and the unit tests cover every guard and every lock-state transition, including the delayed-visibility, never-visible, latched and optimizing cases. The immutability claim for the audit record holds only for the compliance-mode archive, proven by control identity B; governance mode is recorded as tamper-resistant. The CloudWatch Logs decision log alone does not meet the audit-trail requirement. The deny run alone does not close the resource-scope question. The real increase stays outside the completion condition and runs only under its own approval boundary.
 
 ## FAQ
+
+**Q: Why is the decision archive in S3 Object Lock, not on a SnapLock volume**?
+A: The archive is T4's own record of when, and on what grounds, the function called or did not call `UpdateFileSystem`; it holds no file system data, monitoring (T1 to T3) does not use it, and only the optional T4 module writes it. Protecting data on a volume as WORM is what SnapLock does ([SnapLock](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/snaplock.html), `documented`, read 2026-10-10; in this repository, [Pattern C](observability-storage-patterns/README.md#pattern-c-forensic-protection-via-snapshot--snaplock)). T4 keeps its record in S3 for three reasons.
+
+1. Failure domain. The function acts only while the file system's SSD utilization alarm is in ALARM, and in `auto` a failed intent write means no call ([Decision archive](#decision-archive)). A SnapLock volume on the same file system draws on the SSD capacity whose shortage triggers T4, so the record would be most likely to fail to write when it is needed, and the guard would then stop the increase (`hypothesis`, not tested).
+2. Network path. The function runs outside a VPC and calls AWS APIs only ([network note](#flow-and-components)). Writing to a volume would need a VPC-attached function, a network path to the file system and an NFS or SMB client. Whether FSx for ONTAP S3 Access Points can write to a SnapLock volume was not checked (`open`).
+3. Proof before acting. The function reads `GetBucketObjectLockConfiguration` before the first event and `GetObjectRetention` after each write, and `auto` calls `UpdateFileSystem` only when compliance-mode retention is proven ([Decision archive](#decision-archive)).
+
+The two serve different purposes. SnapLock suits WORM protection of data kept on the file system, such as audit log files on a volume. S3 Object Lock suits a record of automation decisions about that file system, kept outside it.
 
 **Q: Why not release the lock at `UPDATED_OPTIMIZING`, since the capacity is already usable**?
 A: Releasing it would be safe for request deduplication, because the administrative-action and cooldown guards still block a second request. Holding it keeps one item, one archive sequence and one final report per request, and stops the archive from calling an operation complete while storage optimization runs.

@@ -24,7 +24,7 @@
 - `aws_sns_topic` `<name_prefix>-trigger`（Lambda サブスクリプションが 1 つだけで、アラームはこれを通じて関数を起動）と、レポートと approve のメール用の `<name_prefix>-notify`（`notification_email` を設定したときだけメールサブスクリプション）。関数はトリガートピックに発行しないため、レポートが関数を再起動することはありません。
 - `aws_cloudwatch_metric_alarm` `<name_prefix>-ssd-utilization`（`AWS/FSx` `StorageCapacityUtilization`、`StorageTier=SSD`、`DataType=All`）と、第 2 世代では `aggregate_names` の各要素ごとに 1 つ。
 
-判断アーカイブの S3 バケットは**作成しません**。これはモジュール外で管理される既存の Object Lock バケット（`decision_archive_bucket`）です。関数はプレフィックスへの `s3:PutObject` と読み取り専用の保持期間チェックだけを得て、保持期間を設定・変更しません。コンプライアンスモードの保持期間は短縮できないため、運用者が所有する長期の約束になります。
+判断アーカイブの S3 バケットは**作成しません**。これはモジュール外で管理される既存の Object Lock バケット（`decision_archive_bucket`）で、T4 自身の判断の記録を置き、ファイルシステムのデータは入りません（[SnapLock ではなく S3 Object Lock を使う理由](../../docs/ja/capacity-automation-t4-design.md#faq)）。関数はプレフィックスへの `s3:PutObject` と読み取り専用の保持期間チェックだけを得て、保持期間を設定・変更しません。コンプライアンスモードの保持期間は短縮できないため、運用者が所有する長期の約束になります。
 
 ## ガード
 
@@ -44,7 +44,7 @@
 >
 > プロバイダがすべてのデプロイタイプについてプラン時に `ha_pairs` を読むかは `open` です（設計の「上限に関する補足」）。precondition が評価できなかった場合は Lambda の実行時の上限再チェックが補うため、再チェックは常に残します。
 
-## モジュールの入手
+## モジュールの取得方法
 
 計画中のタグは `terraform-fsxn-ssd-auto-increase-v0.1.0` です。**まだ作成されていません**。[検証状況](#検証状況)の 2026-10-09 のライブ実行では T4 の完了条件のうち判断アーカイブの行が未完了のまま残ったので、その行を記録した後に作る計画です。それまではコミット SHA で git ソースか下のアーカイブ URL をピン留めしてください。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
 
@@ -117,7 +117,7 @@ terraform plan
 terraform apply
 ```
 
-自分のルート構成では [`examples/basic/`](examples/basic/) をコピーし、`source = "../.."` を [モジュールの入手](#モジュールの入手) のソースのいずれかに置き換えます。
+自分のルート構成では [`examples/basic/`](examples/basic/) をコピーし、`source = "../.."` を [モジュールの取得方法](#モジュールの取得方法) のソースのいずれかに置き換えます。
 
 ```hcl
 module "ssd_auto_increase" {
