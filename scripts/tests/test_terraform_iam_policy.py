@@ -97,6 +97,39 @@ MODULES: dict[str, dict[str, Any]] = {
         "log_group_scoped_sids": {"Filters"},
         "control_action": "cloudwatch:DeleteAlarms",
     },
+    "terraform/fsxn-ssd-auto-increase": {
+        "sections": {
+            "README.md": "### Required IAM permissions (estimated, unverified)",
+            "README.ja.md": "### 必要な IAM 権限（推定、未検証）",
+        },
+        # The deployer that runs terraform apply never calls fsx:UpdateFileSystem
+        # (only the function's execution role, built by the module, does). The
+        # deployer needs fsx:DescribeFileSystems for the plan-time
+        # aws_fsx_ontap_file_system data source and nothing else from fsx.
+        "sids": [
+            "Lambda", "Role", "Queue", "LockTable", "Logs", "Schedule",
+            "Alarms", "Topics", "DescribeFileSystems",
+        ],
+        "prefix": "fsxn-ssd-auto-increase",
+        # fsx:DescribeFileSystems has no resource type in the Service
+        # Authorization Reference, so it sits on Resource "*".
+        "wildcard_sids": {"DescribeFileSystems"},
+        "wildcard_actions": {"DescribeFileSystems": {"fsx:DescribeFileSystems"}},
+        # The Logs statement scopes to the decision log group, which is built
+        # from the file system ID (/fsx/ssd-auto-increase/<fs-id>), not from
+        # name_prefix, so it is scoped to the account's log groups.
+        "log_group_scoped_sids": {"Logs"},
+        "control_action": "cloudwatch:DeleteAlarms",
+        # The function's execution role (aws_iam_role_policy.lambda in
+        # main.tf), not the deployer policy. Each statement listed here must
+        # exist and hold exactly these actions on Resource "*"; no other
+        # statement may carry a NO_RESOURCE_TYPE_ACTIONS action. GetMetricData
+        # reads the report's utilization value (design "IAM permissions").
+        "execution_role_wildcard_actions": {
+            "DescribeFileSystems": {"fsx:DescribeFileSystems"},
+            "GetMetricData": {"cloudwatch:GetMetricData"},
+        },
+    },
 }
 
 # Actions the AWS service authorization reference lists with no resource type,
@@ -112,11 +145,33 @@ MODULES: dict[str, dict[str, Any]] = {
 # log-group resource type (alongside logs:DescribeLogStreams and
 # logs:DescribeSubscriptionFilters), so the log-alarm module scopes it to the
 # log group rather than to Resource "*".
-NO_RESOURCE_TYPE_ACTIONS = {"logs:DescribeLogGroups"}
+# fsx:DescribeFileSystems:
+#   https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html
+#   The reference lists it as a List action with no resource type (confidence:
+#   documented, verified 2026-10-09 from the service-authorization reference).
+#   fsx:UpdateFileSystem, by contrast, lists the file-system* resource type, so
+#   it is scoped to the one file-system ARN (file_system_scoped_sids), not here.
+# cloudwatch:GetMetricData:
+#   https://docs.aws.amazon.com/service-authorization/latest/reference/list_cloudwatch.html
+#   The reference lists only the optional `dataset` resource type (no
+#   asterisk), which applies to OTLP datasets queried with PromQL (confidence:
+#   documented, read 2026-10-09). A classic metric such as AWS/FSx
+#   StorageCapacityUtilization has no ARN, so a statement scoped to an ARN does
+#   not grant the classic query; it belongs on Resource "*".
+NO_RESOURCE_TYPE_ACTIONS = {
+    "logs:DescribeLogGroups",
+    "fsx:DescribeFileSystems",
+    "cloudwatch:GetMetricData",
+}
 
 ACTION = re.compile(r"`([a-z0-9]+:[A-Za-z]+)`")
 FENCE = re.compile(r"^\s*(```|~~~)")
 HEADING = re.compile(r"^#{1,6}\s")
+# One exact file-system ARN: :file-system/fs- followed by exactly 17 hex
+# characters and then the end of the string. This rejects a wildcard
+# (file-system/fs-*), a truncated prefix (fs-0123*), or any trailing path, so
+# the file_system_scoped branch cannot silently accept a widened resource.
+FILE_SYSTEM_ARN = re.compile(r":file-system/fs-[0-9a-f]{17}$")
 
 README_CASES = [(m, r) for m in sorted(MODULES) for r in sorted(MODULES[m]["sections"])]
 
@@ -215,6 +270,24 @@ def _statement_problems(spec: dict[str, Any], statement: dict[str, Any]) -> list
         if unscopable:
             problems.append(f"{sid}: {unscopable} have no resource type and cannot be scoped to {resource}")
         return problems
+    if sid in spec.get("file_system_scoped_sids", set()):
+        # Scoped to exactly one file-system ARN, because the file-system ID is a
+        # caller-supplied input rather than a name built from name_prefix. The
+        # placeholder file-system ID is fs-0123456789abcdef0 (17 hex chars). A
+        # wildcard or suffix expansion (file-system/fs-*, fs-0123*, a trailing
+        # path) widens the blast radius past the one file system and is
+        # rejected: the branch/design claims one exact ARN.
+        if "123456789012" not in resource:
+            problems.append(f"{sid}: {resource} lacks the placeholder account")
+        if not FILE_SYSTEM_ARN.search(resource):
+            problems.append(
+                f"{sid}: {resource} is not a single file-system ARN "
+                "(expected :file-system/fs-<17 hex>, no wildcard or suffix)"
+            )
+        unscopable = sorted(actions & NO_RESOURCE_TYPE_ACTIONS)
+        if unscopable:
+            problems.append(f"{sid}: {unscopable} have no resource type and cannot be scoped to {resource}")
+        return problems
     unscopable = sorted(actions & NO_RESOURCE_TYPE_ACTIONS)
     if unscopable:
         problems.append(f"{sid}: {unscopable} have no resource type and cannot be scoped to {resource}")
@@ -309,6 +382,200 @@ def test_log_group_scoped_branch_controls() -> None:
     # Negative control: a no-resource-type action cannot sit in a scoped statement.
     unscopable = {**published, "Action": ["logs:DescribeLogGroups"]}
     assert any("no resource type" in p for p in _statement_problems(spec, unscopable))
+
+
+def test_file_system_scoped_branch_controls() -> None:
+    """Positive and negative controls for the file_system_scoped_sids branch.
+
+    The branch requires exactly one file-system ARN (no name_prefix scoping,
+    because the file-system ID is a caller-supplied input). The branch is proven
+    with a standalone synthetic spec, independent of any module that happens to
+    use it: the published shape passes; a missing placeholder account, a
+    non-file-system ARN, a wildcard or suffix expansion, and a no-resource-type
+    action each fail.
+    """
+    spec = {
+        "prefix": "fsxn-example",
+        "wildcard_sids": set(),
+        "wildcard_actions": {},
+        "file_system_scoped_sids": {"UpdateFileSystem"},
+    }
+    fs_arn = "arn:aws:fsx:ap-northeast-1:123456789012:file-system/fs-0123456789abcdef0"
+    published = {
+        "Sid": "UpdateFileSystem", "Effect": "Allow", "Resource": fs_arn,
+        "Action": "fsx:UpdateFileSystem",
+    }
+    assert _statement_problems(spec, published) == []
+    # Negative control: a different account than the 123456789012 placeholder.
+    wrong_account = {
+        **published,
+        "Resource": "arn:aws:fsx:ap-northeast-1:000000000000:file-system/fs-0123456789abcdef0",
+    }
+    assert any("lacks the placeholder account" in p for p in _statement_problems(spec, wrong_account))
+    # Negative control: a non-file-system ARN (right account, wrong resource type).
+    wrong_resource = {
+        **published,
+        "Resource": "arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:fsxn-example-*",
+    }
+    assert any("is not a single file-system ARN" in p for p in _statement_problems(spec, wrong_resource))
+    # Negative control: a wildcard file-system ARN must be rejected (it widens
+    # the one-file-system claim to every file system in the account).
+    wildcard = {
+        **published,
+        "Resource": "arn:aws:fsx:ap-northeast-1:123456789012:file-system/fs-*",
+    }
+    assert any("is not a single file-system ARN" in p for p in _statement_problems(spec, wildcard))
+    # Negative control: a truncated-prefix wildcard is also rejected.
+    prefix_wildcard = {
+        **published,
+        "Resource": "arn:aws:fsx:ap-northeast-1:123456789012:file-system/fs-0123*",
+    }
+    assert any("is not a single file-system ARN" in p for p in _statement_problems(spec, prefix_wildcard))
+    # Negative control: a no-resource-type action cannot sit in a scoped statement.
+    unscopable = {**published, "Action": "fsx:DescribeFileSystems"}
+    assert any("no resource type" in p for p in _statement_problems(spec, unscopable))
+
+
+EXECUTION_ROLE_BLOCK = re.compile(
+    r'^resource "aws_iam_role_policy" "lambda" \{\n(.*?)^\}', re.MULTILINE | re.DOTALL
+)
+HCL_SID = re.compile(r'\n\s*Sid\s*=\s*"([A-Za-z0-9]+)"')
+HCL_ACTION = re.compile(r'\bAction\s*=\s*(\[[^\]]*\]|"[^"]*")')
+# The expression up to a trailing HCL line comment (# or //), which ARNs and
+# the "*" literal never contain.
+HCL_RESOURCE = re.compile(r"\bResource\s*=\s*(.+?)\s*(?:#.*|//.*)?$", re.MULTILINE)
+QUOTED_ACTION = re.compile(r'"([a-z0-9]+:[A-Za-z]+)"')
+
+
+def _execution_role_statements(main_tf: str) -> dict[str, tuple[set[str], str]] | None:
+    """Sid -> (actions, raw Resource expression) of the module's execution role.
+
+    Reads the ``jsonencode`` statements of ``aws_iam_role_policy.lambda`` in
+    main.tf. Returns None when the block is absent, so a renamed resource fails
+    the caller instead of yielding an empty mapping.
+    """
+    block = EXECUTION_ROLE_BLOCK.search(main_tf)
+    if block is None:
+        return None
+    body = block.group(1)
+    starts = list(HCL_SID.finditer(body))
+    statements: dict[str, tuple[set[str], str]] = {}
+    for index, match in enumerate(starts):
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(body)
+        segment = body[match.end() : end]
+        action = HCL_ACTION.search(segment)
+        resource = HCL_RESOURCE.search(segment)
+        statements[match.group(1)] = (
+            set(QUOTED_ACTION.findall(action.group(1))) if action else set(),
+            resource.group(1).strip() if resource else "",
+        )
+    return statements
+
+
+def _execution_role_problems(
+    registered: dict[str, set[str]], statements: dict[str, tuple[set[str], str]]
+) -> list[str]:
+    problems: list[str] = []
+    for sid, expected in registered.items():
+        if sid not in statements:
+            problems.append(f"{sid}: registered but absent from the execution role")
+            continue
+        actions, resource = statements[sid]
+        if resource != '"*"':
+            problems.append(f"{sid}: must use Resource \"*\", found {resource}")
+        if actions != expected:
+            problems.append(f"{sid}: actions {sorted(actions)} differ from {sorted(expected)}")
+    for sid, (actions, _) in statements.items():
+        if sid in registered:
+            continue
+        unscopable = sorted(actions & NO_RESOURCE_TYPE_ACTIONS)
+        if unscopable:
+            problems.append(f"{sid}: {unscopable} have no resource type and cannot be scoped")
+    return problems
+
+
+@pytest.mark.parametrize(
+    "module", sorted(m for m in MODULES if "execution_role_wildcard_actions" in MODULES[m])
+)
+def test_execution_role_wildcard_actions(module: str) -> None:
+    """The function's own role keeps each no-resource-type action on Resource "*"."""
+    registered = MODULES[module]["execution_role_wildcard_actions"]
+    for sid, actions in registered.items():
+        assert actions <= NO_RESOURCE_TYPE_ACTIONS, (module, sid)
+    main_tf = (REPO_ROOT / module / "main.tf").read_text(encoding="utf-8")
+    statements = _execution_role_statements(main_tf)
+    assert statements is not None, f"{module}/main.tf: aws_iam_role_policy.lambda not found"
+    assert "UpdateFileSystem" in statements, "the extractor found no statements"
+    problems = _execution_role_problems(registered, statements)
+    assert not problems, problems
+
+
+def test_execution_role_check_controls() -> None:
+    """Negative controls: a scoped, missing or widened GetMetricData fails."""
+    registered = {"GetMetricData": {"cloudwatch:GetMetricData"}}
+
+    def block(statements: str) -> str:
+        return (
+            'resource "aws_iam_role_policy" "lambda" {\n'
+            "  policy = jsonencode({\n    Statement = [\n"
+            f"{statements}"
+            "    ]\n  })\n}\n"
+        )
+
+    wildcard = (
+        '      {\n        Sid      = "GetMetricData"\n'
+        '        Action   = "cloudwatch:GetMetricData"\n'
+        '        Resource = "*"\n      },\n'
+    )
+    alarms = (
+        '      {\n        Sid      = "DescribeAlarms"\n'
+        '        Action   = "cloudwatch:DescribeAlarms"\n'
+        "        Resource = values(local.trigger_alarm_arns)\n      },\n"
+    )
+    # Positive control: the published shape passes, with or without a
+    # trailing line comment on the Resource line.
+    parsed = _execution_role_statements(block(alarms + wildcard))
+    assert parsed is not None
+    assert _execution_role_problems(registered, parsed) == []
+    commented = wildcard.replace('Resource = "*"', 'Resource = "*" # no ARN for classic metrics')
+    parsed = _execution_role_statements(block(alarms + commented))
+    assert _execution_role_problems(registered, parsed) == []
+    # Scoped to an ARN.
+    scoped = wildcard.replace('Resource = "*"', "Resource = local.trigger_alarm_arns")
+    parsed = _execution_role_statements(block(alarms + scoped))
+    assert any('must use Resource "*"' in p for p in _execution_role_problems(registered, parsed))
+    # Removed.
+    parsed = _execution_role_statements(block(alarms))
+    assert any("absent from the execution role" in p for p in _execution_role_problems(registered, parsed))
+    # Widened with a second action.
+    widened = wildcard.replace(
+        'Action   = "cloudwatch:GetMetricData"',
+        'Action   = ["cloudwatch:GetMetricData", "cloudwatch:PutMetricData"]',
+    )
+    parsed = _execution_role_statements(block(alarms + widened))
+    assert any("differ from" in p for p in _execution_role_problems(registered, parsed))
+    # Moved into a scoped statement under another Sid.
+    moved = alarms.replace(
+        'Action   = "cloudwatch:DescribeAlarms"',
+        'Action   = ["cloudwatch:DescribeAlarms", "cloudwatch:GetMetricData"]',
+    )
+    parsed = _execution_role_statements(block(moved))
+    problems = _execution_role_problems(registered, parsed)
+    assert any("cannot be scoped" in p for p in problems)
+    # A renamed resource is not silently empty.
+    assert _execution_role_statements("resource \"aws_iam_role\" \"lambda\" {\n}\n") is None
+
+
+def test_ssd_auto_increase_statement_services() -> None:
+    statements = _load_policy("terraform/fsxn-ssd-auto-increase")["Statement"]
+    by_sid = {s["Sid"]: _policy_actions({"Statement": [s]}) for s in statements}
+    expected = {
+        "Lambda": "lambda:", "Role": "iam:", "Queue": "sqs:", "LockTable": "dynamodb:",
+        "Logs": "logs:", "Schedule": "events:", "Alarms": "cloudwatch:", "Topics": "sns:",
+        "DescribeFileSystems": "fsx:",
+    }
+    for sid, service in expected.items():
+        assert all(a.startswith(service) for a in by_sid[sid]), sid
 
 
 def test_dashboard_statement_services() -> None:

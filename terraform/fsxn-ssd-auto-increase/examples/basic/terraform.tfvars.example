@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (gitignored) and replace the placeholders.
+region                   = "ap-northeast-1"
+file_system_id           = "fs-0123456789abcdef0"
+max_storage_capacity_gib = 2048
+decision_archive_bucket  = "<object-lock-bucket-name>"
+
+# Optional. Values shown are examples; omitted lines use the module defaults.
+# name_prefix                         = "fsxn-ssd-auto-increase"
+# mode                                = "notify_only"   # notify_only | approve | auto
+# trigger_threshold_percent           = 80
+# increase_percent                    = 10
+# reevaluation_schedule               = "rate(1 hour)"
+# log_retention_days                  = 365
+# indeterminate_reconcile_hours       = 6
+# decision_archive_prefix             = "fsx-ssd-auto-increase/"
+# decision_archive_required_mode      = "COMPLIANCE"    # auto requires COMPLIANCE
+# decision_archive_min_retention_days = 365
+# aggregate_names                     = ["aggr1"]       # second generation only
+# notification_email                  = "ops@example.com"
+#
+# tags = { Environment = "dev" }
