@@ -97,14 +97,17 @@ variable "detections" {
     # Template failed-access-attempts. ONTAP REST authorization failures end
     # ":: Error: not authorized for that command" (observed on ONTAP 9.18.1P6);
     # the template's Failure/denied/DENIED terms matched none of them. One line
-    # per rejected request: the Pending line does not carry the error. HTTP
-    # authentication failures (401) write no audit line at all.
+    # per rejected request: the Pending line does not carry the error. This
+    # counts authorization denials only: one wrong-password REST request
+    # (HTTP 401) wrote no audit line within the 40 seconds observed, so do not
+    # rely on it to detect failed logins. Threshold and N/M are the earlier defaults and
+    # have not been run (the run used a 60-second period and 1 of 1).
     failed-access = {
       pattern             = "\"Error: not authorized\""
       threshold           = 10
       evaluation_periods  = 3
       datapoints_to_alarm = 3
-      alarm_description   = "FSx for ONTAP: authentication or authorization failures above threshold. May indicate brute-force attempts or misconfigured permissions."
+      alarm_description   = "FSx for ONTAP: requests rejected by ONTAP authorization (\"Error: not authorized\") above threshold. May indicate misconfigured permissions or attempts to run commands without the required role. Not a failed-login detector: a wrong-password request (HTTP 401) wrote no audit line in testing."
     }
     # Template bulk-delete-operations: the DELETE/delete/remove terms, matched
     # only on the result line (":: Success" or ":: Error"), so the threshold
@@ -112,6 +115,9 @@ variable "detections" {
     # result line; the plain OR of the three terms counted both. Filter-pattern
     # OR terms cannot be combined with an exclusion, hence the regex, which
     # counts toward the 5-regex-filter-patterns-per-log-group quota.
+    # Threshold and N/M are the earlier defaults and have not been run: 50 now
+    # means 50 completed deletes in a period, where the earlier pattern
+    # reached 50 at about 25 REST deletes.
     bulk-delete = {
       pattern             = "%DELETE.*::\\sSuccess|DELETE.*::\\sError|delete.*::\\sSuccess|delete.*::\\sError|remove.*::\\sSuccess|remove.*::\\sError%"
       threshold           = 50

@@ -1012,7 +1012,7 @@ def _log_chars_box(line_y: int, start: int, end: int) -> tuple[int, int, int, in
     )
 
 
-def mask_cloudwatch_log_alarm_screenshots() -> None:
+def mask_cloudwatch_log_alarm_screenshots() -> list[str]:
     """cloudwatch-log-alarm/ 配下スクリーンショットのマスク処理。
 
     Terraform モジュール terraform/fsxn-log-alarm/ (T3) の 2026-10-09 の
@@ -1038,8 +1038,15 @@ def mask_cloudwatch_log_alarm_screenshots() -> None:
           下部フッターを切り抜きで除去
 
     切り抜きは冪等でないため、撮影時サイズのときだけ処理する。
+    マスクは文字位置で決めているので、撮影時サイズでも切り抜き後のサイズでも
+    ない画像 (別の幅やズームで撮り直したもの) は、伏せずに残すと未マスクの
+    まま通ってしまう。そうしたファイル名を返し、main() が非 0 で終了する。
+
+    Returns:
+        撮影時サイズでも切り抜き後のサイズでもなかったファイル名の一覧。
     """
     subdir = SCRIPT_DIR / "cloudwatch-log-alarm"
+    unrecognized: list[str] = []
     box_t = tuple[int, int, int, int]
     gray = CLOUDWATCH_LOG_ALARM_MASK_COLOR
 
@@ -1094,9 +1101,10 @@ def mask_cloudwatch_log_alarm_screenshots() -> None:
             continue
         if img.size != raw_size:
             print(
-                f"  ⚠️  cloudwatch-log-alarm/{filename}: 想定外のサイズのためスキップ"
+                f"  ❌ cloudwatch-log-alarm/{filename}: 想定外のサイズのためマスクできません"
                 f"（想定 {raw_size[0]}x{raw_size[1]}）"
             )
+            unrecognized.append(f"cloudwatch-log-alarm/{filename}")
             img.close()
             continue
 
@@ -1110,6 +1118,7 @@ def mask_cloudwatch_log_alarm_screenshots() -> None:
             f"  ✅ cloudwatch-log-alarm/{filename}: マスク完了"
             "（リソース ID + ナビバー/フッター切り抜き）"
         )
+    return unrecognized
 
 
 def main(target_dir: Path | None = None) -> None:
@@ -1167,7 +1176,7 @@ def main(target_dir: Path | None = None) -> None:
     mask_cloudwatch_monitoring_screenshots()
 
     print("\n--- CloudWatch ログアラーム (Terraform T3) 分 ---")
-    mask_cloudwatch_log_alarm_screenshots()
+    unmasked = mask_cloudwatch_log_alarm_screenshots()
 
     # Phase 2: PNG metadata stripping (all files)
     print()
@@ -1178,6 +1187,12 @@ def main(target_dir: Path | None = None) -> None:
 
     results = process_all_png_metadata(directory)
     print_metadata_summary(results)
+
+    if unmasked:
+        print("❌ 想定外のサイズのためマスクしていない画像があります:")
+        for name in unmasked:
+            print(f"   - {name}")
+        sys.exit(1)
 
     print("✅ 全マスク処理完了")
 

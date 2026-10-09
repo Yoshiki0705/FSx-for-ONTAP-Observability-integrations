@@ -61,7 +61,7 @@ system node systemshell -node * -command "top -d 1 -s 1" :: Success: 2 entries w
 - `<source-ip>` — 操作元 IP
 - `fsx-control-plane:admin` — 実行ユーザー
 - `system node systemshell ...` — 実行コマンド
-- `Success` / `Failure` — 結果
+- `Pending` / `Success: ...` / `Error: ...` — 結果（2026-10-09 に観測した値。下の補足を参照）
 
 > **結果のフィールドに関する補足**
 >
@@ -128,11 +128,11 @@ CloudWatch Log Alarm は「ログ内の文字列に直接アラートする」�
 | ユースケース | クエリのフィルタ部分 | 集約式 | 閾値 |
 |-------------|-------------------|--------|------|
 | 機密ファイルへのアクセス | `filter @message like /confidential/` | `count(*)` | `> 0` |
-| 認証失敗の急増 | `filter @message like /Error: not authorized/` | `count(*)` | `> 10` |
+| 認可失敗の急増 | `filter @message like /Error: not authorized/` | `count(*)` | `> 10` |
 | 大量ファイル削除 | `filter @message like /DELETE/` | `count(*)` | `> 50` |
 | 特定ユーザーの操作 | `filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/` | `count(*)` | `> 0` |
 
-認証失敗と特定ユーザーの操作のフィルタは、実際の ONTAP 9.18.1P6 の監査ログの行にあった文字列を使っています（上の結果のフィールドに関する補足を参照）。この表の `/Failure/` と `/admin/` を置き換えたもので、Logs Insights のクエリとしては実行していません。`/DELETE/` は削除 1 回につき 2 行を数えるため、`> 50` は REST の削除約 25 回にあたります。テンプレート自身のクエリは、以前の語のままです。
+認可失敗と特定ユーザーの操作のフィルタは、実際の ONTAP 9.18.1P6 の監査ログの行にあった文字列を使っています（上の結果のフィールドに関する補足を参照）。この表の `/Failure/` と `/admin/` を置き換えたもので、Logs Insights のクエリとしては実行していません。`/Error: not authorized/` が一致するのは、そのコマンドの権限がないとして ONTAP が拒否した要求（その実行では HTTP 403）で、ログインの失敗ではありません。誤ったパスワードによる REST の要求 1 回（HTTP 401）では、観測した 40 秒の間に監査ログの行は書かれませんでした。`/DELETE/` は削除 1 回につき 2 行を数えるため、`> 50` は REST の削除約 25 回にあたります。テンプレート自身のクエリは、以前の語のままです。
 
 つまり:
 
