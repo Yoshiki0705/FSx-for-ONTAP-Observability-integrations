@@ -81,9 +81,11 @@ CloudWatch Log Alarm を使用すると、CloudWatch Logs に配信された監�
 | パターン | クエリ | 閾値 | 用途 |
 |---------|--------|------|------|
 | 機密パスアクセス | `filter @message like /\/vol\/data\/confidential/` | > 0 | コンプライアンス |
-| 認証失敗スパイク | `filter @message like /Failure/` | > 10 | 不正アクセス検知 |
-| 大量削除 | `filter @message like /DELETE/` | > 50 | ランサムウェア兆候 |
-| 特権ユーザー操作 | `filter @message like /fsxadmin/` | > 0 | 内部統制 |
+| 認可拒否の急増 | `filter @message like /Error: not authorized/` | > 10 | 必要なロールなしのコマンド実行 |
+| 大量削除 | `filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or ...`（6 語） | > 50 | ランサムウェア兆候 |
+| 特権ユーザー操作 | `filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/` | > 0 | 内部統制 |
+
+表の最後の 3 行は、テンプレートの `failed-access-attempts`、`bulk-delete-operations`、`specific-user-activity` のクエリのフィルタです。2026-10-09 の実行で確かめたパターンから書き換えたもので、LogAlarm のクエリとしては実行していません（`unverified`）。大量削除のフィルタの全体とそれぞれの状態は、[組み込みの検知クエリ](./cloudwatch-log-alarm.md#組み込みの検知クエリ)にあります。
 
 ### デプロイ
 

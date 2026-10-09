@@ -65,7 +65,7 @@ system node systemshell -node * -command "top -d 1 -s 1" :: Success: 2 entries w
 
 > **結果のフィールドに関する補足**
 >
-> 2026-10-09 に、ONTAP 9.18.1P6 で、Terraform 版の実行中に観測しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)）。REST の変更の操作は 2 行を書きます。`:: Pending` で終わる行と、`:: Success:` で終わる行、または ONTAP が要求を拒否したときは `:: Error: not authorized for that command` で終わる行です。取り込んだ 5,156 行のどれにも `Failure`、`denied`、`DENIED` は無く（拒否 5 件を含む）、6 行を除くすべてが `admin` を含んでいました（`fsx-control-plane` ユーザーのロール、または `fsxadmin` の一部）。この実行ではこのテンプレートはデプロイしていません。次の点は推定であり、試していません。テンプレートの `failed-access-attempts` のクエリ（`/Failure/`、`/denied/`、`/DENIED/`）と、`admin` に対する `specific-user-activity` のクエリは同じ行を読むため、同じように振る舞うと考えられます。Terraform 版のモジュールの既定値は、その実行の後に `"Error: not authorized"` と `"fsxadmin:fsxadmin" -"Pending"` に変更しました。このテンプレートは変更していません（後続課題）。
+> 2026-10-09 に、ONTAP 9.18.1P6 で、Terraform 版の実行中に観測しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)）。REST の変更の操作は 2 行を書きます。`:: Pending` で終わる行と、`:: Success:` で終わる行、または ONTAP が要求を拒否したときは `:: Error: not authorized for that command` で終わる行です。取り込んだ 5,156 行のどれにも `Failure`、`denied`、`DENIED` は無く（拒否 5 件を含む）、6 行を除くすべてが `admin` を含んでいました（`fsx-control-plane` ユーザーのロール、または `fsxadmin` の一部）。この実行ではこのテンプレートはデプロイしていません。テンプレートの以前の `failed-access-attempts` の語（`/Failure/`、`/denied/`、`/DENIED/`）と、`admin` に対する `specific-user-activity` のクエリは、同じ種類の行を読みます。その実行の後、テンプレートの組み込みクエリ 3 つを、そこで確かめたパターンから書き換えました。[組み込みの検知クエリ](#組み込みの検知クエリ)を参照してください。
 
 > **ファイルアクセス監査ログ**（NFS/SMB のファイル操作記録）を CloudWatch Logs に配信して Log Alarm を使いたい場合は、Lambda で EVTX/XML をパースして CloudWatch Logs に転送するカスタムパイプラインが必要です。
 
@@ -132,7 +132,22 @@ CloudWatch Log Alarm は「ログ内の文字列に直接アラートする」�
 | 大量ファイル削除 | `filter @message like /DELETE/` | `count(*)` | `> 50` |
 | 特定ユーザーの操作 | `filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/` | `count(*)` | `> 0` |
 
-認可失敗と特定ユーザーの操作のフィルタは、実際の ONTAP 9.18.1P6 の監査ログの行にあった文字列を使っています（上の結果のフィールドに関する補足を参照）。この表の `/Failure/` と `/admin/` を置き換えたもので、Logs Insights のクエリとしては実行していません。`/Error: not authorized/` が一致するのは、そのコマンドの権限がないとして ONTAP が拒否した要求（その実行では HTTP 403）で、ログインの失敗ではありません。誤ったパスワードによる REST の要求 1 回（HTTP 401）では、観測した 40 秒の間に監査ログの行は書かれませんでした。`/DELETE/` は削除 1 回につき 2 行を数えるため、`> 50` は REST の削除約 25 回にあたります。テンプレート自身のクエリは、以前の語のままです。
+認可失敗と特定ユーザーの操作のフィルタは、実際の ONTAP 9.18.1P6 の監査ログの行にあった文字列を使っています（上の結果のフィールドに関する補足を参照）。この表の `/Failure/` と `/admin/` を置き換えたもので、Logs Insights のクエリとしては実行していません。`/Error: not authorized/` が一致するのは、そのコマンドの権限がないとして ONTAP が拒否した要求（その実行では HTTP 403）で、ログインの失敗ではありません。誤ったパスワードによる REST の要求 1 回（HTTP 401）では、観測した 40 秒の間に監査ログの行は書かれませんでした。`/DELETE/` は削除 1 回につき 2 行を数えるため、`> 50` は REST の削除約 25 回にあたります。テンプレートの `bulk-delete-operations` のクエリは、結果の行だけを数えます。
+
+### 組み込みの検知クエリ
+
+2026-10-09 の実行の後に変更した、テンプレートの組み込みクエリのフィルタ行です。どのクエリも `fields @timestamp, @message` で始まり、`count(*)` で集約します。「元のパターン」は、フィルタの書き換え元にした [T3 の実行](verification-results-cloudwatch-monitoring.md#実際のログ行に対するフィルターパターンの一致t3-の実行)の Terraform のメトリクスフィルターのパターンで、件数は取り込んだ 5,156 行に `aws logs test-metric-filter` でそのパターンが一致した数です。
+
+| `DetectionType` | フィルタ行 | 元のパターン（5,156 行中の一致数） | 状態 |
+|-----------------|-----------|-----------------------------------|------|
+| `sensitive-file-access` | `filter @message like /${TargetPattern}/` | 変更なし | E2E 2026-07-02（INSUFFICIENT_DATA → OK） |
+| `failed-access-attempts` | `filter @message like /Error: not authorized/` | `"Error: not authorized"`（5、実際の拒否のすべて） | `unverified` |
+| `bulk-delete-operations` | `filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or @message like /delete.*::\sSuccess/ or @message like /delete.*::\sError/ or @message like /remove.*::\sSuccess/ or @message like /remove.*::\sError/` | `%DELETE.*::\sSuccess\|...\|remove.*::\sError%`（5、REST の削除 1 回につき 1） | `unverified` |
+| `specific-user-activity` | `filter @message like /${TargetPattern}/ and @message not like /Pending/` | `"fsxadmin:fsxadmin" -"Pending"`（13、完了した操作 1 回につき 1） | `unverified` |
+
+`unverified` は、T3 の実行から導いたフィルタで、LogAlarm のクエリとしても Logs Insights のクエリとしても実行していないことを示します。件数はメトリクスフィルターのパターンのもので、これらのフィルタのものではありません。Logs Insights の `like` と `not like` は大文字と小文字を区別する部分一致で（[filter コマンド](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-Filter.html)）、引用符で囲んだメトリクスフィルターの語と同じです。`bulk-delete-operations` の 6 つの語は、T3 の正規表現の 6 つの選択肢を別々の `like` の語として書いたものです。`scripts/tests/test_cfn_log_alarm_queries.py` はフィルタ行を固定し、記録をもとに書いた監査ログの行の形でオフラインに確かめます。このテストは Logs Insights のエンジンを使いません。
+
+> **specific-user-activity の TargetPattern に関する補足**: 監査ログの行に現れる `<user>:<role>` の語を渡します。例は `fsxadmin:fsxadmin` です。`admin` だけにすると、オペレーターの操作がなくてもファイルシステムが 1 分に約 80 行書く `fsx-control-plane:admin` の行にも一致します（2026-10-09 の実行）。Pending の除外は、変更の操作ごとに結果の前に書かれる `:: Pending` の行を落とすので、操作 1 回を 1 回と数えます。`Pending` を含むほかの行も落とします。
 
 つまり:
 
@@ -357,11 +372,13 @@ fields @timestamp, @message, (datefloor(@timestamp, 1h) + 9h) as jst_hour
 
 ```
 fields @timestamp, @message
-| filter @message like /admin/ and (@message like /volume/ or @message like /vserver/)
+| filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/ and (@message like /volume/ or @message like /vserver/)
 | limit 20
 ```
 
 集約: `count(*)` / 閾値: `> 0`
+
+ユーザーの語は、`specific-user-activity` のクエリと同じく `<user>:<role>` の語です。ここを `/admin/` にすると `fsx-control-plane:admin` の行にも一致します。Logs Insights のクエリとしては実行していません（`unverified`）。
 
 ### パターン 4: ボリュームオフライン/アンマウント
 
@@ -466,7 +483,7 @@ Log Alarm は M-out-of-N モデルで評価します:
 | ユースケース | N (評価) | M (アラーム) | 理由 |
 |-------------|---------|-------------|------|
 | 機密ファイルアクセス | 3 | 1 | 1 回でも検知したら即通知 |
-| 認証失敗スパイク | 5 | 3 | 一時的なミスタイプを除外 |
+| 認可拒否の急増 | 5 | 3 | 一時的な拒否を除外 |
 | 大量削除 | 3 | 2 | 連続した異常を確認 |
 | 監視ユーザー | 3 | 1 | 1 回でも即通知 |
 
@@ -685,7 +702,7 @@ Log Alarm は**リージョン**リソースです。Active-Passive DR 構成で
 | Snapshot 削除（管理監査） | **T1490 Inhibit System Recovery** | Snapshot 削除は暗号化/破壊の前に復旧ポイントを消す |
 | 大量管理削除 / `volume delete` | **T1485 Data Destruction** | 管理プレーンでのデータ/ボリューム破壊 |
 | 特権ユーザー / `security login` 変更 | **T1078 Valid Accounts**, **T1098 Account Manipulation** | 窃取した認証情報の使用、ロール/アカウント改ざん |
-| 認証失敗スパイク | **T1110 Brute Force** | 反復的な認証失敗 |
+| 認証失敗の急増 | **T1110 Brute Force**（`failed-access-attempts` では対象外） | クエリが数えるのは認可の拒否だけ。2026-10-09 の実行では、誤ったパスワードによる REST の要求（HTTP 401）で監査ログの行は書かれなかった |
 | ユーザーファイル暗号化（ARP・記事2） | **T1486 Data Encrypted for Impact** | ストレージ層でのランサムウェア暗号化 |
 
 > 役割分担に注目: T1486（暗号化）は ARP の担当。**T1490（Inhibit System Recovery）** — 攻撃者が Snapshot を削除して暗号化をロールバック*できなくする* — こそ管理監査 Log Alarm が追加する価値です。両者を組み合わせることで、単独では残るギャップを塞ぎます。
@@ -711,7 +728,7 @@ Logs Insights クエリのタイプミスは **silent no-match**（偽陰性）�
 
 - EMS over syslog（`event notification destination create -syslog ...`）と管理監査 `cluster log-forwarding` は最近の ONTAP 9.x で利用可能。FSx for ONTAP ファイルシステムの正確なマイナーバージョンを `version` / `system node image show` で確認してください。
 - **Multi-AZ vs Single-AZ** — ノード/ストリーム命名が異なります（Multi-AZ は `FsxId...-01/-02`）。AZ トポロジで検知が変わらないよう、ロググループ全体をクエリしてください（上記参照）。
-- **`fsxadmin` スコープ** — FSx では `fsxadmin` が主管理者。`fsxadmin` に対する `specific-user-activity` アラームは*すべての*管理活動にマッチします。特定コマンドにスコープするか、ロールが実際に分離されている場合に限定してください。
+- **`fsxadmin` スコープ** — FSx for ONTAP では `fsxadmin` が主管理者。`fsxadmin:fsxadmin` に対する `specific-user-activity` アラームは、そのユーザーの完了した操作の*すべて*にマッチします。特定コマンドにスコープするか、ロールが実際に分離されている場合に限定してください。`fsxadmin` だけにすると、ロールが `fsxadmin-readonly` のユーザーにもマッチします。
 
 ### サービスクォータ
 
@@ -744,12 +761,12 @@ APPI / FISC / ISMAP / HIPAA を超えて、管理監査アラートは **PCI-DSS
 
 ```
 fields @timestamp, @message
-| filter @message like /delete/
+| filter @message like /DELETE.*::\sSuccess/ or @message like /DELETE.*::\sError/ or @message like /delete.*::\sSuccess/ or @message like /delete.*::\sError/ or @message like /remove.*::\sSuccess/ or @message like /remove.*::\sError/
 | stats count(*) as deletes by bin(5m)
 | sort deletes desc
 ```
 
-上位の `deletes` 値（平常時のピーク）を読み取り、その上に閾値を設定するか、既知のサービスアカウント/メンテナンス時間帯をクエリで除外してください。
+フィルタは `bulk-delete-operations` のものなので、ベースラインはアラームと同じもの（完了した操作 1 回につき 1 行）を数えます。上位の `deletes` 値（平常時のピーク）を読み取り、その上に閾値を設定するか、既知のサービスアカウント/メンテナンス時間帯をクエリで除外してください。
 
 ### Scheduled Query 実行の監視
 
