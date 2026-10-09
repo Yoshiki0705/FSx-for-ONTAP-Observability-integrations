@@ -57,7 +57,11 @@ system node systemshell -node * -command "top -d 1 -s 1" :: Success: 2 entries w
 - `<source-ip>` — Source IP address
 - `fsx-control-plane:admin` — Executing user
 - `system node systemshell ...` — Executed command
-- `Success` / `Failure` — Result
+- `Pending` / `Success: ...` / `Error: ...` — Result (the values observed on 2026-10-09; see the note below)
+
+> **Result field note**
+>
+> Observed on 2026-10-09 with ONTAP 9.18.1P6, during the run of the Terraform equivalent ([record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09)). A REST change operation writes two lines: one ending `:: Pending`, and one ending `:: Success:` or, when ONTAP rejects the request, `:: Error: not authorized for that command`. None of the 5,156 lines captured contained `Failure`, `denied` or `DENIED`, including the 5 rejections, and all but 6 contained `admin` (the role of the `fsx-control-plane` user, or inside `fsxadmin`). This template was not deployed in that run. Inferred, not tested: its `failed-access-attempts` query (`/Failure/`, `/denied/`, `/DENIED/`) and a `specific-user-activity` query on `admin` read the same lines, so they would behave the same way. The Terraform module's defaults were changed after that run to `"Error: not authorized"` and `"fsxadmin:fsxadmin" -"Pending"`; this template was not changed (follow-up).
 
 > **File access audit logs** (NFS/SMB file operation records): To use Log Alarm with these, you need a custom pipeline that parses EVTX/XML via Lambda and forwards to CloudWatch Logs.
 
@@ -120,9 +124,11 @@ Examples:
 | Use Case | Query Filter | Aggregation | Threshold |
 |----------|-------------|-------------|-----------|
 | Sensitive file access | `filter @message like /confidential/` | `count(*)` | `> 0` |
-| Auth failure spike | `filter @message like /Failure/` | `count(*)` | `> 10` |
+| Authorization failure spike | `filter @message like /Error: not authorized/` | `count(*)` | `> 10` |
 | Bulk file deletion | `filter @message like /DELETE/` | `count(*)` | `> 50` |
-| Specific user activity | `filter @message like /admin/` | `count(*)` | `> 0` |
+| Specific user activity | `filter @message like /fsxadmin:fsxadmin/ and @message not like /Pending/` | `count(*)` | `> 0` |
+
+The authorization-failure and user-activity filters use substrings seen in real ONTAP 9.18.1P6 audit lines (see the result field note above); they replaced `/Failure/` and `/admin/` in this table, and were not run as Logs Insights queries. `/Error: not authorized/` matches requests that ONTAP rejected as not authorized for the command (HTTP 403 in that run), not failed logins: one wrong-password REST request (HTTP 401) wrote no audit line within the 40 seconds observed. `/DELETE/` counts both lines of each delete, so `> 50` corresponds to about 25 REST deletes. The template's own queries still use the earlier terms.
 
 The pattern:
 

@@ -56,6 +56,26 @@ run "defaults" {
     error_message = "The autosize-fail alarm wiring does not match the intended any-occurrence detection."
   }
 
+  # Default patterns checked with `aws logs test-metric-filter` against real
+  # ONTAP 9.18.1P6 audit lines (2026-10-09 run): one line per rejected REST
+  # request, per completed fsxadmin change, and per completed delete. The
+  # earlier defaults matched no real failure ("Failure"/"denied"/"DENIED"),
+  # every line ("admin"), and both lines of each delete.
+  assert {
+    condition     = aws_cloudwatch_log_metric_filter.this["failed-access"].pattern == "\"Error: not authorized\""
+    error_message = "The failed-access default must match ONTAP's ':: Error: not authorized for that command' result line."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_metric_filter.this["privileged-operations"].pattern == "\"fsxadmin:fsxadmin\" -\"Pending\""
+    error_message = "The privileged-operations default must match completed fsxadmin operations only, not every line containing 'admin'."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_metric_filter.this["bulk-delete"].pattern == "%DELETE.*::\\sSuccess|DELETE.*::\\sError|delete.*::\\sSuccess|delete.*::\\sError|remove.*::\\sSuccess|remove.*::\\sError%"
+    error_message = "The bulk-delete default must match only the result line of a delete, so the threshold counts operations."
+  }
+
   # Every alarm reads exactly the metric its own filter emits (name and
   # namespace), checked per detection key, not just for autosize-fail.
   assert {
