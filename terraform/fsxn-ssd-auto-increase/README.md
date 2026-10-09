@@ -10,7 +10,7 @@ This module shares no runtime code with the T2 custom-metrics module. T2 is an O
 
 Offline: `make terraform` runs `terraform fmt -check`, `terraform init -lockfile=readonly`, `terraform validate`, and `terraform test` (a mock `aws` provider and `command = plan`; the `archive` provider builds the real Lambda zip). It also runs `init` and `validate` on [`examples/basic/`](examples/basic/). The Lambda source in `shared/lambda/ssd_auto_increase/` has pytest unit tests against mocked boto3 (`fsx`, `cloudwatch`, `sns`, `s3`, `dynamodb`, `logs`) covering the guards and lock-state transitions in the design test plan, including the second pre-call snapshot (both guards reran), post-call archive-write failures pended as for `accepted`, the idempotent pending replay, the per-mode bucket-default retention matrix, blocked-report retry, the administrative-action status matrix, the `GetMetricData` utilization query (its dimensions, the value carried into reports and archive events, and the classification of a missing value), and multi-invocation chains (take-over with a new token, ceiling-reached release, delayed visibility over several runs, and a new token only after `not_accepted`). These are offline tests over mocks; the live rows in the design test plan (real file system, bucket, policy simulator) remain unrun.
 
-Live: not run. The module has not been applied to an AWS account, so everything that depends on a real file system is `unverified`: the alarm transitions, the deployer IAM policy, the Object Lock retention proof, and the one real increase. The live-verification workflow runs the reversible paths (notify_only, auto behind an IAM deny, lock and ceiling checks, policy simulation) first and keeps the one irreversible +10% increase gated on explicit approval. Until that run is recorded, apply the module in a non-production account first.
+Live: on 2026-10-09 the module was applied to one first-generation `SINGLE_AZ_1` file system with one HA pair and 1,024 GiB of SSD storage, with a compliance-mode archive bucket with a 1-day default retention ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09)). Verified there: `notify_only` on a real OK → ALARM transition, `approve`, the alarm-OK branch, `auto` behind an explicit IAM deny on `fsx:UpdateFileSystem` (one denied call, the `blocked` latch reported once, silence on the next run, an operator clear), at most one call from two concurrent invocations, lease contention and expired-lease take-over, the deploy-time `auto` + `GOVERNANCE` precondition, run-time `archive_retention_unproven` on a too-short bucket retention and on a denied intent write, compliance-mode retention of the archived versions read, and an IAM policy simulation of the execution role. The function made 4 `UpdateFileSystem` calls, all denied, and the capacity did not change. Still `unverified`: the one real increase and the cooldown after it, second generation and aggregate alarms, email delivery, the deployer IAM policy (the run used administrator access), and the positive controls of the decision-archive test. Three behaviours differ from the design wording (F1–F3 in the record); they are described under [Testing and operating a deployment](#testing-and-operating-a-deployment). Apply the module in a non-production account first.
 
 ## What it creates
 
@@ -46,7 +46,7 @@ It does **not** create the decision-archive S3 bucket. That is an existing Objec
 
 ## Obtaining the module
 
-The planned tag is `terraform-fsxn-ssd-auto-increase-v0.1.0`. It is **not yet created**; it is planned after the live run in [Verification status](#verification-status). Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository.
+The planned tag is `terraform-fsxn-ssd-auto-increase-v0.1.0`. It is **not yet created**. The 2026-10-09 live run in [Verification status](#verification-status) left the decision-archive row of the T4 completion criteria open, so the tag is planned after that row is recorded. Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository.
 
 The Lambda source is outside the module directory, in `shared/lambda/ssd_auto_increase/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for the sources below.
 
@@ -74,7 +74,7 @@ git checkout FETCH_HEAD
 
 ## Usage
 
-The sections below follow the order of a first deployment: prerequisites, permissions, input values, deployment, and removal.
+The sections below follow the order of a first deployment: prerequisites, permissions, input values, deployment, testing and operating, and removal.
 
 ### Prerequisites
 
@@ -127,6 +127,68 @@ module "ssd_auto_increase" {
   max_storage_capacity_gib = 2048
   decision_archive_bucket  = "<object-lock-bucket-name>"
 }
+```
+
+### Testing and operating a deployment
+
+These steps were used in the 2026-10-09 run. Run them from `examples/basic/` and replace the placeholders.
+
+Drive a test decision without changing the file system. Keep `mode = "notify_only"`, read the current SSD utilization, and set `trigger_threshold_percent` below it. In the run, the alarm went from OK to ALARM on real data 50 seconds after the threshold update and invoked the function once. To make the only computable target the minimum increase, set `max_storage_capacity_gib` to `ceil(current × 1.1)` (1,127 GiB for 1,024 GiB). Restore the threshold afterwards. `aws cloudwatch set-alarm-state` also works, but only until the next evaluation.
+
+```bash
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/FSx --metric-name StorageCapacityUtilization \
+  --dimensions Name=FileSystemId,Value=fs-0123456789abcdef0 Name=StorageTier,Value=SSD Name=DataType,Value=All \
+  --start-time 2026-01-01T00:00:00Z --end-time 2026-01-01T01:00:00Z \
+  --period 300 --statistics Average
+terraform apply -var trigger_threshold_percent=3
+# Afterwards
+terraform apply -var trigger_threshold_percent=80
+```
+
+Test `auto` without a real call. Attach an explicit deny on `fsx:UpdateFileSystem` to the execution role before applying `mode = "auto"`, and remove it only after `mode` is back to `notify_only`. The module's role defines no inline policy of that name, so Terraform plans leave it alone. The policy simulator reads the stored policy, so its `explicitDeny` does not show that the change has reached every endpoint; IAM changes are eventually consistent ([IAM troubleshooting](https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_general.html#troubleshoot_general_eventual-consistency)). Wait before the first `auto` run. In the run, the deny had been in place for 4 minutes before the first call, and that call was denied.
+
+```bash
+aws iam put-role-policy --role-name fsxn-ssd-auto-increase-role \
+  --policy-name deny-update-file-system \
+  --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":"fsx:UpdateFileSystem","Resource":"*"}]}'
+aws iam simulate-principal-policy \
+  --policy-source-arn arn:aws:iam::123456789012:role/fsxn-ssd-auto-increase-role \
+  --action-names fsx:UpdateFileSystem \
+  --resource-arns arn:aws:fsx:ap-northeast-1:123456789012:file-system/fs-0123456789abcdef0 \
+  --query 'EvaluationResults[0].EvalDecision'
+# After mode is back to notify_only
+aws iam delete-role-policy --role-name fsxn-ssd-auto-increase-role \
+  --policy-name deny-update-file-system
+```
+
+What each run leaves behind, as observed in the run:
+
+- An evaluation that makes no call (alarm OK, administrative action in progress, cooldown, ceiling reached) sends one report every time. With the default `rate(1 hour)` that is up to 24 reports a day while the alarm stays OK.
+- An `auto` call sends two reports: the pre-call report, then the result. A denied call ends in `blocked` and its report names the error code.
+- A run stopped by the `blocked` latch makes no call, sends no report, and writes no decision log line or archive object. Only the function's own log, `/aws/lambda/<name_prefix>-evaluator`, records it with `blocked latch holds`.
+- An `archive_retention_unproven` report carries `"lock_state": "calling"` although no call was made and the lock was released. Read `decision` and `detail` for this outcome.
+
+Clear a `blocked` latch after fixing its cause. Either change the configuration fingerprint (`max_storage_capacity_gib`, `increase_percent`, `mode` or `decision_archive_required_mode`) and apply, or record an operator disposition on the lock item with the evidence of the fix. The function applies the clear on its next invocation, archives a `reconciled` event under the original correlation ID, and re-evaluates in the same invocation. In `auto` with the alarm still in ALARM, that re-evaluation can call `UpdateFileSystem`.
+
+```bash
+aws dynamodb update-item --table-name fsxn-ssd-auto-increase-lock \
+  --key '{"file_system_id":{"S":"fs-0123456789abcdef0"}}' \
+  --update-expression 'SET disposition = :d, evidence = :e' \
+  --condition-expression '#s = :blocked' \
+  --expression-attribute-names '{"#s":"state"}' \
+  --expression-attribute-values '{":d":{"S":"cleared"},":e":{"S":"<what was fixed>"},":blocked":{"S":"blocked"}}'
+```
+
+Read the archive retention per object version. Each version's retain-until date is its creation time plus the bucket's default period; in the run, every version read showed `COMPLIANCE` and creation time + 1 day. The bucket cannot be emptied, and so cannot be deleted, before the latest retain-until date across its versions.
+
+```bash
+aws s3api list-object-versions --bucket <object-lock-bucket-name> \
+  --prefix fsx-ssd-auto-increase/fs-0123456789abcdef0/ \
+  --query 'Versions[].[Key,VersionId,LastModified]' --output text
+aws s3api get-object-retention --bucket <object-lock-bucket-name> \
+  --key fsx-ssd-auto-increase/fs-0123456789abcdef0/<correlation-id>/1-decision.json \
+  --version-id <version-id>
 ```
 
 ### Removing

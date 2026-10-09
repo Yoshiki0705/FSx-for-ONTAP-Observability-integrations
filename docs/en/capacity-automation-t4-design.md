@@ -4,7 +4,7 @@
 
 > **Status / audience / evidence tiers**
 >
-> Status: implemented at `terraform/fsxn-ssd-auto-increase/`, offline-verified (`terraform test`, `make terraform`, pytest); not yet run against a file system (live verification pending). Audience: engineers who build, review or test the T4 module for Amazon FSx for NetApp ONTAP. Readers deciding whether to automate at all should start with [Monitoring-Driven Capacity Automation](capacity-automation.md), which compares T4 with the AWS sample and a manual runbook. Evidence tiers: `documented` (stated on the cited AWS, HashiCorp or NetApp page, read 2026-10-07 or 2026-10-08), `code-inspected` (read from the AWS sample code, not executed), `hypothesis` (inferred, not checked), `open` (not answered by any source read). Values use placeholders (`fs-0123456789abcdef0`, `123456789012`, `ap-northeast-1`).
+> Status: implemented at `terraform/fsxn-ssd-auto-increase/`, offline-verified (`terraform test`, `make terraform`, pytest), and run on 2026-10-09 against one first-generation file system on the reversible paths, with no capacity change ([record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09)). The real increase has not run. Audience: engineers who build, review or test the T4 module for Amazon FSx for NetApp ONTAP. Readers deciding whether to automate at all should start with [Monitoring-Driven Capacity Automation](capacity-automation.md), which compares T4 with the AWS sample and a manual runbook. Evidence tiers: `documented` (stated on the cited AWS, HashiCorp or NetApp page, read 2026-10-07 or 2026-10-08), `code-inspected` (read from the AWS sample code, not executed), `hypothesis` (inferred, not checked), `open` (not answered by any source read). Values use placeholders (`fs-0123456789abcdef0`, `123456789012`, `ap-northeast-1`).
 
 ## Executive summary
 
@@ -295,10 +295,17 @@ The operator's role, not the function's, writes `disposition` on lock items and 
 The offline rows (deploy-time ceiling validation, target computation and
 guards, lock-state transitions, archive writes) have been executed: `terraform
 test` and the pytest suites under `shared/lambda/ssd_auto_increase/tests/` pass.
-The rows that touch a real file system, bucket or policy simulator (the
-`notify_only`, `approve`, IAM-deny, policy-simulation, concurrency,
-decision-archive and real-increase rows) have NOT been run; they stay the live
-verification that T4's completion still depends on.
+The live rows were run on 2026-10-09 on one first-generation, single-HA-pair
+file system ([record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09)).
+The `notify_only`, `approve`, IAM-deny, policy-simulation, alarm-OK and
+concurrency rows passed; in the concurrency row, reserved concurrency
+serialized the two invocations, and the lock lease paths were run separately.
+The decision-archive row is open: compliance-mode retention and the refused
+bypass delete were shown, but the positive controls for identities A and B were
+not run, and a run stopped by the `blocked` latch writes no archive object.
+The real-increase row was not run. The run also found two other differences
+from the wording below: every evaluation that makes no call sends a report, and
+an `archive_retention_unproven` report carries `lock_state` `calling`.
 
 | Test | Reversible | Expected evidence | Cost / risk |
 |---|---|---|---|
