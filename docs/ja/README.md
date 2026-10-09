@@ -23,8 +23,8 @@
 
 | やりたいこと | ガイド | 所要時間 |
 |---|---|---|
-| CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [Terraform による監視の展開ガイド](terraform-monitoring-guide.md)（モジュールの順序・前提条件・検証状況） · [ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md#使い方) · [Qtree と SnapMirror のカスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#使い方)（2026-10-08 に実環境で確認、1 つの SVM の中の SnapMirror） · [ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md#使い方)（監査の検出を 2026-10-09 に実環境で確認） · [SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md#使い方)（元に戻せる経路を 2026-10-09 に実環境で確認、実際の拡張は `未確認`） · [監視設計](monitoring-design.md#t1-モジュールの使い方と範囲) | — |
-| CloudWatch による FSx for ONTAP の監視を CloudFormation で設定 | [監視設計の「CloudWatch による監視」](monitoring-design.md#cloudwatch-による監視)（テンプレートごとに作るもの・パラメータ・検証状況） · [ダッシュボードと容量・スループットのアラーム](../../shared/templates/fsxn-monitoring-dashboard.yaml)（2026-10-05 に実環境で確認） · [Qtree クォータのポーラー](../../shared/templates/qtree-quota-monitor.yaml)（2026-10-06 に実環境で確認） · [監査ログの配信経路のセットアップガイド](syslog-vpce-setup-guide.md)（[`syslog-vpce-cloudwatch.yaml`](../../shared/templates/syslog-vpce-cloudwatch.yaml)） · [ログアラーム](cloudwatch-log-alarm.md)（[`cloudwatch-log-alarm.yaml`](../../shared/templates/cloudwatch-log-alarm.yaml)。スタックの配備と OK への遷移を 2026-07-02 に確認。失敗アクセス・大量削除・特定ユーザーのクエリは LogAlarm のクエリとして `未確認`） | — |
+| CloudWatch による FSx for ONTAP の監視を Terraform で設定 | [Terraform による監視の展開ガイド](terraform-monitoring-guide.md)（[モジュールの一覧](terraform-monitoring-guide.md#モジュールの一覧)・[推奨する展開の順序](terraform-monitoring-guide.md#推奨する展開の順序)・[確認済みの範囲と未確認の範囲](terraform-monitoring-guide.md#確認済みの範囲と未確認の範囲)） | — |
+| CloudWatch による FSx for ONTAP の監視を CloudFormation で設定 | [監視設計の「CloudWatch による監視」](monitoring-design.md#cloudwatch-による監視)（[性能・容量ダッシュボード](monitoring-design.md#性能容量ダッシュボード)・[Qtree 単位のクォータ監視](monitoring-design.md#qtree-単位のクォータ監視)・[ログベースアラーム](monitoring-design.md#ログベースアラーム)） · [監査ログの配信経路のセットアップガイド](syslog-vpce-setup-guide.md) | — |
 
 ### ベンダーへのログ配信
 
