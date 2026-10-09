@@ -485,12 +485,17 @@ def _execution_role_problems(
             problems.append(f"{sid}: must use Resource \"*\", found {resource}")
         if actions != expected:
             problems.append(f"{sid}: actions {sorted(actions)} differ from {sorted(expected)}")
-    for sid, (actions, _) in statements.items():
+    for sid, (actions, resource) in statements.items():
         if sid in registered:
             continue
         unscopable = sorted(actions & NO_RESOURCE_TYPE_ACTIONS)
         if unscopable:
             problems.append(f"{sid}: {unscopable} have no resource type and cannot be scoped")
+        # The converse: Resource "*" is reserved for the registered
+        # no-resource-type statements, so a scopable action cannot be widened
+        # to every resource by an unregistered statement.
+        if resource == '"*"':
+            problems.append(f'{sid}: Resource "*" on an unregistered statement {sorted(actions)}')
     return problems
 
 
@@ -554,6 +559,15 @@ def test_execution_role_check_controls() -> None:
     )
     parsed = _execution_role_statements(block(alarms + widened))
     assert any("differ from" in p for p in _execution_role_problems(registered, parsed))
+    # A scopable action widened to Resource "*" by an unregistered statement.
+    alarms_wildcard = alarms.replace(
+        "Resource = values(local.trigger_alarm_arns)", 'Resource = "*"'
+    )
+    parsed = _execution_role_statements(block(alarms_wildcard + wildcard))
+    assert any(
+        'DescribeAlarms: Resource "*" on an unregistered statement' in p
+        for p in _execution_role_problems(registered, parsed)
+    )
     # Moved into a scoped statement under another Sid.
     moved = alarms.replace(
         'Action   = "cloudwatch:DescribeAlarms"',
