@@ -4,7 +4,7 @@
 
 ## Entry points
 
-- [README](README.md): Repository hub with the task-oriented "Get Started" table.
+- [README](README.md): Repository hub with the task-oriented "Get Started" tables, grouped by category: choosing an approach; building CloudWatch monitoring with Terraform (T1 to T4 modules) or with CloudFormation (dashboard, qtree quota, syslog delivery and log-alarm templates); shipping logs to a vendor; security response and management; partner PoC. The Japanese entry point is [docs/ja/README.md#はじめ方](docs/ja/README.md#はじめ方).
 - [Documentation index (English)](docs/en/README.md): Every document by category, generated from one category map.
 - [ドキュメント索引 (Japanese)](docs/ja/README.md): The same index in Japanese, same set of documents.
 - [AGENTS.md](AGENTS.md): Conventions, commands, boundaries, and output standards for coding agents.

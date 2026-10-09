@@ -5,22 +5,51 @@
 
 🌐 [日本語](docs/ja/README.md) | **English**
 
+日本語で読む方は [日本語版の「はじめ方」](docs/ja/README.md#はじめ方) から始めてください。
+
 > Ship Amazon FSx for NetApp ONTAP audit logs to 9 observability vendors — plus EMS events and FPolicy file operations on 9 of them (3 of those paths E2E verified so far) — EC2-free, serverless, via FSx for ONTAP S3 Access Points. Community reference implementation for AWS + storage operations teams. See the [telemetry path coverage](#telemetry-path-coverage) matrix for the per-vendor breakdown.
 
 ## Get Started
 
+Pick the table for the category closest to what you want to do, and open the first page it lists. If you have not chosen an approach yet, start with the first table.
+
+### Choosing an approach
+
 | I want to... | Guide | Time |
 |---|---|---|
 | **Decide how to monitor FSx for ONTAP at all** — not settled on an approach yet | [Adoption Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | 10 min |
-| Monitor FSx for ONTAP with CloudWatch using Terraform | [Terraform monitoring guide](docs/en/terraform-monitoring-guide.md) ([日本語](docs/ja/terraform-monitoring-guide.md)): module order, prerequisites, verification status · [Terraform module](terraform/fsxn-monitoring-dashboard/README.md#usage) · [Monitoring design](docs/en/monitoring-design.md#t1-module-usage-and-scope) | — |
+
+### Building CloudWatch monitoring
+
+Both routes build CloudWatch dashboards and alarms. Choose by how you manage infrastructure: Terraform if you already hold state in Terraform, CloudFormation if you already deploy with stacks or StackSets. CloudFormation templates exist for the dashboard and capacity alarms (T1), the qtree quota part (part of T2) and the log alarms (T3); the SnapMirror collector and the SSD auto-increase sample (T4) exist only as Terraform. Either way, the syslog delivery path that brings the audit log into CloudWatch Logs is a CloudFormation template.
+
+| I want to... | Guide | Time |
+|---|---|---|
+| Monitor FSx for ONTAP with CloudWatch using Terraform | [Terraform monitoring guide](docs/en/terraform-monitoring-guide.md) ([日本語](docs/ja/terraform-monitoring-guide.md)): module map, deployment order, verification status | — |
+| Monitor FSx for ONTAP with CloudWatch using CloudFormation | [Monitoring design: CloudWatch monitoring](docs/en/monitoring-design.md#cloudwatch-monitoring) ([日本語](docs/ja/monitoring-design.md#cloudwatch-による監視)): what each template builds, with the [audit-log delivery setup guide](docs/en/syslog-vpce-setup-guide.md) | — |
+
+### Shipping logs to a vendor
+
+| I want to... | Guide | Time |
+|---|---|---|
 | Validate the pipeline end-to-end (first time) | [Minimum Test Path](docs/en/quick-start-minimum.md) | 15 min |
 | Deploy a vendor integration to production | [Deployment Guide](docs/en/deployment-guide.md) | 30 min |
-| Respond to ransomware at the storage layer | [Automated Incident Response](docs/en/automated-response-guide.md) | 20 min |
-| Route logs to multiple backends with redaction | [OTel Collector](integrations/otel-collector/) | 45 min |
-| Manage FSx for ONTAP via browser GUI | [Management Console](management-console/) · [Management-plane decision tree](docs/en/decision-tree-management-monitoring.md) | 30 min |
-| Run a partner PoC with success criteria | [PoC Success Criteria](docs/en/poc-success-criteria.md) · [Solution Brief](docs/en/partner-solution-brief.md) | — |
+| Route logs to multiple backends with redaction | [OTel Collector setup guide](integrations/otel-collector/docs/en/setup-guide.md) · [Routing and filtering examples](integrations/otel-collector/docs/en/routing-filtering-examples.md) | 45 min |
 
 > **One-command setup** per vendor: `bash integrations/<vendor>/scripts/setup-full-observability.sh`
+
+### Security response and management
+
+| I want to... | Guide | Time |
+|---|---|---|
+| Respond to ransomware at the storage layer | [Automated Incident Response](docs/en/automated-response-guide.md) | 20 min |
+| Manage FSx for ONTAP via browser GUI | [Management Console setup guide](management-console/docs/en/setup-guide.md) · [Management-plane decision tree](docs/en/decision-tree-management-monitoring.md) | 30 min |
+
+### Partner PoC
+
+| I want to... | Guide | Time |
+|---|---|---|
+| Run a partner PoC with success criteria | [PoC Success Criteria](docs/en/poc-success-criteria.md) · [Solution Brief](docs/en/partner-solution-brief.md) | — |
 
 ## What this repository answers, and what it does not
 
@@ -184,7 +213,9 @@ documents, see the docs README in either language:
 | [FSx-for-ONTAP-Agentic-Access-Aware-RAG](https://github.com/Yoshiki0705/FSx-for-ONTAP-Agentic-Access-Aware-RAG) | Access-aware Agentic RAG with Bedrock |
 | [FSx-for-ONTAP-Adoption-Playbook — Observability](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/en/domains/observability/README.md) | **Which collection route to choose**, before building one |
 
-That last link is the module hub, not a note — notes get renamed. Read it first if you have
+That last link is the module hub, not a note — notes get renamed. The hub also has a
+[Japanese version](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/observability/README.md).
+Read the hub first if you have
 not settled on a route: this repository implements one of the four (ship logs to the
 observability platform you already run) and does not argue that it is the right one for
 every case. The hub also records limits that surface once a forwarding path is live —
