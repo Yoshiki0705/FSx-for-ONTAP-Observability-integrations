@@ -4,7 +4,7 @@
 
 ## 実施概要
 
-このページは 5 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。2026-10-08 には、Terraform のカスタムメトリクスモジュール（フェーズ T2、Qtree と SnapMirror）を適用し、1 つの SVM の中の関係で SnapMirror のアラームを動かしました: [2026-10-08 の Terraform カスタムメトリクスモジュールの実行](#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。
+このページは 6 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。2026-10-08 には、Terraform のカスタムメトリクスモジュール（フェーズ T2、Qtree と SnapMirror）を適用し、1 つの SVM の中の関係で SnapMirror のアラームを動かしました: [2026-10-08 の Terraform カスタムメトリクスモジュールの実行](#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。2026-10-09 には、Terraform のログアラームモジュール（フェーズ T3）を syslog VPC エンドポイント経路のロググループに適用し、実際の ONTAP の監査ログの行でアラームを動かしました。記録は [2026-10-09 の Terraform ログアラームモジュールの実行](#2026-10-09-の-terraform-ログアラームモジュールの実行)にあります。
 
 2026-10-05（UTC）に、CloudFormation のダッシュボードテンプレート `shared/templates/fsxn-monitoring-dashboard.yaml` と Terraform モジュール `terraform/fsxn-monitoring-dashboard/` を、実在する Amazon FSx for NetApp ONTAP ファイルシステム 1 つに対してデプロイしました。対象は第 1 世代、`SINGLE_AZ_1`、HA ペア 1 つです。ダッシュボードのすべての系列がデータを返し、すべてのアラームが INSUFFICIENT_DATA を抜けて OK に達しました。Terraform のボリューム単位のアラーム 2 つは、ALARM に遷移させてから OK に戻すところまで確認しました。ファイルシステムの容量アラーム（CloudFormation と Terraform）は ALARM に遷移させられませんでした。閾値の下限（50%）が、観測した利用率（約 3.5%）を上回るためです（[F1](#所見) を参照）。この実行では、テンプレートとモジュールに欠陥は見つかっていません。2026-10-07 に見つかったダッシュボードの表示の欠陥は、[所見](#所見) の補足に記載しています。
 
@@ -910,10 +910,267 @@ tags                             = { Purpose = "t2-live-verification" }
 
 ---
 
+## 2026-10-09 の Terraform ログアラームモジュールの実行
+
+2026-10-09（UTC）に、Terraform モジュール `terraform/fsxn-log-alarm/`（フェーズ T3）を、CloudWatch Logs のロググループに適用しました。このロググループは、HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` の FSx for ONTAP ファイルシステム 1 つの管理監査ログを、[syslog-vpce-setup-guide.md](syslog-vpce-setup-guide.md) の syslog VPC エンドポイント経路で受け取っています。これは 1 つのファイルシステムでのサンプル実行です。監査ログの行は、踏み台ホストからテスト用ボリュームとテスト用の ONTAP ユーザーに対して REST API を呼んで発生させました。
+
+仕組みは動きました。すべてのアラームが INSUFFICIENT_DATA を抜け、`bulk-delete`、`privileged-operations`、`failed-access-rest403` は、一致する行が届いたときに OK → ALARM → OK と遷移しました。OK から ALARM への遷移は、最初に一致した操作から 13–74 秒後で、行が 60 秒の期間のどこに入ったかによって変わりました。OK への復帰は、一致の無い後の 1 分で起きました（アラームごとの値は[アラームの状態遷移](#アラームの状態遷移t3-の実行)）。`50f1f18` で同梱していた既定のパターンのうち 2 つは、実際の ONTAP の監査ログの行に合いませんでした。`privileged-operations` の既定値 `"admin"` は 5,156 行中 5,150 行に一致し、そのアラームはファイルシステム自身の管理の通信（ユーザー `fsx-control-plane` が書く行）で ALARM のままでした（F3）。`failed-access` の既定値 `?"Failure" ?"denied" ?"DENIED"` は、実際の認可の失敗 5 件のどれにも一致しませんでした（F4）。`autosize-fail` のレシピは、実際の `wafl.vol.autoSize.fail` イベントでは発報させていません。確認したのは、NetApp の EMS リファレンスから組み立てた行に対する `aws logs test-metric-filter` だけで、そもそも監査ログの転送先は EMS イベントを運びません（F8）。配送経路では、TLS のポート 6514 は何も届けず（F6）、`main` の共有 syslog テンプレートはスタックを作成できず（F1）、約 4–5 分の無通信の後の最初の操作が 3 回失われました（F9）。実行には `50f1f18` のモジュールを変更せずに使いました。実行の後に、`failed-access`・`privileged-operations`・`bulk-delete` の既定値を、取り込んだ行で確かめたパターンに置き換えました（F3–F5）。
+
+| 項目 | 値 |
+|------|-----|
+| 検証日時 | 2026-10-09、03:55Z より前から 05:31Z（UTC）。04:48:55Z の後に画面の撮影のための中断を含む |
+| 検証環境 | テスト環境（`ap-northeast-1`）。テスト用ボリューム 1 つ、テスト用の ONTAP ユーザー 1 つ、syslog VPC エンドポイント 1 つでのサンプル実行 |
+| 範囲 | syslog の配送経路（テンプレート、syslog configuration、ONTAP の監査ログの転送先）、監査ログの行の形、実際の行に対する `test-metric-filter`、モジュールのデプロイ、6 つの検知のアラームの状態遷移、後片付け。EMS の syslog への配送は範囲外 |
+| 結果 | 確認項目 18 件中 10 件が合格、1 件が回避策の後に合格（M1、F1）。期待値が成り立たなかったものが 4 件（M3、A5、A6、D1）、結果が分かれたものが 1 件（M7）、未実施が 1 件（A7）、2 つの項目を残して後片付けを終えたものが 1 件（M9） |
+
+この結果は、第 1 世代・HA ペア 1 つのファイルシステム 1 つでの 1 回の実行から得たもので、期間 60 秒と閾値はテストのために選んだ値です。示すのは、モジュールのメトリクスフィルターとアラームが、syslog VPC エンドポイント経由で届いた実際の監査ログの行を評価することです。EMS の配送、モジュールの既定の期間 300 秒での挙動、負荷時の挙動、第 2 世代や HA ペアが 2 つ以上のファイルシステムでの挙動は示しません。
+
+### 環境とデプロイした構成（T3 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| AWS リージョン | `ap-northeast-1` |
+| ファイルシステム | `fs-0123456789abcdef0`（プレースホルダー）、`SINGLE_AZ_1`（第 1 世代）、HA ペア 1 つ |
+| ONTAP のバージョン | NetApp Release 9.18.1P6 |
+| SVM | `<svm-name>`（プレースホルダー）。ファイルシステムに既存の SVM |
+| ソースのリビジョン | `main` の `50f1f18`（#123 の後）。実行のためにモジュールは変更していない。実行の後に既定のパターン 3 つを置き換えた（F3–F5） |
+| Terraform / プロバイダー | Terraform v1.15.8、`hashicorp/aws` 6.67.0 |
+| syslog の経路 | `shared/templates/syslog-vpce-cloudwatch.yaml` の一時的なコピーから作ったスタック `fsxn-t3check-syslog`。変更はセキュリティグループの説明だけ（F1）。`LogRetentionDays=1`、ロググループ `/syslog/fsxn-t3check-audit`、ファイルシステムのサブネットに interface エンドポイント 1 つ。実行前の VPC に `syslog-logs` のエンドポイントは無く、プライベート DNS の競合は無し |
+| syslog configuration | `shared/scripts/create-syslog-configuration.py`（HTTP 200） |
+| ONTAP の監査ログの転送先 | エンドポイントの IP、ポート 1514、`tcp_unencrypted`、facility `local7`。ポート 6514・`tcp_encrypted` の 2 つ目の転送先は何も届けなかった（M3） |
+| 監査の設定 | `GET /api/security/audit` は `cli: false`、`http: false`、`ontapi: false` を返し、GET の要求は監査の対象外。変更していない |
+| テスト用ボリューム | `t3_audit_vol`、1024 MiB、ジャンクションパス `/t3_audit_vol`、ストレージ効率は無効、スナップショットポリシー none、階層化ポリシー `NONE`。`aws fsx create-volume` で作成（`JunctionPath` が必須で、指定しない最初の呼び出しは `BadRequest`） |
+| ONTAP ユーザー | 変更の操作には `fsxadmin`。認可の失敗を発生させるために `t3-alarm-ro`（アプリケーション `http`、パスワード認証、ロール `fsxadmin-readonly`）。そのパスワードは Secrets Manager のシークレットに保存し、そのシークレットだけに、踏み台ホストのロールが読めるリソースポリシーを付けた |
+| デプロイした主体 | 管理者権限を持つ AWS IAM Identity Center（SSO）のセッション |
+
+モジュールは、一時的なルート構成から、`source` に `50f1f18` のモジュールのローカルの絶対パスを指定し、次の検知で呼び出しました。どの検知も期間 60 秒、評価期間 1 のうち 1、閾値は注記が無ければ 0 です。`notification_email` と `alarm_sns_topic_arn` は指定していないため、SNS トピックは作成されず、どのアラームにもアクションはありません。
+
+```hcl
+log_group_name = "/syslog/fsxn-t3check-audit"
+name_prefix    = "fsxn-t3check"
+detections = {
+  autosize-fail            = { pattern = "\"wafl.vol.autoSize.fail\"", threshold = 0, period_seconds = 60 }
+  failed-access            = { pattern = "?\"Failure\" ?\"denied\" ?\"DENIED\"", threshold = 0, period_seconds = 60 }
+  failed-access-rest403    = { pattern = "\"Error: not authorized\"", threshold = 0, period_seconds = 60 }
+  bulk-delete              = { pattern = "?\"DELETE\" ?\"delete\" ?\"remove\"", threshold = 2, period_seconds = 60 }
+  privileged-operations    = { pattern = "\"fsxadmin:fsxadmin\" -\"Pending\"", threshold = 0, period_seconds = 60 }
+  privileged-default-admin = { pattern = "\"admin\"", threshold = 0, period_seconds = 60 }
+}
+tags = { Purpose = "t3-live-verification" }
+```
+
+`autosize-fail`、`failed-access`、`bulk-delete` は `50f1f18` で同梱していたパターンのままです。`failed-access-rest403` と `privileged-operations` は、`test-metric-filter` の結果（M7）から提案したパターンを使っています。この 2 つは、いまの `failed-access` と `privileged-operations` の既定値です。`privileged-default-admin` は、F3 を実際のアラームで観測するために、同梱の `privileged-operations` のパターン `"admin"` をそのまま使っています。`unauthorized-access` は、同梱のパターンがプレースホルダーのパスなので外しました。
+
+### 確認項目の結果（T3 の実行）
+
+| # | 確認項目 | 結果 | 時刻（UTC） |
+|---|----------|------|-------------|
+| M0 | 事前確認: 認証主体、ファイルシステム、VPC エンドポイント、ONTAP の監査ログの転送先と監査の設定 | ✅ 合格。VPC に `syslog-logs` のエンドポイントは無し。ONTAP には、すでに存在しないエンドポイントの IP を指す古い転送先が 2 つ（ポート 1514 と 6514）あった。記録したうえで、承認を得て後片付けで削除した。残っていた理由は特定していない | 03:55:03Z の前 |
+| M1 | `shared/templates/syslog-vpce-cloudwatch.yaml` をそのままデプロイ | ⚠️ 回避策の後に合格。スタックは失敗した（`ROLLBACK_COMPLETE`）。EC2 がセキュリティグループの説明を拒否した（F1）。ロググループは保持の設定のためロールバック後も残り、再試行の前に削除した。1 行を直した一時的なコピーでは、約 1 分 40 秒でスタックが作成された | 03:55:03Z、03:59:43Z → 04:01:21Z |
+| M2 | syslog configuration の作成 | ✅ 合格。HTTP 200。`aws logs list-syslog-configurations` に表示された（F2） | 04:02:30Z |
+| M3 | エンドポイントの IP を指定した、ポート 6514・`tcp_encrypted` の ONTAP の転送先 | ❌ 期待値は成り立たなかった。`POST` は 201 を返した（ONTAP は `verify_server: true` を設定）が、約 4 分後もロググループのストリームは 0 で、エラーを報告する EMS イベントも無かった。ホスト名での指定は、クラスターが名前を解決できないため拒否された（F6） | 04:03:40Z → 04:07:36Z |
+| M4 | ポート 1514・`tcp_unencrypted` の ONTAP の転送先 | ✅ 合格。最初の行（この `POST` 自身の `Pending` の行）が約 3 秒後に届いた | 04:07:33Z → 04:07:36Z |
+| M5 | テスト用ボリューム、テスト用の ONTAP ユーザー、シークレット | ✅ 合格（計画からの変更あり）。`fsxadmin` はロール `readonly` を割り当てられなかった（403、"not authorized for that command"）。クラスターのロールは `autosupport`、`backup`、`fsxadmin`、`fsxadmin-readonly`、`none`、`snaplock`。ユーザーは `fsxadmin-readonly` で作成した | 04:05:54Z → 04:14:09Z |
+| M6 | 変更の操作、GET、403、401 の監査ログの行の形 | ✅ 合格（観測）。変更の操作は 1 回ごとに 2 行を書いた。`:: Pending` と、続いて `:: Success:` か `:: Error: not authorized for that command`。GET は行を書かなかった。誤ったパスワードによる 401 は、40 秒以内に行を書かなかった。アカウント作成の行では、パスワードは `***` と表示された | 04:09:36Z → 04:18:07Z |
+| M7 | 実際の行に対する、同梱のパターンでの `aws logs test-metric-filter` | ⚠️ 結果が分かれた。`bulk-delete` は REST の削除に一致した（1 回につき 2 行）。`privileged-operations` の `"admin"` はほぼすべての行に一致した（F3）。`failed-access` は実際の失敗のどれにも一致しなかった（F4）。`autosize-fail` は、EMS が無いので想定どおり実際の行に一致しなかった。`unauthorized-access` は、プレースホルダーのパスなので想定どおり何にも一致しなかった。詳細は[実際のログ行に対するフィルターパターンの一致](#実際のログ行に対するフィルターパターンの一致t3-の実行) | 04:17Z、04:20Z、05:24:40Z の前 |
+| M8 | `terraform apply` | ✅ 合格。約 3 秒で 12 件追加（メトリクスフィルター 6、アラーム 6）。04:23:18Z にすべてのアラームが INSUFFICIENT_DATA | 04:23:15Z |
+| A1 | すべてのアラームが INSUFFICIENT_DATA を抜ける | ✅ 合格。5 つが OK、`privileged-default-admin` が ALARM | 04:24:09Z → 04:25:05Z |
+| A2 | `privileged-operations`（`"fsxadmin:fsxadmin" -"Pending"`）: `fsxadmin` の変更の操作で OK → ALARM、その後 OK | ✅ 合格、3 回 | 04:37:19Z、04:40:19Z、04:48:19Z |
+| A3 | `bulk-delete`（同梱のパターン、閾値 2）: REST での Qtree の削除 4 回で OK → ALARM → OK | ✅ 合格。04:39 の分に一致した行が 4、04:40 の分に 4 | 04:40:05Z → 04:42:05Z |
+| A4 | `failed-access-rest403`（`"Error: not authorized"`）: 拒否された要求 3 回で OK → ALARM → OK | ✅ 合格。04:41 の分に 3 行 | 04:42:09Z → 04:44:09Z |
+| A5 | `failed-access`（同梱のパターン）が、同じ拒否された要求 3 回で ALARM に達する | ❌ 期待値は成り立たなかった。データポイントのあるどの分でもメトリクスは 0（F4） | 04:41Z 以降 |
+| A6 | `privileged-default-admin`（同梱の `"admin"`）が、操作する人がいない間 OK のまま | ❌ 期待値は成り立たなかった。`fsx-control-plane` の管理の通信により 04:24:53Z から ALARM で、撮影時も ALARM のまま（F3） | 04:24:53Z 以降 |
+| A7 | `autosize-fail` が実際の `wafl.vol.autoSize.fail` イベントで ALARM に達する | ⏭️ 未実施。実際のイベントは発生させておらず、監査ログの転送先は EMS イベントを運ばない（F8）。アラームは OK のまま | — |
+| D1 | すべての変更の操作がロググループに届く | ❌ 期待値は成り立たなかった。エンドポイントが無通信の接続を閉じた後の最初の操作が、3 回失われた（F9） | 04:26:37Z、04:35:39Z、04:47:21Z |
+| M9 | 後片付けと再読み取り | ⚠️ 2 つの項目を残して完了（[後片付け（T3 の実行）](#後片付けt3-の実行)を参照） | 05:24:40Z → 05:31Z |
+
+### 配送経路の観測（T3 の実行）
+
+ポート 6514・`tcp_encrypted` は、新しいエンドポイントを指す唯一の転送先だった間（04:03:40Z から 04:07:33Z）何も届けず、その後も何も届けていません。2 つの転送先が両方あった間、04:07–04:17 の 780 イベントには 780 の異なる ONTAP のシーケンス番号があり、同じ行が 2 回届いたことはありませんでした。ONTAP はその転送先に `verify_server: true` を設定し、セッションの失敗について EMS イベントを書きませんでした。原因は推定であり、確認していません。ONTAP のサーバー証明書の確認が IP アドレスとエンドポイントの証明書の名前を照合できず、クラスターが `syslog-logs.<region>.amazonaws.com` を解決できないため、ホスト名での指定も使えない、と考えています。ポート 1514・`tcp_unencrypted` は約 3 秒で届きました。
+
+ロググループには、操作する人が始めたのではない管理の操作（ユーザー `fsx-control-plane`、ロール `admin`）が毎分約 80 行届いていました。たとえば `set -privilege diagnostic`、`security login unlock -username diag`、`POST /api/private/cli`、`Logging out` です。同梱の `"admin"` のパターンが一致するのはこの通信です（F3）。
+
+3 つの操作はロググループに届きませんでした。どれも HTTP 201 を返しました。1 つ目については、ONTAP 自身の `GET /api/security/audit/messages` が、ノード `-02` でのその操作（`Pending` と成功のエントリ、04:26:37Z）を一覧に出しました。残りの 2 つでは、その一覧は読んでいません。どれも `SyslogConnectionsClosed` が記録された後の最初の操作で、その前にノード `-02` から転送される行が止まっていました。
+
+| 操作 | 失われた時刻（UTC） | その前の `SyslogConnectionsClosed` | 次の操作（届いた） |
+|------|---------------------|------------------------------------|---------------------|
+| `fsxadmin` による Qtree `t3_qt1` の POST | 04:26:37Z | 04:22（ノード `-02` の最後の行は 04:17:53Z） | 操作はしていない。ノード `-02` は 04:27 に次の行で再接続した |
+| `fsxadmin` による Qtree `t3_qt2` の POST | 04:35:39Z | 04:32（ノード `-02` の最後の行は 04:27:56Z） | 20 秒後の `t3_qt3` の POST。04:36:05Z に届いた |
+| `fsxadmin` による Qtree `t3_qt6` の POST | 04:47:21Z | 04:46（ノード `-02` の最後の行は 04:41:13Z） | 18 秒後の `t3_qt7` の POST。届いた |
+
+`AWS/Logs` の `SyslogConnectionsEstablished` と `SyslogConnectionsClosed` はディメンションを持ちません。`SyslogMessagesReceived` はロググループごとで、04:26 のデータポイントがありませんでした。アカウントには `SyslogMessagesDropped` の系列が無く、損失を数えた AWS のメトリクスはありません。次の仕組みはメトリクスの時刻からの推定であり、確認していません。エンドポイントは約 4–5 分無通信の接続を閉じ、ONTAP は次に書き込むときまでそれに気づかず、閉じた接続に書いた行が失われます。閉じた接続がノード `-02` のものだったことも、ディメンションの無い `SyslogConnectionsClosed` の時刻が、ノード `-02` の最後の行の 4–5 分後にあたることからの推定です。ノード `-01` ではこの実行中に起きていません。`fsx-control-plane` の操作が 5–6 分ごとに届いていました。
+
+### アラームの状態遷移（T3 の実行）
+
+アラームの履歴（`StateUpdate`）より、UTC。アラーム名はすべて `fsxn-t3check-` で始まります。
+
+| アラーム | 遷移 | 時刻 | 原因 |
+|----------|------|------|------|
+| `failed-access-rest403` | INSUFFICIENT_DATA → OK | 04:24:09Z | 初回の評価、一致無し |
+| `privileged-operations` | INSUFFICIENT_DATA → OK | 04:24:19Z | 同上 |
+| `failed-access` | INSUFFICIENT_DATA → OK | 04:24:39Z | 同上 |
+| `autosize-fail` | INSUFFICIENT_DATA → OK | 04:24:50Z | 同上 |
+| `privileged-default-admin` | INSUFFICIENT_DATA → ALARM | 04:24:53Z | `fsx-control-plane` の行。操作する人の活動は無し |
+| `bulk-delete` | INSUFFICIENT_DATA → OK | 04:25:05Z | 初回の評価、一致無し |
+| `privileged-operations` | OK → ALARM | 04:37:19Z | `t3_qt3` の POST の `Success:` の行。04:36:05Z に取り込み |
+| `privileged-operations` | ALARM → OK | 04:38:19Z | 次の分に一致無し |
+| `bulk-delete` | OK → ALARM | 04:40:05Z | 04:39 の分に 4 行、> 2 |
+| `privileged-operations` | OK → ALARM | 04:40:19Z | Qtree の作成と削除 |
+| `bulk-delete` | ALARM → OK | 04:42:05Z | 0 行 |
+| `failed-access-rest403` | OK → ALARM | 04:42:09Z | 04:41 の分に 3 行 |
+| `privileged-operations` | ALARM → OK | 04:42:19Z | 0 行 |
+| `failed-access-rest403` | ALARM → OK | 04:44:09Z | 0 行 |
+| `privileged-operations` | OK → ALARM | 04:48:19Z | `t3_qt7` の POST の `Success:` の行 |
+
+`failed-access` と `autosize-fail` は OK のままでした。`privileged-default-admin` は ALARM を抜けませんでした。
+
+OK → ALARM の遷移ごとの、最初に一致した操作から状態が変わるまでの時間です。取り込みの時刻を読んだのは `t3_qt3` の行だけで、ほかの行は REST の呼び出しの時刻から測っています。呼び出しの時刻は、取り込みより数秒早くなります。
+
+| アラーム | 操作（UTC） | OK → ALARM（UTC） | 経過 |
+|----------|-------------|-------------------|------|
+| `privileged-operations` | `t3_qt3` の `Success:` の行、04:36:05Z に取り込み | 04:37:19Z | 74 秒 |
+| `privileged-operations` | 04:39:17Z の `t3_qt4` と `t3_qt5` の POST | 04:40:19Z | 約 62 秒 |
+| `bulk-delete` | 04:39:52Z の最初の Qtree の DELETE | 04:40:05Z | 約 13 秒 |
+| `failed-access-rest403` | 04:41:04Z から 04:41:13Z の拒否された POST | 04:42:09Z | 約 56–65 秒 |
+| `privileged-operations` | 04:47:39Z の `t3_qt7` の POST | 04:48:19Z | 約 40 秒 |
+
+この実行を通して、各アラームの状態は毎分同じ秒に変わりました（`bulk-delete` は :05、`failed-access-rest403` は :09、`privileged-operations` は :19）。そのため経過時間は、行がその秒の何秒前に届いたかで決まります。
+
+`FSxONTAP/LogAlarm` の 60 秒ごとの Sum で、データポイントのある分です（`get-metric-data`、04:47Z より前に読み取り）。
+
+| メトリクス | 値 |
+|------------|-----|
+| `fsxn-t3check-failed-access-rest403` | 04:41 = 3、ほかは 0 |
+| `fsxn-t3check-bulk-delete` | 04:39 = 4、04:40 = 4、ほかは 0 |
+| `fsxn-t3check-privileged-operations` | 04:36 = 1、04:39 = 4、04:40 = 2、ほかは 0 |
+| `fsxn-t3check-privileged-default-admin` | 04:23 = 5、04:27 = 387、04:28 = 5、04:33 = 376、04:36 = 2、04:37 = 16、04:38 = 16、04:39 = 368、04:40 = 4、04:41 = 87、04:43 = 5、04:44 = 373 |
+| `fsxn-t3check-failed-access`、`fsxn-t3check-autosize-fail` | データポイントのあるどの分でも 0 |
+
+行がまったく届かなかった分にはデータポイントがありません。`default_value = "0"` が出るのは、行が届いてどれも一致しなかったときだけです。`privileged-default-admin` は 1–4 分の空白をまたいで ALARM のままでした。理由は推定であり、確認していません。まばらなデータに対して CloudWatch が最後の閾値超過のデータポイントを使い続けたため、`treat_missing_data = "notBreaching"` によって OK に戻らなかったと考えています。
+
+![CloudWatch のアラーム一覧を fsxn-t3check で絞り込んだ画面: メトリクスアラーム 6 件、すべてアクションなし。privileged-default-admin は 04:24:53 から ALARM、ほかの 5 件は OK。条件は fsxn-t3check-bulk-delete>2（1 データポイント、1 分以内）など。コンソールのナビゲーションバーとフッターは切り取り済み](../screenshots/cloudwatch-log-alarm/01-alarm-list.png)
+
+アラーム一覧は、`privileged-operations` が 04:49:19Z に OK に戻った後、中断の間に撮影しました。`privileged-default-admin` は ALARM で、最終状態の更新は 04:24:53Z です。
+
+![fsxn-t3check-bulk-delete のアラームの詳細、3 時間の範囲（UTC）: Count のグラフは 04:40 付近で 4 に達して破線の閾値 2 を超え、状態のタイムラインはデータ不足、OK、短い ALARM、再び OK の順。履歴タブには 04:42:05（ALARM から OK）と 04:40:05（OK から ALARM）の更新](../screenshots/cloudwatch-log-alarm/02-bulk-delete-history.png)
+
+次の 4 つのグラフは、CloudWatch の `GetMetricWidgetImage` で 04:20Z から 04:52Z を描画したものです。データポイントの無い分は空白のままで、線が結ぶのはデータポイントのある連続した分だけです。そのため、空白に挟まれたデータポイントは孤立した点として描かれます。
+
+![fsxn-t3check-privileged-default-admin、1 分ごとの Sum、0 を超えると ALARM: 04:27、04:33、04:39、04:44、04:50 に約 370–390 のスパイクがあり、その間は小さな値。大半は fsx-control-plane の通信で、fsxadmin によるテストの操作も含む](../screenshots/cloudwatch-log-alarm/05-graph-privileged-default-admin.png)
+
+![fsxn-t3check-privileged-operations、1 分ごとの Sum、0 を超えると ALARM: 04:36 に 1、04:39 に 4、04:40 に 2、04:47 に 1、ほかは 0](../screenshots/cloudwatch-log-alarm/06-graph-privileged-operations.png)
+
+![fsxn-t3check-failed-access-rest403、1 分ごとの Sum、0 を超えると ALARM: 04:41 に 3、ほかは 0](../screenshots/cloudwatch-log-alarm/07-graph-failed-access-rest403.png)
+
+![fsxn-t3check-bulk-delete、1 分ごとの Sum、2 を超えると ALARM: 04:39 と 04:40 に 4 で閾値の線 2 を超え、ほかは 0](../screenshots/cloudwatch-log-alarm/08-graph-bulk-delete.png)
+
+privileged-operations のグラフの 04:47 の 1 は、届いた `t3_qt7` の POST によるものです。上の `get-metric-data` はその分より前に読み取りました。
+
+### 実際のログ行に対するフィルターパターンの一致（T3 の実行）
+
+取り込んだ行に対して `aws logs test-metric-filter` を実行しました。最初は 04:07Z から 04:17Z の 780 イベント、次に 04:07Z から 05:24Z のすべての 5,156 イベントです。一致は部分文字列で判定するため、`"admin"` は `fsxadmin` や `fsxadmin-readonly` の中にも一致します。
+
+| パターン | 位置付け | 実際の 5,156 行での一致 | 一致したもの |
+|----------|----------|------------------------|--------------|
+| `"admin"` | 同梱の `privileged-operations` | 5,150 | `autosupport` のコンソールの 6 行を除くすべての行 |
+| `?"Failure" ?"denied" ?"DENIED"` | 同梱の `failed-access` | 0 | 無し。実際の 403 の 5 行も含む |
+| `?"DELETE" ?"delete" ?"remove"` | 同梱の `bulk-delete` | 10 | REST での Qtree の削除 5 回 × 2 行（`Pending`、`Success:`） |
+| `"wafl.vol.autoSize.fail"` | 同梱の `autosize-fail` | 0 | このロググループに実際の EMS の行は無い（F8） |
+| `"/vol/data/confidential"` | 同梱の `unauthorized-access`（プレースホルダーのパス） | 0 | — |
+| `"fsxadmin:fsxadmin" -"Pending"` | `privileged-operations` の候補。いまの既定値 | 13 | 完了した `fsxadmin` の変更の操作 1 回につき 1 行（成功でもエラーでも） |
+| `"Error: not authorized"` | `failed-access` の候補。いまの既定値 | 5 | 実際の 403 の 5 行すべて。拒否された要求 1 回につき 1 行 |
+| `"DELETE /api/" -"Pending"` | `bulk-delete` の候補 | 5 | 完了した REST の削除 1 回につき 1 行。ONTAP CLI での削除は試していない |
+| `%DELETE.*::\sSuccess\|DELETE.*::\sError\|delete.*::\sSuccess\|delete.*::\sError\|remove.*::\sSuccess\|remove.*::\sError%` | `bulk-delete` の候補。いまの既定値 | 5 | 完了した REST の削除 1 回につき 1 行。同梱のパターンと同じ 3 つの語に、結果の行でだけ一致する |
+| `?"DELETE" ?"delete" ?"remove" -"Pending"` | `bulk-delete` のために試したもの | 2,945 | 使えない。除外の語が OR の選択肢の 1 つとして働いた |
+
+最後の 2 行は、実行の後の 2026-10-09 07:15Z から 07:22Z に、`aws logs test-metric-filter` を最大 50 イベントずつ呼んで追加しました。同梱の `failed-access`・`bulk-delete`・`privileged-operations` の 3 つのパターンと、ほかの 3 つの候補もそのときに再実行し、同じ件数でした。07:59Z には、現在の 5 つの既定値を同じ入力でもう一度実行しました。`autosize-fail` と `unauthorized-access` は 5,156 行のどれにも一致せず、残りの 3 つは表の件数と同じでした。入力は、取り込んだ 5,156 行と、生の証跡と一緒に保存したマスク済みのサンプル 13 行です。13 行の内訳は、`fsxadmin` の Qtree の行 4 行、拒否された `fsxadmin` のアカウント作成 1 行、`t3-alarm-ro` の行 2 行（`Pending` と拒否）、`fsx-control-plane` の行 4 行、組み立てた EMS の行 2 行です。マスク済みの 13 行では、`"Error: not authorized"` は 2 件の拒否に一致し、`"fsxadmin:fsxadmin" -"Pending"` は `fsxadmin` の結果の行 3 行（Qtree の作成、Qtree の削除、拒否されたアカウント作成）に一致し、正規表現のパターンは Qtree の削除の `Success:` の行だけに一致しました。同梱の `?"Failure" ?"denied" ?"DENIED"` はどれにも一致せず、`"admin"` は 11 行に一致しました。正規表現を括弧と空白を使って書いた形は、API が拒否しました（`InvalidParameterException`、"Invalid character(s) in term"）。[フィルターパターンの構文](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)はどちらも扱いません。取り込んだ行ではなく組み立てた行では、正規表現は ONTAP CLI の形の `volume delete ... :: Success` の行と拒否された `DELETE` にも一致し、`:: Pending` の行と完了した `POST` には一致しませんでした。
+
+最初の 780 行では `?"Error:" ?"Failure" ?"denied" ?"DENIED"` も試しました。その範囲にあった実際の 403 の 2 行に一致しましたが、全体では 72 行に一致しました。68 行は `Error: Failed to convert Windows name to SID ...` で終わる `fsx-control-plane` の行、2 行は `Error: entry doesn't exist` で終わる行です。このファイルシステムでは、`"Error:"` だけでは広すぎます。
+
+`autosize-fail` については、[ONTAP 9.18.1 の EMS リファレンス](https://docs.netapp.com/us-en/ontap-ems-9181/wafl-vol-events.html)にある `Unable to grow volume ...` のメッセージから 2 行を組み立てました。パターンは、取り込んだ `[kern_audit:info:...]` のヘッダーに倣ってイベント名を角括弧でヘッダーに入れた行に一致し、メッセージだけの行には一致しませんでした。ヘッダーの形は仮定で、実際の EMS の行は取り込んでいません。
+
+![ロググループ /syslog/fsxn-t3check-audit のメトリクスフィルタータブ: メトリクスフィルター 6 件、保持 1 日、syslog 取り込みは 1 個が設定済み。フィルターのカードには autosize-fail の "wafl.vol.autoSize.fail"、bulk-delete の ?"DELETE" ?"delete" ?"remove"、failed-access の ?"Failure" ?"denied" ?"DENIED"、failed-access-rest403 の "Error: not authorized" があり、どれも FSxONTAP/LogAlarm にメトリクス値 1、デフォルト値 0 で出力する。ロググループの ARN はマスク済み](../screenshots/cloudwatch-log-alarm/03-metric-filters.png)
+
+![syslog のストリームのログイベントを ?"DELETE /api/storage/qtrees" ?"Error: not authorized" で絞り込んだ画面: fsxadmin による REST での Qtree の削除はそれぞれ 2 回現れ、":: Pending" と ":: Success:" で終わる。拒否された 2 つの要求、fsxadmin による POST /api/security/accounts と、ロール fsxadmin-readonly の t3-alarm-ro による POST /api/storage/qtrees は ":: Error: not authorized for that command" で終わる。ファイルシステム ID、送信元の IP アドレスとポート、ボリュームの UUID、SVM 名、ストリーム名は灰色でマスク済み](../screenshots/cloudwatch-log-alarm/04-log-events-error-and-delete.png)
+
+ログイベントの画像は、F4 と F5 の根拠になる 2 つの事実を示しています。拒否された要求は `:: Error: not authorized for that command` で終わり、`Failure`、`denied`、`DENIED` のどれも含みません。また、変更の操作はどれも 2 回現れます。
+
+### 所見（T3 の実行）
+
+| # | 所見 | 種別 | この記録への影響 |
+|---|------|------|------------------|
+| F1 | `main` の `shared/templates/syslog-vpce-cloudwatch.yaml` はスタックを作成できない。`GroupDescription` が YAML の折り畳みスカラー `>` を使っており、末尾の改行が残る（PyYAML でテンプレートを読み込んで確認）。EC2 はその改行を拒否する（"Invalid security group description"）。`>` を `>-` に変えると直る | テンプレートの欠陥で、1 回観測。T3 モジュールではない | この実行ではその変更を加えた一時的なコピーを使った。`main` のテンプレートはこの実行では変更していない（`shared/` の変更には承認が要る）。修正は後続課題。セットアップガイドに回避策を記載した |
+| F2 | ガイドと `create-syslog-configuration.py` は、AWS CLI と boto3 に syslog configuration のコマンドが無い（2026 年 6 月時点）としている。実行中に AWS CLI 2.36.5 で `list-syslog-configurations` と `delete-syslog-configuration` を実行した。`put-syslog-configuration` は AWS に対しては実行していない。後片付けの後の 07:14Z に、同じ CLI で引数なしにローカルで呼ぶと `--log-group-identifier` を求め、存在しない名前のサブコマンドは "Found invalid choice" を返して `put-syslog-configuration` を候補に挙げたので、2.36.5 にこのコマンドはある。Python SDK の botocore 1.43.36 のモデルは 3 つの操作すべてを定義している。スクリプトはそのモデルに無い `allowAllSyslogSources` も送るが、呼び出しは 200 を返した | ドキュメントの記述が古い | セットアップガイドに CLI のコマンドを記載した。スクリプトは変更していない |
+| F3 | 同梱の `privileged-operations` のパターン `"admin"` は、実際の 5,156 行中 5,150 行に一致した。`fsx-control-plane` の行はどれもロール `admin` を持ち、`fsxadmin` の行はどれも `admin` を含む。閾値 0 では、操作する人がいなくても最初の評価から ALARM になった | モジュールの既定のパターンの欠陥で、観測 | `50f1f18` で同梱していた既定値は、FSx for ONTAP の監査ログのロググループでは使える検知にならない。実行の後に修正し、既定値はいま `"fsxadmin:fsxadmin" -"Pending"`（監視する `<user>:<role>` の語に置き換える）。完了した操作 1 回につき 1 行になり、A2 を遷移させた |
+| F4 | 同梱の `failed-access` のパターンは、実際の認可の失敗 5 件のどれにも一致しなかった。失敗の行は `:: Error: not authorized for that command` で終わる。誤ったパスワードによる REST の要求 1 回（HTTP 401）は、40 秒以内に監査ログの行を書かなかった | モジュールの既定のパターンの欠陥で、観測 | `50f1f18` で同梱していた既定値は、REST の認可の失敗では発報しない。実行の後に修正し、既定値はいま `"Error: not authorized"`。5 件すべてを捉え、A4 を遷移させた。数えるのは認可による拒否だけ。このログではログインの失敗は見られなかったため、どちらのパターンもパスワードの推測を検知できるとは確認できていない |
+| F5 | 変更の操作は 1 回ごとに 2 回記録される。`:: Pending` と、続いて結果。そのため閾値は操作ではなく行を数える。`bulk-delete` の閾値 50 は REST の削除約 25 回にあたる。`"delete"` と `"remove"` は、それを含むどのコマンドの文字列にも一致する | ログの形式で、観測 | 実行の後に変更した。`bulk-delete` の既定値は、同じ 3 つの語に結果の行でだけ一致する正規表現のパターンになり、`test-metric-filter` では完了した REST の削除 1 回につき 1 行になった。実際のアラームでは動かしておらず、CLI での削除は取り込んでいない。また、ロググループごとに 5 本までという、CloudWatch Logs の正規表現のフィルターパターンの上限に数えられる |
+| F6 | エンドポイントの IP を指定したポート 6514・`tcp_encrypted` は、約 4 分間何も届けず、ONTAP はエラーを報告しなかった。ホスト名での指定は "Cannot resolve the destination host" で拒否された | 配送経路で、1 回観測 | ガイドは 6514 を注記なしで本番の設定としていた。ここで起きたことを追記した。原因（IP に対する TLS の名前の確認）は推定 |
+| F7 | ONTAP 9.18.1 の EMS リファレンスは `wafl.vol.autoSize.fail` の severity を NOTICE としている。`docs/ja/ems-detection-capabilities.md`、モジュールの README、モジュールのコメントは `error` としている | ドキュメントで、リファレンスによる。実際のイベントでは観測していない | この実行では変更していない。それらのファイルにまたがる後続課題 |
+| F8 | 監査ログの転送先が運ぶのはコマンド履歴（`kern_audit`）だけである。`wafl.vol.autoSize.fail` のような EMS イベントは、別の EMS 通知の転送先を通してだけ syslog に届く。セットアップガイドもモジュールの README もそれを設定していない | ドキュメントの範囲の空白 | `autosize-fail` のレシピが一致するのは、EMS を同じロググループに送った場合だけ。EMS の転送先は作成していない（承認された計画に無い）ため、未検証 |
+| F9 | ノードの接続が約 4–5 分無通信だった後、そのノードでの最初の操作が失われ、ONTAP は次の操作のために再接続した。3 回観測。損失を記録した EMS イベントも `AWS/Logs` の破棄のメトリクスも無かった | 配送経路で、3 回観測。仕組みはメトリクスの時刻からの推定 | 静かなノードでの特権の操作 1 回は検知されないことがある。セットアップガイドにこの挙動を記載した。対策は試していない |
+
+リソースの作成とアラームの配線には欠陥は見つかりませんでした。フィルター、アラーム、メトリクスの名前と名前空間は、書いたとおりに動きました。同梱の既定のパターンのうち 2 つは欠陥で（F3、F4）、`bulk-delete` は操作 1 回につき約 2 行を数えていました（F5）。この 3 つの既定値は、実行の後に `terraform/fsxn-log-alarm/variables.tf` で置き換え、それを確かめるオフラインのテストを加えました。CloudFormation テンプレート `shared/templates/cloudwatch-log-alarm.yaml` は、同じ `failed-access-attempts` のクエリ（`/Failure/`、`/denied/`、`/DENIED/`）と同じ `bulk-delete-operations` の語を持ち、`specific-user-activity` の例のユーザーは `admin` です。ここでは変更しておらず、後続課題です。
+
+### 後片付け（T3 の実行）
+
+| 手順 | 結果 | 時刻（UTC） |
+|------|------|-------------|
+| `terraform destroy` | 12 件削除（アラーム 6、メトリクスフィルター 6）。再読み取り: 接頭辞 `fsxn-t3check` のアラームとメトリクスフィルターは 0 件 | 05:24:40Z |
+| ONTAP の監査ログの転送先の削除 | この実行の 6514 と 1514 の転送先、M0 の古い転送先 2 つを、それぞれ HTTP 200 で削除。再読み取り: 0 件 | 05:24:56Z |
+| テスト用の Qtree の削除 | ONTAP は先の削除の後に Qtree の ID を再利用していた。存在しない ID に対する 2 回の 404 の後、3 回の削除が 200 を返した。再読み取り: ボリュームのデフォルトの Qtree（ID 0）だけ | 05:24:56Z の後 |
+| ONTAP ユーザー `t3-alarm-ro` の削除 | HTTP 200。再読み取り 0 件 | 05:24:56Z の後 |
+| テスト用ボリュームの削除（`SkipFinalBackup=true`） | 05:31Z の再読み取りで `VolumeNotFound` | 05:26:33Z |
+| シークレットの削除 | 7 日間の復旧期間付きの `delete-secret`。削除日 2026-10-16T05:26:35Z。リソースポリシーも一緒に消える | 05:26:35Z |
+| syslog configuration の削除 | `aws logs delete-syslog-configuration`、exit 0。その後の一覧には、すでに存在しないエンドポイントに対する古い設定だけが残った。実行前からあったもので、触れていない | 05:27:37Z の前 |
+| スタック `fsxn-t3check-syslog` の削除 | 約 3.5 分で `DELETE_COMPLETE`。再読み取り: スタック、エンドポイント、セキュリティグループはどれも見つからない | 05:27:37Z → 05:31:08Z |
+| ロググループ `/syslog/fsxn-t3check-audit` の削除 | exit 0。スタックが保持するため、手で削除した | 05:31Z |
+| ローカルのファイル | state、plan、`.terraform/` を削除。`terraform.tfvars` は使っていない | destroy の後 |
+
+残っている項目が 2 つあります。
+
+- シークレットは 2026-10-16T05:26:35Z に削除される予定です。
+- `t3_audit_vol` の volume recovery queue のエントリは一覧で確認し、purge していません。purge は元に戻せない操作で、承認を得ていないためです。ONTAP は保持期間が切れたときにエントリを消します。保持期間はこの実行では確認していません。
+
+実行前からあった古いロググループとその syslog configuration には触れていません。`FSxONTAP/LogAlarm` のカスタムメトリクスは削除できず、CloudWatch の保持期間に従って期限切れになります。
+
+### 未検証の範囲（T3 の実行）
+
+| 項目 | 状態 | 理由 |
+|------|------|------|
+| 実際の `wafl.vol.autoSize.fail` イベントでの `autosize-fail` | 未実施 | syslog への EMS の転送先を作成していない（F8）。パターンは組み立てた行でだけ確認した |
+| syslog のエンドポイントへの EMS 通知の転送先と、実際の EMS の行の形式 | 未実施 | 承認された計画に無い（F8） |
+| TLS のポート 6514 | 届かなかった | F6。ONTAP がエンドポイントを検証できるような CA やホスト名の設定は試していない |
+| 同梱の既定の期間 300 秒、同梱の閾値と N/M の値 | 未実施 | テストを短くするため 60 秒と 1 のうち 1 を使った |
+| `unauthorized-access`（ファイルパスのパターン） | 未実施 | 同梱のパターンはプレースホルダーで、ファイルアクセスは管理監査ログに無い |
+| ONTAP CLI（SSH）での変更と削除の操作 | 未実施 | REST API だけを呼んだ。新しい `bulk-delete` の既定値が一致したのは、取り込んだ行ではなく組み立てた CLI の形の行 |
+| 実際のアラームでの新しい `bulk-delete` の既定値 | 未実施 | 実行の後に選んだもので、確かめたのは `test-metric-filter` だけ |
+| ALARM と OK での SNS 通知 | 未実施 | トピックを設定していない |
+| デプロイ用の IAM ポリシー `examples/basic/iam-policy.json` | 未検証 | デプロイした主体は管理者権限を持っていた |
+| F9 の対策（たとえば、各ノードの接続を保つ定期的な書き込み） | 未試験 | — |
+| 実行前の ONTAP に古い転送先が 2 つあった理由 | 特定していない | 記録したうえで削除した |
+| 第 2 世代のファイルシステムと、HA ペアが 2 つ以上のファイルシステム | 未実施 | 検証対象は第 1 世代で HA ペアは 1 つ |
+
+### 判定（T3 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| 判定 | ⚠️ このサンプル実行の範囲、つまり第 1 世代・HA ペア 1 つのファイルシステム 1 つで、ポート 1514 で配送した場合に、デプロイ、すべてのアラームが INSUFFICIENT_DATA を抜けること、`bulk-delete`・`privileged-operations`・`failed-access-rest403` の実際の監査ログの行での OK → ALARM → OK を検証した。`50f1f18` で同梱していた既定のパターン 2 つは実際の行では機能せず（F3、F4）、実行の後に置き換えた。実際の EMS イベントでの `autosize-fail`、EMS の配送、TLS での配送は未検証 |
+| 合格 | 18 件中 10 件（M0、M2、M4、M5、M6、M8、A1–A4） |
+| 回避策の後に合格 | 18 件中 1 件（M1）。F1 による |
+| 期待値が成り立たなかったもの | 18 件中 4 件（M3 は F6、A5 は F4、A6 は F3、D1 は F9 による） |
+| 結果が分かれたもの | 18 件中 1 件（M7） |
+| 未実施 | 18 件中 1 件（A7）。F8 による |
+| 残った項目付きで完了 | 18 件中 1 件（M9）。予定されたシークレットの削除と recovery queue のエントリ 1 つ |
+| モジュールの欠陥 | リソースの作成とアラームの配線: 見つかっていない。既定のパターン: 欠陥 2 つ（F3、F4）を実行の後に修正。`bulk-delete` は操作 1 回につき 1 行を数えるように変更（F5）。CloudFormation テンプレートの同等のクエリは変更していない（後続課題） |
+
+---
+
 ## 関連ドキュメント
 
 - [監視設計](monitoring-design.md): ダッシュボードテンプレート、Terraform T1 モジュール、Qtree クォータ監視。確信度の階層がこの記録を引用している
 - [AWS ネイティブ代替マトリクス](native-alternative-matrix.md): System Manager のビュー → CloudWatch メトリクス → テンプレートの対応
 - [Terraform モジュール: fsxn-monitoring-dashboard](../../terraform/fsxn-monitoring-dashboard/README.md): 入力・出力・検証状況
 - [Terraform モジュール: fsxn-ontap-custom-metrics](../../terraform/fsxn-ontap-custom-metrics/README.ja.md): T2 の Qtree と SnapMirror のポーラーと、その検証状況
+- [Terraform モジュール: fsxn-log-alarm](../../terraform/fsxn-log-alarm/README.ja.md): T3 のログアラームモジュールと、その検証状況
+- [Syslog VPC Endpoint セットアップガイド](syslog-vpce-setup-guide.md): T3 の実行で使った配送経路
 - [CloudWatch ログアラーム](cloudwatch-log-alarm.md): 別のログアラームテンプレートと、その 2026-07-02 の E2E 記録

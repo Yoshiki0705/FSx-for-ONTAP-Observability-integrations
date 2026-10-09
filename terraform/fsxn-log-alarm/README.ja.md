@@ -6,9 +6,17 @@
 
 ## 検証状況
 
-オフラインの検証では、`make terraform` が `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、`terraform test`（モックの `aws` プロバイダーと `command = plan` による）を実行します。[`examples/basic/`](examples/basic/) に対しても `init` と `validate` を実行します。AWS の認証情報は不要で、何も作りません。テストは、`autosize-fail` のレシピが `wafl.vol.autoSize.fail` を含むパターンのフィルターと、1 回の発生で発火するように配線したアラームを作ること、そして各検知でアラームが自分のフィルターの発行するメトリクスの名前と名前空間を読むことを確認します。
+オフラインの検証では、`make terraform` が `terraform fmt -check`、`terraform init -lockfile=readonly`、`terraform validate`、`terraform test`（モックの `aws` プロバイダーと `command = plan` による）を実行します。[`examples/basic/`](examples/basic/) に対しても `init` と `validate` を実行します。AWS の認証情報は不要で、何も作りません。テストは、`autosize-fail` のレシピが `wafl.vol.autoSize.fail` を含むパターンのフィルターと、1 回の発生で発火するように配線したアラームを作ること、`failed-access`・`privileged-operations`・`bulk-delete` が実際の監査ログの行で確かめたパターンを同梱していること、そして各検知でアラームが自分のフィルターの発行するメトリクスの名前と名前空間を読むことを確認します。
 
-実環境での検証はまだ行っていません。AWS アカウントへ適用していないため、実際のロググループに依存するもの、つまり EMS と監査のイベントがフィルターのパターンの想定する形で届くか、デプロイ用の IAM ポリシー、すべてのアラームの状態遷移は `unverified` です。フィルターのパターンは CloudWatch Logs のフィルターパターンの文字列です。Terraform はこれを不透明な文字列として扱い、解釈はサーバーが行うため、オフラインのテストが確認するのは文字列の形であって、AWS がパターンを受け付けることや実際のイベントに一致することではありません（confidence: `code-inspected`、`unverified`）。日付のある実行を記録するまでは、まず本番以外のアカウントで適用し、たとえば `wafl.vol.autoSize.fail` を発生させてアラームを 1 つ動かしてください。
+実環境では、2026-10-09 に `50f1f18` で 1 回のサンプル実行を行いました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)）。対象は第 1 世代・HA ペア 1 つのファイルシステム 1 つで、その管理監査ログは syslog VPC エンドポイント経路のポート 1514 で CloudWatch Logs に届いていました。期間 60 秒、評価期間 1 のうち 1 で、`terraform apply` はメトリクスフィルター 6 本とアラーム 6 本を作り、すべてのアラームが INSUFFICIENT_DATA を抜け、`bulk-delete`（`50f1f18` で同梱していたパターン）、`privileged-operations`（いまの既定値になったパターン）、`failed-access-rest403`（追加した `"Error: not authorized"` の検知で、いまの `failed-access` の既定値）は、最初に一致した操作から 13–74 秒後に OK から ALARM に遷移し、一致の無い後の 1 分で OK に戻りました。使ったパターンはすべて AWS に受け付けられました（その範囲で confidence: `verified`）。リソースの作成とアラームの配線には欠陥は見つかりませんでした。同梱の既定のパターンのうち 2 つは欠陥で、実行の後に 3 つの既定値を置き換えました。
+
+- `privileged-operations`: `50f1f18` での既定値 `"admin"` は実際の 5,156 行中 5,150 行に一致しました。ファイルシステム自身の管理の通信（ユーザー `fsx-control-plane`、ロール `admin`）と、すべての `fsxadmin` の行がこの語を含むためです。閾値 0 では、操作する人がいなくてもアラームは ALARM のままでした。既定値はいま `"fsxadmin:fsxadmin" -"Pending"` です。完了した `fsxadmin` の操作 1 回につき 1 行に一致し（5,156 行中 13 行）、実行では実際のアラームを遷移させました。`fsxadmin:fsxadmin` は、監視するユーザーの `<user>:<role>` の文字列に置き換えてください。
+- `failed-access`: `50f1f18` での既定値は、実際の REST の認可の失敗 5 件のどれにも一致しませんでした。その行は `Error: not authorized for that command` で終わります。既定値はいま `"Error: not authorized"` です。5 件すべてに、拒否された要求 1 回につき 1 行で一致し、実行では実際のアラームを遷移させました。数えるのは認可による拒否だけです。誤ったパスワードによる REST の要求 1 回（HTTP 401）では、観測した 40 秒の間に監査ログの行は書かれなかったため、どちらのパターンもログインの失敗を検知できるとは確認できていません。
+- `bulk-delete`: `50f1f18` での既定値は、閾値 2 で REST の削除 4 回に対して想定どおり発報しましたが、変更の操作は 1 回ごとに 2 回（`Pending` と、続いて結果）記録されるため、操作 1 回につき約 2 行を数えていました。既定値はいま、同じ 3 つの語に結果の行（`:: Success` か `:: Error`）でだけ一致し、完了した削除 1 回につき 1 行（5,156 行中 5 行）なので、閾値は操作の回数を数えます。確かめたのは `aws logs test-metric-filter` だけで、実際のアラームでは動かしておらず、取り込んだ削除も REST のものだけです。
+- `autosize-fail`: 実際の `wafl.vol.autoSize.fail` イベントでは発報させていません（`unverified`）。syslog のセットアップガイドが転送するのは監査ログだけで、EMS イベントがロググループに届くのは別の EMS 通知の転送先を通したときだけです。その転送先は設定も試験もしていません。パターンは、ONTAP 9.18.1 の EMS リファレンスから組み立てた、ヘッダーの形を仮定した行に一致しました。
+- `unauthorized-access`: 実行していません。パターンはプレースホルダーのパスです。
+
+新しい既定値は、2026-10-09 に `aws logs test-metric-filter` で、記録にあるマスク済みのサンプル行と、取り込んだ 5,156 行すべてに対して確かめました。件数は[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#実際のログ行に対するフィルターパターンの一致t3-の実行)にあります。既定の期間 300 秒・閾値・N/M の値、SNS 通知、デプロイ用の IAM ポリシー、第 2 世代や HA ペアが 2 つ以上のファイルシステムは、まだ `unverified` です。配送経路では、ノードの接続が約 4–5 分無通信だった後の最初の操作が、実行中に 3 回失われました（[セットアップガイド](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/syslog-vpce-setup-guide.md#無通信の接続の後の最初の操作の欠落)）。1 行に依存する検知は、その操作を見逃すことがあります。
 
 ## 作成されるリソース
 
@@ -25,16 +33,18 @@
 | キー | テンプレートの `DetectionType` との対応 | フィルターパターン | 閾値 / N / M |
 |---|---|---|---|
 | `autosize-fail` | T3 で新規: EMS `wafl.vol.autoSize.fail` | `"wafl.vol.autoSize.fail"` | 0 / 1 / 1 |
-| `failed-access` | `failed-access-attempts` | `?"Failure" ?"denied" ?"DENIED"` | 10 / 3 / 3 |
-| `bulk-delete` | `bulk-delete-operations` | `?"DELETE" ?"delete" ?"remove"` | 50 / 3 / 2 |
-| `privileged-operations` | `specific-user-activity` | `"admin"`（ユーザーに置き換える） | 0 / 3 / 1 |
+| `failed-access` | `failed-access-attempts` | `"Error: not authorized"` | 10 / 3 / 3（変更なし、未実行。下を参照） |
+| `bulk-delete` | `bulk-delete-operations` | `%DELETE.*::\sSuccess\|DELETE.*::\sError\|delete.*::\sSuccess\|delete.*::\sError\|remove.*::\sSuccess\|remove.*::\sError%` | 50 / 3 / 2（変更なし、未実行。下を参照） |
+| `privileged-operations` | `specific-user-activity` | `"fsxadmin:fsxadmin" -"Pending"`（監視する `<user>:<role>` に置き換える） | 0 / 3 / 1 |
 | `unauthorized-access` | `sensitive-file-access` | `"/vol/data/confidential"`（パスに置き換える） | 0 / 3 / 1 |
 
-`autosize-fail` はこのフェーズが明示的に挙げる EMS イベントです。severity は `error` で、空き容量の枯渇が差し迫っています（[ems-detection-capabilities.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/ems-detection-capabilities.md)）。1 回の発生で発火します。テンプレートの `custom` タイプに対応するキーを同梱していないのは、`detections` を呼び出し側で拡張できるためです。新しいキーの下に `{ pattern = "..." }` を追加してください。
+監査される ONTAP の変更の操作は、1 回ごとに 2 行を書きます。`:: Pending` で終わる行と、結果（`:: Success:` か `:: Error: ...`）で終わる行です。`failed-access`・`privileged-operations`・`bulk-delete` の既定値は結果の行にだけ一致するので、閾値は操作の回数を数えます。これらは 2026-10-09 の実行の後に、`?"Failure" ?"denied" ?"DENIED"`、`"admin"`、`?"DELETE" ?"delete" ?"remove"` を置き換えたものです（[検証状況](#検証状況)）。閾値と N/M の値はパターンと一緒には変えておらず、実行もしていません。2026-10-09 の実行では、期間 60 秒、1 のうち 1 を使いました。以前の `bulk-delete` のパターンは削除 1 回ごとに両方の行を数えていたため、閾値 50 には REST の削除約 25 回で達していました。新しいパターンでは、同じ 50 が完了した削除 50 回を意味します。`failed-access` が数えるのは、そのコマンドの権限がないとして ONTAP が拒否した要求で、ログインの失敗ではありません。フィルターパターンの OR の語は除外と組み合わせられないため、`bulk-delete` は正規表現のパターンです。CloudWatch Logs では、正規表現のパターンを持つメトリクスフィルターとサブスクリプションフィルターは、ロググループごとに 5 本までです（[フィルターパターンの構文](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)）。`"delete"` と `"remove"` は部分文字列なので、その語を含む完了したコマンドはどれも数えられます。
+
+`autosize-fail` はこのフェーズが明示的に挙げる EMS イベントです。severity は `error` で、空き容量の枯渇が差し迫っています（[ems-detection-capabilities.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/ems-detection-capabilities.md)）。[ONTAP 9.18.1 の EMS リファレンス](https://docs.netapp.com/us-en/ontap-ems-9181/wafl-vol-events.html)は severity を NOTICE としており、2 つの出典の食い違いはまだ解消していません。1 回の発生で発火します。テンプレートの `custom` タイプに対応するキーを同梱していないのは、`detections` を呼び出し側で拡張できるためです。新しいキーの下に `{ pattern = "..." }` を追加してください。
 
 ## モジュールの取得方法
 
-予定しているタグは `terraform-fsxn-log-alarm-v0.1.0` ですが、**まだ作成していません**。[検証状況](#検証状況)に記した実環境での実行の後に作る予定です。それまでは、下の git ソースかアーカイブ URL でコミット SHA を固定してください。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。コードブロック内のコメントは英語のままで、上から順に「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
+予定しているタグは `terraform-fsxn-log-alarm-v0.1.0` ですが、**まだ作成していません**。作成の時期は決めていません。既定のパターンは 2026-10-09 の実行の後に置き換えており、新しい `bulk-delete` のパターンは実際のアラームでは動かしていません。それまでは、下の git ソースかアーカイブ URL でコミット SHA を固定してください。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。コードブロック内のコメントは英語のままで、上から順に「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
 
 ```hcl
 # Git source pinned to a commit
@@ -63,7 +73,7 @@ git checkout FETCH_HEAD
 - Terraform `>= 1.11.0`。
 - `hashicorp/aws` `>= 6.67.0`。6.67.0 で確認済み。6.0 から 6.66 のリリースは未確認です。
 - IAM Identity Center か IAM ロールの AWS 認証情報と、`provider "aws"` ブロックに設定したロググループのリージョン。モジュールに `provider` ブロックはありません。
-- ファイルシステムの EMS と監査のイベントを既に受け取っている CloudWatch Logs のロググループ。このモジュールはそのグループを読むだけで、グループや配送経路は作りません。ONTAP の EMS と監査のイベントを CloudWatch Logs へ転送する syslog の VPC エンドポイントの経路は別に用意します（[syslog-vpce-setup-guide.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/syslog-vpce-setup-guide.md)）。そのグループの名前を `log_group_name` に渡します。
+- ファイルシステムの EMS と監査のイベントを既に受け取っている CloudWatch Logs のロググループ。このモジュールはそのグループを読むだけで、グループや配送経路は作りません。そのグループの名前を `log_group_name` に渡します。[syslog-vpce-setup-guide.md](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/syslog-vpce-setup-guide.md) が設定するのは syslog の VPC エンドポイントと ONTAP の監査ログの転送先だけで、グループが受け取るのはコマンド履歴（`kern_audit`）だけです。EMS イベントは届きません。`autosize-fail` には、同じエンドポイントとロググループへ送る ONTAP の EMS 通知の転送先を別に設定する必要があります。その手順はここでは文書化しておらず、`unverified` です。
 
 ### 必要な IAM 権限（推定、未検証）
 
@@ -118,7 +128,7 @@ aws logs describe-metric-filters --log-group-name /syslog/fsxn-admin-audit \
   --query 'metricFilters[].{Name:filterName,Pattern:filterPattern}' --output table
 ```
 
-アラームは、評価期間に必要なデータポイントがそろうまで INSUFFICIENT_DATA のままです。`treat_missing_data = "notBreaching"` により、一致のないウィンドウは not breaching として数えます。`notification_email` を指定した場合、メールのサブスクリプションは受信者が承認するまで保留のままです。
+アラームは、評価期間に必要なデータポイントがそろうまで INSUFFICIENT_DATA のままです。`treat_missing_data = "notBreaching"` により、一致のないウィンドウは not breaching として数えます。2026-10-09 の実行では、期間 60 秒で、すべてのアラームが `apply` から約 2 分以内に INSUFFICIENT_DATA を抜けました。ログの行がまったく届かないウィンドウにはデータポイントがありません。`default_value` が出るのは、届いて一致しなかった行に対してだけだからです。`notification_email` を指定した場合、メールのサブスクリプションは受信者が承認するまで保留のままです。
 
 ### 削除手順
 

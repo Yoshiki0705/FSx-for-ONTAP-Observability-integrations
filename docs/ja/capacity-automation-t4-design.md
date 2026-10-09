@@ -4,7 +4,7 @@
 
 > **ステータス / 対象読者 / 証拠の階層**
 >
-> ステータスは計画中で、未実装です。本ページの内容はどれも構築しておらず、ファイルシステムに対して実行していません。予定しているパスは `terraform/fsxn-ssd-auto-increase/` です。対象読者は、Amazon FSx for NetApp ONTAP の T4 モジュールを作る、レビューする、テストするエンジニアです。そもそも自動化するかを決める読者は、T4 を AWS のサンプルや手動の手順と比べている [監視を起点にした容量自動化](capacity-automation.md) から読んでください。証拠の階層は次の 4 つです。`文書化済み`（引用した AWS、HashiCorp、NetApp のページに記載。2026-10-07 か 2026-10-08 に読んだ）、`コード確認済み`（AWS サンプルのコードを読んだもので、実行していない）、`仮説`（推論で、確認していない）、`未解決`（読んだどの資料にも答えがない）。値はプレースホルダー（`fs-0123456789abcdef0`、`123456789012`、`ap-northeast-1`）です。
+> ステータスは、`terraform/fsxn-ssd-auto-increase/` に実装済みでオフライン検証済み（`terraform test`、`make terraform`、pytest）です。ファイルシステムに対してはまだ実行しておらず、実環境での検証はこれからです。対象読者は、Amazon FSx for NetApp ONTAP の T4 モジュールを作る、レビューする、テストするエンジニアです。そもそも自動化するかを決める読者は、T4 を AWS のサンプルや手動の手順と比べている [監視を起点にした容量自動化](capacity-automation.md) から読んでください。証拠の階層は次の 4 つです。`文書化済み`（引用した AWS、HashiCorp、NetApp のページに記載。2026-10-07 か 2026-10-08 に読んだ）、`コード確認済み`（AWS サンプルのコードを読んだもので、実行していない）、`仮説`（推論で、確認していない）、`未解決`（読んだどの資料にも答えがない）。値はプレースホルダー（`fs-0123456789abcdef0`、`123456789012`、`ap-northeast-1`）です。
 
 ## エグゼクティブサマリ
 
@@ -39,7 +39,7 @@ T4 のガードは、公開されている AWS のサンプル（[Updating stora
 
 > **ネットワークに関する補足**
 >
-> T4 は AWS API だけを呼ぶので、Lambda 関数は VPC の外で動きます。ONTAP の管理エンドポイントへの VPC 内の経路が必要な Qtree のポーラーや計画中の SnapMirror のポーラーとは、ここが異なります。
+> T4 は AWS API だけを呼ぶので、Lambda 関数は VPC の外で動きます。ONTAP の管理エンドポイントへの VPC 内の経路が必要な T2 の Qtree と SnapMirror のコレクターとは、ここが異なります。
 
 ## ガード
 
@@ -50,12 +50,12 @@ T4 のガードは、公開されている AWS のサンプル（[Updating stora
 | アラームの状態 | SNS からでもスケジュールからでも、呼び出しのたびにトリガーのアラーム名を指定して `DescribeAlarms` を呼び、少なくとも 1 つが `ALARM` のときだけ先に進む。そうでなければ `alarm_not_in_alarm` を記録してロックを解放する | アラームの M-of-N と `TreatMissingData` の挙動を作り直さずに使う。アラームが OK のときのスケジュール実行は何もしない |
 | 目標値の計算 | `target = min(ceiling, max(ceil(current × 1.10), ceil(current × (1 + increase_percent / 100))))`。`target < ceil(current × 1.10)` または `target ≤ current` のときは呼ばず、上限値に達したと報告する | 切り上げにより、どの要求も 10% の最小幅以上になる（[storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/storage-capacity-and-IOPS.html)、`文書化済み`） |
 | 管理アクション | `FILE_SYSTEM_UPDATE` のアクションが `PENDING`・`IN_PROGRESS`・`UPDATED_OPTIMIZING`・`OPTIMIZING`・`PAUSED` のいずれかの間と、`COMPLETED` でない `STORAGE_OPTIMIZATION` のアクションがある間は呼ばない。評価の開始時に 1 回読み、ロックを取った後、`UpdateFileSystem` の直前にもう一度読む | 第 1 世代はキューに入れられるが、第 2 世代はできない（[managing-throughput-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-throughput-capacity.html)、`文書化済み`）。ストレージ最適化の実行中に新しい要求が受け付けられるかは `未解決` なので、ガードはそれを試さない |
-| 同時実行 | 関数の予約済み同時実行数を 1 にし、さらにファイルシステム単位のロックを使う。ロックはファイルシステム ID をキーにした DynamoDB の条件付き書き込みで、項目がないか、項目が `evaluating` で `expires_at` が過去であり、書き残しのアーカイブイベントがないときだけ成功する。ロックを取れなかった呼び出しは、ロックの状態の表のとおり、見つけた状態に応じて動く。そのどれも `UpdateFileSystem` を呼ばない | アグリゲートごとのアラーム、1 時間ごとのスケジュール、再試行は同時に動きうる。読んでから書くだけの確認では、2 つの呼び出しがどちらも更新なしと判断して両方とも要求を出せる。条件は `expires_at` 自体を比べるので、DynamoDB の TTL が項目を消す時期に左右されない |
+| 同時実行 | 関数の予約済み同時実行数を 1 にし、さらにファイルシステム単位のロックを使う。ロックはファイルシステム ID をキーにした DynamoDB の条件付き書き込みで、項目がないか、項目が `evaluating` で `expires_at` が過去であり、書き残しのアーカイブイベントがないときだけ成功する。ロックを取れなかった呼び出しは、ロックの状態の表のとおり、見つけた状態に応じて動く。そのどれも `UpdateFileSystem` を呼ばない | アグリゲートごとのアラーム、1 時間ごとのスケジュール、再試行は同時に動きうる。読んでから書くだけの確認では、2 つの呼び出しがどちらも更新なしと判断して両方とも要求を出せる。条件は `expires_at` 自体を比べる。ロックテーブルに DynamoDB の TTL は設定しない。`expires_at` はリース比較用の値にすぎず、持続する状態（`submitted`・`optimizing`・`indeterminate`・`manual_disposition_required`・`blocked`）が設計上の解放より前にサービス側で削除されることはない。削除されれば固定・同一トークンの防壁・単一要求の連鎖のいずれかを失う |
 | クールダウン | 最後の SSD・IOPS・スループットの変更の `RequestTime` を `AdministrativeActions` から読む。6 時間未満なら延期し、次に実行できる時刻を報告する | クールダウンは 3 つの設定で共有される（[storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/storage-capacity-and-IOPS.html)、`文書化済み`） |
 | IOPS モード | `AUTOMATIC` は IOPS の引数を付けない。`USER_PROVISIONED` は `Iops = max(current, 3 × target)` とし、デプロイタイプとリージョンごとの SSD IOPS の最大値を超える場合は `iops_exceeds_maximum` で `blocked` に固定し、1 回だけ通知する | ユーザープロビジョンドの IOPS は要求する GiB あたり 3 以上（[increase-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/increase-storage-capacity.html)）。クォータのページには、第 1 世代は米国東部（オハイオ）・米国東部（バージニア北部）・米国西部（オレゴン）・欧州（アイルランド）で 160,000、その他のリージョンで 80,000、第 2 世代は Single-AZ で HA ペアあたり 200,000（最大 12 ペア）、Multi-AZ で合計 200,000 とある（[クォータ](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/limits.html)、`文書化済み`） |
 | IAM | `arn:aws:fsx:ap-northeast-1:123456789012:file-system/fs-0123456789abcdef0` に対する `fsx:UpdateFileSystem` だけ | 影響範囲を 1 つのファイルシステムに限る。Service Authorization Reference は、`fsx:UpdateFileSystem` の必須のリソースタイプとして `file-system*` を挙げている（[list_fsx](https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html)、`文書化済み`）。このモジュールのポリシーで絞った Allow が効くことはまだ確かめておらず、テスト計画のポリシーシミュレーションで確かめる |
 | レポート | 呼び出しの前と、その後の状態の変化のたびに、通知用トピックに SNS メッセージを送る（相関 ID、現在の GiB、目標の GiB、モード、理由、クールダウンの状態、`AdministrativeActions` の状態） | 運用者に何が起きたかを伝える。SNS の配信は一過性で、メールサブスクリプションは確認されないまま残ることがあるので、レポートは記録にはならない |
-| 判断ログ（運用の履歴） | アーカイブのイベント 1 つにつき CloudWatch Logs に構造化した JSON のログを 1 行書く（相関 ID、入力（アラームの状態、使用率、現在の GiB、上限値、モード、クールダウンの状態、`AdministrativeActions`、ロックの状態）、判断、理由、API を呼んだ場合は `UpdateFileSystem` のリクエスト ID）。ロググループの保持期間はモジュールの入力（計画中の既定値は 365 日） | 運用者が検索できる履歴。監査の記録ではない。保持期間を過ぎたイベントは消え、必要な権限を持つ ID はロググループを削除できる |
+| 判断ログ（運用の履歴） | アーカイブのイベント 1 つにつき CloudWatch Logs に構造化した JSON のログを 1 行書く（相関 ID、入力（アラームの状態、使用率、現在の GiB、上限値、モード、クールダウンの状態、`AdministrativeActions`、ロックの状態）、判断、理由、API を呼んだ場合は `UpdateFileSystem` のリクエスト ID）。ロググループの保持期間はモジュールの入力（既定値は 365 日） | 運用者が検索できる履歴。監査の記録ではない。保持期間を過ぎたイベントは消え、必要な権限を持つ ID はロググループを削除できる |
 | 判断アーカイブ（監査の記録） | 評価の相関 ID の下にイベント 1 つにつき 1 オブジェクトを、Object Lock の既定の保持を設定し、関数のロールとは別のところで管理する S3 バケットに書く。`auto` では `UpdateFileSystem` の前に意図のイベントを書いてその保持を確かめ、どちらかが失敗したら呼ばない。`auto` はコンプライアンスモードを必須とする | CloudTrail が記録するのは API の呼び出しだけで、`notify_only`・延期・ロックの競合・拒否の判断は残らない。保持のモードとその限界は判断アーカイブの節にある |
 
 ## 上限値の検証
@@ -73,7 +73,7 @@ T4 のガードは、公開されている AWS のサンプル（[Updating stora
 デプロイ時には、何かを作る前に 2 つの確認で plan を失敗させます。変数の検証は、1,024 から 1,048,576 GiB（文書化された最も広い範囲）の整数でない上限値を拒否します。リソースの事前条件は、`deployment_type`・`ha_pairs`・`storage_capacity` を公開する `aws_fsx_ontap_file_system` のデータソース（[データソース](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/fsx_ontap_file_system)、`文書化済み`）でファイルシステムを読み、構成ごとの最大値を超える上限値を拒否します。Terraform は変数の検証を plan の生成前に実行し、事前条件を plan の後、リソースを作る前に評価します（[validate](https://developer.hashicorp.com/terraform/language/validate)、`文書化済み`）。上限値が 10% の拡張 1 回分の余地も残さない場合は、`check` ブロックが止めずに警告します。
 
 ```hcl
-# Planned validation for terraform/fsxn-ssd-auto-increase/ (not implemented).
+# Implemented in terraform/fsxn-ssd-auto-increase/variables.tf and main.tf.
 variable "max_storage_capacity_gib" {
   type        = number
   description = "Required absolute SSD ceiling in GiB. No default."
@@ -204,7 +204,7 @@ stateDiagram-v2
 
 > **失敗の扱いに関する補足**
 >
-> `blocked` の固定は、1 回だけ安全側に倒します。1 回報告した後は、設定が変わるか運用者が解除するまで関数は何も送りません。固定が続く間、この設計の他の部分も通知を繰り返しません。トリガーのアラームは評価を続けて ALARM のままなので、状態は CloudWatch のコンソールと `DescribeAlarms` で確認できます。ただし、アラームがアクションを呼び出すのは ALARM に変わったときだけで、ALARM にとどまっている間は再び呼び出しません。繰り返すのは Auto Scaling のアクションだけです（[AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)、`文書化済み`）。そのため、オンコールの担当者に届くのは、アラームにメールのアクションがあればその状態変化の通知と、1 回だけの `blocked` のレポートまでで、再通知は届きません。繰り返し知らせるには別の仕組みが要ります。たとえば、ロックテーブルを読み直し、運用者が確認するまで通知を繰り返すスケジュールです。計画中の T4 にはこの仕組みを含めていません。
+> `blocked` の固定は、1 回だけ安全側に倒します。1 回報告した後は、設定が変わるか運用者が解除するまで関数は何も送りません。固定が続く間、この設計の他の部分も通知を繰り返しません。トリガーのアラームは評価を続けて ALARM のままなので、状態は CloudWatch のコンソールと `DescribeAlarms` で確認できます。ただし、アラームがアクションを呼び出すのは ALARM に変わったときだけで、ALARM にとどまっている間は再び呼び出しません。繰り返すのは Auto Scaling のアクションだけです（[AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)、`文書化済み`）。そのため、オンコールの担当者に届くのは、アラームにメールのアクションがあればその状態変化の通知と、1 回だけの `blocked` のレポートまでで、再通知は届きません。繰り返し知らせるには別の仕組みが要ります。たとえば、ロックテーブルを読み直し、運用者が確認するまで通知を繰り返すスケジュールです。T4 にはこの仕組みを含めていません。
 
 ## 判断アーカイブ
 
@@ -241,12 +241,12 @@ T4 のモードごとの保持のモード。Object Lock の 2 つのモード�
 >
 > コンプライアンスモードの保持期間は短縮できないので、本番のコンプライアンスモードのバケットは長く続く約束になります。`notify_only` の経路は、使い捨てのバケットでガバナンスモードと短い保持期間を使って試してください。`auto` の経路（IAM で拒否する対照実行、同時実行）は、既定の保持を 1 日にしたコンプライアンスモードの使い捨てのバケットで試してください。その日が過ぎるまではオブジェクトを削除できず、したがってバケットも削除できません。本番の保持期間は別の判断として意図して選んでください。アーカイブのストレージの価格は調べていません。
 
-## 予定しているインターフェース
+## モジュールのインターフェース
 
-変数名と値はプレースホルダーで、モジュールを作るときにインターフェースが変わることがあります。
+以下の値はプレースホルダーで、実装された入力は `terraform/fsxn-ssd-auto-increase/variables.tf` にあります。
 
 ```hcl
-# Planned interface for terraform/fsxn-ssd-auto-increase/ (not implemented).
+# Implemented module at terraform/fsxn-ssd-auto-increase/.
 module "ssd_auto_increase" {
   source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<planned>"
 
@@ -291,7 +291,7 @@ module "ssd_auto_increase" {
 
 ## テスト計画
 
-この表の項目はまだどれも実行していません。
+オフラインの項目（デプロイ時の上限値の検証、目標計算とガード、ロック状態の遷移、アーカイブの書き込み）は実行済みです。`terraform test` と `shared/lambda/ssd_auto_increase/tests/` 配下の pytest が通ります。実ファイルシステム・バケット・ポリシーシミュレーターに触れる項目（`notify_only`・`approve`・IAM 拒否・ポリシーシミュレーション・同時実行・判断アーカイブ・実増設の各行）はまだ実行しておらず、T4 の完了が依然として依存する実機検証として残ります。
 
 | テスト | 元に戻せるか | 期待する証拠 | 費用 / リスク |
 |---|---|---|---|

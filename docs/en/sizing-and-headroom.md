@@ -110,7 +110,7 @@ u_t <= 90% - 100 x H / C        (rounded down to 0.1)
   g           peak SSD growth in GiB per hour (observed, not average)
   T_cooldown  6 h; a previous SSD, IOPS or throughput change blocks the next one
   T_recheck   gap between cooldown expiry and the next evaluation that can act;
-              at most the re-evaluation interval: 1 h for T4's planned hourly
+              at most the re-evaluation interval: 1 h for T4's default hourly
               schedule, 5 min for the AWS sample's RetryDelayMinutes default
   T_alarm     alarm evaluation window; 5 min in the AWS sample
   T_avail     time until new capacity is usable; AWS says typically within minutes
@@ -126,7 +126,7 @@ Example, C = 12,191 GiB, T4 schedule (T_recheck = 1 h)
   g = 200 GiB/h, T_human = 4 h  -> H = 200 x 11.58 = about 2,317 GiB = 19.00 points -> u_t <= 70.9%
 ```
 
-At 20 GiB/h the 80% recommendation is the tighter bound. At 200 GiB/h the headroom bound falls below 80%, so the trigger has to move down to 77% or 70%. Every row uses `T_recheck = 1 h` because the planned T4 re-evaluates hourly, also in `approve` mode, where the approval email goes out on the evaluation after the cooldown. With the AWS sample's 5-minute retry, `T_recheck` shrinks to about 0.08 h; a shorter T4 `reevaluation_schedule` shrinks it the same way.
+At 20 GiB/h the 80% recommendation is the tighter bound. At 200 GiB/h the headroom bound falls below 80%, so the trigger has to move down to 77% or 70%. Every row uses `T_recheck = 1 h` because T4 re-evaluates hourly by default, also in `approve` mode, where the approval email goes out on the evaluation after the cooldown. With the AWS sample's 5-minute retry, `T_recheck` shrinks to about 0.08 h; a shorter T4 `reevaluation_schedule` shrinks it the same way.
 
 The 6 hours count in full because the worst case is common: an increase has just landed and growth continues past the new threshold, an operator changed throughput capacity or provisioned IOPS earlier that day, or a 10% step was too small for the growth. Sources: cooldown and 10% minimum on [storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/storage-capacity-and-IOPS.html), alarm window on [automate-storage-capacity-increase](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/automate-storage-capacity-increase.html) (all `documented`).
 

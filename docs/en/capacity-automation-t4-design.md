@@ -4,7 +4,7 @@
 
 > **Status / audience / evidence tiers**
 >
-> Status: planned, not implemented. Nothing on this page has been built or run against a file system. Planned path: `terraform/fsxn-ssd-auto-increase/`. Audience: engineers who will build, review or test the T4 module for Amazon FSx for NetApp ONTAP. Readers deciding whether to automate at all should start with [Monitoring-Driven Capacity Automation](capacity-automation.md), which compares T4 with the AWS sample and a manual runbook. Evidence tiers: `documented` (stated on the cited AWS, HashiCorp or NetApp page, read 2026-10-07 or 2026-10-08), `code-inspected` (read from the AWS sample code, not executed), `hypothesis` (inferred, not checked), `open` (not answered by any source read). Values use placeholders (`fs-0123456789abcdef0`, `123456789012`, `ap-northeast-1`).
+> Status: implemented at `terraform/fsxn-ssd-auto-increase/`, offline-verified (`terraform test`, `make terraform`, pytest); not yet run against a file system (live verification pending). Audience: engineers who build, review or test the T4 module for Amazon FSx for NetApp ONTAP. Readers deciding whether to automate at all should start with [Monitoring-Driven Capacity Automation](capacity-automation.md), which compares T4 with the AWS sample and a manual runbook. Evidence tiers: `documented` (stated on the cited AWS, HashiCorp or NetApp page, read 2026-10-07 or 2026-10-08), `code-inspected` (read from the AWS sample code, not executed), `hypothesis` (inferred, not checked), `open` (not answered by any source read). Values use placeholders (`fs-0123456789abcdef0`, `123456789012`, `ap-northeast-1`).
 
 ## Executive summary
 
@@ -39,7 +39,7 @@ Components to operate: the function, the schedule, two SNS topics, a DynamoDB lo
 
 > **Network note**
 >
-> T4 calls only AWS APIs, so its Lambda function runs outside a VPC. This differs from the qtree and planned SnapMirror pollers, which need a VPC path to the ONTAP management endpoint.
+> T4 calls only AWS APIs, so its Lambda function runs outside a VPC. This differs from the T2 qtree and SnapMirror collectors, which need a VPC path to the ONTAP management endpoint.
 
 ## Guards
 
@@ -50,12 +50,12 @@ Components to operate: the function, the schedule, two SNS topics, a DynamoDB lo
 | Alarm state | Every invocation, from SNS or the schedule, calls `DescribeAlarms` with the names of the trigger alarms and continues only when at least one is in `ALARM`. Otherwise it records `alarm_not_in_alarm` and releases the lock | Reuses the alarm's M-of-N and `TreatMissingData` semantics instead of re-implementing them; a scheduled run while the alarm is OK does nothing |
 | Target computation | `target = min(ceiling, max(ceil(current × 1.10), ceil(current × (1 + increase_percent / 100))))`; no call when `target < ceil(current × 1.10)` or `target ≤ current`, and the report says the ceiling is reached | Ceil rounding keeps every request at or above the 10% minimum ([storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/storage-capacity-and-IOPS.html), `documented`) |
 | Administrative actions | No call while any `FILE_SYSTEM_UPDATE` action is `PENDING`, `IN_PROGRESS`, `UPDATED_OPTIMIZING`, `OPTIMIZING` or `PAUSED`, or any `STORAGE_OPTIMIZATION` action is present and not `COMPLETED`. Read once when the evaluation starts and again immediately before `UpdateFileSystem`, after the lock is held | First generation can queue, second generation cannot ([managing-throughput-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-throughput-capacity.html), `documented`). Whether a new request is accepted while storage optimization runs is `open`, so the guard does not test it |
-| Concurrency | Reserved concurrency of 1 on the function, plus a per-file-system lock: a DynamoDB conditional put keyed on the file system ID that succeeds only when no item exists, or the item is `evaluating` with its `expires_at` in the past and no pending archive events. An invocation that does not get the lock acts on the state it finds, as the lock-state table says; none of those actions calls `UpdateFileSystem` | Per-aggregate alarms, the hourly schedule and retries can run at the same time; a read-then-write check alone lets two invocations both see no update and both submit one. The condition compares `expires_at` itself, so it does not depend on when DynamoDB TTL deletes the item |
+| Concurrency | Reserved concurrency of 1 on the function, plus a per-file-system lock: a DynamoDB conditional put keyed on the file system ID that succeeds only when no item exists, or the item is `evaluating` with its `expires_at` in the past and no pending archive events. An invocation that does not get the lock acts on the state it finds, as the lock-state table says; none of those actions calls `UpdateFileSystem` | Per-aggregate alarms, the hourly schedule and retries can run at the same time; a read-then-write check alone lets two invocations both see no update and both submit one. The condition compares `expires_at` itself. The lock table has no DynamoDB TTL: `expires_at` is only the lease comparison value, so a durable state (`submitted`, `optimizing`, `indeterminate`, `manual_disposition_required`, `blocked`) is never deleted by the service before its designed release, which would otherwise drop the latch, the same-token barrier or the one-request chain |
 | Cooldown | Reads the `RequestTime` of the last SSD, IOPS or throughput change from `AdministrativeActions`; defers when it is less than 6 hours ago and reports the next eligible time | The cooldown is shared across the three settings ([storage-capacity-and-IOPS](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/storage-capacity-and-IOPS.html), `documented`) |
 | IOPS mode | `AUTOMATIC`: no IOPS argument. `USER_PROVISIONED`: `Iops = max(current, 3 × target)`; when that exceeds the maximum SSD IOPS for the deployment type and Region, latch `blocked` with `iops_exceeds_maximum` and notify once | User-provisioned IOPS must be at least 3 per requested GiB ([increase-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/increase-storage-capacity.html)). The quotas page lists first generation at 160,000 in US East (Ohio), US East (N. Virginia), US West (Oregon) and Europe (Ireland) and 80,000 in the other Regions, and second generation at 200,000 per HA pair for Single-AZ (up to 12 pairs) and 200,000 in total for Multi-AZ ([quotas](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/limits.html), `documented`) |
 | IAM | `fsx:UpdateFileSystem` on `arn:aws:fsx:ap-northeast-1:123456789012:file-system/fs-0123456789abcdef0` only | Limits the blast radius to one file system. The Service Authorization Reference lists `file-system*` as the required resource type for `fsx:UpdateFileSystem` ([list_fsx](https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html), `documented`). That the scoped Allow works for this module's policy is not yet checked; the policy simulation in the test plan closes it |
 | Report | SNS message on the notification topic before the call and at each later state change: correlation ID, current GiB, target GiB, mode, reason, cooldown state, `AdministrativeActions` status | Tells an operator what happened. SNS delivery is transient and an email subscription can stay unconfirmed, so the report is not the record |
-| Decision log (operational history) | One structured JSON log line per archive event in CloudWatch Logs: correlation ID, inputs (alarm state, utilization, current GiB, ceiling, mode, cooldown state, `AdministrativeActions`, lock state), decision, reason and, when the API was called, the request ID of `UpdateFileSystem`. Log group retention is a module input (planned default 365 days) | Searchable history for operators. It is not the audit record: retention deletes events, and an identity with the right permissions can delete the log group |
+| Decision log (operational history) | One structured JSON log line per archive event in CloudWatch Logs: correlation ID, inputs (alarm state, utilization, current GiB, ceiling, mode, cooldown state, `AdministrativeActions`, lock state), decision, reason and, when the API was called, the request ID of `UpdateFileSystem`. Log group retention is a module input (default 365 days) | Searchable history for operators. It is not the audit record: retention deletes events, and an identity with the right permissions can delete the log group |
 | Decision archive (audit record) | One object per event under the evaluation's correlation ID, in an S3 bucket with Object Lock default retention, administered outside the function's role. In `auto` the intent event is written and its retention checked before `UpdateFileSystem`; the function does not call when either fails. `auto` requires compliance mode | CloudTrail records API calls only, not `notify_only`, deferral, lock-contention or refusal decisions. The retention modes and their limits are in the decision-archive section |
 
 ## Ceiling validation
@@ -73,7 +73,7 @@ The same page lists an account-level, per-Region quota of 524,288 GiB of SSD cap
 At deploy time, two checks fail the plan before anything is created. Variable validation rejects a ceiling that is not a whole number from 1,024 to 1,048,576 GiB, the widest documented range. A resource precondition reads the file system through the `aws_fsx_ontap_file_system` data source, which exposes `deployment_type`, `ha_pairs` and `storage_capacity` ([data source](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/fsx_ontap_file_system), `documented`), and rejects a ceiling above the shape's maximum. Terraform runs variable validation before it generates a plan and evaluates preconditions after planning, before it creates the resource ([validate](https://developer.hashicorp.com/terraform/language/validate), `documented`). A `check` block warns, without blocking, when the ceiling leaves no room for one 10% increase.
 
 ```hcl
-# Planned validation for terraform/fsxn-ssd-auto-increase/ (not implemented).
+# Implemented in terraform/fsxn-ssd-auto-increase/variables.tf and main.tf.
 variable "max_storage_capacity_gib" {
   type        = number
   description = "Required absolute SSD ceiling in GiB. No default."
@@ -204,7 +204,7 @@ Manual disposition. `not_accepted` needs two checks made after the window: no ma
 
 > **Failure-handling note**
 >
-> The `blocked` latch fails closed once: one report, then silence from the function until the configuration changes or an operator clears it. No other part of this design repeats a notification while the latch holds. The trigger alarm keeps evaluating and stays in ALARM, so the condition remains visible in the CloudWatch console and through `DescribeAlarms`, but the alarm invoked its actions on the transition into ALARM and does not invoke them again while it stays there; only Auto Scaling actions repeat ([AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html), `documented`). On-call therefore receives at most the transition notification, if the alarm has an email action, and the single `blocked` report, not a reminder. A recurring reminder needs a separate mechanism, for example a schedule that re-reads the lock table and repeats until an operator acknowledges it. The planned T4 does not include one.
+> The `blocked` latch fails closed once: one report, then silence from the function until the configuration changes or an operator clears it. No other part of this design repeats a notification while the latch holds. The trigger alarm keeps evaluating and stays in ALARM, so the condition remains visible in the CloudWatch console and through `DescribeAlarms`, but the alarm invoked its actions on the transition into ALARM and does not invoke them again while it stays there; only Auto Scaling actions repeat ([AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html), `documented`). On-call therefore receives at most the transition notification, if the alarm has an email action, and the single `blocked` report, not a reminder. A recurring reminder needs a separate mechanism, for example a schedule that re-reads the lock table and repeats until an operator acknowledges it. T4 does not include one.
 
 ## Decision archive
 
@@ -241,12 +241,13 @@ Retention mode by T4 mode. The two Object Lock modes protect against different p
 >
 > Compliance-mode retention cannot be shortened, so a production compliance bucket is a long-lived commitment. Test the `notify_only` path on a disposable bucket in governance mode with a short retention. Test the `auto` paths (IAM-deny control run, concurrency) on a disposable bucket in compliance mode with a 1-day default retention; its objects, and therefore the bucket, cannot be deleted until that day passes. Choose the production retention period as a separate, deliberate decision. No price was looked up for the archive storage.
 
-## Planned interface
+## Module interface
 
-Variable names and values are placeholders; the interface may change when the module is built.
+Values below are placeholders; the implemented inputs are in
+`terraform/fsxn-ssd-auto-increase/variables.tf`.
 
 ```hcl
-# Planned interface for terraform/fsxn-ssd-auto-increase/ (not implemented).
+# Implemented module at terraform/fsxn-ssd-auto-increase/.
 module "ssd_auto_increase" {
   source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<planned>"
 
@@ -291,7 +292,13 @@ The operator's role, not the function's, writes `disposition` on lock items and 
 
 ## Test plan
 
-Nothing in this table has been executed yet.
+The offline rows (deploy-time ceiling validation, target computation and
+guards, lock-state transitions, archive writes) have been executed: `terraform
+test` and the pytest suites under `shared/lambda/ssd_auto_increase/tests/` pass.
+The rows that touch a real file system, bucket or policy simulator (the
+`notify_only`, `approve`, IAM-deny, policy-simulation, concurrency,
+decision-archive and real-increase rows) have NOT been run; they stay the live
+verification that T4's completion still depends on.
 
 | Test | Reversible | Expected evidence | Cost / risk |
 |---|---|---|---|
