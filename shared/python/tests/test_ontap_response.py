@@ -74,7 +74,10 @@ class TestBlockSmbUser:
         )
 
         assert result["action"] == "block_smb_user"
-        assert result["status"] == "blocked"
+        # Status states the fact (a name-mapping was created), not a denial.
+        assert result["status"] == "mapping_created"
+        assert result["access_denial_verified"] is False
+        assert "ntfs" in result["ineffective_on_security_styles"]
         assert result["pattern"] == "CORP\\\\jdoe"
         assert result["svm"] == "svm-prod"
         assert result["position"] == 1
@@ -113,10 +116,11 @@ class TestBlockSmbUser:
 
         assert result["effective_on_security_styles"] == ["unix", "mixed"]
         assert result["ineffective_on_security_styles"] == ["ntfs"]
-        # "blocked" is the mapping's existence. Denial is a separate question
-        # and is explicitly unanswered.
+        # The status is the mapping's existence ("mapping_created"). Denial is
+        # a separate question and is explicitly unanswered.
         assert result["mapping_created"] is True
         assert result["access_denial_verified"] is False
+        assert result["status"] == "mapping_created"
 
         # The caller cannot see the volumes from here, so silence would read as
         # "effective". The warning fires on every call.
@@ -138,7 +142,7 @@ class TestBlockSmbUser:
             username="jdoe",
         )
 
-        assert result["status"] == "blocked"
+        assert result["status"] == "mapping_created"
         # Verify replacement is "nobody" for AD-joined SVMs
         post_call = client._http.request.call_args_list[2]
         body = json.loads(post_call[1]["body"])
@@ -508,10 +512,14 @@ class TestContainSmbThreat:
             reason="ARP detection",
         )
 
-        assert result["status"] == "contained"
+        # The SMB-user step is a created mapping, not a verified denial, so the
+        # aggregate is not a bare "contained".
+        assert result["status"] == "contained_pending_denial_verification"
+        assert result["access_denial_verified"] is False
         assert len(result["steps"]) == 3
         assert result["steps"][0]["action"] == "create_snapshot"
         assert result["steps"][1]["action"] == "block_smb_user"
+        assert result["steps"][1]["status"] == "mapping_created"
         assert result["steps"][2]["action"] == "disconnect_smb_sessions"
 
     def test_contain_smb_threat_partial_failure(self, client):
@@ -569,8 +577,56 @@ class TestContainNfsThreat:
             reason="Mass deletion detected",
         )
 
+        # NFS containment has no SMB-user step, so a clean run is "contained".
         assert result["status"] == "contained"
         assert len(result["steps"]) == 2
+
+
+class TestContainMultiprotocolThreat:
+    """Tests for contain_multiprotocol_threat composite action."""
+
+    def test_contain_multiprotocol_threat_pending_denial(self, client):
+        """A clean multiprotocol run reflects the unverified SMB denial.
+
+        The SMB-user block is a created win->unix mapping, not a proven
+        denial, so even with every step succeeding the aggregate must not read
+        as a bare "contained".
+        """
+        client._http.request.side_effect = [
+            # create_snapshot: volume lookup
+            make_response(200, {"records": [{"uuid": "vol-uuid-456"}]}),
+            # create_snapshot: cooldown check
+            make_response(200, {"records": []}),
+            # create_snapshot: create
+            make_response(201, {}),
+            # block_smb_user: SVM lookup
+            make_response(200, {"records": [{"uuid": "svm-uuid-123"}]}),
+            # block_smb_user: CIFS services check (not AD-joined)
+            make_response(200, {"records": []}),
+            # block_smb_user: create mapping
+            make_response(201, {}),
+            # block_nfs_ip: find policy
+            make_response(200, {"records": [{"id": 42}]}),
+            # block_nfs_ip: create rule
+            make_response(201, {}),
+            # disconnect: SVM lookup
+            make_response(200, {"records": [{"uuid": "svm-uuid-123"}]}),
+            # disconnect: list sessions
+            make_response(200, {"records": []}),
+        ]
+
+        result = client.contain_multiprotocol_threat(
+            svm_name="svm-prod",
+            domain="CORP",
+            username="jdoe",
+            client_ip="10.0.5.99",
+            volume_name="vol1",
+        )
+
+        assert result["status"] == "contained_pending_denial_verification"
+        assert result["access_denial_verified"] is False
+        smb_steps = [s for s in result["steps"] if s.get("action") == "block_smb_user"]
+        assert smb_steps[0]["status"] == "mapping_created"
 
 
 # ==========================================================================

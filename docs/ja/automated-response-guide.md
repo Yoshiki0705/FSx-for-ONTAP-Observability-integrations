@@ -107,16 +107,16 @@ graph TD
 
 ### SMB ユーザーブロック
 
-ONTAP の name-mapping を利用してアクセスを拒否します:
+ONTAP の name-mapping を利用します。win->unix マッピングを作成しますが、それがアクセス拒否になるかはボリュームのセキュリティスタイルに依存します:
 
 | ステップ | 動作 | ONTAP CLI 相当 |
 |---------|------|---------------|
 | 1 | Lambda がドメインとユーザー名を含むトリガーを受信 | — |
 | 2 | name-mapping を作成: `DOMAIN\user` → `" "`（空文字） | `vserver name-mapping create -direction win-unix -pattern "DOMAIN\\user" -replacement " "` |
-| 3 | ユーザーの次のファイル操作が拒否される | SID→UNIX 変換失敗 → アクセス拒否 |
-| 4 | SVM 内の全ボリュームに影響 | name-mapping は SVM 全体に適用 |
+| 3 | `unix`/`mixed` スタイルのボリュームでは、次のファイル操作が SID→UNIX 変換に失敗する | SID→UNIX 変換失敗 → アクセス拒否 |
+| 4 | `ntfs` スタイルのボリュームでは Windows ACL が直接評価され、マッピングは参照されない — 効果なし | マッピングは作成されるが参照されない |
 
-**スコープ**: ブロックは SVM 全体に適用されます。SVM 内の全ボリューム、共有、エクスポートでアクセスが拒否されます。
+**スコープ**: name-mapping は SVM 全体に作成され、win->unix マッピングを参照する全ボリュームに適用されます。アクセスを拒否するのは `unix` と `mixed` のセキュリティスタイルのボリュームのみです。`ntfs` スタイルのボリュームでは効果がありません — 代わりに認証を止めてください（AD アカウントを無効化する）。確立済みのセッションにはセッション切断を使います。`block_smb_user` は `status: mapping_created`（`blocked` ではない）と `access_denial_verified: False` を返します。マッピングが作成されたことは確認しますが、アクセスが拒否されたことは確認しません。測定済みの内容と未測定の内容は [セキュリティ補遺](automated-response-security-addendum.md) を参照してください。
 
 > **運用安全性に関する補足（position 1 挿入）**
 >
