@@ -14,27 +14,27 @@
 
 | 項目 | 値 |
 |------|-----|
-| **検証日** | `2026-08-26` (JST) |
-| **問い 1 の状態** | 測定完了（UNIX / NFS と WINDOWS / SMB の両方） |
-| **問い 2 の状態** | 測定完了 |
-| **問い 3 の状態** | 測定完了（72 時間の窓を満了。自発的な切断 0 件） |
+| 検証日 | `2026-08-26` (JST) |
+| 問い 1 の状態 | 測定完了（UNIX / NFS と WINDOWS / SMB の両方） |
+| 問い 2 の状態 | 測定完了 |
+| 問い 3 の状態 | 測定完了（72 時間の窓を満了。自発的な切断 0 件） |
 
 ### 検証環境
 
 | 項目 | 値 |
 |------|-----|
-| **AWS リージョン** | `ap-northeast-1` |
-| **FSx for ONTAP ファイルシステム ID** | `fs-0123456789abcdef0` |
-| **デプロイタイプ / スループット** | `SINGLE_AZ_1` / 128 MBps / SSD 1024 GiB |
-| **ONTAP バージョン** | `9.18.1P3D1` |
-| **SVM 名** | `verify-e2e-svm` (`svm-0123456789abcdef0`) | <!-- allow:naming: SVM resource name -->
-| **UNIX 検証ボリューム** | `fpolicy_s3ap_vol`、UNIX セキュリティスタイル、1 GiB |
-| **NTFS 検証ボリューム** | `fpolicy_s3ap_ntfs`、NTFS セキュリティスタイル、1 GiB |
-| **監査ログ出力ボリューム** | `fpolicy_s3ap_auditlog`、UNIX セキュリティスタイル、1 GiB |
-| **FPolicy スタック** | `fpolicy-s3ap-verify`（`shared/templates/fpolicy-server-fargate.yaml`） |
-| **FPolicy サーバ** | ECS Fargate 1 タスク、0.25 vCPU / 512 MB、`linux/amd64` |
-| **FPolicy プロトコルバージョン** | ネゴシエーション結果 `1.2` |
-| **ONTAP 側エンジン設定** | `asynchronous`、`ssl_option=no_auth`、`keep_alive_interval=PT2M`、`status_request_interval=PT10S` |
+| AWS リージョン | `ap-northeast-1` |
+| FSx for ONTAP ファイルシステム ID | `fs-0123456789abcdef0` |
+| デプロイタイプ / スループット | `SINGLE_AZ_1` / 128 MBps / SSD 1024 GiB |
+| ONTAP バージョン | `9.18.1P3D1` |
+| SVM 名 | `verify-e2e-svm` (`svm-0123456789abcdef0`) | <!-- allow:naming: SVM resource name -->
+| UNIX 検証ボリューム | `fpolicy_s3ap_vol`、UNIX セキュリティスタイル、1 GiB |
+| NTFS 検証ボリューム | `fpolicy_s3ap_ntfs`、NTFS セキュリティスタイル、1 GiB |
+| 監査ログ出力ボリューム | `fpolicy_s3ap_auditlog`、UNIX セキュリティスタイル、1 GiB |
+| FPolicy スタック | `fpolicy-s3ap-verify`（`shared/templates/fpolicy-server-fargate.yaml`） |
+| FPolicy サーバ | ECS Fargate 1 タスク、0.25 vCPU / 512 MB、`linux/amd64` |
+| FPolicy プロトコルバージョン | ネゴシエーション結果 `1.2` |
+| ONTAP 側エンジン設定 | `asynchronous`、`ssl_option=no_auth`、`keep_alive_interval=PT2M`、`status_request_interval=PT10S` |
 
 FPolicy サーバのコードとテンプレートは既存の `shared/fpolicy-server/` と
 `shared/templates/fpolicy-server-fargate.yaml` をそのまま使い、測定に必要な差分だけを加えた。
@@ -55,7 +55,7 @@ FPolicy サーバのコードとテンプレートは既存の `shared/fpolicy-s
 
 ### 1-1. 結論
 
-**FSx for ONTAP S3 Access Point 経由のデータ操作は、FPolicy 通知を発火しなかった。**
+FSx for ONTAP S3 Access Point 経由のデータ操作は、**FPolicy 通知を発火しなかった**。
 UNIX identity（UNIX ボリューム）と WINDOWS identity（NTFS ボリューム）の両方で同じ結果である。
 同一ボリューム・同一 FPolicy セッションに対するファイルプロトコル（NFSv3 / SMB）の操作は発火した。
 
@@ -185,7 +185,7 @@ S3 Access Point 経由の書き込みが実際にボリュームに到達して�
 同一の NFS 書き込みを再実行すると成功する。したがって最初の `Permission denied` は
 権限設定の副作用ではなく、FPolicy の強制によるものである。
 
-**つまり S3 Access Point 経由の経路は、通知が出ないだけでなく、FPolicy の関門を通っていない。**
+つまり S3 Access Point 経由の経路は、通知が出ないだけでなく、**FPolicy の関門を通っていない**。
 mandatory モードで操作を遮断する設計は、この経路に対しては効かない。遮断を前提にした
 セキュリティ設計では、これは通知の欠落より重い。
 
@@ -313,7 +313,7 @@ HEAD は 6 回発行して 1 件も記録されなかった。ただし「HEAD �
 | 取得経路の出力上限 | ログ全体を base64 で持ち出すと上限で切り捨てられ、**新しいレコードから消える** | 転送前に gzip する。転送後にバイト数を元ファイルと突き合わせる |
 
 いずれの場合も、返ってきた結果自体はエラーにならず、少ない件数として正常に見える。
-**イベント数を数える前に、読めたバイト数が元と一致しているかを確認する必要がある。**
+イベント数を数える前に、**読めたバイト数が元と一致しているか**を確認する必要がある。
 
 ### 2-4. 記録される識別情報の違い
 

@@ -15,27 +15,27 @@ file-protocol access.
 
 | Item | Value |
 |------|-------|
-| **Verification date** | `2026-08-26` (JST) |
-| **Question 1 state** | Measurement complete (both UNIX / NFS and WINDOWS / SMB) |
-| **Question 2 state** | Measurement complete |
-| **Question 3 state** | Measurement complete (the 72-hour window is filled; 0 spontaneous disconnects) |
+| Verification date | `2026-08-26` (JST) |
+| Question 1 state | Measurement complete (both UNIX / NFS and WINDOWS / SMB) |
+| Question 2 state | Measurement complete |
+| Question 3 state | Measurement complete (the 72-hour window is filled; 0 spontaneous disconnects) |
 
 ### Verification environment
 
 | Item | Value |
 |------|-------|
-| **AWS Region** | `ap-northeast-1` |
-| **FSx for ONTAP file system ID** | `fs-0123456789abcdef0` |
-| **Deployment type / throughput** | `SINGLE_AZ_1` / 128 MBps / SSD 1024 GiB |
-| **ONTAP version** | `9.18.1P3D1` |
-| **SVM name** | `verify-e2e-svm` (`svm-0123456789abcdef0`) | <!-- allow:naming: SVM resource name -->
-| **UNIX test volume** | `fpolicy_s3ap_vol`, UNIX security style, 1 GiB |
-| **NTFS test volume** | `fpolicy_s3ap_ntfs`, NTFS security style, 1 GiB |
-| **Audit log destination volume** | `fpolicy_s3ap_auditlog`, UNIX security style, 1 GiB |
-| **FPolicy stack** | `fpolicy-s3ap-verify` (`shared/templates/fpolicy-server-fargate.yaml`) |
-| **FPolicy server** | ECS Fargate, 1 task, 0.25 vCPU / 512 MB, `linux/amd64` |
-| **FPolicy protocol version** | `1.2` as negotiated |
-| **ONTAP engine settings** | `asynchronous`, `ssl_option=no_auth`, `keep_alive_interval=PT2M`, `status_request_interval=PT10S` |
+| AWS Region | `ap-northeast-1` |
+| FSx for ONTAP file system ID | `fs-0123456789abcdef0` |
+| Deployment type / throughput | `SINGLE_AZ_1` / 128 MBps / SSD 1024 GiB |
+| ONTAP version | `9.18.1P3D1` |
+| SVM name | `verify-e2e-svm` (`svm-0123456789abcdef0`) | <!-- allow:naming: SVM resource name -->
+| UNIX test volume | `fpolicy_s3ap_vol`, UNIX security style, 1 GiB |
+| NTFS test volume | `fpolicy_s3ap_ntfs`, NTFS security style, 1 GiB |
+| Audit log destination volume | `fpolicy_s3ap_auditlog`, UNIX security style, 1 GiB |
+| FPolicy stack | `fpolicy-s3ap-verify` (`shared/templates/fpolicy-server-fargate.yaml`) |
+| FPolicy server | ECS Fargate, 1 task, 0.25 vCPU / 512 MB, `linux/amd64` |
+| FPolicy protocol version | `1.2` as negotiated |
+| ONTAP engine settings | `asynchronous`, `ssl_option=no_auth`, `keep_alive_interval=PT2M`, `status_request_interval=PT10S` |
 
 The FPolicy server code and template are the existing `shared/fpolicy-server/` and
 `shared/templates/fpolicy-server-fargate.yaml`, with only the changes measurement required.
@@ -56,7 +56,7 @@ Those changes are listed under "Changes made for observation".
 
 ### 1-1. Conclusion
 
-**Data operations through an FSx for ONTAP S3 Access Point raised no FPolicy notification.**
+Data operations through an FSx for ONTAP S3 Access Point **raised no FPolicy notification**.
 The result is the same for UNIX identity (UNIX volume) and WINDOWS identity (NTFS volume).
 File-protocol operations (NFSv3 / SMB) against the same volume, in the same FPolicy session, did.
 
@@ -324,7 +324,7 @@ procedure that reads these logs.
 | The collection path's output cap | Carrying the whole log out as base64 is truncated at the cap, and **the newest records are the ones lost** | gzip before transfer, and reconcile the received byte count against the source file |
 
 In both cases the result came back without an error and looked like a legitimately smaller count.
-**The byte count has to be reconciled against the source before the events are counted.**
+The byte count has to be **reconciled against the source before the events are counted**.
 
 ### 2-4. The identity that is recorded differs by path
 
@@ -460,7 +460,7 @@ The verification environment was deleted once the window was confirmed closed. *
 days, but the log group is a resource of the Fargate stack, so it goes when the stack goes.** What
 remains re-examinable is the tabulation above plus an export of the whole window's server log taken
 before the deletion (held outside the tracked tree; it carries internal IPs and is not published).
-**"The logs can still be re-checked after the environment is gone" cannot be written.**
+The claim that **"the logs can still be re-checked after the environment is gone" cannot be written**.
 
 #### The two events that nearly voided the window start
 
