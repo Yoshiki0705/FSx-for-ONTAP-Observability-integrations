@@ -493,8 +493,10 @@ aws logs filter-log-events \
 
 ### Judgment Criteria
 
-- **PASS**: All steps passed
-- **FAIL**: One or more steps failed (failed step numbers and failure reasons documented in the issues section above)
+| Verdict | Meaning |
+|---------|---------|
+| PASS | All steps passed |
+| FAIL | One or more steps failed (failed step numbers and failure reasons documented in the issues section above) |
 
 ---
 
