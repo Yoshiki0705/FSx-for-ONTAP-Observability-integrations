@@ -94,22 +94,28 @@ def _render_header(
 
     lines.append("## 実施概要")
     lines.append("")
-    lines.append(f"- **検証日時**: {report.verification_date}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| 検証日時 | {report.verification_date} |")
     lines.append("")
     lines.append("### 環境情報")
     lines.append("")
-    lines.append(f"- **AWS リージョン**: {env.aws_region}")
-    lines.append(f"- **スタック名**: {env.stack_name}")
-    lines.append(f"- **Lambda 関数名**: {env.lambda_function_name}")
-    lines.append(f"- **New Relic リージョン**: {env.new_relic_region}")
-    lines.append(f"- **New Relic アカウント ID**: `{env.new_relic_account_id_masked}`")
-    lines.append(f"- **AWS アカウント ID**: `{env.aws_account_id_masked}`")
-    lines.append(f"- **FSx ファイルシステム ID**: {env.fsx_file_system_id}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| AWS リージョン | {env.aws_region} |")
+    lines.append(f"| スタック名 | {env.stack_name} |")
+    lines.append(f"| Lambda 関数名 | {env.lambda_function_name} |")
+    lines.append(f"| New Relic リージョン | {env.new_relic_region} |")
+    lines.append(f"| New Relic アカウント ID | `{env.new_relic_account_id_masked}` |")
+    lines.append(f"| AWS アカウント ID | `{env.aws_account_id_masked}` |")
+    lines.append(f"| FSx ファイルシステム ID | {env.fsx_file_system_id} |")
     lines.append("")
     lines.append("### 検証者")
     lines.append("")
-    lines.append(f"- **氏名**: {report.verifier.name}")
-    lines.append(f"- **ロール**: {report.verifier.role}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| 氏名 | {report.verifier.name} |")
+    lines.append(f"| ロール | {report.verifier.role} |")
     lines.append("")
 
     return "\n".join(lines)
@@ -135,7 +141,7 @@ def _render_single_step(step: VerificationStep) -> str:
     badge = _RESULT_BADGES.get(step.result, step.result)
     lines.append(f"### ステップ {step.step_number}: {step.step_name}")
     lines.append("")
-    lines.append(f"**結果**: {badge}")
+    lines.append(f"結果: {badge}")
     lines.append("")
 
     if step.command:
@@ -188,14 +194,16 @@ def _render_nrql_results(nrql_results: list[NRQLQueryResult]) -> str:
         lines.append(result.query)
         lines.append("```")
         lines.append("")
-        lines.append(f"- **結果サマリー**: {result.result_summary}")
-        lines.append(f"- **行数**: {result.row_count}")
-        lines.append(f"- **実行日時**: {result.execution_timestamp}")
-        lines.append(f"- **ステータス**: {status_badge}")
+        lines.append("| 項目 | 値 |")
+        lines.append("|------|-----|")
+        lines.append(f"| 結果サマリー | {result.result_summary} |")
+        lines.append(f"| 行数 | {result.row_count} |")
+        lines.append(f"| 実行日時 | {result.execution_timestamp} |")
+        lines.append(f"| ステータス | {status_badge} |")
         if result.error_reason:
-            lines.append(f"- **エラー理由**: {result.error_reason}")
+            lines.append(f"| エラー理由 | {result.error_reason} |")
         if result.retry_count > 0:
-            lines.append(f"- **リトライ回数**: {result.retry_count}")
+            lines.append(f"| リトライ回数 | {result.retry_count} |")
         lines.append("")
 
     return "\n".join(lines)
@@ -213,16 +221,18 @@ def _render_alert_config(alert_config: AlertConditionConfig) -> str:
     lines.append(alert_config.nrql_query)
     lines.append("```")
     lines.append("")
-    lines.append(f"- **閾値**: {alert_config.threshold_value}")
-    lines.append(f"- **評価ウィンドウ**: {alert_config.evaluation_window_minutes} 分")
-    lines.append(f"- **通知チャネル**: {alert_config.notification_channel}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| 閾値 | {alert_config.threshold_value} |")
+    lines.append(f"| 評価ウィンドウ | {alert_config.evaluation_window_minutes} 分 |")
+    lines.append(f"| 通知チャネル | {alert_config.notification_channel} |")
     if alert_config.test_trigger_timestamp:
         lines.append(
-            f"- **テストトリガー日時**: {alert_config.test_trigger_timestamp}"
+            f"| テストトリガー日時 | {alert_config.test_trigger_timestamp} |"
         )
     if alert_config.notification_receipt_timestamp:
         lines.append(
-            f"- **通知受信日時**: {alert_config.notification_receipt_timestamp}"
+            f"| 通知受信日時 | {alert_config.notification_receipt_timestamp} |"
         )
     lines.append("")
 
@@ -235,38 +245,40 @@ def _render_demo_timeline(demo_timeline: DemoScenarioTimeline) -> str:
 
     lines.append("## デモシナリオタイムライン")
     lines.append("")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
     lines.append(
-        f"- **ファイル書き込み**: {demo_timeline.file_write_timestamp}"
+        f"| ファイル書き込み | {demo_timeline.file_write_timestamp} |"
     )
     if demo_timeline.ems_event_timestamp:
         lines.append(
-            f"- **EMS イベント**: {demo_timeline.ems_event_timestamp}"
+            f"| EMS イベント | {demo_timeline.ems_event_timestamp} |"
         )
     if demo_timeline.s3_object_creation_timestamp:
         lines.append(
-            f"- **S3 オブジェクト作成**: {demo_timeline.s3_object_creation_timestamp}"
+            f"| S3 オブジェクト作成 | {demo_timeline.s3_object_creation_timestamp} |"
         )
     if demo_timeline.lambda_invocation_timestamp:
         lines.append(
-            f"- **Lambda 起動**: {demo_timeline.lambda_invocation_timestamp}"
+            f"| Lambda 起動 | {demo_timeline.lambda_invocation_timestamp} |"
         )
     if demo_timeline.new_relic_log_arrival_timestamp:
         lines.append(
-            f"- **New Relic ログ到着**: {demo_timeline.new_relic_log_arrival_timestamp}"
+            f"| New Relic ログ到着 | {demo_timeline.new_relic_log_arrival_timestamp} |"
         )
     lines.append(
-        f"- **シナリオステータス**: "
-        f"{_NRQL_STATUS_BADGES.get(demo_timeline.scenario_status, demo_timeline.scenario_status)}"
+        f"| シナリオステータス | "
+        f"{_NRQL_STATUS_BADGES.get(demo_timeline.scenario_status, demo_timeline.scenario_status)} |"
     )
     if demo_timeline.last_successful_stage:
         lines.append(
-            f"- **最終成功ステージ**: {demo_timeline.last_successful_stage}"
+            f"| 最終成功ステージ | {demo_timeline.last_successful_stage} |"
         )
     if demo_timeline.failing_stage:
-        lines.append(f"- **失敗ステージ**: {demo_timeline.failing_stage}")
+        lines.append(f"| 失敗ステージ | {demo_timeline.failing_stage} |")
     if demo_timeline.elapsed_at_failure is not None:
         lines.append(
-            f"- **失敗時経過時間**: {demo_timeline.elapsed_at_failure:.1f} 秒"
+            f"| 失敗時経過時間 | {demo_timeline.elapsed_at_failure:.1f} 秒 |"
         )
     lines.append("")
 
