@@ -1144,7 +1144,7 @@ An older log group and its syslog configuration, both from before this run, were
 | `unauthorized-access` (file-path pattern) | Not run | Its shipped pattern is a placeholder, and file access is not in the admin audit log |
 | ONTAP CLI (SSH) change and delete operations | Not exercised | Only REST calls were made. The new `bulk-delete` default matched a constructed CLI-style line, not a captured one |
 | New `bulk-delete` default on a live alarm | Not run | Chosen after the run; checked with `test-metric-filter` only |
-| SNS notification on ALARM and OK | Not exercised | No topic was configured |
+| SNS notification on ALARM and OK | Not exercised | No topic was configured. This row is in the EMS admin-audit (F8) context, outside the monitoring modules the [SNS Delivery Path Verification on 2026-10-10](#sns-delivery-path-verification-on-2026-10-10) scopes itself to, so that run's wiring result is not claimed for it |
 | Deployer IAM policy `examples/basic/iam-policy.json` | Not verified | The deployer had administrator access |
 | Mitigation for F9, for example a periodic write that keeps each node's connection active | Not tested | — |
 | Why ONTAP held 2 stale destinations before the run | Not determined | They were recorded and deleted |
@@ -1360,7 +1360,7 @@ The per-run tables above each note that no notification email was set in that ru
 |------|-------|
 | Verification date | 2026-10-10 (UTC) |
 | Region | `ap-northeast-1` |
-| Context file system | `fs-09ffe72a3b2b7dbbd` (the alarm referenced its `StorageCapacityUtilization` dimension). The file system was not modified; the alarm state was FORCED, not driven by real utilization |
+| Context file system | `fs-0123456789abcdef0` (the alarm referenced its `StorageCapacityUtilization` dimension). The file system was not modified; the alarm state was FORCED, not driven by real utilization |
 | Scope | The ALARM-action → SNS topic → subscriber delivery path only (the SNS wiring) |
 
 Method: a temporary SNS topic, an SQS queue subscribed to that topic, and a temporary CloudWatch alarm whose `AlarmActions` pointed at the SNS topic were created. SQS was chosen as the subscriber so delivery is machine-confirmable without a manual email-subscription click. `aws cloudwatch set-alarm-state --state-value ALARM` forced the alarm into ALARM.
