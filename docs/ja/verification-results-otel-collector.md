@@ -254,6 +254,6 @@
 
 ## アーキテクチャ上の重要ポイント
 
-1. **Lambda コード不変**: バックエンドを Grafana+Honeycomb から Datadog に切り替えても、`handler.py` のコードは一切変更不要
-2. **設定のみの変更**: `otel-collector-config-datadog.yaml` を使用するだけで配信先が切り替わる
-3. **OTLP 標準準拠**: Lambda は OTLP/HTTP JSON 形式で送信するため、任意の OTLP 対応バックエンドに対応可能
+- バックエンドを Grafana+Honeycomb から Datadog に切り替えても、`handler.py` のコードは一切変更不要（Lambda コードは不変）。
+- 配信先の切り替えは `otel-collector-config-datadog.yaml` を使用するだけで、設定の変更のみで完結する。
+- Lambda は OTLP/HTTP JSON 形式で送信するため、任意の OTLP 対応バックエンドに対応できる（OTLP 標準準拠）。
