@@ -156,17 +156,19 @@ Forcefully terminates active sessions so the blocked user cannot continue operat
 
 ### NFS Immediate Blocking: Multi-Layer Options
 
-Unlike SMB (where session disconnect forces re-authentication), NFS has no equivalent session-terminate API. The ONTAP export-policy deny rule takes effect on the next I/O, but Linux NFS clients cache access decisions for up to 60 seconds (`actimeo` default). Three options are available, and can be combined:
+Unlike SMB (where session disconnect forces re-authentication), NFS has no equivalent session-terminate API. An ONTAP export-policy deny rule takes effect on the next access check, but ONTAP's export-policy access cache keeps a positive entry until its TTL expires (default 1 hour, configurable 300-86400s), so without a cache flush the deny can lag. The client-side `actimeo` mount option does **not** cache the access decision — it is an attribute cache. Three options are available, and can be combined:
+
+> **Note (why the NACL layer is recommended)**: `actimeo` and the related `acreg*`/`acdir*` options set how long the Linux NFS client caches file and directory *attributes*, not the server's access *decisions* ([Linux nfs(5), Attribute caching](https://man7.org/linux/man-pages/man5/nfs.5.html)). Under NFSv3 close-to-open consistency, the client sends an ACCESS/GETATTR to the server when an application opens a file, regardless of attribute-cache freshness, so an open-time access check is not suppressed by `actimeo`. The delay that does exist is server-side: ONTAP's export-policy access cache retains a positive entry for its TTL (default 3600s) after a rule change, and immediate effect requires `vserver export-policy cache flush` ([ONTAP NFS access cache parameters](https://docs.netapp.com/us-en/ontap/nfs-admin/access-cache-parameters-work-concept.html), [vserver export-policy cache flush](https://docs.netapp.com/us-en/ontap-cli/vserver-export-policy-cache-flush.html)). The NACL layer is recommended because it blocks immediately at the network (VPC) packet level, independent of the ONTAP export-policy path and its access-cache TTL. An earlier internal test on Amazon Linux 2023 / NFSv3 observed no client-side cache bypass after an export-policy deny, consistent with this.
 
 | Option | Layer | Effect Timing | Scope | Configuration |
 |--------|-------|---------------|-------|---------------|
 | **NACL deny rule** (recommended) | Network (VPC) | **Immediate** (packet-level) | All traffic from IP to subnet | `FsxSubnetId` parameter + `block_nfs_ip_network` action |
-| Export-policy deny rule | ONTAP | Next I/O (up to 60s cache) | NFS volumes using that policy | `block_nfs_ip` action (existing) |
+| Export-policy deny rule | ONTAP | Next access check, but subject to the ONTAP access-cache TTL (default 1h) unless flushed | NFS volumes using that policy | `block_nfs_ip` action (existing) |
 | Security Group modification | Network (ENI) | Immediate | Allow-only (cannot deny specific IP without removing broader allow) | Manual or custom automation |
 
 **Recommended approach**: Use `contain_nfs_threat` with `FsxSubnetId` configured. This executes both layers automatically:
 1. ONTAP export-policy deny rule (persistent, survives NACL removal)
-2. NACL deny rule (immediate, network-level, no client cache bypass)
+2. NACL deny rule (immediate, network-level, independent of the ONTAP export-policy path and its access-cache TTL)
 
 ```bash
 # Deploy with network-layer blocking enabled:
@@ -759,7 +761,7 @@ This solution was E2E verified on:
 | Symptom | Cause | Solution |
 |---------|-------|----------|
 | SMB user still has access after block | Existing session active | Use `contain_smb_threat` (includes session disconnect) or wait for session timeout |
-| NFS client still has access | NFS attribute cache | Wait 60s (default `actimeo`) or remount with `mount -o actimeo=0` for testing |
+| NFS client still has access after an export-policy deny | ONTAP export-policy access cache (positive entry, default 1h TTL) | Run `vserver export-policy cache flush` on the SVM; the NACL layer gives immediate network-level blocking meanwhile |
 | Block exists but ONTAP shows no entry | Wrong SVM | Verify the SVM name in your SNS message matches the target SVM |
 
 ### TTL Auto-Unblock Issues

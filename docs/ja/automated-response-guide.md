@@ -147,17 +147,19 @@ export-policy に拒否ルールを追加します:
 
 ### NFS 即時遮断: 多層オプション
 
-SMB（セッション切断で再認証を強制可能）と異なり、NFS にはセッション終了 API がありません。ONTAP export-policy deny rule は次の I/O 時に適用されますが、Linux NFS クライアントはアクセス判定を最大 60 秒間キャッシュします（`actimeo` デフォルト）。3 つのオプションがあり、組み合わせ可能です:
+SMB（セッション切断で再認証を強制可能）と異なり、NFS にはセッション終了 API がありません。ONTAP export-policy deny rule は次のアクセスチェック時に適用されますが、ONTAP の export-policy アクセスキャッシュは TTL が切れるまで肯定エントリを保持する（デフォルト 1 時間、300-86400 秒で設定可能）ため、キャッシュをフラッシュしない限り deny が遅延しえます。クライアント側の `actimeo` マウントオプションはアクセス判定をキャッシュ**しません**。これは属性キャッシュです。3 つのオプションがあり、組み合わせ可能です:
+
+> **補足（NACL レイヤーを推奨する理由）**: `actimeo` および関連する `acreg*`/`acdir*` オプションは、Linux NFS クライアントがファイル・ディレクトリの*属性*をキャッシュする時間を設定するもので、サーバーのアクセス*判定*をキャッシュするものではありません（[Linux nfs(5), Attribute caching](https://man7.org/linux/man-pages/man5/nfs.5.html)）。NFSv3 の close-to-open 整合性のもとでは、アプリケーションがファイルを開くときにクライアントは属性キャッシュの鮮度にかかわらずサーバーへ ACCESS/GETATTR を送るため、オープン時のアクセスチェックは `actimeo` では抑制されません。実際に存在する遅延はサーバー側です。ONTAP の export-policy アクセスキャッシュはルール変更後も TTL の間（デフォルト 3600 秒）肯定エントリを保持し、即時反映には `vserver export-policy cache flush` が必要です（[ONTAP NFS access cache parameters](https://docs.netapp.com/us-en/ontap/nfs-admin/access-cache-parameters-work-concept.html)、[vserver export-policy cache flush](https://docs.netapp.com/us-en/ontap-cli/vserver-export-policy-cache-flush.html)）。NACL レイヤーを推奨するのは、ONTAP の export-policy 経路とそのアクセスキャッシュ TTL に依存せず、ネットワーク（VPC）のパケットレベルで即時に遮断するためです。Amazon Linux 2023 / NFSv3 での以前の内部テストでは、export-policy deny の後にクライアント側キャッシュの回避は観測されず、これと整合します。
 
 | オプション | レイヤー | 効果タイミング | スコープ | 設定 |
 |-----------|---------|--------------|---------|------|
 | **NACL deny rule**（推奨） | ネットワーク（VPC） | **即時**（パケットレベル） | IP からサブネットへの全トラフィック | `FsxSubnetId` パラメータ + `block_nfs_ip_network` アクション |
-| Export-policy deny rule | ONTAP | 次の I/O 時（最大 60 秒キャッシュ） | そのポリシーを使用する NFS ボリューム | `block_nfs_ip` アクション（既存） |
+| Export-policy deny rule | ONTAP | 次のアクセスチェック時。ただしフラッシュしない限り ONTAP アクセスキャッシュの TTL（デフォルト 1 時間）に従う | そのポリシーを使用する NFS ボリューム | `block_nfs_ip` アクション（既存） |
 | Security Group 変更 | ネットワーク（ENI） | 即時 | allow のみ（特定 IP の deny 不可、広い allow を削除する必要） | 手動またはカスタム自動化 |
 
 **推奨アプローチ**: `contain_nfs_threat` を `FsxSubnetId` 設定済みで使用。両レイヤーを自動実行:
 1. ONTAP export-policy deny rule（永続的、NACL 削除後も残る）
-2. NACL deny rule（即時、ネットワークレベル、クライアントキャッシュ回避不可）
+2. NACL deny rule（即時、ネットワークレベル、ONTAP の export-policy 経路とそのアクセスキャッシュ TTL に非依存）
 
 ```bash
 # Deploy with network-layer blocking enabled:
@@ -750,7 +752,7 @@ aws lambda delete-layer-version --layer-name fsxn-shared-python --version-number
 | 症状 | 原因 | 解決策 |
 |------|------|--------|
 | ブロック後も SMB ユーザーがアクセス可能 | 既存セッションがアクティブ | `contain_smb_threat`（セッション切断含む）を使用するか、セッションタイムアウトを待つ |
-| ブロック後も NFS クライアントがアクセス可能 | NFS 属性キャッシュ | 60 秒待つ（デフォルト `actimeo`）か、テスト時は `mount -o actimeo=0` で再マウント |
+| export-policy deny 後も NFS クライアントがアクセス可能 | ONTAP export-policy アクセスキャッシュ（肯定エントリ、デフォルト 1 時間 TTL） | SVM で `vserver export-policy cache flush` を実行。その間は NACL レイヤーがネットワークレベルで即時に遮断 |
 | ブロック存在するが ONTAP にエントリなし | SVM が違う | SNS メッセージの SVM 名がターゲット SVM と一致するか確認 |
 
 ### TTL 自動解除の問題
