@@ -8,26 +8,26 @@ The [Cyber Resilience Capability Map](cyber-resilience-capability-map.md#identif
 
 This guide implements that content-level scan using Amazon Comprehend's managed PII entity detection, exposed as a standalone Lambda function that reads files through an existing S3 Access Point:
 
-1. **List objects** through a given S3 Access Point (`ListObjectsV2`) and filter to scannable text/structured-data extensions (`.txt`, `.csv`, `.json`, `.log`, and others — binary formats like Office documents are out of scope; see [Remaining Limitations](#remaining-limitations) below).
+1. **List objects** through a given S3 Access Point (`ListObjectsV2`) and filter to scannable text/structured-data extensions (`.txt`, `.csv`, `.json`, `.log`, and others; binary formats like Office documents are out of scope; see [Remaining Limitations](#remaining-limitations) below).
 2. **Read and chunk** each file's content into byte-bounded segments under Amazon Comprehend's per-call size ceiling.
-3. **Call `DetectPiiEntities`** per chunk and aggregate entity type, count, and confidence score per file — **the PII values themselves are never persisted**, only entity type/offset/confidence.
+3. **Call `DetectPiiEntities`** per chunk and aggregate entity type, count, and confidence score per file. Only entity type/offset/confidence is kept; **the PII values themselves are never persisted**.
 4. **Write a classification report** to DynamoDB and optionally notify via SNS when PII is found.
 
-> **Scope note**: This is a PII *discovery* tool, not a redaction, remediation, or general-purpose malware/content scanner. It answers "does this volume contain content that looks like PII, and roughly how much" — the CSF 2.0 Identify-function question of asset/data understanding, not Protect, Detect, or Respond.
+> **Scope note**: This is a PII *discovery* tool, not a redaction, remediation, or general-purpose malware/content scanner. It answers "does this volume contain content that looks like PII, and roughly how much", which is the CSF 2.0 Identify-function question of asset/data understanding, not Protect, Detect, or Respond.
 
-**Key capabilities:**
-- Amazon Comprehend `DetectPiiEntities` — managed PII detection across [12 languages](https://docs.aws.amazon.com/comprehend/latest/dg/supported-languages.html), dozens of entity types (SSN, credit card numbers, bank accounts, national ID numbers, and more)
+### Key capabilities
+- Amazon Comprehend `DetectPiiEntities` provides managed PII detection across [12 languages](https://docs.aws.amazon.com/comprehend/latest/dg/supported-languages.html), with dozens of entity types (SSN, credit card numbers, bank accounts, national ID numbers, and more)
 - Data-minimizing by design: findings record entity type + confidence, never the matched text itself
-- Works against any existing FSx for ONTAP S3 Access Point — standalone, or chained after the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md)'s FlexClone-backed access point for zero production impact
+- Works against any existing FSx for ONTAP S3 Access Point, standalone or chained after the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md)'s FlexClone-backed access point for zero production impact
 - Oversized files are sampled (first N bytes), not skipped entirely, so large log/CSV files still contribute a partial signal
 - DynamoDB report ledger, doubling as CSF 2.0 Identify-function evidence for audits
 
-**When to run this:**
+### When to run this
 - Periodically against volumes containing user-generated content (shares, home directories, exports) to maintain an up-to-date picture of where PII actually lives
 - Against a [FlexClone verification access point](verified-recovery-point-guide.md) immediately after ransomware verification, combining both scans against the same isolated clone
 - Before onboarding a volume to a new observability/SIEM destination, to confirm what a forensics dashboard or exported log sample might expose
 
-> **Positioning note**: The accurate positioning here is "content-level PII discovery for plain-text/structured-data formats," not "PII discovery" unqualified — the [Remaining Limitations](#remaining-limitations) section below is explicit that Office/PDF content is out of scope today. In an engagement conversation, especially one where the organization's data is dominated by Office documents, lead with the schema-level [Data Classification Guide](data-classification.md) as the complete-coverage layer and this scanner as the content-level complement for the formats it does cover, rather than implying this scanner alone provides comprehensive content-level PII coverage across all file types.
+> **Positioning note**: The accurate positioning here is "content-level PII discovery for plain-text/structured-data formats," not "PII discovery" unqualified. The [Remaining Limitations](#remaining-limitations) section below is explicit that Office/PDF content is out of scope today. In an engagement conversation, especially one where the organization's data is dominated by Office documents, lead with the schema-level [Data Classification Guide](data-classification.md) as the complete-coverage layer and this scanner as the content-level complement for the formats it does cover, rather than implying this scanner alone provides comprehensive content-level PII coverage across all file types.
 
 ---
 
@@ -76,13 +76,13 @@ This guide implements that content-level scan using Amazon Comprehend's managed 
 
 ### File Selection
 
-Only files with a scannable extension are read — this scanner does not implement document-format parsing (no Office/PDF text extraction):
+Only files with a scannable extension are read; this scanner does not implement document-format parsing (no Office/PDF text extraction):
 
 ```
 .txt  .csv  .tsv  .json  .xml  .log  .md  .yaml  .yml  .ini  .conf  .sql  .html  .htm
 ```
 
-Zero-byte files are skipped. Files above `DEFAULT_MAX_FILE_BYTES` (5 MB) are **sampled**, not skipped — only the first 500 KB is read via an S3 Range `GetObject`, and the finding records `sampled: true` so you know the result is partial.
+Zero-byte files are skipped. Files above `DEFAULT_MAX_FILE_BYTES` (5 MB) are **sampled**, not skipped. Only the first 500 KB is read via an S3 Range `GetObject`, and the finding records `sampled: true` so you know the result is partial.
 
 > **Sustainability note**: The 500 KB sampling cap on oversized files (rather than reading and scanning the full file) is itself an energy-saving design choice as much as a cost-control one — the `max_files` cap and sampling behavior together bound both the Comprehend inference workload and the total bytes read from S3 per run. The cost note under Configuration Reference below covers the dollar-cost implication of this same behavior; the energy implication is directly proportional, since Comprehend's inference cost and its underlying compute both scale with characters processed. Scanning a representative subset rather than an entire multi-terabyte volume (see the FAQ's cost-avoidance guidance) reduces energy use by the same proportion it reduces cost.
 
@@ -104,7 +104,7 @@ For each file, findings record **only**:
 - Count of occurrences per type
 - Highest confidence `Score` observed per type
 
-The matched text itself (the actual email address, SSN, etc.) is **never written to the report, logs, or DynamoDB**. This mirrors the [Data Classification Guide](data-classification.md)'s pseudonymization guidance — a report saying "this file contains 3 SSN-pattern matches at 0.97+ confidence" is useful for prioritizing remediation without itself becoming a new PII exposure surface.
+The matched text itself (the actual email address, SSN, etc.) is **never written to the report, logs, or DynamoDB**. This mirrors the [Data Classification Guide](data-classification.md)'s pseudonymization guidance. A report saying "this file contains 3 SSN-pattern matches at 0.97+ confidence" is useful for prioritizing remediation without itself becoming a new PII exposure surface.
 
 > **Privacy note**: The report records `highest_confidence_by_type` per entity, but the scanner does **not** filter or flag low-confidence matches — a single `EMAIL` detection at Comprehend confidence 0.31 counts toward `files_with_pii` exactly the same as one at 0.99. Before using `files_with_pii`/`pii_density_by_type` as an input to a regulatory PII inventory or a DPIA, review the per-entity `highest_confidence_by_type` in the raw findings (not just the summary counts) and apply your own confidence floor — treating every low-confidence match as confirmed PII risks overstating exposure; treating every match as noise risks understating it. Neither judgment call is one this scanner makes for you.
 
@@ -179,7 +179,7 @@ The Lambda execution role requires:
 
 ### An Existing S3 Access Point
 
-This scanner does **not** create or manage S3 Access Points — pass the ARN of one that already exists. Two common sources:
+This scanner does **not** create or manage S3 Access Points. Pass the ARN of one that already exists. Two common sources:
 - An access point you manage directly against a production or DR volume
 - The `access_point_arn` output from the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md)'s `AttachAccessPoint` step, scanning the same FlexClone used for ransomware verification
 
@@ -191,7 +191,7 @@ This scanner does **not** create or manage S3 Access Points — pass the ARN of 
 
 ### Deploy Mode 1: Standalone (Internet-Origin Access Point)
 
-Use this when scanning an access point that does **not** have a `VpcConfiguration` — the simpler, cheaper mode, since no VPC Endpoints are created:
+Use this when scanning an access point that does **not** have a `VpcConfiguration`. It is the simpler, cheaper mode, since no VPC Endpoints are created:
 
 ```bash
 aws cloudformation deploy \
@@ -206,7 +206,7 @@ aws cloudformation deploy \
 
 ### Deploy Mode 2: In-VPC (VPC-Scoped Access Point)
 
-Use this when scanning a VPC-scoped access point — required if chaining after the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md)'s `AttachAccessPoint` step, since that step always creates a VPC-scoped access point:
+Use this when scanning a VPC-scoped access point. It is required if chaining after the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md)'s `AttachAccessPoint` step, since that step always creates a VPC-scoped access point:
 
 ```bash
 aws cloudformation deploy \
@@ -258,7 +258,7 @@ To scan the same isolated FlexClone used for ransomware verification (rather tha
 
 ### Quick Validation
 
-Before pointing this scanner at real data, confirm it works end-to-end against a synthetic file — this exact sequence is what this project's own E2E verification used, against Deploy Mode 1 (standalone, no `VpcId`):
+Before pointing this scanner at real data, confirm it works end-to-end against a synthetic file. This exact sequence is what this project's own E2E verification used, against Deploy Mode 1 (standalone, no `VpcId`):
 
 ```bash
 # 1. Create a synthetic PII file — no real personal data, safe to commit
@@ -378,7 +378,7 @@ python3 -m pytest shared/python/tests/test_content_classifier.py -v
 A: No. This is a discovery-only tool, matching the CSF 2.0 Identify function's scope (inventory and understanding, not remediation). Redaction would require a separate write path this module deliberately does not implement.
 
 **Q: Can I scan a production volume directly, not just a FlexClone?**
-A: Yes — pass any S3 Access Point ARN, including one attached directly to a production volume. The FlexClone pattern in the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md) is recommended when you want zero read-load impact on production and want to combine the scan with ransomware verification, but it's not required.
+A: Yes. Pass any S3 Access Point ARN, including one attached directly to a production volume. The FlexClone pattern in the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md) is recommended when you want zero read-load impact on production and want to combine the scan with ransomware verification, but it's not required.
 
 **Q: Why does the scanner skip Office documents and PDFs?**
 A: This module intentionally scopes to plain-text and structured-data formats to avoid depending on a document-parsing library. If your volumes are dominated by Office/PDF content, consider Amazon Textract or a document-extraction Lambda Layer as a pre-processing step feeding this scanner's `classify_object` logic with extracted text instead of raw bytes.
@@ -390,7 +390,7 @@ A: Use `max_files` to cap the per-invocation scan size, and consider running the
 A: The `access_point_arn` you're passing is almost certainly VPC-scoped (most commonly, one produced by the [Verified-Clean Recovery Point Guide](verified-recovery-point-guide.md)'s `AttachAccessPoint` step). A VPC-scoped access point has no network route from outside its bound VPC — this fails deterministically, not intermittently, regardless of IAM permissions. Redeploy with `VpcId`/`SubnetIds`/`SecurityGroupId`/`RouteTableIds` set (Deploy Mode 2) so the scanner runs inside the same VPC the access point is bound to.
 
 **Q: Does a low `Score` (confidence) on a PII entity mean I can ignore it?**
-A: Not automatically — this scanner doesn't apply a confidence floor for you (see the Privacy note under [Entity Aggregation](#entity-aggregation--data-minimization-by-design)). It records the highest confidence seen per entity type per file so *you* can apply a threshold appropriate to your regulatory context; it does not decide for you what confidence level constitutes "found" PII.
+A: Not automatically. This scanner doesn't apply a confidence floor for you (see the Privacy note under [Entity Aggregation](#entity-aggregation--data-minimization-by-design)). It records the highest confidence seen per entity type per file so *you* can apply a threshold appropriate to your regulatory context; it does not decide for you what confidence level constitutes "found" PII.
 
 **Q: My scan of a large volume shows zero findings in DynamoDB — did it actually run?**
 A: Check CloudWatch Logs for that invocation before concluding "no PII found." Because the report is written once at the end of the handler (see [Remaining Limitations](#remaining-limitations) item 6), a Lambda timeout partway through a large scan produces the same DynamoDB-side symptom (no report row) as a scan that genuinely found nothing — the two are only distinguishable via the Lambda's own logs/duration metrics.

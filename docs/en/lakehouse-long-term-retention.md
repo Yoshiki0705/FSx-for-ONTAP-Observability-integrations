@@ -4,13 +4,13 @@
 
 ## TL;DR
 
-Observability vendors typically keep FSx for ONTAP audit logs for weeks to months. When compliance requires multi-year retention, or when the question is a SQL join across years of data rather than a log search, this guide adds a second, parallel path: the same audit log stream, converted to Apache Parquet and landed in a standard Amazon S3 bucket, queryable with Amazon Athena or Snowflake. This is not a replacement for the vendor pipelines in this project — it is a long-term retention and SQL-analytics complement to them.
+Observability vendors typically keep FSx for ONTAP audit logs for weeks to months. When compliance requires multi-year retention, or when the question is a SQL join across years of data rather than a log search, this guide adds a second, parallel path: the same audit log stream, converted to Apache Parquet and landed in a standard Amazon S3 bucket, queryable with Amazon Athena or Snowflake. This is not a replacement for the vendor pipelines in this project; it is a long-term retention and SQL-analytics complement to them.
 
 **Verified end-to-end** (2026-07-19, ap-northeast-1): 500 synthetic audit log records → Kinesis Data Firehose (JSON → Parquet conversion) → S3 (Snappy-compressed Parquet, partitioned by date) → Glue Data Catalog (Partition Projection, no crawler) → Amazon Athena. `SELECT COUNT(*)` returned exactly 500; a `GROUP BY operation, result` aggregation query matched the input distribution; query execution scanned 556 bytes and completed in 417ms.
 
 ## Why a Second Path
 
-The 9 vendor integrations in this project (Datadog, Splunk, Elastic, and others) are built for **search and alerting** — finding the log line that matters, right now, and firing an alert within seconds. They are not built for **multi-year SQL analytics** — "how many failed delete operations happened per SVM per quarter for the last 3 years" is a different kind of question, and most observability platforms' retention windows (30–90 days on standard tiers) and per-GB ingest pricing make them a poor fit for that question at scale.
+The 9 vendor integrations in this project (Datadog, Splunk, Elastic, and others) are built for **search and alerting**: finding the log line that matters, right now, and firing an alert within seconds. They are not built for **multi-year SQL analytics**. A question like "how many failed delete operations happened per SVM per quarter for the last 3 years" is a different kind of question, and most observability platforms' retention windows (30–90 days on standard tiers) and per-GB ingest pricing make them a poor fit for that question at scale.
 
 | Requirement | Observability vendor (this project's 9 integrations) | Lakehouse retention (this guide) |
 |---|---|---|
@@ -20,7 +20,7 @@ The 9 vendor integrations in this project (Datadog, Splunk, Elastic, and others)
 | Ad hoc SQL joins across years of data | ❌ Most platforms don't support this well | ✅ Best fit (Athena/Snowflake are SQL-native) |
 | BI dashboard / reporting tool integration | ⚠️ Varies by vendor | ✅ Best fit (standard SQL/JDBC/ODBC) |
 
-Choose based on the question being asked, not as a vendor-versus-vendor decision — the two paths are complementary, and most production deployments run both from the same source data.
+Choose based on the question being asked, not as a vendor-versus-vendor decision. The two paths are complementary, and most production deployments run both from the same source data.
 
 ## Architecture
 
@@ -52,7 +52,7 @@ S3 (retention bucket)
    (pay-per-query SQL)        (SQL + Snowflake governance features)
 ```
 
-This guide does not touch the FSx for ONTAP S3 Access Point pattern used by the vendor pipelines in this project. The Firehose stream reads from a **standard S3 bucket** that already receives audit log JSON (the same source the vendor Lambdas read from). This is a deliberate scope boundary: it keeps this guide's constraints independent of the FSx for ONTAP S3 AP-specific limitations documented elsewhere in this project (no S3 Event Notifications, AD DC reachability requirements, etc.) — those constraints do not apply here, because the Firehose stream and its downstream S3 Event Notifications (used for Snowpipe auto-ingest in the Snowflake section below) operate against a bucket that supports them natively.
+This guide does not touch the FSx for ONTAP S3 Access Point pattern used by the vendor pipelines in this project. The Firehose stream reads from a **standard S3 bucket** that already receives audit log JSON (the same source the vendor Lambdas read from). This is a deliberate scope boundary: it keeps this guide's constraints independent of the FSx for ONTAP S3 AP-specific limitations documented elsewhere in this project (no S3 Event Notifications, AD DC reachability requirements, etc.). Those constraints do not apply here, because the Firehose stream and its downstream S3 Event Notifications (used for Snowpipe auto-ingest in the Snowflake section below) operate against a bucket that supports them natively.
 
 ## Glue Table Schema
 
@@ -123,7 +123,7 @@ aws cloudformation deploy \
 | `SnowflakeAccountId` | ❌ (Phase 1) / ✅ (Phase 2) | `''` (empty) | Empty, or exactly 12 digits | Leave empty for Phase 1 (own-account placeholder trust). Set to the 12-digit account ID portion of `STORAGE_AWS_IAM_USER_ARN` (from `DESCRIBE INTEGRATION`) for Phase 2. |
 | `SnowflakeExternalId` | ❌ (Phase 1) / ✅ (Phase 2) | `'snowflake-placeholder'` | Any string | Phase 1: leave at default (ignored, since own-account trust doesn't check it). Phase 2: set to the exact `STORAGE_AWS_EXTERNAL_ID` value from `DESCRIBE INTEGRATION`, copied verbatim including trailing `=` characters. |
 
-Every parameter above also has an inline description and `ParameterLabels` entry in the templates themselves, visible in the CloudFormation console's parameter form — the tables here are a quick-reference copy, not the sole source of truth.
+Every parameter above also has an inline description and `ParameterLabels` entry in the templates themselves, visible in the CloudFormation console's parameter form. The tables here are a quick-reference copy, not the sole source of truth.
 
 ### Caveat Discovered During Validation: Lake Formation
 
@@ -135,7 +135,7 @@ data format conversion configuration has the necessary permissions. Insufficient
 Lake Formation permission(s): Required Describe on audit_logs
 ```
 
-This is not obvious from the Firehose or Glue documentation, because IAM and Lake Formation permissions are evaluated independently and additively — having one without the other is not visible until you try to actually create the resource that depends on both. The template already includes the required `AWS::LakeFormation::PrincipalPermissions` resources (`DESCRIBE` on the database, `DESCRIBE`/`SELECT`/`ALTER`/`INSERT` on the table, granted to the Firehose role), with explicit `DependsOn` ordering so the delivery stream is not created until these permissions exist. If you fork this template for your own use case, keep these resources — removing them silently breaks the pipeline only in Lake Formation-enabled accounts, which makes the failure easy to miss in a non-Lake-Formation test account and then hit unexpectedly in production.
+This is not obvious from the Firehose or Glue documentation, because IAM and Lake Formation permissions are evaluated independently and additively, so having one without the other is not visible until you try to actually create the resource that depends on both. The template already includes the required `AWS::LakeFormation::PrincipalPermissions` resources (`DESCRIBE` on the database, `DESCRIBE`/`SELECT`/`ALTER`/`INSERT` on the table, granted to the Firehose role), with explicit `DependsOn` ordering so the delivery stream is not created until these permissions exist. If you fork this template for your own use case, keep these resources. Removing them silently breaks the pipeline only in Lake Formation-enabled accounts, which makes the failure easy to miss in a non-Lake-Formation test account and then hit unexpectedly in production.
 
 ### Two Other CloudFormation Gotchas Found During Validation
 
@@ -170,7 +170,7 @@ ORDER BY cnt DESC;
 
 ## Querying with Snowflake (External Table)
 
-Snowflake support reuses the two-phase Storage Integration trust pattern already established in [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations)'s Snowflake integration — adapted here for a standard S3 bucket target rather than an FSx for ONTAP S3 Access Point.
+Snowflake support reuses the two-phase Storage Integration trust pattern already established in [FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations)'s Snowflake integration, adapted here for a standard S3 bucket target rather than an FSx for ONTAP S3 Access Point.
 
 ```bash
 # Phase 1: deploy the IAM role with a placeholder (own-account) trust policy
@@ -227,25 +227,25 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 
 ### Architectural Difference from the FSx for ONTAP S3 AP Snowflake Path
 
-Because this pipeline's data lands in a **standard S3 bucket** rather than an FSx for ONTAP S3 Access Point, real Snowpipe auto-ingest (triggered by S3 Event Notifications) is expected to work directly — the `FSx-for-ONTAP-Lakehouse-Integrations` project's Snowflake integration could not use auto-ingest against FSx for ONTAP S3 APs for exactly this reason (S3 Event Notifications are not supported on FSx for ONTAP S3 APs) and had to fall back to FPolicy + Lambda + SNS + Snowpipe REST API, or scheduled `COPY INTO`. This guide's architecture removes that constraint, since the standard S3 destination bucket supports S3 Event Notifications natively. (Snowpipe auto-ingest itself was not exercised in this verification — the External Table path above was — but the underlying S3 Event Notification capability this would depend on is a standard S3 bucket feature, unlike the FSx for ONTAP S3 AP case.)
+Because this pipeline's data lands in a **standard S3 bucket** rather than an FSx for ONTAP S3 Access Point, real Snowpipe auto-ingest (triggered by S3 Event Notifications) is expected to work directly. The `FSx-for-ONTAP-Lakehouse-Integrations` project's Snowflake integration could not use auto-ingest against FSx for ONTAP S3 APs for exactly this reason (S3 Event Notifications are not supported on FSx for ONTAP S3 APs) and had to fall back to FPolicy + Lambda + SNS + Snowpipe REST API, or scheduled `COPY INTO`. This guide's architecture removes that constraint, since the standard S3 destination bucket supports S3 Event Notifications natively. (Snowpipe auto-ingest itself was not exercised in this verification; the External Table path above was. The underlying S3 Event Notification capability this would depend on is a standard S3 bucket feature, unlike the FSx for ONTAP S3 AP case.)
 
 ## Verified Deployment Paths
 
 Two deployment paths were run end-to-end during validation (2026-07-19/20, ap-northeast-1). Both started from a clean AWS account state (no pre-existing stacks) and both are safe to run in either order relative to each other, since `snowflake-role.yaml` only depends on `template.yaml`'s bucket, not the reverse.
 
 **Path A — Athena only** (no Snowflake):
-1. Run `bash integrations/lakehouse-retention/scripts/preflight-check.sh --region <your-region>` — confirms AWS credentials and reports whether Lake Formation is active in the account.
+1. Run `bash integrations/lakehouse-retention/scripts/preflight-check.sh --region <your-region>`. This confirms AWS credentials and reports whether Lake Formation is active in the account.
 2. `aws cloudformation deploy --template-file integrations/lakehouse-retention/template.yaml ...` (see [Deploying the Pipeline](#deploying-the-pipeline)).
 3. Send audit log JSON records into the same S3 bucket the vendor pipelines already write to (or, for a smoke test, `PutRecord`/`PutRecordBatch` directly to the Firehose delivery stream named in the `DeliveryStreamName` output).
 4. Wait up to `BufferIntervalSeconds` for the first Parquet file, then query with Athena using the `AthenaWorkgroupName` output.
 
 **Path B — Athena + Snowflake**:
-1. Steps 1–4 above (Path A), confirming Athena results are correct first — this isolates any Firehose/Glue issue from any Snowflake-specific issue.
+1. Steps 1–4 above (Path A), confirming Athena results are correct first. This isolates any Firehose/Glue issue from any Snowflake-specific issue.
 2. Deploy `snowflake-role.yaml` Phase 1 (own-account placeholder trust).
 3. In Snowflake, run the Phase 1 statements of `sql/01_storage_integration_and_stage.sql`, then `DESCRIBE INTEGRATION`.
 4. Redeploy `snowflake-role.yaml` Phase 2 with `SnowflakeAccountId`/`SnowflakeExternalId` set from the `DESCRIBE INTEGRATION` output.
 5. Run the remaining statements in `sql/01_storage_integration_and_stage.sql` (`CREATE STAGE`, `LIST`, `CREATE EXTERNAL TABLE`, `REFRESH`).
-6. Compare `SELECT COUNT(*)` between Athena and the Snowflake External Table against the same underlying Parquet data — they should match exactly, since both read the same S3 objects.
+6. Compare `SELECT COUNT(*)` between Athena and the Snowflake External Table against the same underlying Parquet data. They should match exactly, since both read the same S3 objects.
 
 ## Day 2 Operations
 
@@ -258,7 +258,7 @@ Two deployment paths were run end-to-end during validation (2026-07-19/20, ap-no
 
 ## Rollback and Cleanup
 
-Cleanup order matters — deleting resources out of order produces avoidable CloudFormation `DELETE_FAILED` states.
+Cleanup order matters. Deleting resources out of order produces avoidable CloudFormation `DELETE_FAILED` states.
 
 ```bash
 # 1. Delete the Athena workgroup FIRST if any queries were ever run against it.
@@ -303,7 +303,7 @@ aws cloudformation delete-stack --stack-name fsxn-lakehouse-retention --region <
 #    DROP STORAGE INTEGRATION fsxn_lakehouse_retention_integration;
 ```
 
-If a stack deletion still fails after following the above (e.g. a `DELETE_FAILED` state persists), check the specific resource named in the CloudFormation console's "Status reason" column before retrying — retrying a `delete-stack` without addressing the underlying resource-in-use condition (an S3 bucket that still has objects, a Lake Formation permission that was independently revoked out-of-band, etc.) will fail again with the same error.
+If a stack deletion still fails after following the above (e.g. a `DELETE_FAILED` state persists), check the specific resource named in the CloudFormation console's "Status reason" column before retrying. Retrying a `delete-stack` without addressing the underlying resource-in-use condition (an S3 bucket that still has objects, a Lake Formation permission that was independently revoked out-of-band, etc.) will fail again with the same error.
 
 ## Cost Comparison
 
