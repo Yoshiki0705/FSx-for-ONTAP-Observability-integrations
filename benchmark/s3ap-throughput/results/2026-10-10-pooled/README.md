@@ -82,9 +82,10 @@ not repeated here. Only the differences are listed below.
 `percentile_method` is `"pooled_nearest_rank"` on every `per_size_class` entry.
 It marks the class `p50_ms`, `p99_ms`, `mean_ms`, `min_ms`, and `max_ms` as
 computed over the pooled samples of all objects in the class, using nearest
-rank. Files without this key (the `../2026-10-10/` directory) hold class values
-that are the simple mean of per-object values. `sample_count` is the size of the
-pool, 120 in these files.
+rank. Files without this key (the `../2026-10-10/` directory) hold class `p50_ms`,
+`p99_ms`, and `mean_ms` values that are the simple mean of the per-object values,
+and no class `min_ms` or `max_ms`. `sample_count` is the size of the pool, 120 in
+these files.
 
 `per_object[].samples_ms` holds each object's raw latencies in measurement
 order, 40 per object here. The tool stores at most 100 samples per object, and
