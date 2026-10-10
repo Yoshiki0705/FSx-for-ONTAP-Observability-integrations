@@ -27,36 +27,44 @@ This project supports four ONTAP telemetry sources:
 ```
 ONTAP Audit Logs → S3 Access Point → EventBridge Scheduler → Lambda → Vendor API
 ```
-- **Use case**: Compliance file access history
-- **Latency**: Near-real-time (depends on Scheduler interval, typically 5 minutes)
-- **Format**: EVTX / XML
+| Item | Detail |
+|------|--------|
+| Use case | Compliance file access history |
+| Latency | Near-real-time (depends on Scheduler interval, typically 5 minutes) |
+| Format | EVTX / XML |
 
 ### Path 2: Admin Audit Logs (Syslog VPC Endpoint → CloudWatch Logs)
 ```
 ONTAP log-forwarding → Syslog (TCP 1514/6514) → VPC Endpoint → CloudWatch Logs
 ```
-- **Use case**: Management activity tracking (CLI/API operations)
-- **Latency**: Real-time (seconds)
-- **Format**: RFC 3164 syslog (auto-parsed by CloudWatch)
-- **Compute**: None (fully managed, no Lambda/EC2)
-- **Optional fan-out**: CloudWatch Logs → Subscription Filter → Lambda/Firehose → Vendor
+| Item | Detail |
+|------|--------|
+| Use case | Management activity tracking (CLI/API operations) |
+| Latency | Real-time (seconds) |
+| Format | RFC 3164 syslog (auto-parsed by CloudWatch) |
+| Compute | None (fully managed, no Lambda/EC2) |
+| Optional fan-out | CloudWatch Logs → Subscription Filter → Lambda/Firehose → Vendor |
 
 ### Path 3: EMS Events (Webhook)
 ```
 ONTAP EMS → Webhook (HTTPS) → API Gateway → Lambda → Vendor API
 ```
-- **Use case**: ARP ransomware detection, quota exceeded, HA failover, etc.
-- **Latency**: Real-time (~30 seconds)
-- **Format**: JSON
+| Item | Detail |
+|------|--------|
+| Use case | ARP ransomware detection, quota exceeded, HA failover, etc. |
+| Latency | Real-time (~30 seconds) |
+| Format | JSON |
 
 ### Path 4: FPolicy File Operations (ECS Fargate)
 ```
 ONTAP FPolicy → ECS Fargate (TCP:9898) → SQS → Lambda → Vendor API
 ```
-- **Use case**: Real-time file operation monitoring (create, write, rename, delete)
-- **Latency**: Real-time (~6-8 seconds)
-- **Format**: FPolicy binary protocol → JSON normalization
-- **Note**: FPolicy uses a proprietary binary protocol, so Lambda is not viable — ECS Fargate is required
+| Item | Detail |
+|------|--------|
+| Use case | Real-time file operation monitoring (create, write, rename, delete) |
+| Latency | Real-time (~6-8 seconds) |
+| Format | FPolicy binary protocol → JSON normalization |
+| Note | FPolicy uses a proprietary binary protocol, so Lambda is not viable; ECS Fargate is required |
 
 ## ONTAP Telemetry Source Selection Guide
 
@@ -75,10 +83,12 @@ ONTAP FPolicy → ECS Fargate (TCP:9898) → SQS → Lambda → Vendor API
 
 Enable audit logging on FSx for ONTAP to output logs to an audit volume inside the SVM.
 
-- **Log Format**: EVTX (Windows Event Log) or XML — configurable via `-format {evtx|xml}`
-- **Destination**: Audit volume inside the SVM (`vserver audit create -destination /audit_log`)
-- **Log Content**: File access (SMB/NFS), authentication events
-- **Access Method**: Read via FSx for ONTAP S3 Access Point using S3 APIs
+| Item | Detail |
+|------|--------|
+| Log Format | EVTX (Windows Event Log) or XML (configurable via `-format {evtx|xml}`) |
+| Destination | Audit volume inside the SVM (`vserver audit create -destination /audit_log`) |
+| Log Content | File access (SMB/NFS), authentication events |
+| Access Method | Read via FSx for ONTAP S3 Access Point using S3 APIs |
 
 > **Important**: Audit logs are stored on the FSx volume. They are NOT written to an S3 bucket. Lambda reads the log files through an FSx for ONTAP S3 Access Point using S3 APIs.
 
@@ -138,33 +148,36 @@ Reference: [AWS Docs — File access auditing](https://docs.aws.amazon.com/fsx/l
 
 An S3 Access Point attached to an FSx for ONTAP volume.
 
-- **Purpose**: Serverless access boundary for Lambda to read audit logs without NFS/SMB mounts
-- **Characteristics**: Data remains on the FSx file system, accessible via S3 API
-- **Limitation**: S3 Event Notifications / EventBridge notifications are NOT supported
-- **VPC Constraint**: Internet-origin S3 AP timed out with only Gateway Endpoint in our environment (NAT Gateway or VPC-origin AP required)
+| Item | Detail |
+|------|--------|
+| Purpose | Serverless access boundary for Lambda to read audit logs without NFS/SMB mounts |
+| Characteristics | Data remains on the FSx file system, accessible via S3 API |
+| Limitation | S3 Event Notifications / EventBridge notifications are NOT supported |
+| VPC Constraint | Internet-origin S3 AP timed out with only Gateway Endpoint in our environment (NAT Gateway or VPC-origin AP required) |
 
 ### 3. Trigger Mechanism
 
 Because FSx for ONTAP S3 Access Points do not support S3 event notifications, we use EventBridge Scheduler for periodic invocation.
 
-**EventBridge Scheduler + Checkpointing**
+#### EventBridge Scheduler + Checkpointing
+
 - EventBridge Scheduler invokes Lambda periodically (e.g., every 5 minutes)
 - Lambda tracks processed files via checkpointing (DynamoDB)
 - Only newly rotated log files are processed
 
 ### 4. Lambda Function
 
-Retrieves and parses audit logs, then ships to vendor APIs.
+Retrieves and parses audit logs, then ships to vendor APIs. The runtime is Python 3.12.
 
-- **Runtime**: Python 3.12
-- **Processing Flow**:
-  1. List log files via FSx for ONTAP S3 Access Point
-  2. Compare with checkpoint to identify unprocessed files
-  3. Parse EVTX/XML
-  4. Transform to vendor-specific format
-  5. Batch send to API endpoint
-  6. Retry on failure (exponential backoff)
-  7. Update checkpoint
+Processing flow:
+
+1. List log files via FSx for ONTAP S3 Access Point
+2. Compare with checkpoint to identify unprocessed files
+3. Parse EVTX/XML
+4. Transform to vendor-specific format
+5. Batch send to API endpoint
+6. Retry on failure (exponential backoff)
+7. Update checkpoint
 
 ### 5. Alternative Pattern: Kinesis Data Firehose
 
@@ -174,8 +187,10 @@ For high-volume logs, deliver to vendors via Firehose.
 FSx for ONTAP S3 AP → Lambda (Transform) → Kinesis Data Firehose → Vendor API
 ```
 
-- **Benefits**: Automatic buffering, retry, scaling
-- **Supported Vendors**: Splunk (HEC), Datadog, New Relic, any HTTP endpoint
+| Item | Detail |
+|------|--------|
+| Benefits | Automatic buffering, retry, scaling |
+| Supported Vendors | Splunk (HEC), Datadog, New Relic, any HTTP endpoint |
 
 ### 6. AWS-Native Alternatives Comparison
 
@@ -215,13 +230,15 @@ This project uses Lambda → Vendor API direct because:
 ### Network
 
 - Access FSx for ONTAP S3 Access Point via NAT Gateway (when Lambda is in VPC)
-- **Note**: Internet-origin S3 APs require NAT Gateway or VPC-external Lambda for VPC-internal access
+- **Internet-origin S3 APs require NAT Gateway or VPC-external Lambda for VPC-internal access**
 - Lambda placed outside VPC can access FSx for ONTAP S3 AP without issues (recommended for read-only)
 - Security groups allow minimal outbound only
 
 ## Monitoring & Alerting
 
-- **CloudWatch Metrics**: Lambda error rate, duration, throttling
-- **CloudWatch Alarms**: SNS notification on delivery failure threshold
-- **Dead Letter Queue**: Failed events sent to SQS DLQ
-- **X-Ray**: Distributed tracing for bottleneck identification
+| Item | Detail |
+|------|--------|
+| CloudWatch Metrics | Lambda error rate, duration, throttling |
+| CloudWatch Alarms | SNS notification on delivery failure threshold |
+| Dead Letter Queue | Failed events sent to SQS DLQ |
+| X-Ray | Distributed tracing for bottleneck identification |
