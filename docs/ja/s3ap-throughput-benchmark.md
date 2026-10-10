@@ -4,7 +4,9 @@
 
 ## 目的
 
-本ドキュメントは、S3 Access Points 経由で FSx for ONTAP 監査ログを読み取る際のベンチマーク手法と参考結果を提供します。これらの結果は**サイジングの参考値であり、サービス上限ではありません**。
+本ドキュメントは、S3 Access Points 経由で Amazon FSx for NetApp ONTAP の監査ログを読み取る際のベンチマーク手法と参考結果を提供します。これらの結果は**サイジングの参考値であり、サービス上限ではありません**。
+
+「本リポジトリでの実測（2026-10-10）」の節が、このリポジトリで取った唯一の測定です。生データは `benchmark/s3ap-throughput/results/2026-10-10/` にコミットしています。「参考結果」の節の値は、姉妹リポジトリからの転記です。
 
 > **注意**
 >
@@ -12,20 +14,30 @@
 
 ## テスト環境
 
+下表は 2026-10-10 の測定の環境です。
+
 | パラメータ | 値 |
 |-----------|-------|
-| FSx for ONTAP スループットキャパシティ | 512 MB/s |
-| SVM 数 | 1 |
-| S3 Access Point タイプ | Internet-origin |
-| Lambda メモリ | 256 MB |
+| 測定日 | 2026-10-10 |
+| ファイルシステム | SINGLE_AZ_1（第 1 世代）、HA ペア 1 組、SSD 1024 GiB |
+| FSx for ONTAP スループットキャパシティ | 128 MBps |
+| SVM とボリューム | 1 つの SVM の 1 つのボリューム（ファイルシステムには複数の SVM がある） |
+| ボリュームの階層化ポリシー | AUTO、クーリング期間 31 日（2026-10-10 に FSx API で読み取り） |
+| 読み取り時のデータ階層 | SSD（プライマリ階層）。ポリシーとオブジェクトの経過時間からの推定（読み取りの数分前に書き込み、クーリング期間は 31 日）。階層別の容量メトリクスでの確認はしておらず、実行中にも取得していない |
+| ONTAP バージョン | 9.18.1P6。2026-10-06 に、このファイルシステムの ONTAP REST API で読み取った値（測定当日には再確認していない） |
+| S3 Access Points のタイプ | ONTAP、インターネットオリジン、ファイルシステム ID は UNIX ユーザー `root` |
+| クライアント | `benchmark/s3ap-throughput/` のツールを Lambda 関数としてデプロイ |
+| Lambda メモリとタイムアウト | 256 MB、300 秒 |
 | Lambda 配置 | VPC 外（VPC 設定なし） |
 | AWS リージョン | ap-northeast-1 |
-| 想定ベンチマーク時期 | 2026-05 |
-| ベンチマーク実行 ID（計画） | `bench-s3ap-2026-05`（この ID に対応する測定記録は未収録） |
+| テストオブジェクト | ランダムバイト列。1 KB・100 KB・1 MB・5 MB を各 3 個、サイズごとに別のプレフィックス |
+| ベンチマーク実行 ID | `bench-s3ap-2026-10-10`（実行 1）、`bench-s3ap-2026-10-10-r2`（実行 2） |
 
 ## 測定方法
 
 ### テストスクリプト
+
+下のスクリプトは測定方法の例示です。2026-10-10 の数値を出したのは `benchmark/s3ap-throughput/` に収録したツールで、スクリプトとは 2 点が違います。p50 と p99 を `statistics.median` と `int(iterations * 0.99)` の添字ではなく nearest-rank 法で求めること、オブジェクトごとの結果に加えてサイズ区分ごとの集計を返すことです。
 
 ```python
 """S3 AP throughput benchmark for FSx for ONTAP audit logs.
@@ -92,21 +104,69 @@ def benchmark_get_object(keys: list[str], iterations: int = 5) -> dict:
 | Medium | 100 KB - 1 MB | ローテーション済み監査ログファイル（典型的） |
 | Large | 1-5 MB | 高アクティビティ期間のログファイル |
 
+## 本リポジトリでの実測（2026-10-10）
+
+根拠区分は `verified` で、対象は次の 1 文だけです。上記「テスト環境」で、2026-10-10 に、これらのレイテンシを観測しました。他のファイルシステム、同時実行数、ネットワーク経路、日付には及びません。測定は同じ日に約 20 分あけて 2 回取りました（生データの時刻は UTC の 08:09 と 08:29）。したがって数値は安定値ではなく、観測した幅を示します。
+
+ボリュームの階層化ポリシーは AUTO、クーリング期間は 31 日で、テストオブジェクトは読み取りの数分前に書き込んでいます。このため、読み取りはすべて SSD（プライマリ階層）から返されたと推定しています。これはポリシーとオブジェクトの経過時間からの推定で、実行中に階層別の容量メトリクスは取得していません。
+
+### 集計方法
+
+各オブジェクトを 10 回、順番に読みました（同時実行数 1）。ListObjectsV2 は 20 回呼び、MaxKeys は上書きしていないのでツールの既定値 100 が効いています。ツールはオブジェクトごとに nearest-rank 法の p50・p99 と平均を計算します。下表のサイズ区分ごとの p50 と p99 は、3 個のオブジェクトそれぞれの p50 と p99 の単純平均です。プールした 30 サンプルのパーセンタイルではありません（[#147](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/147) で追跡）。オブジェクト 1 個のスループットはそのオブジェクトの平均レイテンシとサイズから求め、区分の値は 3 個の平均です。ここでの MB/s は、ツールと同じく MiB/s（サイズを 1,048,576 バイトで割った値）です。
+
+### 実行 1 と実行 2 の結果
+
+実行 1（`bench-s3ap-2026-10-10`）:
+
+| 操作 | p50 (ms) | p99 (ms) | 平均 (ms) | ストリームあたり平均スループット (MB/s) |
+|-----------|---------|---------|-----------|------------------------------------|
+| ListObjectsV2（20 回、13 キー） | 29.788 | 278.046 | 44.2 | 該当なし |
+| GetObject 1 KB | 40.577 | 43.14 | 40.753 | 0.02 |
+| GetObject 100 KB | 49.89 | 58.157 | 50.798 | 1.93 |
+| GetObject 1 MB | 60.388 | 74.535 | 62.883 | 15.94 |
+| GetObject 5 MB | 119.753 | 191.688 | 131.909 | 38.13 |
+
+実行 2（`bench-s3ap-2026-10-10-r2`）:
+
+| 操作 | p50 (ms) | p99 (ms) | 平均 (ms) | ストリームあたり平均スループット (MB/s) |
+|-----------|---------|---------|-----------|------------------------------------|
+| ListObjectsV2（20 回、13 キー） | 27.415 | 402.188 | 48.501 | 該当なし |
+| GetObject 1 KB | 40.987 | 44.969 | 41.473 | 0.02 |
+| GetObject 100 KB | 38.267 | 49.412 | 39.68 | 2.46 |
+| GetObject 1 MB | 48.464 | 69.393 | 51.494 | 19.53 |
+| GetObject 5 MB | 106.884 | 444.951 | 154.394 | 34.85 |
+
+2 回の間で、p50 の変化は 0.4〜12.9 ms でした（最大は 5 MB の 119.753 から 106.884 ms）。p99 の変化は 1.8〜253.3 ms でした（ListObjectsV2 は 278.046 から 402.188 ms、5 MB は 191.688 から 444.951 ms）。
+
+### この測定の限界
+
+- p99 は参考値にとどまります。オブジェクトごとの p99 は 10 サンプルの最大値で、ListObjectsV2 の p99 は 20 サンプルの最大値です。実行 2 の 5 MB 区分の p99（444.951 ms）は、3 個のオブジェクトの最大値（152.683、361.481、820.689 ms）の平均で、1 個のオブジェクトの 1 回の遅い読み取りが大半を決めています。生データは要約のみでイテレーションごとのサンプルを残していないため、遅いサンプルの原因は後から確認できません。
+- 2 回の測定では統計的な安定性は示せません。分散、信頼区間、安定した p99 のいずれも主張しません。
+- ListObjectsV2 の測定では、12 個のテストオブジェクトに加えて、既存の大きなファイル（約 103 MiB）が 1 個同じプレフィックスにあり、13 キーを列挙しました。GetObject の測定はサイズごとに別のプレフィックスを使ったため影響を受けていません。13 キーの列挙結果は、キー数がもっと多いディレクトリについては何も示しません。
+- スループットは同時実行数 1 の 1 ストリームあたりの値で、平均レイテンシとオブジェクトサイズから求めています。ファイルシステムのスループット上限ではなく、並列読み取りについても何も示しません。1 KB の値は帯域ではなくリクエストのレイテンシを反映しています。
+- ツールは Lambda のコールドスタートの影響を分けていません。最初の ListObjectsV2 のサンプルや各呼び出しの最初のリクエストには、接続の確立が含まれている可能性があります。保存した要約からは、最大値が最初の呼び出しだったかどうかは分かりません。
+- 対象外: 同時実行数 2 以上、VPC 内の Lambda や NAT 経由の経路（後述「ネットワーク経路」のレイテンシ差はこの測定から導いたものではありません）、他の Lambda メモリサイズ、他のスループットキャパシティ、第 2 世代やマルチ HA ペアのファイルシステム、より大きなディレクトリ。
+- 対象外: 階層化ポリシーが ALL のボリューム、およびすでにキャパシティプールへ階層化されたデータ。キャパシティプールから返される読み取りはオブジェクトストレージに向かい、レイテンシもコストも異なると予想されますが、ここでは測定していません。
+
 ## 参考結果
 
-> **この節の出所** — ListObjectsV2 と GetObject の値は、姉妹リポジトリが記録した実測値の転記です。このリポジトリ自身の測定ではありません。「実効処理レート」は未確認の推定値のままで、再現可能な測定記録（生データ・実行ログ）はこのリポジトリに未収録です。上記「測定方法」のベンチマーク Lambda テンプレートも未提供です。いずれもサービス上限でも保証値でもありません。
+> **この節の出所**: 以下の ListObjectsV2（100 キー）と GetObject（サイズ別）の値は、姉妹リポジトリが記録した実測値の転記です。このリポジトリ自身の測定ではなく、生データもここにはコミットしていません。このリポジトリ自身の測定は「本リポジトリでの実測（2026-10-10）」を参照してください。「実効処理レート」は未確認の推定値のままで、測定記録はありません。いずれもサービス上限でも保証値でもありません。
 
 ### 測定環境の差
 
-転記した 2 つの実測は、上記「テスト環境」と次の点で条件が違います。
+このリポジトリでの測定、転記した実測、以前の計画行の 3 つは、次の点で条件が違います。
 
-| 項目 | 上記「テスト環境」 | 転記した実測 |
-|---|---|---|
-| FSx for ONTAP のスループットキャパシティ | 512 MBps | 128 MBps（Single-AZ） |
-| クライアント | VPC 外の Lambda（256 MB） | ローカルのワークステーションからインターネット経由 |
-| S3 Access Points の NetworkOrigin | Internet | Internet |
+| 項目 | 本リポジトリでの測定（2026-10-10） | 転記した実測 | 以前の計画行 |
+|---|---|---|---|
+| FSx for ONTAP のスループットキャパシティ | 128 MBps | 128 MBps | 512 MBps |
+| デプロイタイプ | SINGLE_AZ_1（第 1 世代）、HA ペア 1 組 | Single-AZ | 記載なし |
+| クライアント | VPC 外の Lambda（256 MB） | ローカルのワークステーションからインターネット経由 | VPC 外の Lambda（256 MB） |
+| S3 Access Points の NetworkOrigin | Internet | Internet | Internet |
+| 状態 | 測定済み、生データをコミット | 転記、ここでは未測定 | 未測定 |
 
-512 MBps・VPC 外の Lambda の条件での測定は未確認です（[#98](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/98) で追跡）。転記元の S3 Access Points のベンチマークは、インターネット経由ではクライアント側の帯域が律速になり、512 MBps の効果が見えなかったと記録しています。
+以前の計画行（512 MBps）は、テスト環境の表の以前の版に計画として載っていたもので、測定記録はありません。VPC 外の Lambda からの 128 MBps の測定は取りました。VPC 外の Lambda からの 512 MBps の測定は取っていません（[#98](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/98) で追跡）。
+
+下の転記した GetObject の p50（30.5、34.1、48.5、111.0 ms）は、どのサイズでも、ここで測った p50 から約 16 ms 以内です。どちらも 128 MBps の Single-AZ ファイルシステムの値なので、違うのはファイルシステムの容量ではなく、クライアントとネットワーク経路（ローカルのワークステーションからインターネット経由か、同じリージョンの Lambda か）です。反復回数やパーセンタイルの集計方法も違い（転記元は 5〜10 回、ここではオブジェクトごとに 10 回）、残る差の原因はこのデータからは切り分けられません。転記元の S3 Access Points のベンチマークは、インターネット経由ではクライアント側の帯域が律速になり、512 MBps の効果が見えなかったと記録しています。ここでの測定は、この記述を検証するものではありません。
 
 ### ListObjectsV2（100 キー）
 
@@ -132,6 +192,8 @@ def benchmark_get_object(keys: list[str], iterations: int = 5) -> dict:
 ### 実効処理レート
 
 > **未確認の推定値** — 下表はサイジングの桁感で、測定記録はありません。
+
+2026-10-10 に測った GetObject のレイテンシは、下の所要時間のうち S3 の読み取り部分だけに当たります。パースやベンダーへの送信は含まず、この表を測定値から導き直してもいません。
 
 監査ログポーラー Lambda（256 MB、VPC 外）の場合:
 
@@ -168,6 +230,10 @@ FSx for ONTAP のスループットキャパシティは NFS、SMB、S3 AP ア�
 - Lambda メモリを増加（CPU 増加 = 処理高速化）
 - 単一呼び出し内で `ThreadPoolExecutor` を使用して並列 GetObject
 - SQS ベースのファンアウトで並列ファイル処理
+
+### 階層化ポリシーとデータ階層
+
+このリポジトリで測った数値は、階層化ポリシーが AUTO のボリュームで、SSD（プライマリ階層）にあると推定されるデータを読んだ結果です。転記した値の階層化条件は、このページでは再掲していません。キャパシティプールへ階層化されたデータの読み取りは測定しておらず、キャパシティプールの数値は載せていません。
 
 ## 推奨事項
 
@@ -220,27 +286,39 @@ cloudwatch.put_metric_data(
 
 ## 自環境でのベンチマーク実行
 
+ツールは [`benchmark/s3ap-throughput/`](../../benchmark/s3ap-throughput/README.md) にあります。構成は、`template.yaml`（CloudFormation スタック。メモリ 256 MB・タイムアウト 300 秒・VPC 設定なしの Lambda 1 つ）、`run-benchmark.sh`（呼び出しヘルパー）、`handler.py`（関数本体。単体テストは `tests/`）です。
+
 ```bash
-# 1. Deploy the benchmark Lambda (template not yet available)
-# Use the test script above in a Lambda function
+# 1. Deploy the benchmark Lambda. Replace the placeholder with your
+#    S3 Access Points ARN.
+aws cloudformation deploy \
+  --template-file benchmark/s3ap-throughput/template.yaml \
+  --stack-name fsxn-s3ap-benchmark \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    S3AccessPointArn=<s3-access-point-arn> \
+    BenchmarkRegion=ap-northeast-1
 
-# 2. Invoke with different object sizes
-aws lambda invoke \
-  --function-name fsxn-s3ap-benchmark \
-  --payload '{"test": "list", "iterations": 20}' \
-  response.json
+# 2. Run the ListObjectsV2 and GetObject tests. Every value comes from an
+#    environment variable. S3AP accepts the alias or the ARN.
+FUNCTION_NAME=fsxn-s3ap-benchmark-fn \
+S3AP=<s3-access-point-alias-or-arn> \
+PREFIX=<key-prefix>/ \
+AWS_REGION=ap-northeast-1 \
+  benchmark/s3ap-throughput/run-benchmark.sh
 
-aws lambda invoke \
-  --function-name fsxn-s3ap-benchmark \
-  --payload '{"test": "get", "prefix": "audit/svm-prod-01/2026/05/", "max_keys": 10}' \
-  response.json
-
-# 3. Record results with environment context
-cat response.json | jq '.body'
+# 3. Remove the stack when the measurement is done.
+aws cloudformation delete-stack --stack-name fsxn-s3ap-benchmark
 ```
+
+`run-benchmark.sh` は 1 つの `PREFIX` を 2 つのテストの両方に使い、結合した JSON を 1 ファイル書き出します。任意の上書きは `LIST_ITERATIONS`（既定 20）、`GET_ITERATIONS`（既定 5）、`MAX_KEYS`（既定 10）、`BENCHMARK_RUN_ID`、`OUT_FILE` です。2026-10-10 の生データは、この結合ファイルではなく、関数のテストごとの応答で、サイズのプレフィックスごとに 1 ファイルです。
+
+結果は環境の情報とあわせて記録してください。FSx for ONTAP のスループットキャパシティ、S3 Access Points のネットワークオリジン、リージョン、日付、実行 ID です。デプロイの詳細はツールの [README](../../benchmark/s3ap-throughput/README.md) にあります。
 
 ## 関連ドキュメント
 
+- [ベンチマークツール（README）](../../benchmark/s3ap-throughput/README.md)
+- [2026-10-10 の測定の生データ](../../benchmark/s3ap-throughput/results/2026-10-10/README.md)
 - [S3 AP 仕様 & トラブルシューティング](s3ap-fsxn-specification.md)
 - [パイプライン SLO](pipeline-slo.md)
 - [運用ガイド](operational-guide.md)

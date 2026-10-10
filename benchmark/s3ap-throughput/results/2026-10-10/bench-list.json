@@ -1,0 +1,1 @@
+{"benchmark_run_id": "bench-s3ap-2026-10-10", "timestamp_utc": "2026-10-10T08:09:36.848906+00:00", "region": "ap-northeast-1", "result": {"operation": "ListObjectsV2", "iterations": 20, "p50_ms": 29.788, "p99_ms": 278.046, "mean_ms": 44.2, "min_ms": 28.104, "max_ms": 278.046}}
