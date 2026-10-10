@@ -94,6 +94,15 @@ TARGETS: list[Target] = [
         "shared/lambda/ontap_metrics/qtree_quota_poller.py",
         "lambda_handler",
     ),
+    # The S3 Access Points throughput benchmark. Inlined so `aws cloudformation
+    # deploy` yields a working stack with no follow-up upload step; the source
+    # of truth is benchmark/s3ap-throughput/handler.py.
+    Target(
+        "benchmark/s3ap-throughput/template.yaml",
+        "BenchmarkFunction",
+        "benchmark/s3ap-throughput/handler.py",
+        "lambda_handler",
+    ),
 ]
 
 

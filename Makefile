@@ -53,6 +53,7 @@ VENDOR_TEST_DIRS := \
 # Non-vendor suites. scripts/verification/tests and log-parser/tests are the
 # two that were previously unreferenced by any automation.
 SHARED_TEST_DIRS := \
+  benchmark/s3ap-throughput/tests \
   management-console/tests \
   scripts/tests \
   scripts/verification/tests \
@@ -71,7 +72,8 @@ CFN_TEMPLATES := \
   $(wildcard integrations/*/template*.yaml) \
   $(wildcard integrations/pipeline-verification/pattern-*/template*.yaml) \
   $(wildcard shared/templates/*.yaml) \
-  $(wildcard management-console/templates/*.yaml)
+  $(wildcard management-console/templates/*.yaml) \
+  $(wildcard benchmark/*/template*.yaml)
 
 # Terraform modules: every terraform/<module>/ that has a versions.tf, one
 # level deep. Root examples under terraform/<module>/examples/<name>/ are a
@@ -96,7 +98,7 @@ TF_EXAMPLE_DIRS := $(patsubst %/versions.tf,%,$(wildcard terraform/*/examples/*/
 # separate change (recorded in CHANGELOG as a follow-up).
 PY_SRC := integrations shared/python shared/lambda-layers scripts \
           shared/scripts management-console shared/lambda/ontap_metrics \
-          shared/lambda/ssd_auto_increase
+          shared/lambda/ssd_auto_increase benchmark
 
 # cfn-lint: W = warnings (advisory). E3006 = AWS::CloudWatch::LogAlarm is GA
 # (2026-07) but not yet in the cfn-lint resource spec; deployment is verified
