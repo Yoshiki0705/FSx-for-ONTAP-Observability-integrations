@@ -203,7 +203,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 このディレクトリの全ドキュメントをカテゴリ別に掲載しています。`shared/scripts/generate-docs-index.py` が単一のカテゴリ表から生成するため、
 日本語版と英語版は常に同じ集合を列挙します。
 
-**はじめに**
+#### はじめに
 
 - [はじめに](getting-started.md)
 - [前提条件とリソースデプロイガイド](prerequisites.md)
@@ -212,7 +212,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [デプロイメントガイド — 既存 FSx for ONTAP 環境への統合](deployment-guide.md)
 - [ONTAP 監査設定ガイド](ontap-audit-setup.md)
 
-**アーキテクチャ・リファレンス**
+#### アーキテクチャ・リファレンス
 
 - [アーキテクチャ](architecture.md)
 - [アーキテクチャ進化: CloudWatch Logs Syslog VPCE による管理監査ログ配信](architecture-evolution-syslog-vpce.md)
@@ -222,7 +222,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [S3 Access Points for FSx for ONTAP — 知見集](s3-access-points-knowledge.md)
 - [ONTAP REST API クイックリファレンス (FSx for ONTAP)](ontap-rest-api-reference.md)
 
-**運用**
+#### 運用
 
 - [運用ガイド](operational-guide.md)
 - [Pipeline SLO 定義](pipeline-slo.md)
@@ -232,14 +232,14 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [Syslog VPC Endpoint セットアップガイド — FSx for ONTAP 管理監査ログ → CloudWatch Logs](syslog-vpce-setup-guide.md)
 - [CloudWatch Log Alarm — FSx for ONTAP 監査ログからのダイレクトアラーム](cloudwatch-log-alarm.md)
 
-**Runbook**
+#### Runbook
 
 - [Runbook: DLQ リプレイ](runbooks/dlq-replay.md)
 - [Runbook: Lambda エラーアラーム](runbooks/lambda-errors.md)
 - [Runbook: Checkpoint 滞留](runbooks/checkpoint-stale.md)
 - [Runbook: CloudWatch Log Alarm 発火時の対応手順](runbooks/log-alarm-triggered.md)
 
-**セキュリティ・検知**
+#### セキュリティ・検知
 
 - [FSx for ONTAP Observability Integrations セキュリティベストプラクティス](security-best-practices.md)
 - [セキュリティレビューチェックリスト](security-review-checklist.md)
@@ -249,7 +249,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [サイバーレジリエンス機能マップ — NIST CSF 2.0 機能マッピング](cyber-resilience-capability-map.md)
 - [EMS Webhook セキュリティガイド](webhook-security.md)
 
-**自動インシデント対応**
+#### 自動インシデント対応
 
 - [自動インシデント対応ガイド — ONTAP REST API によるユーザー/IP ブロック](automated-response-guide.md)
 - [自動応答 — セキュリティ & インシデント対応補遺](automated-response-security-addendum.md)
@@ -257,7 +257,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [検証済みクリーン復旧ポイントガイド — CSF 2.0 RC.RP のギャップを埋める](verified-recovery-point-guide.md)
 - [コンテンツレベル PII 分類スキャナー — CSF 2.0 Identify のギャップを埋める](content-classification-scanner.md)
 
-**FPolicy**
+#### FPolicy
 
 - [FPolicy パイプライン — クイックデプロイガイド](fpolicy-quick-deploy.md)
 - [FPolicy パイプライン運用ガイド](fpolicy-operational-guide.md)
@@ -266,21 +266,21 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [FPolicy 運用ノート](operational-notes-fpolicy.md)
 - [AI エージェントアクセスログ × ONTAP FPolicy 監査ログ 統合パターン](agent-fpolicy-correlation-pattern.md)
 
-**ガバナンス・コンプライアンス**
+#### ガバナンス・コンプライアンス
 
 - [ガバナンスとコンプライアンスに関する考慮事項](governance-and-compliance.md)
 - [コンプライアンスエビデンスパックテンプレート](compliance-evidence-pack.md)
 - [FSx for ONTAP 監査ログのデータ分類ガイド](data-classification.md)
 - [データレジデンシーマトリクス](data-residency.md)
 
-**エンタープライズ・スケール**
+#### エンタープライズ・スケール
 
 - [AWS Organizations を使用したマルチアカウントデプロイ](multi-account-deployment.md)
 - [監査ログ DR のためのクロスリージョンレプリケーション](cross-region-replication.md)
 - [FSx for ONTAP 監査ログの Lakehouse 長期保管パターン](lakehouse-long-term-retention.md)
 - [レイクハウス監視パターン](lakehouse-monitoring-patterns.md)
 
-**ストレージ統合パターン**
+#### ストレージ統合パターン
 
 - [FSx for ONTAP によるオブザーバビリティ基盤ストレージの統合](observability-storage-patterns/README.md)
 - [パターン1: MQTT → 時系列 DB → ライブダッシュボード](observability-storage-patterns/pattern-1-mqtt-tsdb-live-dashboard.md)
@@ -290,7 +290,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [パターン5: 組み込み/列指向 時系列 DB(QuestDB、ClickHouse、TimescaleDB)](observability-storage-patterns/pattern-5-embedded-columnar-tsdb.md)
 - [オブザーバビリティ基盤ストレージのためのオンプレミス/マルチクラウド ONTAP 事例集](observability-storage-patterns/onprem-and-fsxn-case-studies.md)
 
-**パイプライン検証記録**
+#### パイプライン検証記録
 
 - [検証記録テンプレート(パイプラインパターン)](observability-storage-patterns/verification/verification-record-template.md)
 - [検証記録: パターン 1(MQTT → InfluxDB → Grafana Live)](observability-storage-patterns/verification/verification-results-pattern-1.md)
@@ -299,7 +299,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [検証記録: パターン 4(Kafka + AutoMQ WAL-on-FSx-for-ONTAP)](observability-storage-patterns/verification/verification-results-pattern-4.md)
 - [検証記録: パターン 5(QuestDB / TimescaleDB)](observability-storage-patterns/verification/verification-results-pattern-5.md)
 
-**アプローチの選択**
+#### アプローチの選択
 
 - [Amazon FSx for NetApp ONTAP の監視設計](monitoring-design.md)
 - [Terraform による Amazon FSx for NetApp ONTAP の CloudWatch 監視は 3 つのモジュールを順に適用して構成し、SSD 自動拡張は任意の 4 つ目として加える](terraform-monitoring-guide.md)
@@ -315,13 +315,13 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [ONTAP System Manager GUI 操作ガイド](system-manager-gui-guide.md)
 - [Observability 統合補遺 — 高度なパターン & リファレンス](observability-integration-addendum.md)
 
-**コスト**
+#### コスト
 
 - [コストモデル — Direct Send vs Collector vs Firehose](cost-model.md)
 - [コスト検証: 見積もり vs 実績](cost-validation.md)
 - [S3 Access Point 読み取りスループットベンチマーク](s3ap-throughput-benchmark.md)
 
-**パートナー・ワークショップ**
+#### パートナー・ワークショップ
 
 - [パートナーソリューション概要: FSx for ONTAP サーバーレス Observability](partner-solution-brief.md)
 - [パートナー FAQ: FSx for ONTAP Observability Integrations](partner-faq.md)
@@ -330,7 +330,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [ワークショップアジェンダ: FSx for ONTAP サーバーレス Observability](workshop-agenda.md)
 - [Workshop Hands-On Guide（半日、3.5 時間）](workshop-hands-on-half-day.md)
 
-**デモ・スクリーンショット**
+#### デモ・スクリーンショット
 
 - [デモシナリオ集](demo-scenarios.md)
 - [自動応答デモ手順書](demo-automated-response.md)
@@ -338,7 +338,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [コンテンツ分類スキャナー デモ手順書](demo-content-classification.md)
 - [EMS/FPolicy スクリーンショット撮影ガイド](screenshot-capture-guide-ems-fpolicy.md)
 
-**検証結果**
+#### 検証結果
 
 - [Datadog 統合 動作確認結果](verification-results-datadog.md)
 - [Splunk Serverless 統合 動作確認結果](verification-results-splunk.md)
@@ -355,7 +355,7 @@ EMS / FPolicy ハンドラを提供する 9 ベンダーは共通の実装を共
 - [support-inquiry-s3ap-audit-coverage](support-inquiry-s3ap-audit-coverage.md)
 - [s3ap-monitoring-coverage-implications](s3ap-monitoring-coverage-implications.md)
 
-**プロジェクト**
+#### プロジェクト
 
 - [CI ポリシーと品質ゲート](ci-policy.md)
 
@@ -393,10 +393,12 @@ python -m pytest integrations/*/tests/ shared/lambda-layers/ems-parser/tests/ -v
 cfn-lint integrations/*/template.yaml   # Validate CloudFormation
 ```
 
-- **技術スタック**: CloudFormation (YAML) · Terraform（[Terraform による監視の展開ガイド](terraform-monitoring-guide.md)、[ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md)、[カスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md)、[ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md)、[SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md)） · Python 3.12 Lambda · TypeScript · GitHub Actions CI
-- **コントリビュート**: [CONTRIBUTING.md](../../CONTRIBUTING.md)（英語）参照
-- **変更履歴**: [CHANGELOG.md](../../CHANGELOG.md)（英語）参照
-- **ロードマップ**: [ROADMAP.md](../../ROADMAP.md)（英語）参照
+| 項目 | 内容 |
+|------|------|
+| 技術スタック | CloudFormation (YAML) · Terraform（[Terraform による監視の展開ガイド](terraform-monitoring-guide.md)、[ダッシュボードのモジュール](../../terraform/fsxn-monitoring-dashboard/README.ja.md)、[カスタムメトリクスのモジュール](../../terraform/fsxn-ontap-custom-metrics/README.ja.md)、[ログアラームのモジュール](../../terraform/fsxn-log-alarm/README.ja.md)、[SSD 自動拡張のモジュール](../../terraform/fsxn-ssd-auto-increase/README.ja.md)） · Python 3.12 Lambda · TypeScript · GitHub Actions CI |
+| コントリビュート | [CONTRIBUTING.md](../../CONTRIBUTING.md)（英語）参照 |
+| 変更履歴 | [CHANGELOG.md](../../CHANGELOG.md)（英語）参照 |
+| ロードマップ | [ROADMAP.md](../../ROADMAP.md)（英語）参照 |
 
 </details>
 

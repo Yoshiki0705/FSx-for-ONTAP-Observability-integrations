@@ -254,7 +254,7 @@ def render(lang: str) -> str:
     lines = [START, "", HEADING[lang], "", INTRO[lang], ""]
 
     for en_label, ja_label, stems in CATEGORIES:
-        lines.append(f"**{en_label if lang == 'en' else ja_label}**")
+        lines.append(f"#### {en_label if lang == 'en' else ja_label}")
         lines.append("")
         for stem in stems:
             path = docs_dir / f"{stem}.md"
