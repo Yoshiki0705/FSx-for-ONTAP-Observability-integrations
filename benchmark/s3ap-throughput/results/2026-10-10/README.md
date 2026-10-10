@@ -30,7 +30,7 @@ keys, sizes, and timings only. Per-iteration samples were not kept.
 | Run | `benchmark_run_id` | Raw timestamps (UTC) |
 |-----|--------------------|----------------------|
 | 1 | `bench-s3ap-2026-10-10` | 08:09 to 08:10 |
-| 2 | `bench-s3ap-2026-10-10-r2` | 08:29 to 08:30 |
+| 2 | `bench-s3ap-2026-10-10-r2` | 08:29 |
 
 ## Environment
 

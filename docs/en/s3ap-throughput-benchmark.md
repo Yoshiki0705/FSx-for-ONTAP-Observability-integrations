@@ -6,7 +6,7 @@
 
 This document provides a benchmark methodology and reference results for reading Amazon FSx for NetApp ONTAP audit logs via S3 Access Points. Use these results as a **sizing reference, not a service limit**.
 
-The section "Measured in this repository (2026-10-10)" holds the only measurement taken in this repository. Its raw data is committed under `benchmark/s3ap-throughput/results/2026-10-10/`. The values under "Reference Results" are transcribed from sibling repositories.
+The section "Measured in this repository (2026-10-10)" holds the only S3 Access Points read-latency measurement in this repository. Its raw data is committed under `benchmark/s3ap-throughput/results/2026-10-10/`. The values under "Reference Results" are transcribed from sibling repositories.
 
 > **Caveat**: Results are specific to the test environment described below. Your throughput will vary based on FSx throughput capacity, object size distribution, network path, concurrency, and workload mix. Always validate in your own environment.
 
@@ -35,7 +35,7 @@ The table describes the 2026-10-10 measurement.
 
 ### Test Script
 
-The script below illustrates the method. The tool shipped in `benchmark/s3ap-throughput/`, which produced the 2026-10-10 figures, differs from it in two ways. It computes p50 and p99 by nearest rank instead of `statistics.median` and `int(iterations * 0.99)` indexing, and it returns per-size-class summaries in addition to per-object results.
+The script below illustrates the method. The tool shipped in `benchmark/s3ap-throughput/`, which produced the 2026-10-10 figures, differs from it in two ways that affect how the figures read. It computes p50 and p99 by nearest rank instead of `statistics.median` and `int(iterations * 0.99)` indexing, and it returns per-size-class summaries in addition to per-object results.
 
 ```python
 """S3 AP throughput benchmark for FSx for ONTAP audit logs.
