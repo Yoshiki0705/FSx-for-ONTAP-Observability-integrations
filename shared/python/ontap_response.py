@@ -113,6 +113,38 @@ def _validate_ip(ip: str) -> None:
             )
 
 
+def _finalize_containment_status(results: dict[str, Any]) -> None:
+    """Set the aggregate status for an SMB-involving containment sequence.
+
+    Mutates ``results`` in place. A step that failed makes the whole run a
+    "partial_failure". When nothing failed, the run is not reported as a bare
+    "contained" if it includes an SMB-user block, because block_smb_user
+    returns "mapping_created" -- a created win->unix name-mapping, not a
+    measured denial (access_denial_verified is False, and the mapping has no
+    effect on ntfs security style volumes). In that case the aggregate reports
+    "contained_pending_denial_verification" and carries access_denial_verified
+    False, so a caller acting on results["status"] does not read the created
+    mapping as a confirmed block.
+    """
+    steps = results.get("steps", [])
+    failed = [s for s in steps if s.get("status") == "failed"]
+    if failed:
+        results["status"] = "partial_failure"
+        return
+
+    smb_mapping_steps = [
+        s
+        for s in steps
+        if s.get("action") == "block_smb_user"
+        and s.get("status") == "mapping_created"
+    ]
+    if smb_mapping_steps:
+        results["status"] = "contained_pending_denial_verification"
+        results["access_denial_verified"] = False
+    else:
+        results["status"] = "contained"
+
+
 class OntapResponseError(Exception):
     """Raised when an ONTAP REST API call fails."""
 
@@ -265,9 +297,10 @@ class OntapResponseClient:
         **This does not deny access on an NTFS security style volume.** That
         style evaluates the Windows ACL directly and never consults the result
         of the win->unix mapping, so the mapping is created and has no effect.
-        `unix` and `mixed` do consult it. A returned status of "blocked" means
-        the mapping was created -- a 201 from ONTAP -- and not that access was
-        denied; nothing here attempts SMB access to confirm the effect.
+        `unix` and `mixed` do consult it. A returned status of
+        "mapping_created" means the mapping was created -- a 201 from ONTAP --
+        and not that access was denied; nothing here attempts SMB access to
+        confirm the effect.
 
         The security style is per volume and this call is SVM-scoped, so it
         cannot decide the question for the caller. It logs a warning naming the
@@ -336,9 +369,11 @@ class OntapResponseClient:
             "svm": svm_name,
             "pattern": pattern,
             "position": position,
-            # "blocked" means the deny mapping exists. It is deliberately not a
-            # claim about access: see the docstring.
-            "status": "blocked",
+            # The status states the fact: a win->unix name-mapping was created
+            # (ONTAP returned 201). It is deliberately not "blocked", because
+            # that would assert a denial this call never measures. On ntfs
+            # security style the mapping has no effect; see the docstring.
+            "status": "mapping_created",
             "mapping_created": True,
             "access_denial_verified": False,
             "effective_on_security_styles": ["unix", "mixed"],
@@ -943,9 +978,13 @@ class OntapResponseClient:
                 "error": str(e),
             })
 
-        # Overall status
-        failed = [s for s in results["steps"] if s.get("status") == "failed"]
-        results["status"] = "partial_failure" if failed else "contained"
+        # Overall status. The SMB-user step reports "mapping_created", not a
+        # proven denial, so a clean run cannot be summarized as "contained":
+        # that would assert the attacker is locked out, which this sequence
+        # never measures (access_denial_verified stays False). Surface the
+        # boundary on the aggregate so a caller acting on results["status"]
+        # does not read the created mapping as a confirmed block.
+        _finalize_containment_status(results)
 
         return results
 
@@ -1132,8 +1171,9 @@ class OntapResponseClient:
                 "error": str(e),
             })
 
-        # Overall status
-        failed = [s for s in results["steps"] if s.get("status") == "failed"]
-        results["status"] = "partial_failure" if failed else "contained"
+        # Overall status. As in contain_smb_threat, the SMB-user step is a
+        # created mapping (status "mapping_created"), not a verified denial, so
+        # a clean run is not summarized as a bare "contained".
+        _finalize_containment_status(results)
 
         return results

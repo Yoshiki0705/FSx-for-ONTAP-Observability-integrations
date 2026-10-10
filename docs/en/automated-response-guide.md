@@ -105,16 +105,25 @@ graph TD
 
 ### SMB User Blocking
 
-The mechanism uses ONTAP name-mapping to deny access:
+The mechanism uses ONTAP name-mapping. It creates a win->unix mapping; whether
+that denies access depends on the volume's security style:
 
 | Step | What Happens | ONTAP Equivalent |
 |------|-------------|-----------------|
 | 1 | Lambda receives trigger with domain + username | — |
 | 2 | Creates a name-mapping: `DOMAIN\user` → `" "` (empty) | `vserver name-mapping create -direction win-unix -pattern "DOMAIN\\user" -replacement " "` |
-| 3 | User's next file operation is denied | SID-to-UNIX translation fails → access denied |
-| 4 | All SVM volumes affected | Name-mapping applies SVM-wide |
+| 3 | On `unix`/`mixed` style volumes, the next file operation fails the SID-to-UNIX translation | SID-to-UNIX translation fails → access denied |
+| 4 | On `ntfs` style volumes the Windows ACL is evaluated directly and the mapping is never consulted — no effect | Mapping created, not consulted |
 
-**Scope**: The block applies to the entire SVM. All volumes, shares, and exports within the SVM deny access to the blocked user.
+**Scope**: The name-mapping is created SVM-wide, so it applies to every volume
+that consults win->unix mapping. It denies access only on `unix` and `mixed`
+security style volumes. On `ntfs` style volumes it has no effect — stop the
+authentication instead (disable the AD account) and use session disconnect for
+sessions already established. `block_smb_user` returns `status: mapping_created`
+(not `blocked`) and `access_denial_verified: False`: the call confirms the
+mapping was created, not that access was denied. See the
+[Security Addendum](automated-response-security-addendum.md) for what has and
+has not been measured.
 
 > **Operational safety note (position 1 insertion)**: The deny mapping is inserted at position 1 by default, meaning it's evaluated *before* any existing name-mappings. If your SVM has existing name-mappings for service accounts or automation workflows, the new entry may shadow them. Always test with `health_check` + a non-production user first. To immediately undo an accidental block: `./automated-response-cli.sh unblock-smb --domain <DOMAIN> --user <username>`. For multi-tenant SVMs, verify that blocking one tenant's compromised user doesn't affect shared service accounts evaluated at higher positions.
 
