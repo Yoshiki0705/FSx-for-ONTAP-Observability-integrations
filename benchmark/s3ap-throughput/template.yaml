@@ -140,9 +140,9 @@ Resources:
 
           # Upper bound on the raw per-iteration latencies returned for each object
           # (``samples_ms``). It keeps the synchronous Lambda response small however many
-          # iterations are requested: the first this-many samples of an object are kept.
-          # An object's own p50/p99/mean/min/max still use every iteration; the size-class
-          # figures pool only the kept samples.
+          # iterations are requested: only the first MAX_SAMPLES_PER_OBJECT samples of an
+          # object are kept. An object's own p50/p99/mean/min/max still use every
+          # iteration; the size-class figures pool only the kept samples.
           MAX_SAMPLES_PER_OBJECT = 100
 
           # Value of ``percentile_method`` on a size-class summary. Result files written
@@ -433,11 +433,11 @@ Resources:
                       {"test": "get", "bucket": "<alias-or-arn>", "prefix": "...",
                        "max_keys": 10, "iterations": 5, "size_labels": {"<key>": "1MB"}}
 
-                      ``iterations`` defaults to 5 for both tests when omitted (the
-                      values above are examples, not defaults); ``max_keys`` defaults to
-                      100 for "list" and 10 for "get". The helper script
-                      run-benchmark.sh passes its own defaults (20 list iterations, 5 get
-                      iterations), so it does not rely on these.
+                      ``iterations`` defaults to 5 for both tests when omitted, and
+                      ``max_keys`` defaults to 100 for "list" and 10 for "get". The
+                      helper script run-benchmark.sh always sends ``iterations`` (20 for
+                      list and 5 for get, unless its environment variables override
+                      them), so it does not rely on the Lambda default.
                       ``benchmark_run_id`` is echoed if present, otherwise generated.
                   context: Lambda context (unused).
 
