@@ -53,6 +53,9 @@ MUST_DETECT: dict[str, str] = {
     ),
     # Keyword-anchored rules: assert both the assignment and the prose shape,
     # because only the assignment was ever detected before.
+    # Real-shaped AWS resource identifiers. The values are random hex that does
+    # not match any documented placeholder; they are not real resources.
+    "aws-resource-id": "The file system is fs-0a1b2c3d4e5f60718 in this account.",
     "datadog-api-key-in-context": "DATADOG_API_KEY=8f3a2b1c9d4e5f6a7b8c9d0e1f2a3b4c",
     "splunk-hec-token-in-context": (
         "Use the Splunk HEC token a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d for ingest"
@@ -82,7 +85,29 @@ MUST_NOT_DETECT: dict[str, str] = {
     "datadog-env-var": 'headers = {"DD-API-KEY": os.environ["DD_API_KEY"]}',
     "datadog-secret-arn": "DATADOG_API_KEY is read from SECRET_ARN via Secrets Manager",
     "splunk-svm-uuid": "svm-uuid parameter: 12345678-1234-1234-1234-123456789abc",
+    "resource-id-placeholder": (
+        "fs-0123456789abcdef0 holds fsvol-0123456789abcdef0 on svm-0123456789abcdef0 "
+        "in vpc-0123456789abcdef0 and subnet-0123456789abcdef1 with sg-0fedcba9876543210, "
+        "instance i-0123456789abcdef0."
+    ),
+    "resource-id-repeating-pattern": (
+        "subnet-aaaa1111aaaa1111a and subnet-bbbb2222bbbb2222b and svm-0abcdef123456789a"
+    ),
+    "resource-id-too-short-to-be-real": "see fs-123 and vpc-abc for the naming scheme",
     "zeroed-key": "DATADOG_API_KEY=00000000000000000000000000000000",
+}
+
+
+# One real-shaped identifier per resource type the rule claims to cover. Each is
+# planted alone so that a prefix dropping out of the regex fails by name.
+RESOURCE_ID_SHAPES: dict[str, str] = {
+    "fs": "fs-0a1b2c3d4e5f60718",
+    "fsvol": "fsvol-0b2c3d4e5f6071829",
+    "svm": "svm-0c3d4e5f607182930",
+    "vpc": "vpc-0d4e5f60718293a41",
+    "subnet": "subnet-0e5f60718293a4b52",
+    "sg": "sg-0f60718293a4b5c63",
+    "i": "i-0071829a3b4c5d6e7",
 }
 
 pytestmark = pytest.mark.skipif(
@@ -173,3 +198,20 @@ def test_repo_scans_clean() -> None:
         f"{Path(f['File']).name}:{f['StartLine']} {f['RuleID']}" for f in findings
     ]
     assert not findings, f"gitleaks reports findings on the working tree: {summary}"
+
+
+@pytest.mark.parametrize("prefix", sorted(RESOURCE_ID_SHAPES))
+def test_each_resource_id_type_is_detected(prefix: str) -> None:
+    """A real-shaped identifier of every covered type must be reported.
+
+    Documentation prose is the leak path: a verification record names the
+    resources it ran against. Before this rule, a file system, volume, SVM and
+    instance id in a tracked record produced no finding, because resource ids
+    were never in the config.
+    """
+    findings = _scan({f"id-{prefix}": f"Ran against {RESOURCE_ID_SHAPES[prefix]} today."})
+    rules = {f["RuleID"] for f in findings}
+    assert "aws-resource-id" in rules, (
+        f"{prefix}: {RESOURCE_ID_SHAPES[prefix]} produced {sorted(rules) or 'no finding'}. "
+        "The rule has stopped covering this prefix, or never did."
+    )

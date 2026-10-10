@@ -144,6 +144,58 @@ description = "New Relic user key or ingest license key"
 regex = '''\b(?:NRAK-[A-Z0-9]{25,32}|NRJS-[a-f0-9]{19}|[A-Za-z0-9]{36}NRAL)\b'''
 keywords = ["NRAK-", "NRJS-", "NRAL"]
 
+# Real-shaped AWS resource identifiers: file system, volume, SVM, VPC, subnet,
+# security group and EC2 instance ids.
+#
+# Why this rule exists. A verification record names the resources it ran
+# against, and a tracked record carried an SVM, a volume and an instance id in
+# six lines for as long as it was in the repository. gitleaks reported nothing,
+# because no rule covered these shapes. A later change copied a real file system
+# id into new documentation lines on the reasoning that it already appeared
+# elsewhere in the file; a reviewer caught that, the scanner did not.
+#
+# Why it was not here before. The comment on the Datadog rule below explains
+# why a bare 32-hex or UUID format is left unanchored-off: it would fire on
+# every checksum. These ids do not have that problem. They carry a fixed prefix
+# and exactly 17 hex digits, and the documentation in this repository writes
+# its examples with one placeholder convention, so a real-shaped id that is not
+# one of the known synthetic values is a signal rather than noise.
+#
+# The synthetic values are an explicit list, not a "looks random" test, because
+# randomness cannot be told from a sequence by regex and a guess in either
+# direction hides a real id or flags a placeholder. Adding a new example id
+# means adding it to the allowlist below, which is the moment to check that it
+# is not the identifier of a real resource.
+[[rules]]
+id = "aws-resource-id"
+description = "Real-shaped AWS resource identifier (fs/fsvol/svm/vpc/subnet/sg/i)"
+regex = '''(?:^|[^A-Za-z0-9-])((?:fs|fsvol|svm|vpc|subnet|sg|i)-[0-9a-f]{17})(?:$|[^A-Za-z0-9-])'''
+keywords = ["fs-", "fsvol-", "svm-", "vpc-", "subnet-", "sg-", "i-"]
+secretGroup = 1
+
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  # The documented placeholder: 0123456789abcdef followed by one hex digit
+  # (…0 is the canonical form; …1, …2, …3 distinguish a second resource of the
+  # same type inside one example).
+  '''-0123456789abcdef[0-9a-f](?:$|[^A-Za-z0-9-])''',
+  # Reversed and shifted sequences used where two placeholders must differ.
+  '''-0fedcba9876543210(?:$|[^A-Za-z0-9-])''',
+  '''-0abcdef123456789a(?:$|[^A-Za-z0-9-])''',
+  # Four-character repeats used for the subnet ids in multi-AZ examples.
+  '''-aaaa1111aaaa1111a(?:$|[^A-Za-z0-9-])''',
+  '''-bbbb2222bbbb2222b(?:$|[^A-Za-z0-9-])''',
+  '''-cccc3333cccc3333c(?:$|[^A-Za-z0-9-])''',
+  '''-dddd4444dddd4444d(?:$|[^A-Za-z0-9-])''',
+]
+paths = [
+  # Never committed (gitignored); same reasoning as the internal-ip rule.
+  '''docs/blog/''',
+  '''.kiro/''',
+  '''.agents/''',
+]
+
 # Dynatrace API token: fixed prefix and fixed segment lengths.
 [[rules]]
 id = "dynatrace-api-token"
