@@ -163,6 +163,7 @@ Resources:
                 aws:SourceArn:
                   - !GetAtt FPolicyEventBridgeRule.Arn
                   - !GetAtt BackupEventBridgeRule.Arn
+                  - !GetAtt BackupRamRevocationRule.Arn
 
   # ============================================================
   # CloudWatch Log Groups
@@ -493,15 +494,17 @@ Resources:
         - Key: Vendor
           Value: datadog
 
-  # EventBridge rule routing AWS Backup / RAM events to the backup shipper.
-  # Rules 1/2/3 (service events, RAM state change, RAM revocation via
-  # CloudTrail) are combined into one pattern; RAM revocation requires an
-  # existing CloudTrail management-event trail (see shared/templates/aws-backup-events.yaml).
+  # EventBridge rule routing AWS Backup service events and RAM native
+  # resource-sharing state changes to the backup shipper. RAM revocation is
+  # handled separately by BackupRamRevocationRule because it needs the
+  # CloudTrail eventSource/eventName narrowing (an unqualified
+  # "AWS API Call via CloudTrail" detail-type would match every RAM
+  # management API call, not only share revocation/deletion).
   BackupEventBridgeRule:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub '${AWS::StackName}-backup-to-datadog'
-      Description: Route AWS Backup / LAG-vault and RAM events to the Datadog shipper
+      Description: Route AWS Backup / LAG-vault and RAM native state-change events to the Datadog shipper
       EventBusName: default
       State: ENABLED
       EventPattern:
@@ -515,7 +518,6 @@ Resources:
           - Recovery Point State Change
           - Backup Vault State Change
           - Resource Sharing State Change
-          - AWS API Call via CloudTrail
       Targets:
         - Id: BackupDatadogLambda
           Arn: !GetAtt BackupLambdaFunction.Arn
@@ -532,6 +534,46 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt BackupEventBridgeRule.Arn
+
+  # RAM share revocation / deletion via CloudTrail. Mirrors Rule 3 in
+  # shared/templates/aws-backup-events.yaml: narrowed to the two revoking
+  # eventNames so the shipper receives only share revocation, not every RAM
+  # management API call. Requires an existing CloudTrail trail logging
+  # management events.
+  BackupRamRevocationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-ram-revocation-to-datadog'
+      Description: Route AWS RAM share revocation / deletion (CloudTrail) to the Datadog shipper
+      EventBusName: default
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.ram
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - ram.amazonaws.com
+          eventName:
+            - DisassociateResourceShare
+            - DeleteResourceShare
+      Targets:
+        - Id: BackupDatadogLambda
+          Arn: !GetAtt BackupLambdaFunction.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt FPolicyDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 3
+            MaximumEventAgeInSeconds: 3600
+
+  BackupRamRevocationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BackupLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt BackupRamRevocationRule.Arn
 
   # ============================================================
   # EventBridge Rule — FPolicy events → FPolicy Lambda
