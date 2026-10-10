@@ -4,9 +4,9 @@
 **Region**: ap-northeast-1 (Tokyo)
 **FSx for ONTAP**: fs-0123456789abcdef1 (FSxN_OnPre_Sim)
 **ONTAP Version**: NetApp Release 9.17.1P7D1
-**SVM**: demo-verify-svm (svm-0a90881eb8fe64ee8, workgroup mode, no AD)
-**Volume**: demo_verify_vol (fsvol-0e42f49ad8b1802a6, MIXED, 1GB)
-**Verification Client**: EC2 i-02dfc88e5ef9989fd (Amazon Linux 2023, SSM)
+**SVM**: demo-verify-svm (svm-0123456789abcdef0, workgroup mode, no AD)
+**Volume**: demo_verify_vol (fsvol-0123456789abcdef0, MIXED, 1GB)
+**Verification Client**: EC2 i-0123456789abcdef0 (Amazon Linux 2023, SSM)
 
 ---
 
@@ -188,9 +188,9 @@ For demo purposes, `umount` + `mount` is required to observe the denial.
 | Subnet (AZ-1a) | subnet-0123456789abcdef0 |
 | Subnet (AZ-1c) | subnet-0123456789abcdef1 |
 | Security Group | sg-0123456789abcdef0 (PoC_SG, 0.0.0.0/0) |
-| SVM | demo-verify-svm (svm-0a90881eb8fe64ee8) |
-| Volume | demo_verify_vol (fsvol-0e42f49ad8b1802a6) |
-| EC2 | i-02dfc88e5ef9989fd (fsxn-verify-client-onpre) |
+| SVM | demo-verify-svm (svm-0123456789abcdef0) |
+| Volume | demo_verify_vol (fsvol-0123456789abcdef0) |
+| EC2 | i-0123456789abcdef0 (fsxn-verify-client-onpre) |
 | ONTAP Mgmt IP | <management-ip> |
 | Data LIF | <data-lif-ip> |
 | CFn: EMS/Splunk | fsxn-splunk-integration-onpre |
