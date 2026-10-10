@@ -35,7 +35,7 @@ The table describes the 2026-10-10 measurement.
 
 ### Test Script
 
-The script below illustrates the method. The tool shipped in `benchmark/s3ap-throughput/`, which produced the 2026-10-10 figures, differs from it in two ways that affect how the figures read. It computes p50 and p99 by nearest rank instead of `statistics.median` and `int(iterations * 0.99)` indexing, and it returns per-size-class summaries in addition to per-object results.
+The script below illustrates the method. The version of the tool in `benchmark/s3ap-throughput/` that produced the 2026-10-10 figures differs from it in two ways that affect how the figures read. It computes p50 and p99 by nearest rank instead of `statistics.median` and `int(iterations * 0.99)` indexing, and it returns per-size-class summaries in addition to per-object results.
 
 ```python
 """S3 AP throughput benchmark for FSx for ONTAP audit logs.
@@ -110,7 +110,7 @@ The volume's tiering policy was AUTO with a 31-day cooling period, and the test 
 
 ### Aggregation method
 
-Each object was read 10 times in sequence (concurrency 1). ListObjectsV2 was called 20 times with no MaxKeys override, so the tool's default of 100 applied. The tool computes nearest-rank p50 and p99 and the mean per object. The class-level p50 and p99 in the tables below are the simple mean of the three objects' own p50 and p99 values. They are not percentiles over the 30 pooled samples (tracked in [#147](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/147)). Throughput for one object is derived from that object's mean latency and size, and the class figure is the mean of the three. MB/s means MiB/s here (size divided by 1,048,576 bytes), as in the tool.
+Each object was read 10 times in sequence (concurrency 1). ListObjectsV2 was called 20 times with no MaxKeys override, so the tool's default of 100 applied. The version of the tool that took these measurements computed nearest-rank p50 and p99 and the mean per object. The class-level p50 and p99 in the tables below are the simple mean of the three objects' own p50 and p99 values. They are not percentiles over the 30 pooled samples. Later versions of the tool compute the class figures over the pooled samples and mark each class with `percentile_method: "pooled_nearest_rank"` ([#147](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/147)); the 2026-10-10 raw files have no such key. Class figures from a later version are therefore not directly comparable with the tables below. Throughput for one object is derived from that object's mean latency and size, and the class figure is the mean of the three. MB/s means MiB/s here (size divided by 1,048,576 bytes), as in the tool.
 
 ### Results of run 1 and run 2
 

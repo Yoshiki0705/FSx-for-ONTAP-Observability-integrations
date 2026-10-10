@@ -37,7 +37,7 @@
 
 ### テストスクリプト
 
-下のスクリプトは測定方法の例示です。2026-10-10 の数値を出したのは `benchmark/s3ap-throughput/` に収録したツールで、スクリプトとは、数値の読み方に関わる 2 点が違います。p50 と p99 を `statistics.median` と `int(iterations * 0.99)` の添字ではなく nearest-rank 法で求めること、オブジェクトごとの結果に加えてサイズ区分ごとの集計を返すことです。
+下のスクリプトは測定方法の例示です。2026-10-10 の数値を出したのは `benchmark/s3ap-throughput/` に収録したツールの当時の版で、スクリプトとは、数値の読み方に関わる 2 点が違います。p50 と p99 を `statistics.median` と `int(iterations * 0.99)` の添字ではなく nearest-rank 法で求めること、オブジェクトごとの結果に加えてサイズ区分ごとの集計を返すことです。
 
 ```python
 """S3 AP throughput benchmark for FSx for ONTAP audit logs.
@@ -112,7 +112,7 @@ def benchmark_get_object(keys: list[str], iterations: int = 5) -> dict:
 
 ### 集計方法
 
-各オブジェクトを 10 回、順番に読みました（同時実行数 1）。ListObjectsV2 は 20 回呼び、MaxKeys は上書きしていないのでツールの既定値 100 が効いています。ツールはオブジェクトごとに nearest-rank 法の p50・p99 と平均を計算します。下表のサイズ区分ごとの p50 と p99 は、3 個のオブジェクトそれぞれの p50 と p99 の単純平均です。プールした 30 サンプルのパーセンタイルではありません（[#147](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/147) で追跡）。オブジェクト 1 個のスループットはそのオブジェクトの平均レイテンシとサイズから求め、区分の値は 3 個の平均です。ここでの MB/s は、ツールと同じく MiB/s（サイズを 1,048,576 バイトで割った値）です。
+各オブジェクトを 10 回、順番に読みました（同時実行数 1）。ListObjectsV2 は 20 回呼び、MaxKeys は上書きしていないのでツールの既定値 100 が効いています。この測定を行った版のツールは、オブジェクトごとに nearest-rank 法の p50・p99 と平均を計算しました。下表のサイズ区分ごとの p50 と p99 は、3 個のオブジェクトそれぞれの p50 と p99 の単純平均です。プールした 30 サンプルのパーセンタイルではありません。後続の版のツールは、区分ごとの値をプールしたサンプルから計算し、各区分に `percentile_method: "pooled_nearest_rank"` を付けます（[#147](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/147)）。2026-10-10 の生データにこのキーはありません。そのため、後続の版が出す区分の値は、下表と直接は比較できません。オブジェクト 1 個のスループットはそのオブジェクトの平均レイテンシとサイズから求め、区分の値は 3 個の平均です。ここでの MB/s は、ツールと同じく MiB/s（サイズを 1,048,576 バイトで割った値）です。
 
 ### 実行 1 と実行 2 の結果
 
