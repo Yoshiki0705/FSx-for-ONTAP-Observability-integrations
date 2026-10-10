@@ -6,13 +6,13 @@
 
 This document provides a benchmark methodology and reference results for reading Amazon FSx for NetApp ONTAP audit logs via S3 Access Points. Use these results as a **sizing reference, not a service limit**.
 
-The two sections "Measured in this repository (2026-10-10)" and "Pooled re-measurement (2026-10-10)" hold the only S3 Access Points read-latency measurements in this repository. Their raw data is committed under `benchmark/s3ap-throughput/results/2026-10-10/` (averaged class percentiles) and `benchmark/s3ap-throughput/results/2026-10-10-pooled/` (pooled class percentiles). The values under "Reference Results" are transcribed from sibling repositories.
+The two sections "Measured in this repository (2026-10-10)" and "Pooled re-measurement (2026-10-10)" hold the only S3 Access Points read-latency measurements in this repository. Their raw data is committed under `benchmark/s3ap-throughput/results/2026-10-10/` (averaged class percentiles) and `benchmark/s3ap-throughput/results/2026-10-10-pooled/` (pooled class percentiles). The position check is a subsection group of the second section, and its raw data is committed under `benchmark/s3ap-throughput/results/2026-10-10-position/`. The values under "Reference Results" are transcribed from sibling repositories.
 
 > **Caveat**: Results are specific to the test environment described below. Your throughput will vary based on FSx throughput capacity, object size distribution, network path, concurrency, and workload mix. Always validate in your own environment.
 
 ## Test Environment
 
-The table describes the 2026-10-10 measurement. The pooled re-measurement the same day used the same file system, volume, and Lambda settings; its differences are listed under "Pooled re-measurement (2026-10-10)".
+The table describes the 2026-10-10 measurement. The pooled re-measurement and the position check the same day used the same file system, volume, and Lambda settings; their differences are listed under "Pooled re-measurement (2026-10-10)" and "Position check: question, design, and differences from the pooled runs".
 
 | Parameter | Value |
 |-----------|-------|
@@ -31,6 +31,7 @@ The table describes the 2026-10-10 measurement. The pooled re-measurement the sa
 | Test objects | Random bytes, 3 objects each of 1 KB, 100 KB, 1 MB, and 5 MB, one prefix per size |
 | Benchmark run IDs | `bench-s3ap-2026-10-10` (run 1), `bench-s3ap-2026-10-10-r2` (run 2) |
 | Pooled re-measurement run IDs | `bench-s3ap-2026-10-10-pooled-r1`, `bench-s3ap-2026-10-10-pooled-r2`, `bench-s3ap-2026-10-10-pooled-r3` |
+| Position check run IDs | `position-r1-<series>`, `position-seq-r2-<series>`, `position-seq-r3-<series>` (sequential, counted); `position-r2-<series>`, `position-r3-<series>` (overlapped side set); the series IDs are listed in the results README |
 
 ## Methodology
 
@@ -225,7 +226,7 @@ These figures are derived from the per-object samples of the three runs. They ar
 
 The 3 x p50 thresholds are 130.458, 131.499, 165.939, and 359.832 ms for 1 KB, 100 KB, 1 MB, and 5 MB.
 
-The slow reads are concentrated at two positions in the invocation. This is derived from `samples_ms`, and the cause is not isolated. In all 12 GetObject invocations (4 size classes x 3 runs), the 100th read (object 3, read 20) took at least 3.8 times the class p50 in the table above (169.818 to 582.888 ms), and the 50th read (object 2, read 10) did so in 7 of 12. These two positions hold 19 of the 23 slow reads. The other 1,416 reads include 4 (0.3 %), all in the 5 MB class. One key listing precedes the first read of each invocation.
+The slow reads are concentrated at two positions in these 120-read invocations. This is derived from `samples_ms`, and these three runs do not isolate the cause. In all 12 GetObject invocations (4 size classes x 3 runs), the 100th read (object 3, read 20) took at least 3.8 times the class p50 in the table above (169.818 to 582.888 ms), and the 50th read (object 2, read 10) did so in 7 of 12. These two positions hold 19 of the 23 slow reads. The other 1,416 reads include 4 (0.3 %), all in the 5 MB class. One key listing precedes the first read of each invocation. In the position check taken later the same day (1 KB and 100 KB objects only), slow reads occurred only at multiples of 50, and the cause was not isolated there either.
 
 ### Comparison with the averaging formula (derived)
 
@@ -240,26 +241,132 @@ The earlier run reported each class p99 as the mean of three per-object p99 valu
 
 The formula on 40-sample objects gives 130.2 to 251.7 ms for 1 KB to 1 MB, where the earlier run reported 43.14 to 74.535 ms from 10-sample objects. For 5 MB the two are in the same range (191.688 and 444.951 ms earlier; 336.9, 450.7, and 399.9 ms on the pooled-run files). A difference between the earlier p99 and the pooled p99 can come from the method, the sample count per object (10 earlier, 40 now), and the reads per invocation (30 earlier, 120 now); by itself it is not evidence that the file system changed.
 
-Hypothesis, not checked and not a re-test of the earlier run: each earlier invocation read 3 objects x 10 times = 30 times, so it never reached the 50th or the 100th read. If slow reads are tied to those positions in the invocation rather than to reads in general, a 30-read invocation would hold few of them. That would be consistent with the p99 values of 43 to 75 ms for 1 KB to 1 MB in the earlier run, and with 10-read objects that mostly held no slow read. The earlier raw files keep no samples, so this cannot be checked. The hypothesis does not account for the 5 MB class: within its 30 reads, earlier run 2 had per-object largest values of 361.481 and 820.689 ms.
+Hypothesis, partly tested by the position check and not a re-test of the earlier run: each earlier invocation read 3 objects x 10 times = 30 times, so it never reached the 50th or the 100th read. If slow reads are tied to those positions in the invocation rather than to reads in general, a 30-read invocation would hold few of them. That would be consistent with the p99 values of 43 to 75 ms for 1 KB to 1 MB in the earlier run, and with 10-read objects that mostly held no slow read. The position check is consistent with this reading for invocations of similar length: invocations of 40 and 49 reads had no slow read (0 of 6), and no invocation had a slow read before its 50th read. It did not replay the earlier shape (it had no 30-read invocation, read 1 KB and 100 KB objects only, used a new S3 Access Points, and ran at a later time of day), and the earlier raw files keep no samples, so the earlier run itself cannot be checked. The hypothesis does not account for the 5 MB class: within its 30 reads, earlier run 2 had per-object largest values of 361.481 and 820.689 ms, and the position check did not read 5 MB objects.
 
 ### What the three runs support
 
 - The class p50 varied by 2 to 20 % between runs. The spread within each class (largest class p50 divided by smallest, minus 1) is 2 % for 5 MB (118.597 to 120.898 ms), 8 % for 1 KB (41.542 to 44.786 ms), 18 % for 100 KB (38.132 to 44.939 ms), and 20 % for 1 MB (50.072 to 60.024 ms). With three runs, this statement is limited to these runs.
-- A small share of reads took at least 3 times the class p50, in every size class. Of 360 samples, 5 (1.4 %) for 1 KB and 100 KB, 6 (1.7 %) for 1 MB, and 7 (1.9 %) for 5 MB. The ranges per class are in the derived table. These reads are not spread evenly: 19 of the 23 are the 50th or the 100th GetObject of an invocation (the 100th in all 12 invocations, the 50th in 7 of 12), and the other 1,416 reads include 4. The cause of the slow reads and of the positional pattern is not isolated: the client network path, the S3 Access Points front end, ONTAP, and Lambda were not separated.
+- A small share of reads took at least 3 times the class p50, in every size class. Of 360 samples, 5 (1.4 %) for 1 KB and 100 KB, 6 (1.7 %) for 1 MB, and 7 (1.9 %) for 5 MB. The ranges per class are in the derived table. These reads are not spread evenly: 19 of the 23 are the 50th or the 100th GetObject of an invocation (the 100th in all 12 invocations, the 50th in 7 of 12), and the other 1,416 reads include 4. These three runs do not isolate the cause of the slow reads or of the positional pattern: the client network path, the S3 Access Points front end, ONTAP, and Lambda were not separated in them. The position check below separates some candidates for the 100th-read event and leaves others open.
 - A single run's class p99 is indicative only. With 120 pooled samples the class p99 is the second-largest sample, and it moved between runs. The largest p99 divided by the smallest is 1.7 for 1 MB (176.486 to 291.514 ms), 1.9 for 5 MB (263.822 to 501.195 ms), 2.8 for 1 KB (82.878 to 229.291 ms), and 3.7 for 100 KB (59.016 to 218.75 ms). The across-run p99 (4th-largest of 360) rests on a larger pool, but in every class that value is itself a 50th-read or 100th-read sample, and it is derived from three runs in one environment on one day.
 - Across the three ListObjectsV2 series (12 keys), p50 ranged from 28.11 to 28.665 ms and p99 from 234.278 to 285.43 ms (the second-largest of 120).
 
 ### Limits of the pooled re-measurement
 
-- Not covered: concurrency above 1, other file systems, other Regions, VPC-origin S3 Access Points, other Lambda memory sizes, and data not on SSD (capacity pool reads, tiering policy ALL).
-- Not covered: other times of day. Only 08:09 to 08:29 UTC and 14:55 to 14:59 UTC on 2026-10-10 were sampled, and the two sets use different aggregation, so no time-of-day comparison is made.
+- Not covered: concurrency above 1, other file systems, other Regions, VPC-origin S3 Access Points, other Lambda memory sizes, and data not on SSD (capacity pool reads, tiering policy ALL). The overlapped side set of the position check ran at about concurrency 2 by mistake; it is not a designed concurrency measurement.
+- Not covered: other times of day. Only 08:09 to 08:29 UTC, 14:55 to 14:59 UTC, and (in the position check) 16:17 to 16:20 UTC on 2026-10-10 were sampled, and the sets use different aggregation or designs, so no time-of-day comparison is made.
 - Throughput is per stream at concurrency 1. It is not the file system's throughput limit.
 - That the reads were served from SSD is inferred from the tiering policy and was not measured.
 - The tool does not separate the Lambda cold-start effect.
-- The cause of the concentration of slow reads at the 50th and 100th read of an invocation is not isolated.
+- The cause of the concentration of slow reads at the 50th and 100th read of an invocation is not isolated. The position check found the 100th-read event on a standard S3 bucket too and found it again at the 200th and 300th read. It did not separate an invocation-wide request counter from a connection-wide counter or from the lifetime of the client object, and it did not isolate the cause of the 50th-read events (see "Position check: what was and was not separated").
 - The ListObjectsV2 p99 cannot be recomputed, because its result keeps no samples.
 - Three runs do not establish statistical stability. No confidence interval is claimed.
 - Request charges for this run were not estimated, and no cost figure is given.
+
+### Position check: question, design, and differences from the pooled runs
+
+Evidence tier: `verified`, for one statement only. These latencies were observed in the environment under "Test Environment" on 2026-10-10, in 40 invocations between 16:17 and 16:20 UTC, later the same day than the pooled re-measurement (14:55 to 14:59 UTC). The tier does not cover other file systems, Regions, clients, connection handling, concurrency levels, network paths, or dates. This is a sample run in one environment: a sizing reference, not a production estimate and not a service limit. Every count, ratio, and difference in this group is derived from `samples_ms` in the committed raw files under `benchmark/s3ap-throughput/results/2026-10-10-position/`; none of it is tool output.
+
+The pooled re-measurement found that 19 of the 23 slow reads were the 50th or the 100th GetObject of an invocation. This check asks what ties slow reads to those positions. The predictions, the run order, and the slow-read criterion were written down before the first invocation.
+
+The file system, volume, Region, and Lambda memory and VPC settings are those under "Test Environment" (256 MB, no VPC). The volume's tiering policy was AUTO with a 31-day cooling period, read before and after the runs with identical values. SSD residency is inferred from the policy and the object age; no per-tier capacity metric was captured. The ONTAP version was not re-read. The differences from the pooled re-measurement are:
+
+| Item | Pooled re-measurement | Position check |
+|------|-----------------------|----------------|
+| Tool version | The tool at `main` commit `6808382` | The tool at `main` commit `d23f381`; `handler.py` is unchanged since `6808382` |
+| Client | One boto3 S3 client per invocation, one key listing, then sequential GetObject calls at concurrency 1 | The same |
+| S3 Access Points | A new one created for the re-measurement | A new one of the same type (ONTAP, internet origin, UNIX user `root`), created for this check and deleted afterwards |
+| Test objects | 3 each of 1 KB, 100 KB, 1 MB, and 5 MB | 3 of 1 KB and 3 of 100 KB under a new prefix |
+| Reads per invocation | 120 | 40 to 300, set per series |
+| Diagnostic control | None | A temporary standard S3 bucket in the same Region, read by the same function: 3 objects of 1 KB, Block Public Access on, default encryption |
+
+The series, each run as sequential invocations:
+
+| Series | Target | Object size | Objects x reads per object | Reads per invocation | Sequential invocations |
+|--------|--------|-------------|----------------------------|----------------------|------------------------|
+| S0, replay of the pooled shape | S3 Access Points | 1 KB | 3 x 40 | 120 | 3 |
+| S1, one object | S3 Access Points | 1 KB | 1 x 40, 1 x 49, 1 x 50, 1 x 100 | 40, 49, 50, 100 | 3 of each length (12) |
+| S2, long invocation | S3 Access Points | 1 KB | 3 x 100 | 300 | 2 |
+| S3, object size | S3 Access Points | 100 KB | 3 x 50 | 150 | 3 |
+| S4, diagnostic control | Standard S3 bucket | 1 KB | 3 x 40, and 3 x 100 | 120, and 300 | 3, and 1 |
+
+The invocations ran in three passes. The order inside a pass was fixed before the first invocation and interleaves the series. Each pass holds one invocation of S0, of each S1 length, of S3, and of S4 at 120 reads. Passes 1 and 2 also hold S2; pass 3 holds the 300-read S4 invocation instead. A read is slow when it is at least 3 times the median of that invocation's reads (all objects of the invocation, in measurement order). The pooled section used 3 times the class p50 over three runs, so counts in the two sections are not directly comparable. The ratio is recorded at every multiple of 50 whether or not it reaches 3.
+
+> **Measurement note**: Passes 2 and 3 were first started at the same time by mistake, so about two invocations ran at once on the same S3 Access Points (concurrency about 2). Both passes were then re-run one invocation at a time in the planned order. The 24 sequential invocations (pass 1 and the two re-runs) are the primary set, and they are the only ones counted below. The 16 overlapped invocations are kept as a labelled side set; analysed afterwards with the same criterion, they show the same shape. All 40 invocations returned without a function error, and no read or invocation was dropped.
+
+### Position check: slow reads occurred only at multiples of 50
+
+Counts are from the 24 sequential invocations (20 on FSx for ONTAP S3 Access Points, 4 on the standard S3 control). Each cell is the number of invocations in which the read at that position was slow, out of the invocations that reached that position. In these invocations 32 of 2,787 reads were slow, and all 32 were at the 50th, 100th, 150th, 200th, 250th, or 300th read.
+
+| Read position | FSx for ONTAP S3 Access Points (20 invocations) | Standard S3 bucket, diagnostic control (4 invocations) |
+|---------------|--------------------------------------------------|--------------------------------------------------------|
+| 50th | 9 of 14 | 0 of 4 |
+| 100th | 11 of 11 | 4 of 4 |
+| 150th | 2 of 5 | 0 of 1 |
+| 200th | 2 of 2 | 1 of 1 |
+| 250th | 0 of 2 | 0 of 1 |
+| 300th | 2 of 2 | 1 of 1 |
+
+- No read at a position that is not a multiple of 50 was slow, in any of the 24 sequential invocations or the 16 overlapped ones. The pooled runs had 4 slow reads outside the 50th and 100th read, all in the 5 MB class; this check read 1 KB and 100 KB only, so it neither confirms nor contradicts those 4.
+- Invocations of 40 and 49 reads had no slow read (0 of 6). Invocations of 50 reads had exactly one, at the 50th read (3 of 3).
+- The 100th, 200th, and 300th reads were slow in every invocation that reached them, on S3 Access Points (11 of 11, 2 of 2, 2 of 2) and on the standard S3 control (4 of 4, 1 of 1, 1 of 1). The repeating event at multiples of 100 is therefore not specific to S3 Access Points.
+- The 50th, 150th, and 250th reads were intermittent on S3 Access Points (11 of 21 reads at those positions) and were not seen on the control (0 of 6). Of the 10 reads at those positions that were not slow, 8 were at most 1.68 times the invocation median and 2 were 2.67 and 2.79 times, just under the chosen cut-off of 3. Six control reads do not establish absence. In the overlapped side set the 250th read was slow in its one invocation, so absence at the 250th read is not established either.
+- The 100 KB invocations (3) had slow reads at the same positions as the 1 KB ones: the 100th in 3 of 3, the 50th in 2 of 3, the 150th in 0 of 3, and none elsewhere. Three invocations do not establish equal rates.
+- The first read of an invocation was not slow: its ratio to the invocation median had a median of 1.14 and a largest value of 1.90. Reads next to the multiples of 50 (the 49th and 51st, the 99th and 101st, and so on) were near the median: median ratio 1.02, largest 1.44.
+- At the 100th, 200th, and 300th read the slow read was 3.49 to 7.59 times the invocation median on S3 Access Points (15 reads; +107.5 to +250.8 ms over invocation medians of 36.7 to 46.1 ms) and 3.42 to 4.55 times on the control (6 reads; +69.3 to +102.0 ms over medians of 27.9 to 29.3 ms). "+" means the read minus the invocation median.
+
+> **Measurement note**: The standard S3 bucket is a diagnostic control for locating a cause. It is a different service path with no file system, so its medians (27.9 to 29.3 ms per invocation, and 36.7 to 46.1 ms on S3 Access Points) are listed to size the slow reads. They are not a like-for-like comparison, and no claim is made about either path's latency in general.
+
+### Position check: predictions scored, and the one that did not hold as stated
+
+The predictions were written before the first invocation. "Held" is judged against the primary set (the 24 sequential invocations).
+
+| Prediction | Result |
+|------------|--------|
+| A slow read at every multiple of 50 that the invocation reaches | Did not hold as stated. It held for multiples of 100 (S3 Access Points 11 of 11, 2 of 2, 2 of 2; control 4 of 4, 1 of 1, 1 of 1) and failed for the odd multiples of 50 (the 50th, 150th, and 250th read: 11 of 21 on S3 Access Points, 0 of 6 on the control) |
+| No slow read in invocations of 40 or 49 reads | Held: 0 of 6 |
+| A slow read at the 50th read of a 50-read invocation | Held: 3 of 3 |
+| No slow read at a position that is not a multiple of 50 | Held: none in the 24 sequential or the 16 overlapped invocations |
+| The replay (S0) reproduces slow reads at the 50th and 100th read | Held: 100th read 3 of 3, 50th read 2 of 3 |
+| At least one slow read at the 150th to 300th read of a 300-read invocation (the pre-registered falsifier was its absence) | Held. The falsifier did not occur: the data contradict "no slow read at the 150th to 300th read". On S3 Access Points the 150th, 200th, and 300th reads were slow in both 300-read invocations (the 250th in neither). The control's one 300-read invocation had the 200th and 300th reads slow and the 150th and 250th not. The reading "only two events per invocation (nothing after the 100th)" is not supported |
+| The positions are the same at 100 KB as at 1 KB | Held for the positions, in 3 invocations. A size effect at the 150th read is not excluded: it was slow in 2 of 2 invocations at 1 KB (300 reads) and in 0 of 3 at 100 KB (150 reads), and the two groups differ in invocation length as well as in size |
+| A standard S3 bucket read by the same function shows the same pattern if the cause is not specific to S3 Access Points | Partly: the multiples of 100 appeared on the control; the odd multiples of 50 did not (0 of 6) |
+
+### Position check: a third-party report consistent with the 100th-read shape
+
+Hypothesis, not checked at the connection level here. A public issue for the AWS SDK for Go v1 ([aws/aws-sdk-go issue 2825](https://github.com/aws/aws-sdk-go/issues/2825), 2019) reports that, for PutObject and UploadPart calls against standard S3, one HTTP connection was reused for 100 requests and the 101st request opened a new connection. In the same thread, a contributor to that repository who tested it wrote that S3 closes a connection after it has received 100 requests on it, and the reporter then saw a `Connection: close` header on the 100th response in a Wireshark capture. The tool here lists keys once before the reads on the same client, so the key listing is request 1 and the 100th GetObject is request 101. If the same happens here, the repeating slow reads at the 100th, 200th, and 300th read would be the first request on a new connection. That reading is consistent with the shape and is not verified: it is a user report and a contributor's comment in a public issue (2019) for a different SDK and different operations, it is not AWS documentation, no connection or packet trace was taken in this check, and the boto3 and urllib3 versions in the Lambda runtime were not recorded. The report does not address the 50th, 150th, and 250th-read events on S3 Access Points. No source for them was found; the search was not exhaustive.
+
+### Position check: what was and was not separated
+
+Separated by this series:
+
+- The multiples-of-100 event is not specific to S3 Access Points: the standard S3 control, read by the same function in the same Region, showed it in every invocation that reached it.
+- It is not tied to an object boundary. In the 120-read series (S0 and the control at 120 reads) the 100th read is the 20th read of object 3, and it was slow in 6 of 6 invocations; the last read of each object (40th, 80th, 120th) and the first read of objects 2 and 3 were not slow.
+- It repeats: slow reads occurred at the 200th and 300th read, not only at the 100th.
+- Slow reads did not occur before the 50th read of any invocation, and the first read of an invocation was not slow.
+- The positions were the same at 1 KB and 100 KB (3 invocations at 100 KB).
+- The overlapped side set (about concurrency 2) showed the same positions. It was an unplanned overlap and is not a concurrency measurement.
+
+Not separated:
+
+- An invocation-wide request counter, a connection-wide request counter, and the lifetime of the client object. In this tool they predict the same positions (one client, sequential reads, and a pooled connection that is expected, but not observed, to be reused). Separating them needs a tool option that recreates the client or the connection every N reads. That option has not been built.
+- The cause of the 50th, 150th, and 250th-read events on S3 Access Points. The client network path, the S3 Access Points front end, ONTAP, and Lambda were not separated. The control did not show these events in 6 reads, which is too few to rule them out on the standard S3 path.
+- Whether the connection was in fact replaced at the 100th request. No connection-level observation was made.
+
+### Position check: practical reading and its bounds
+
+In this tool's invocations of 100 or more reads (one client object, sequential reads, connection reuse not observed), all 21 reads at the 100th, 200th, and 300th positions took 3.4 to 7.6 times the invocation median, which is 21 slow reads out of 2,370 reads in those invocations (0.9 %, about one in 113, because the reads after the last multiple of 100 dilute the share). On S3 Access Points it was 3.49 to 7.59 times (+107.5 to +250.8 ms over invocation medians of 36.7 to 46.1 ms; 15 reads), and on the standard S3 control 3.42 to 4.55 times (+69.3 to +102.0 ms; 6 reads). On S3 Access Points, a further 8 of 18 reads at the 50th, 150th, and 250th positions in those invocations were slow (11 of 21 when the three 50-read invocations are included). These values come from this tool: one client per invocation, concurrency 1, 1 KB and 100 KB objects, a 256 MB Lambda outside a VPC, one environment on one day. They are not extrapolated to other clients, other connection handling, or concurrency above 1. A class p99 computed from fewer than 100 reads in one invocation cannot contain the 100th-read event, because such an invocation never reaches that position. The earlier statement stands that a single run's class p99 is indicative only.
+
+### Limits of the position check
+
+- Per-position counts range from 1 to 14 invocations (S3 Access Points: 14 at the 50th read, 11 at the 100th, 5 at the 150th, 2 at each of the 200th to 300th; control: 4 at the 50th and 100th, 1 at each of the 150th to 300th). No rate, variance, or confidence interval is claimed.
+- One environment on one day (16:17 to 16:20 UTC), one S3 Access Points, one Lambda configuration. Objects of 1 KB and 100 KB only (100 KB in 3 invocations); 1 MB and 5 MB were not read.
+- Concurrency 1 for the primary set. The overlapped side set ran at about concurrency 2 by mistake and is not a concurrency measurement. Concurrency above 1 is not covered.
+- The factor 3 is a chosen cut-off. Two reads at the odd multiples were at 2.67 and 2.79 times the median, just below it. At positions that are not multiples of 50, the largest ratio in the 24 sequential invocations was 2.69 (the 102nd read of one control invocation); 3 of those 2,739 reads were at 2.0 or more, all on the control, and the largest on S3 Access Points was 1.94. In the overlapped side set the largest was 2.46 (control) and 1.95 (S3 Access Points).
+- The boto3 and urllib3 versions in the Lambda runtime, and the cold or warm state of each invocation, were not recorded. No warm-up reads were excluded.
+- No connection-level or packet-level observation was made, and the tool has no option to recreate the client every N reads.
+- The standard S3 bucket is a diagnostic control for locating a cause, on a different service path with no file system. It is not a comparison of the two services.
+- Not covered: other clients and SDKs, other Regions, a VPC-attached Lambda, and data not on SSD (capacity pool reads, tiering policy ALL).
+- Request charges were not estimated, and no cost figure is given.
 
 ## Reference Results
 
@@ -433,6 +540,7 @@ Record the result together with its environment context: FSx for ONTAP throughpu
 - [Benchmark tool (README)](../../benchmark/s3ap-throughput/README.md)
 - [Raw data of the earlier 2026-10-10 measurement (averaged class percentiles)](../../benchmark/s3ap-throughput/results/2026-10-10/README.md)
 - [Raw data of the 2026-10-10 pooled re-measurement](../../benchmark/s3ap-throughput/results/2026-10-10-pooled/README.md)
+- [Raw data of the 2026-10-10 position check](../../benchmark/s3ap-throughput/results/2026-10-10-position/README.md)
 - [S3 AP Specification & Troubleshooting](s3ap-fsxn-specification.md)
 - [Pipeline SLO](pipeline-slo.md)
 - [Operational Guide](operational-guide.md)

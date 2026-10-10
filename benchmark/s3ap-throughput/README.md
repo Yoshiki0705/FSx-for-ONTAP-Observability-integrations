@@ -52,6 +52,14 @@ least 100 (at n = 100 it is the second largest), so a class p99 on fewer than
 100 pooled samples should be read as the maximum. The same applies to the `list`
 p99 when `iterations` is below 100.
 
+In the 2026-10-10 position check, the 100th read of an invocation (one client,
+sequential reads) took at least 3 times the invocation median in all 11
+sequential invocations that reached it against S3 Access Points, and in all 4
+against a standard S3 bucket used as a control. An
+invocation of fewer than 100 reads never reaches that position, so a class p99
+from such a run cannot include the event. The evidence and its limits are in
+[the benchmark document](../../docs/en/s3ap-throughput-benchmark.md).
+
 ## Files
 
 | File | Purpose |
