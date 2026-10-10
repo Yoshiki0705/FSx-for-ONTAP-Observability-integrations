@@ -135,10 +135,15 @@ not repeated here. Only the differences and additions are listed below.
 
 Flatten `per_object[].samples_ms` in measurement order. A read is slow when it
 is at least 3 times the median of that invocation's reads (all objects of the
-invocation). The factor 3 is a chosen cut-off. The ratio is reported at every
-multiple of 50 and next to it, whether or not it reaches 3. The pooled write-up
-used 3 times the class p50 over three runs, so counts in the two sections are not
-directly comparable. A "position" is the index of the read within the
+invocation). The factor 3 is a chosen cut-off. Two reads at the odd multiples of
+50 were at 2.67 and 2.79 times the median, just under it. At positions that are
+not multiples of 50, the largest ratio in the 24 sequential invocations was 2.69
+(the 102nd read of one control invocation); 3 of those 2,739 reads were at 2.0 or
+more, all on the control, and the largest on S3 Access Points was 1.94. In the
+overlapped set the largest was 2.46 (control) and 1.95 (S3 Access Points). The
+ratio is reported at every multiple of 50 and next to it, whether or not it
+reaches 3. The pooled write-up used 3 times the class p50 over three runs, so
+counts in the two sections are not directly comparable. A "position" is the index of the read within the
 invocation, counted from 1 across all objects in order; the key listing is not a
 read.
 
