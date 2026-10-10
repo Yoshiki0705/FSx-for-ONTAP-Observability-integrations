@@ -6,7 +6,8 @@
 
 ONTAP EMS (Event Management System) は、FSx for ONTAP からのニアリアルタイムのイベント通知を提供します。本ガイドでは、検知可能なイベント、配信レイテンシ、配信メカニズム、および本プロジェクトで利用可能な統合パターンを体系的に整理します。
 
-**要点:**
+### 要点
+
 - EMS 配信は **Push 型**（イベント駆動）であり、ポーリングではない
 - 2 つの Push パス: EMS Webhook (~30 秒) と Syslog VPCE (数秒)
 - EventBridge Scheduler ポーリング (5 分) は S3 上のファイルアクセス監査ログ専用 — EMS には使用しない
@@ -68,9 +69,7 @@ EventBridge Scheduler (5 分) → Lambda
 | スコープ | ファイルアクセス監査ログのみ（S3 上の EVTX/XML） |
 | EMS には使用しない | — |
 
-> **重要**
->
-> EventBridge Scheduler パスはファイルアクセス監査ログ（S3 上に保存される NFS/SMB ファイル操作の EVTX/XML）専用です。EMS イベントは上記の Push パスを使用します。
+> **重要:** EventBridge Scheduler パスはファイルアクセス監査ログ（S3 上に保存される NFS/SMB ファイル操作の EVTX/XML）専用です。EMS イベントは上記の Push パスを使用します。
 
 ---
 
@@ -84,13 +83,15 @@ EventBridge Scheduler (5 分) → Lambda
 | `arw.volume.state` | warning | ARP が異常な行動を疑う | 調査トリガー |
 | `arw.vserver.state` | notice | ARP モード変更（学習/アクティブ/無効） | 設定ドリフト検知 |
 
-**ARP 検知の詳細:**
+#### ARP 検知の詳細
+
 - エントロピー変化（ファイル内容がランダム化 → 暗号化の指標）
 - 大量のファイル拡張子変更（20 以上のファイルで異常な新拡張子）
 - 暗号化データ特性を伴う異常な IOPS 急増
 - 学習期間: ARP の世代で異なります。旧世代 ARP の NAS FlexVol（9.10.1〜9.15.1）では 30 日間の学習モードでベースラインを構築します。ARP/AI（FlexVol は 9.16.1 以降、FlexGroup は 9.18.1 以降）には学習期間がありません。[Adoption Playbook の ARP の世代の表](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md)を参照
 
-**`arw.volume.state` alert 時の自動アクション:**
+#### `arw.volume.state` alert 時の自動アクション
+
 1. ONTAP が `Anti_ransomware_backup` スナップショットを自動作成
 2. EMS イベント発火 → Webhook が Observability プラットフォームに配信
 3. (本プロジェクト) 自動応答 Lambda がユーザー/IP をブロック可能
@@ -287,19 +288,19 @@ event log show -time >1h
 
 ## FAQ
 
-**Q: EMS 配信はリアルタイムですか？バッチですか？**
+**Q:** EMS 配信はリアルタイムですか？バッチですか？
 A: リアルタイム（Push）です。ONTAP は EMS イベント発生時に即座に Webhook (HTTPS POST) または syslog ストリームで配信します。EMS イベントにバッチ処理やスケジュール配信はありません。
 
-**Q: Webhook 宛先が利用不可の場合はどうなりますか？**
+**Q:** Webhook 宛先が利用不可の場合はどうなりますか？
 A: ONTAP がリトライします。正確なリトライ動作は ONTAP バージョンに依存しますが、イベントは一時的にバッファされます。確実な配信のためには、syslog パスで CloudWatch Logs（永続ストレージ）に保存しつつ、低レイテンシアラートには Webhook を併用することを推奨します。
 
-**Q: ONTAP レベルでイベントをフィルタリングできますか？**
+**Q:** ONTAP レベルでイベントをフィルタリングできますか？
 A: はい。ONTAP のイベントフィルターにより、イベント名パターンと重大度による include/exclude ルールを設定できます。これによりノイズと Lambda 呼び出しを削減します。フィルターに一致するイベントのみが宛先に送信されます。
 
-**Q: Webhook 宛先はいくつ設定できますか？**
+**Q:** Webhook 宛先はいくつ設定できますか？
 A: ONTAP は複数の通知宛先をサポートします。同じイベントを複数の宛先（例: Datadog + CloudWatch）に同時に送信できます。
 
-**Q: Syslog VPCE パスには EMS イベントも含まれますか？CLI 監査だけですか？**
+**Q:** Syslog VPCE パスには EMS イベントも含まれますか？CLI 監査だけですか？
 A: 両方含まれます。`cluster log-forwarding` コマンドは管理監査ログ（CLI/API 操作）と EMS イベントの両方を syslog メッセージとして送信します。ファシリティコードでの区別が可能です。
 
 ---

@@ -6,7 +6,8 @@
 
 ONTAP EMS (Event Management System) provides near-real-time event notifications from FSx for ONTAP. This guide catalogs the detectable events, delivery latency, delivery mechanisms, and integration patterns available in this project.
 
-**Key points:**
+### Key points
+
 - EMS delivery is **Push-based** (event-driven), not polling
 - Two push paths: EMS Webhook (~30s) and Syslog VPCE (seconds)
 - EventBridge Scheduler polling (5 min) is used only for file access audit logs on S3 — NOT for EMS
@@ -82,13 +83,15 @@ EventBridge Scheduler (5 min) → Lambda
 | `arw.volume.state` | warning | ARP suspects anomalous behavior | Investigation trigger |
 | `arw.vserver.state` | notice | ARP mode changed (learning/active/disabled) | Configuration drift |
 
-**ARP detection details:**
+#### ARP detection details
+
 - Entropy changes (file content becoming random → encryption indicator)
 - Mass file extension changes (20+ files with unusual new extensions)
 - Abnormal IOPS surge with encrypted data characteristics
 - Learning period: depends on the ARP generation. Older-generation ARP on a NAS FlexVol (9.10.1-9.15.1) spends 30 days in learning mode to establish a baseline; ARP/AI (FlexVol from 9.16.1, FlexGroup from 9.18.1) has none. See the [ARP generation table in the Adoption Playbook](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md) (Japanese)
 
-**Automatic actions on `arw.volume.state` alert:**
+#### Automatic actions on `arw.volume.state` alert
+
 1. ONTAP creates `Anti_ransomware_backup` snapshot automatically
 2. EMS event emitted → Webhook delivers to Observability platform
 3. (This project) Automated response Lambda can block user/IP
@@ -285,19 +288,19 @@ event log show -time >1h
 
 ## FAQ
 
-**Q: Is EMS delivery real-time or batch?**
+**Q:** Is EMS delivery real-time or batch?
 A: Real-time (push). ONTAP delivers EMS events immediately when they occur via Webhook (HTTPS POST) or syslog stream. There is no batching or scheduled delivery for EMS events.
 
-**Q: What happens if the webhook destination is unavailable?**
+**Q:** What happens if the webhook destination is unavailable?
 A: ONTAP retries delivery. The exact retry behavior depends on ONTAP version, but events are buffered temporarily. For guaranteed delivery, use the syslog path to CloudWatch Logs (persistent storage) combined with webhook for low-latency alerting.
 
-**Q: Can I filter events at the ONTAP level?**
+**Q:** Can I filter events at the ONTAP level?
 A: Yes. ONTAP event filters allow include/exclude rules by event name pattern and severity. This reduces noise and Lambda invocations. Only events matching the filter are sent to the destination.
 
-**Q: How many webhook destinations can I configure?**
+**Q:** How many webhook destinations can I configure?
 A: ONTAP supports multiple notification destinations. You can send the same events to multiple destinations (e.g., Datadog + CloudWatch) simultaneously.
 
-**Q: Does the Syslog VPCE path include EMS events or only CLI audit?**
+**Q:** Does the Syslog VPCE path include EMS events or only CLI audit?
 A: Both. The `cluster log-forwarding` command sends management audit logs (CLI/API operations) AND EMS events as syslog messages. The facility code helps distinguish them.
 
 ---
