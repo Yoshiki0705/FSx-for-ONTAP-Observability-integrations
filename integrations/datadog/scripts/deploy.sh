@@ -202,10 +202,13 @@ upload_handler() {
   local source_file="$1"
   local function_name="$2"
   local label="$3"
-  # Only the audit shipper reads audit files, so only it needs the ONTAP parser.
+  # Only the audit shipper reads audit files, so only it needs the ONTAP
+  # parser; the backup shipper needs the shared AWS Backup / RAM normaliser.
   local extra_files=()
   if [ "${source_file}" = "handler.py" ]; then
     extra_files+=("${SHARED_PYTHON_DIR}/ontap_audit_parser.py")
+  elif [ "${source_file}" = "backup_handler.py" ]; then
+    extra_files+=("${SHARED_PYTHON_DIR}/aws_backup_event.py")
   fi
 
   if ! aws lambda get-function --function-name "${function_name}" \
@@ -234,6 +237,7 @@ upload_handler "handler.py" "${AUDIT_STACK}-shipper" "Audit shipper"
 if [ "${DEPLOY_MODE}" = "all" ]; then
   upload_handler "ems_handler.py" "${EMS_FPOLICY_STACK}-ems" "EMS handler"
   upload_handler "fpolicy_handler.py" "${EMS_FPOLICY_STACK}-fpolicy" "FPolicy handler"
+  upload_handler "backup_handler.py" "${EMS_FPOLICY_STACK}-backup" "Backup/RAM handler"
 fi
 echo ""
 

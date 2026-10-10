@@ -116,6 +116,10 @@ ONTAP ARP（Autonomous Ransomware Protection）が、ネイティブのファイ
 >
 > エントロピー/拡張子変更分析（ARP）と行動 ML は、検知上のトレードオフにおいて対極に位置しており、明示的に言及しておく価値があります — エントロピーベースの検知は、これまで見たことのない *新規* のランサムウェアファミリーに対しても良く一般化します（暗号化は、どのマルウェアが原因であるかに関わらず、本質的にファイルのエントロピーを高めるためです）。一方、行動 ML は、暗号化を全く行わない攻撃者（例: 二重恐喝キャンペーンで増加傾向にある、暗号化なしの大量データ持ち出し）による *異常なアクセスパターン* の検知に良く一般化します。どちらか一方のアプローチだけでは、両方のケースをうまくカバーできません — 本リポジトリが ARP（シグネチャ/エントロピー）と SIEM 委譲型の ML（行動）を組み合わせているのは、まさにこの理由によるものであり、どちらか一方だけで十分だとは考えていません。[検証済みクリーン復旧ポイントガイド](verified-recovery-point-guide.md) 自身の拡張子リストベースのスキャンは、ARP の上に重ねられた 3 つ目の、より狭いシグネチャリストベースのチェックを追加しますが、その 3 つ目の層が 3 つの中で最も回避されやすい盲点を持つ理由については、同ガイド自身の脅威インテリジェンスに関する補足を参照してください。
 
+> **バックアップ / LAG ボールトのイベントフィードに関する補足**
+>
+> 本リポジトリは、Amazon FSx for NetApp ONTAP の論理エアギャップボールト（LAG ボールト）に関わる AWS Backup と AWS Resource Access Manager（RAM）のイベントフィードも提供します（`shared/templates/aws-backup-events.yaml`）。3 本の EventBridge ルールが、バックアップ/コピー/リストアのジョブ状態変更、RAM のリソース共有状態変更、RAM 共有の取り消し（CloudTrail 経由）を CloudWatch Logs のロググループへ送り、メトリクスフィルタがそれらを `FsxOntap/Backup` メトリクス（`BackupJobFailed`、`CopyJobFailed`、`BackupCompletedWithIssues`、`RestoreJobFailed`、`RamShareRevoked`）に変換して、既存の SNS トピックに紐づく CloudWatch アラームを発火させます。「Completed with issues」は `COMPLETED` に到達しつつステータスメッセージを伴うバックアップジョブとして検知するものであり、独立した EventBridge の状態ではなく、コピージョブには適用されません。同じレコードは共有の `aws_backup_event` 正規化モジュールを通じて Datadog と Elastic にも配信されます。RAM の取り消し検知には、管理イベントを記録する既存の CloudTrail 証跡が前提となります。
+
 ### 代替の実装パス
 
 | アプローチ | 仕組み | 適合する場面 |
@@ -140,7 +144,7 @@ ONTAP ARP（Autonomous Ransomware Protection）が、ネイティブのファイ
 | SIEM | 実装内容 | 参照先 |
 |------|---------|--------|
 | Splunk | 4 本の `.spl` 検索（ユーザータイムライン、全活動、IP 中心のドリルダウン、ファイルエンティティ履歴）を、入力トークン付きの Dashboard Studio ダッシュボードに構成 | [`integrations/splunk-serverless/searches/`](../../integrations/splunk-serverless/searches/) |
-| Datadog | ダッシュボード JSON（8 ウィジェット: ARP タイムライン、応答アクション、影響ボリューム、重要度、ユーザーアクティビティ、監査証跡、クライアント IP、復旧検証） | [`integrations/datadog/dashboards/`](../../integrations/datadog/dashboards/) |
+| Datadog | ダッシュボード JSON（12 ウィジェット: ARP タイムライン、応答アクション、影響ボリューム、重要度、ユーザーアクティビティ、監査証跡、クライアント IP、復旧検証、および AWS Backup / LAG ボールトの 4 ウィジェット — ジョブ失敗、Completed with issues、リストア失敗、RAM 共有の取り消し） | [`integrations/datadog/dashboards/`](../../integrations/datadog/dashboards/) |
 | Grafana | `\| json` パース付き LogQL を使った提供済みダッシュボード JSON（Loki のラベルカーディナリティ制約により `user`/`client_ip`/`path` はラベルではなくログ本文に保持） | [`integrations/grafana/dashboards/forensics-investigation.json`](../../integrations/grafana/dashboards/forensics-investigation.json) |
 | Elastic | Kibana Discover + Lens。ECS フィールドマッピング（`user.name`、`source.ip`、`file.path`、`event.action`）は[正規化イベントスキーマ](normalized-event-schema.md#vendor-mapping-matrix)で既に定義済み | [Elastic セットアップガイド](../../integrations/elastic/docs/ja/setup-guide.md#フォレンジック調査-kibana-discoverlens) |
 
@@ -186,6 +190,10 @@ ONTAP ARP（Autonomous Ransomware Protection）が、ネイティブのファイ
 > **DR Runbook連携に関する補足**
 >
 > 本節で説明する RC.RP の機能は技術的な構成要素であり、DR Runbook のステップではありません — [検証済みクリーン復旧ポイントガイド](verified-recovery-point-guide.md)をデプロイしただけでは、実際のインシデント時に自社がフェイルオーバーやリストアをどう判断するかは変わりません。本ワークフローの判定結果をゲートとして使うよう DR Runbook を明示的に更新しない限りは（具体的な順序付けの問いについては同ガイド自身の DR Runbook連携に関する補足を参照してください）。
+
+> **LAG ボールトの復旧可視性に関する補足**
+>
+> 上記 Detect で導入した AWS Backup / RAM のイベントフィードは、LAG ボールトのコピーとリストアのジョブ状態を可視化することで RC.RP にも寄与します。`CopyJobFailed` メトリクスは復旧ポイントがエアギャップボールトに到達していない可能性を示し、`RestoreJobFailed` メトリクスは完了しなかったリストアを示します。AWS Backup Audit Manager のコントロール「Resources in a logically air-gapped vault」（設定した期間内に復旧ポイントが LAG ボールトに届かないと NON_COMPLIANT）は EventBridge イベントではなく Config / Audit Manager のコンプライアンス信号であり、バックアップイベントダッシュボードはこれを稼働中のフレームワークとしてではなく、繰り延べたプレースホルダーリンクとして保持しています。
 
 RC.CO（関係者レベルの復旧連携）は最小限のカバーに留まります — 上記 Respond で説明した SNS 通知は、何かが起きたという信号であり、調整された連携計画ではありません。
 
