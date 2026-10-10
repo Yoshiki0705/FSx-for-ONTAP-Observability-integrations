@@ -110,13 +110,17 @@ Resources:
           both are accepted directly as the ``Bucket`` argument by the S3 API.
 
           Measurement semantics mirror docs/en/s3ap-throughput-benchmark.md:
-            - "list": ListObjectsV2 latency over N iterations (p50/p99/mean/min/max ms).
+            - "list": ListObjectsV2 latency over N iterations (p50/p99/mean/min/max ms),
+              computed directly over those N samples.
             - "get": GetObject latency and throughput per object, grouped into size
-              classes.
+              classes. Per-object figures are computed over that object's iterations.
+              Size-class p50/p99/mean/min/max are computed over the POOLED samples of all
+              objects in the class (not as a mean of per-object percentiles); the class
+              carries ``sample_count`` and ``percentile_method``.
 
           The statistics math is isolated in pure helpers (``percentile``,
-          ``summarize_latencies``, ``throughput_mbps``) that take no AWS dependency, so it
-          is unit-testable offline.
+          ``summarize_latencies``, ``bounded_samples``, ``throughput_mbps``) that take no
+          AWS dependency, so it is unit-testable offline.
           """
 
           from __future__ import annotations
@@ -134,6 +138,18 @@ Resources:
           _MS_PER_SECOND = 1000.0
           _BYTES_PER_MB = 1024 * 1024
 
+          # Upper bound on the raw per-iteration latencies returned for each object
+          # (``samples_ms``). It keeps the synchronous Lambda response small however many
+          # iterations are requested: only the first MAX_SAMPLES_PER_OBJECT samples of an
+          # object are kept. An object's own p50/p99/mean/min/max still use every
+          # iteration; the size-class figures pool only the kept samples.
+          MAX_SAMPLES_PER_OBJECT = 100
+
+          # Value of ``percentile_method`` on a size-class summary. Result files written
+          # before the class figures were pooled have no such key; their class p50/p99
+          # are the mean of each object's own p50/p99.
+          PERCENTILE_METHOD = "pooled_nearest_rank"
+
 
           def percentile(sorted_values: list[float], fraction: float) -> float:
               """Return the nearest-rank percentile of an already-sorted list.
@@ -144,6 +160,9 @@ Resources:
               low end. This avoids the off-by-one risk of ``sorted(xs)[int(n * p)]``,
               which indexes out of range when ``int(n * p) == n`` (for example p=0.99 at
               n>=100 would select index n and raise IndexError).
+
+              With this method p=0.99 selects the maximum whenever ``n < 100``; at
+              ``n == 100`` it selects the second largest sample.
 
               Args:
                   sorted_values: Latency samples sorted in ascending order. Must be
@@ -176,7 +195,9 @@ Resources:
 
               Returns:
                   A dict with p50_ms, p99_ms, mean_ms, min_ms and max_ms, each rounded to
-                  three decimal places.
+                  three decimal places. The percentiles are nearest-rank over exactly the
+                  samples passed in, so p99_ms is the maximum when fewer than 100 samples
+                  are passed.
 
               Raises:
                   ValueError: If ``latencies_ms`` is empty.
@@ -191,6 +212,22 @@ Resources:
                   "min_ms": round(ordered[0], 3),
                   "max_ms": round(ordered[-1], 3),
               }
+
+
+          def bounded_samples(latencies_ms: list[float]) -> list[float]:
+              """Return the raw latencies to report for one object, capped in length.
+
+              Keeps the first ``MAX_SAMPLES_PER_OBJECT`` samples in measurement order,
+              each rounded to three decimal places (the precision of the summaries).
+
+              Args:
+                  latencies_ms: Raw per-iteration latencies in milliseconds, in the order
+                      they were measured.
+
+              Returns:
+                  A new list of at most ``MAX_SAMPLES_PER_OBJECT`` rounded samples.
+              """
+              return [round(value, 3) for value in latencies_ms[:MAX_SAMPLES_PER_OBJECT]]
 
 
           def throughput_mbps(size_bytes: float, mean_latency_ms: float) -> float:
@@ -242,7 +279,10 @@ Resources:
                   iterations: Number of calls to time.
 
               Returns:
-                  A dict with operation, iterations and the latency summary fields.
+                  A dict with operation, iterations and the latency summary fields. The
+                  percentiles are nearest-rank over the ``iterations`` samples of this
+                  one series (nothing is pooled or averaged), so p99_ms is the maximum
+                  when ``iterations`` is below 100.
               """
               latencies_ms: list[float] = []
               for _ in range(iterations):
@@ -280,7 +320,11 @@ Resources:
               """Measure GetObject latency and throughput per object and per size class.
 
               Lists up to ``max_keys`` keys under ``prefix`` and reads each key
-              ``iterations`` times, fully draining the response body each time.
+              ``iterations`` times, fully draining the response body each time. Each
+              object's result carries its own summary over all ``iterations`` and a
+              ``samples_ms`` list of the raw latencies, capped at
+              ``MAX_SAMPLES_PER_OBJECT`` samples per object. The size-class summaries pool
+              those ``samples_ms`` lists (see ``_summarize_size_classes``).
 
               Args:
                   s3: A boto3 S3 client.
@@ -315,6 +359,7 @@ Resources:
                       "iterations": iterations,
                       "throughput_mbps": throughput_mbps(mean_size, summary["mean_ms"]),
                       **summary,
+                      "samples_ms": bounded_samples(latencies_ms),
                   })
               return {
                   "operation": "GetObject",
@@ -327,30 +372,50 @@ Resources:
           def _summarize_size_classes(per_object: list[dict[str, Any]]) -> list[dict[str, Any]]:
               """Aggregate per-object results into per-size-class summaries.
 
+              The class ``p50_ms``, ``p99_ms``, ``mean_ms``, ``min_ms`` and ``max_ms`` are
+              computed over the POOLED ``samples_ms`` of every object in the class: all
+              samples are merged into one list and summarized with ``summarize_latencies``
+              (nearest-rank percentiles). They are NOT a mean of the per-object
+              percentiles, which is how earlier result files were aggregated; those files
+              have no ``percentile_method`` key. ``sample_count`` is the size of the pool.
+              With nearest-rank, p99 is the maximum unless the pool holds at least 100
+              samples (100 samples: the second largest), so a class p99 on fewer than 100
+              pooled samples should be read as the maximum. Because each object
+              contributes at most ``MAX_SAMPLES_PER_OBJECT`` samples, the pool can be
+              smaller than ``object_count * iterations``.
+
+              ``mean_size_bytes`` and ``mean_throughput_mbps`` remain means over the
+              class's objects.
+
               Args:
-                  per_object: Per-object measurement dicts produced by ``_run_get``.
+                  per_object: Per-object measurement dicts produced by ``_run_get``, each
+                      including its ``samples_ms`` list.
 
               Returns:
-                  One summary per size label, each with object_count, mean size,
-                  aggregate p50/p99/mean latency, and mean throughput.
+                  One summary per size label, sorted by mean size, each with size_label,
+                  object_count, mean_size_bytes, sample_count, percentile_method, the
+                  pooled p50/p99/mean/min/max latency, and mean_throughput_mbps.
               """
               classes: dict[str, list[dict[str, Any]]] = {}
               for obj in per_object:
                   classes.setdefault(obj["size_label"], []).append(obj)
               summaries: list[dict[str, Any]] = []
               for label, objs in classes.items():
-                  p50s = [o["p50_ms"] for o in objs]
-                  p99s = [o["p99_ms"] for o in objs]
-                  means = [o["mean_ms"] for o in objs]
+                  pooled = [sample for o in objs for sample in o["samples_ms"]]
+                  pooled_summary = summarize_latencies(pooled)
                   tputs = [o["throughput_mbps"] for o in objs]
                   sizes = [o["size_bytes"] for o in objs]
                   summaries.append({
                       "size_label": label,
                       "object_count": len(objs),
                       "mean_size_bytes": int(round(sum(sizes) / len(sizes))),
-                      "p50_ms": round(sum(p50s) / len(p50s), 3),
-                      "p99_ms": round(sum(p99s) / len(p99s), 3),
-                      "mean_ms": round(sum(means) / len(means), 3),
+                      "sample_count": len(pooled),
+                      "percentile_method": PERCENTILE_METHOD,
+                      "p50_ms": pooled_summary["p50_ms"],
+                      "p99_ms": pooled_summary["p99_ms"],
+                      "mean_ms": pooled_summary["mean_ms"],
+                      "min_ms": pooled_summary["min_ms"],
+                      "max_ms": pooled_summary["max_ms"],
                       "mean_throughput_mbps": round(sum(tputs) / len(tputs), 2),
                   })
               summaries.sort(key=lambda s: s["mean_size_bytes"])
@@ -368,6 +433,11 @@ Resources:
                       {"test": "get", "bucket": "<alias-or-arn>", "prefix": "...",
                        "max_keys": 10, "iterations": 5, "size_labels": {"<key>": "1MB"}}
 
+                      ``iterations`` defaults to 5 for both tests when omitted, and
+                      ``max_keys`` defaults to 100 for "list" and 10 for "get". The
+                      helper script run-benchmark.sh always sends ``iterations`` (20 for
+                      list and 5 for get, unless its environment variables override
+                      them), so it does not rely on the Lambda default.
                       ``benchmark_run_id`` is echoed if present, otherwise generated.
                   context: Lambda context (unused).
 

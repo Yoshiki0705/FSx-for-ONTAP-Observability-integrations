@@ -25,6 +25,33 @@ Percentiles use a safe nearest-rank method (`index = min(n-1, ceil(p*n)-1)`)
 that never indexes out of range on small N. The stats math is a set of pure,
 boto3-free helpers in `handler.py`, unit-tested in `tests/`.
 
+## Aggregation method
+
+| Figure | Computed over |
+|--------|---------------|
+| `list` result (`p50_ms`, `p99_ms`, `mean_ms`, `min_ms`, `max_ms`) | The `iterations` samples of that one series. |
+| `get` per-object figures (`per_object[]`) | All `iterations` reads of that object. |
+| `get` size-class figures (`per_size_class[]`: `p50_ms`, `p99_ms`, `mean_ms`, `min_ms`, `max_ms`) | The **pooled** samples of every object in the class: one merged list per class, then nearest-rank percentiles. |
+| `mean_size_bytes`, `mean_throughput_mbps` per class | The mean over the class's objects. |
+
+Each object in `per_object[]` carries its raw latencies as `samples_ms`, capped
+at `MAX_SAMPLES_PER_OBJECT` (100) samples per object in `handler.py`. The first
+100 are kept, in measurement order. An object's own figures still use every
+iteration, while the class figures pool only the kept samples, so a class can
+hold fewer than `object_count × iterations` samples.
+
+Each class reports `sample_count`, the size of its pool, and
+`percentile_method: "pooled_nearest_rank"`. Result files without these keys come
+from the version that averaged per-object percentiles; their class `p50_ms` and
+`p99_ms` are the simple mean of each object's own p50 and p99, which is not a
+percentile of the class.
+Check for `percentile_method` before comparing class figures across files.
+
+With nearest-rank, p99 is the maximum unless the pooled sample count is at
+least 100 (at n = 100 it is the second largest), so a class p99 on fewer than
+100 pooled samples should be read as the maximum. The same applies to the `list`
+p99 when `iterations` is below 100.
+
 ## Files
 
 | File | Purpose |
@@ -76,6 +103,14 @@ AWS_REGION=ap-northeast-1 \
 `S3AP` accepts either the S3 Access Points **alias** or its **ARN**; both work
 as the Lambda's `bucket` parameter. Optional overrides: `LIST_ITERATIONS` (20),
 `GET_ITERATIONS` (5), `MAX_KEYS` (10), `BENCHMARK_RUN_ID`, `OUT_FILE`.
+
+Those are the defaults of `run-benchmark.sh`, which sends `iterations` with both
+tests and `max_keys` with the `get` test only. The Lambda's own default, used
+when an event omits `iterations`, is 5 for both tests; for `max_keys` it is 100
+for `list` and 10 for `get`. `MAX_KEYS` is the maximum number of objects read
+by the `get` test (a prefix with fewer objects measures fewer), not the number
+of reads per object. With 5 `get` iterations per
+object, a size class of 3 objects pools 15 samples, so its p99 is the maximum.
 
 Record the result together with its environment context (FSx throughput
 capacity, AP network origin, region, date). These are a **sizing reference, not
