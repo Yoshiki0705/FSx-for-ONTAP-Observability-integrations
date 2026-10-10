@@ -17,8 +17,7 @@ immutable snapshots for post-incident forensics. This document separates what is
 from what is a documented AWS/NetApp capability applied to a new context, and states
 plainly which claims are unverified reasoning (hypothesis) rather than measurement.
 
-**This document does not evaluate any specific company's or individual's implementation.**
-Every real-world pipeline cited below or in the linked pattern files illustrates a
+**This document does not evaluate any specific company's or individual's implementation.** Every real-world pipeline cited below or in the linked pattern files illustrates a
 publicly documented pattern; the storage-consolidation options here are a general proposal
 for readers who operate a similarly shaped pipeline, not a critique or endorsement of any
 cited implementation.
@@ -223,7 +222,7 @@ unsafe. InfluxDB 3, QuestDB's object-store cold tier, and ClickHouse's S3-backed
 disks are excluded from this hypothesis — iSCSI's block interface does not satisfy any of
 their object-store dependencies at all, regardless of the locking question.
 
-**What is verified, and what is not, for this specific claim:**
+### What is verified, and what is not, for this specific claim
 
 | Claim | Status | Source |
 |---|---|---|
@@ -290,26 +289,26 @@ step first    Lambda (Pattern A)                              Kafka on NFS
 
 ## FAQ
 
-**Q: Does this mean FSx for ONTAP replaces EBS for these kinds of pipelines?**
+**Q:** Does this mean FSx for ONTAP replaces EBS for these kinds of pipelines?
 A: No. EBS (or the managed service's own storage) remains attached to the compute running
 the hot ingestion, hot storage, and live-delivery layers. FSx for ONTAP adds a shared
 archive/clone/protection layer around that hot path — see
 [What Changes and What Doesn't](#what-changes-and-what-doesnt).
 
-**Q: Why does this document cover five pipeline patterns instead of one?**
+**Q:** Why does this document cover five pipeline patterns instead of one?
 A: A recommendation built from a single implementation's specifics risks being an artifact
 of that one architecture rather than a general property of real-time telemetry pipelines.
 Cross-checking against Prometheus, Kafka, managed IoT pipelines, and purpose-built TSDBs
 independently confirmed the same hot-local/cold-object-store split (with one documented
 exception) — see [Five Real-Time Telemetry Pipeline Patterns](#five-real-time-telemetry-pipeline-patterns).
 
-**Q: Can Lambda write directly into a live/streaming delivery path (e.g., a WebSocket push)?**
+**Q:** Can Lambda write directly into a live/streaming delivery path (e.g., a WebSocket push)?
 A: No connection is proposed here between Lambda/S3 Access Points and any live delivery
 path. The S3 Access Points pattern in this document (Pattern A) applies to the archive
 path (wherever an ingestion or export job already writes into hot storage), not to
 real-time delivery to a browser or client.
 
-**Q: Is the "zero-copy" claim about FlexClone or about S3 Access Points?**
+**Q:** Is the "zero-copy" claim about FlexClone or about S3 Access Points?
 A: FlexClone (Pattern B) is the zero-copy mechanism — an instant, space-efficient volume
 clone with no file-level copy operation. S3 Access Points (Pattern A) eliminate a
 different kind of copying: once data is on a shared volume, multiple teams read it over
@@ -317,7 +316,7 @@ NFS/SMB/S3 without each team maintaining its own copy. Both are described in thi
 as "zero-copy" in the sense that no file-level duplication step (PUT/GET, `scp`) occurs,
 but they are two distinct ONTAP mechanisms addressing two distinct problems.
 
-**Q: Is Kafka really an exception to "hot path stays local"?**
+**Q:** Is Kafka really an exception to "hot path stays local"?
 A: Yes, documented by NetApp itself, not by this document's own testing. See
 [Pattern 4](pattern-4-kafka-otel-collector.md) for the fix, the ONTAP version it requires,
 a field-confirmed answer on FSx for ONTAP's own ONTAP version, and a second, independently
