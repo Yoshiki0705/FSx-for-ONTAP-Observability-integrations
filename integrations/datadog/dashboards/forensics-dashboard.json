@@ -187,6 +187,99 @@
           }
         ]
       }
+    },
+    {
+      "id": 9,
+      "definition": {
+        "title": "AWS Backup / LAG-vault — Job Failures",
+        "type": "timeseries",
+        "requests": [
+          {
+            "formulas": [{"formula": "query1"}],
+            "queries": [
+              {
+                "data_source": "logs",
+                "name": "query1",
+                "indexes": ["*"],
+                "compute": {"aggregation": "count"},
+                "group_by": [{"facet": "@event_name", "limit": 10, "sort": {"aggregation": "count", "order": "desc"}}],
+                "search": {"query": "source:fsxn-backup @classification:failed"}
+              }
+            ],
+            "response_format": "timeseries",
+            "style": {"palette": "warm"}
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "definition": {
+        "title": "AWS Backup — Completed With Issues",
+        "type": "query_value",
+        "requests": [
+          {
+            "formulas": [{"formula": "query1"}],
+            "queries": [
+              {
+                "data_source": "logs",
+                "name": "query1",
+                "indexes": ["*"],
+                "compute": {"aggregation": "count"},
+                "search": {"query": "source:fsxn-backup @classification:completed_with_issues"}
+              }
+            ],
+            "response_format": "scalar"
+          }
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "definition": {
+        "title": "Restore Job Failures",
+        "type": "toplist",
+        "requests": [
+          {
+            "formulas": [{"formula": "query1"}],
+            "queries": [
+              {
+                "data_source": "logs",
+                "name": "query1",
+                "indexes": ["*"],
+                "compute": {"aggregation": "count"},
+                "group_by": [{"facet": "@backup_vault_name", "limit": 10, "sort": {"aggregation": "count", "order": "desc"}}],
+                "search": {"query": "source:fsxn-backup @event_name:\"Restore Job State Change\" @state:FAILED"}
+              }
+            ],
+            "response_format": "scalar"
+          }
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "definition": {
+        "title": "RAM Share Revocation",
+        "type": "timeseries",
+        "requests": [
+          {
+            "formulas": [{"formula": "query1"}],
+            "queries": [
+              {
+                "data_source": "logs",
+                "name": "query1",
+                "indexes": ["*"],
+                "compute": {"aggregation": "count"},
+                "group_by": [{"facet": "@source", "limit": 10, "sort": {"aggregation": "count", "order": "desc"}}],
+                "search": {"query": "source:fsxn-backup @classification:revoked"}
+              }
+            ],
+            "response_format": "timeseries",
+            "style": {"palette": "purple"}
+          }
+        ]
+      }
     }
   ],
   "notify_list": [],

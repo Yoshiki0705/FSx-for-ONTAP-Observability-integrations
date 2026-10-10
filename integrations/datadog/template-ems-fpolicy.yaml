@@ -160,7 +160,9 @@ Resources:
             Resource: !GetAtt FPolicyDeadLetterQueue.Arn
             Condition:
               ArnEquals:
-                aws:SourceArn: !GetAtt FPolicyEventBridgeRule.Arn
+                aws:SourceArn:
+                  - !GetAtt FPolicyEventBridgeRule.Arn
+                  - !GetAtt BackupEventBridgeRule.Arn
 
   # ============================================================
   # CloudWatch Log Groups
@@ -180,6 +182,17 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-fpolicy'
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  BackupLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-backup'
       RetentionInDays: 30
       Tags:
         - Key: Project
@@ -222,6 +235,56 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-ems:*'
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  # Least-privilege role for the backup/RAM shipper: read the Datadog API key
+  # secret and write to its own log group only. The EventBridge event carries
+  # the data, so no AWS Backup / RAM read permissions are needed.
+  BackupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-backup-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SecretsManagerRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DatadogApiKeySecretArn
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-backup:*'
+        - PolicyName: SQSDeadLetterWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !GetAtt FPolicyDeadLetterQueue.Arn
       Tags:
         - Key: Project
           Value: fsxn-observability
@@ -384,6 +447,93 @@ Resources:
           Value: datadog
 
   # ============================================================
+  # Backup / RAM Lambda Function (AWS Backup / LAG-vault + RAM events)
+  # ============================================================
+  BackupLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-backup'
+      Runtime: python3.12
+      Handler: backup_handler.lambda_handler
+      Architectures:
+        - arm64
+      MemorySize: !Ref LambdaMemorySize
+      Timeout: !Ref LambdaTimeout
+      Role: !GetAtt BackupLambdaRole.Arn
+      # Backup/RAM events are delivered asynchronously by EventBridge, so an
+      # async DLQ applies. It reuses the FPolicy DLQ for this vendor stack.
+      DeadLetterConfig:
+        TargetArn: !GetAtt FPolicyDeadLetterQueue.Arn
+      Environment:
+        Variables:
+          DATADOG_SITE: !Ref DatadogSite
+          API_KEY_SECRET_ARN: !Ref DatadogApiKeySecretArn
+          LOG_LEVEL: !Ref LogLevel
+          DD_SOURCE: fsxn-backup
+          DD_SERVICE: fsxn-ontap
+          DD_ENV: !Ref Environment
+          ENABLE_GZIP: !Ref EnableGzip
+      LoggingConfig:
+        LogGroup: !Ref BackupLogGroup
+      # Placeholder only. CloudFormation cannot inline the full handler, so the
+      # real lambda/backup_handler.py (and the shared aws_backup_event module)
+      # must be uploaded after the stack is created. `scripts/deploy.sh` does
+      # this automatically as its final step.
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              raise NotImplementedError(
+                  "Placeholder code is still deployed. Upload the real "
+                  "backup_handler: bash integrations/datadog/scripts/deploy.sh "
+                  "(or see docs/en/ems-fpolicy-setup.md)"
+              )
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Vendor
+          Value: datadog
+
+  # EventBridge rule routing AWS Backup / RAM events to the backup shipper.
+  # Rules 1/2/3 (service events, RAM state change, RAM revocation via
+  # CloudTrail) are combined into one pattern; RAM revocation requires an
+  # existing CloudTrail management-event trail (see shared/templates/aws-backup-events.yaml).
+  BackupEventBridgeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-backup-to-datadog'
+      Description: Route AWS Backup / LAG-vault and RAM events to the Datadog shipper
+      EventBusName: default
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.backup
+          - aws.ram
+        detail-type:
+          - Backup Job State Change
+          - Copy Job State Change
+          - Restore Job State Change
+          - Recovery Point State Change
+          - Backup Vault State Change
+          - Resource Sharing State Change
+          - AWS API Call via CloudTrail
+      Targets:
+        - Id: BackupDatadogLambda
+          Arn: !GetAtt BackupLambdaFunction.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt FPolicyDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 3
+            MaximumEventAgeInSeconds: 3600
+
+  BackupLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BackupLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt BackupEventBridgeRule.Arn
+
+  # ============================================================
   # EventBridge Rule — FPolicy events → FPolicy Lambda
   # ============================================================
   FPolicyEventBridgeRule:
@@ -533,6 +683,29 @@ Resources:
         - - !Ref AlarmNotificationTopicArn
         - !Ref AWS::NoValue
 
+  BackupErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-backup-errors'
+      AlarmDescription: >-
+        Backup/RAM shipper Lambda error rate exceeded threshold. Undeliverable
+        async invocations land in the FPolicy DLQ.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref BackupLambdaFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
 Outputs:
   EmsLambdaFunctionArn:
     Description: >-
@@ -543,6 +716,10 @@ Outputs:
   FPolicyLambdaFunctionArn:
     Description: ARN of the FPolicy Lambda function
     Value: !GetAtt FPolicyLambdaFunction.Arn
+
+  BackupLambdaFunctionArn:
+    Description: ARN of the AWS Backup / RAM shipper Lambda function
+    Value: !GetAtt BackupLambdaFunction.Arn
 
   FPolicyEventBridgeRuleArn:
     Description: ARN of the EventBridge rule routing FPolicy events to Lambda

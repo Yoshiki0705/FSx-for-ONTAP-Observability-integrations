@@ -1,0 +1,341 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  FSx for ONTAP cyber-resilience — AWS Backup / logically-air-gapped-vault
+  (LAG-vault) and AWS RAM event ingestion, metric-ification, and alarms.
+
+  Three EventBridge rules on the default bus route AWS Backup service events,
+  AWS RAM resource-sharing state changes, and RAM revocation (via CloudTrail)
+  to a CloudWatch Logs log group. Metric filters turn the logged JSON into
+  FsxOntap/Backup metrics; CloudWatch alarms publish to an existing SNS topic.
+
+  Prerequisite: Rule 3 (RAM revocation) matches the EventBridge
+  "AWS API Call via CloudTrail" detail-type, which only fires when an existing
+  CloudTrail trail is logging management events. Enabling CloudTrail is NOT
+  part of this stack. If no trail logs RAM management events, Rule 3 and the
+  RamShareRevoked metric/alarm stay silent; the native Rule 2 still records
+  resource-sharing state changes.
+
+  This stack observes events only. It does not create a vault, a Vault Lock, a
+  RAM share, or an MPA (multi-party-approval) configuration.
+
+Parameters:
+  AlarmSnsTopicArn:
+    Type: String
+    Description: >-
+      ARN of an existing SNS topic for alarm notifications (the operator's
+      security-alerts topic). This stack does not mint a new topic.
+      Example: arn:aws:sns:ap-northeast-1:123456789012:fsxn-security-alerts
+    AllowedPattern: 'arn:aws:sns:[a-z0-9-]+:\d{12}:.+'
+
+  LogRetentionDays:
+    Type: Number
+    Default: 7
+    Description: Retention period for the backup-events log group, in days.
+
+Resources:
+  # ============================================================
+  # CloudWatch Logs sink for the EventBridge rules
+  # ============================================================
+  BackupEventsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/events/${AWS::StackName}-backup-events'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Project
+          Value: fsxn-observability
+        - Key: Component
+          Value: backup-events
+
+  # Grants EventBridge permission to write the matched events to the log group.
+  # Mirrors the EventBridgeLogPolicy idiom in fpolicy-apigw.yaml; the resource
+  # is a single log-group ARN, not a wildcard.
+  BackupEventsLogPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-backup-events-logs'
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Sid": "EventBridgeToCloudWatchLogs",
+            "Effect": "Allow",
+            "Principal": {"Service": "events.amazonaws.com"},
+            "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+            "Resource": "${BackupEventsLogGroup.Arn}"
+          }]
+        }
+
+  # ============================================================
+  # EventBridge rules (default bus — AWS-service events land there)
+  # ============================================================
+  # Rule 1 — AWS Backup service events (backup/copy/restore/recovery-point/vault)
+  BackupServiceEventsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-backup-service-events'
+      Description: Route AWS Backup / LAG-vault service events to CloudWatch Logs
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.backup
+        detail-type:
+          - Backup Job State Change
+          - Copy Job State Change
+          - Restore Job State Change
+          - Recovery Point State Change
+          - Backup Vault State Change
+      Targets:
+        - Id: CloudWatchLogs
+          Arn: !GetAtt BackupEventsLogGroup.Arn
+
+  # Rule 2 — RAM native resource-sharing state changes
+  RamStateChangeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-ram-state-change'
+      Description: Route AWS RAM resource-sharing state changes to CloudWatch Logs
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.ram
+        detail-type:
+          - Resource Sharing State Change
+      Targets:
+        - Id: CloudWatchLogs
+          Arn: !GetAtt BackupEventsLogGroup.Arn
+
+  # Rule 3 — RAM revocation via CloudTrail (requires a management-event trail)
+  RamRevocationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-ram-revocation'
+      Description: >-
+        Route AWS RAM share revocation / deletion to CloudWatch Logs via the
+        CloudTrail API-call event. Requires an existing CloudTrail trail
+        logging management events (see stack description).
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.ram
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - ram.amazonaws.com
+          eventName:
+            - DisassociateResourceShare
+            - DeleteResourceShare
+      Targets:
+        - Id: CloudWatchLogs
+          Arn: !GetAtt BackupEventsLogGroup.Arn
+
+  # ============================================================
+  # Metric filters — turn the logged JSON into FsxOntap/Backup metrics
+  # ============================================================
+  BackupJobFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackupEventsLogGroup
+      FilterPattern: '{ $.detail-type = "Backup Job State Change" && $.detail.state = "FAILED" }'
+      MetricTransformations:
+        - MetricNamespace: FsxOntap/Backup
+          MetricName: BackupJobFailed
+          MetricValue: '1'
+          DefaultValue: 0
+
+  CopyJobFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackupEventsLogGroup
+      FilterPattern: '{ $.detail-type = "Copy Job State Change" && $.detail.state = "FAILED" }'
+      MetricTransformations:
+        - MetricNamespace: FsxOntap/Backup
+          MetricName: CopyJobFailed
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # statusMessage = "*" matches any non-empty message and is intentionally
+  # broad: it catches the AWS-managed-key-not-copied "Completed with issues"
+  # case without pinning on its exact text, which is a could-not-verify item.
+  BackupCompletedWithIssuesMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackupEventsLogGroup
+      FilterPattern: '{ $.detail-type = "Backup Job State Change" && $.detail.state = "COMPLETED" && $.detail.statusMessage = "*" }'
+      MetricTransformations:
+        - MetricNamespace: FsxOntap/Backup
+          MetricName: BackupCompletedWithIssues
+          MetricValue: '1'
+          DefaultValue: 0
+
+  RestoreJobFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackupEventsLogGroup
+      FilterPattern: '{ $.detail-type = "Restore Job State Change" && $.detail.status = "FAILED" }'
+      MetricTransformations:
+        - MetricNamespace: FsxOntap/Backup
+          MetricName: RestoreJobFailed
+          MetricValue: '1'
+          DefaultValue: 0
+
+  RamShareRevokedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackupEventsLogGroup
+      FilterPattern: '{ ($.detail.eventName = "DisassociateResourceShare") || ($.detail.eventName = "DeleteResourceShare") }'
+      MetricTransformations:
+        - MetricNamespace: FsxOntap/Backup
+          MetricName: RamShareRevoked
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # ============================================================
+  # CloudWatch alarms — publish to the existing SNS topic
+  # ============================================================
+  BackupJobFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-backup-job-failed'
+      AlarmDescription: >-
+        An AWS Backup job for an FSx for ONTAP resource reported FAILED.
+        Investigate the backup plan and the source resource.
+      Namespace: FsxOntap/Backup
+      MetricName: BackupJobFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmSnsTopicArn
+
+  CopyJobFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-copy-job-failed'
+      AlarmDescription: >-
+        A copy job to the logically-air-gapped vault reported FAILED. The
+        recovery point may not have reached the LAG vault.
+      Namespace: FsxOntap/Backup
+      MetricName: CopyJobFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmSnsTopicArn
+
+  BackupCompletedWithIssuesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-backup-completed-with-issues'
+      AlarmDescription: >-
+        A backup job reached COMPLETED while carrying a status message
+        ("Completed with issues"). Review the status message; the LAG-vault
+        copy may have omitted an AWS-managed-key file system.
+      Namespace: FsxOntap/Backup
+      MetricName: BackupCompletedWithIssues
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmSnsTopicArn
+
+  RamShareRevokedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-ram-share-revoked'
+      AlarmDescription: >-
+        An AWS RAM resource share was disassociated or deleted. A recipient
+        account may have lost visibility into or restore access for the shared
+        LAG vault. Requires CloudTrail management-event logging (see
+        stack description).
+      Namespace: FsxOntap/Backup
+      MetricName: RamShareRevoked
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmSnsTopicArn
+
+  # ============================================================
+  # Dashboard — FsxOntap/Backup metrics
+  # ============================================================
+  BackupEventsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-backup-events'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 2,
+              "properties": {
+                "markdown": "# FSx for ONTAP — AWS Backup / LAG-vault events\nJob-failure, completed-with-issues, restore-failure, and RAM-share-revocation signals from the FsxOntap/Backup namespace."
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 2, "width": 12, "height": 6,
+              "properties": {
+                "title": "Backup / copy / restore job failures",
+                "region": "${AWS::Region}",
+                "stat": "Sum",
+                "period": 300,
+                "view": "timeSeries",
+                "metrics": [
+                  [ "FsxOntap/Backup", "BackupJobFailed" ],
+                  [ "FsxOntap/Backup", "CopyJobFailed" ],
+                  [ "FsxOntap/Backup", "RestoreJobFailed" ]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 2, "width": 12, "height": 6,
+              "properties": {
+                "title": "Completed with issues / RAM share revoked",
+                "region": "${AWS::Region}",
+                "stat": "Sum",
+                "period": 300,
+                "view": "timeSeries",
+                "metrics": [
+                  [ "FsxOntap/Backup", "BackupCompletedWithIssues" ],
+                  [ "FsxOntap/Backup", "RamShareRevoked" ]
+                ]
+              }
+            },
+            {
+              "type": "text",
+              "x": 0, "y": 8, "width": 24, "height": 3,
+              "properties": {
+                "markdown": "## Backup Audit Manager — Resources in a logically air-gapped vault\nThe AWS Backup Audit Manager control \"Resources in a logically air-gapped vault\" is a Config / Audit Manager compliance signal (NON_COMPLIANT when no recovery point reaches a LAG vault within the configured window), not an EventBridge event. Wiring a live framework and ingesting its results is deferred; this item is a placeholder link. See https://docs.aws.amazon.com/aws-backup/latest/devguide/controls-and-remediation.html"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  BackupEventsLogGroupName:
+    Description: Name of the backup-events CloudWatch Logs log group
+    Value: !Ref BackupEventsLogGroup
+
+  DashboardName:
+    Description: Name of the backup-events CloudWatch dashboard
+    Value: !Sub '${AWS::StackName}-backup-events'
+
+  DashboardUrl:
+    Description: Console URL for the backup-events dashboard
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}-backup-events'
