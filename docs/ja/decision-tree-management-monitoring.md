@@ -276,7 +276,7 @@ Phase 2 (1-2日後): NetApp Console セットアップ
 |---------|-----------------|-----------|---------|--------|
 | **今この瞬間のホットスポット** | FSA Activity Tracking | 直近5秒〜5分 | ✅ System Manager | [Activity Tracking](https://docs.netapp.com/us-en/ontap/file-system-analytics/activity-tracking-task.html) |
 | **長期間アクセスされていないファイル** | FSA Explorer (accessed_time) | 最終アクセス日（カスタマイズ可能、デフォルト1年） | ✅ System Manager | [View Activity](https://docs.netapp.com/us-en/ontap/task_nas_file_system_analytics_view.html) |
-| **誰がいつ何にアクセスしたか（履歴）** | 監査ログ (EVTX/JSON) | 無制限（S3 保存） | ❌ CLI + パイプライン | [AWS Docs - Auditing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-access-auditing.html) |
+| **誰がいつ何にアクセスしたか（履歴）** | 監査ログ (EVTX/XML) | 無制限（S3 保存） | ❌ CLI + パイプライン | [AWS Docs - Auditing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-access-auditing.html) |
 | **ユーザー別アクセス頻度の推移** | 監査ログ集計 or 定期 REST API 収集 | 無制限（S3 保存） | ❌ Lambda + Athena | 本リポジトリ |
 | **クォータ超過通知** | EMS Webhook | リアルタイム | ❌ CLI 設定 | 本リポジトリ `docs/ja/event-sources.md` |
 
@@ -306,7 +306,7 @@ Timeline 機能（ONTAP 9.11.1+）を有効化しても保持されるのは **�
 ┌─────────────────────────────────────────────────────────────────┐
 │ 長期分析（監査ログ + パイプライン）                                │
 ├─────────────────────────────────────────────────────────────────┤
-│  監査ログ (EVTX/JSON)                                           │
+│  監査ログ (EVTX/XML)                                            │
 │    → S3 バケット（無制限保存）                                    │
 │    → Athena (SQL 分析)                                           │
 │    → QuickSight ダッシュボード                                    │

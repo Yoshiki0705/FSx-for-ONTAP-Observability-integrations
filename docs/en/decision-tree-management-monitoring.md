@@ -277,7 +277,7 @@ This requirement needs **a combination of multiple data sources**.
 |--------------|-----------------|-----------|--------------|--------|
 | **Current hotspots** | FSA Activity Tracking | Last 5 sec to 5 min | ✅ System Manager | [Activity Tracking](https://docs.netapp.com/us-en/ontap/file-system-analytics/activity-tracking-task.html) |
 | **Files not accessed for a long time** | FSA Explorer (accessed_time) | Last access date (customizable, default 1 year) | ✅ System Manager | [View Activity](https://docs.netapp.com/us-en/ontap/task_nas_file_system_analytics_view.html) |
-| **Who accessed what and when (history)** | Audit logs (EVTX/JSON) | Unlimited (S3 storage) | ❌ CLI + pipeline | [AWS Docs - Auditing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-access-auditing.html) |
+| **Who accessed what and when (history)** | Audit logs (EVTX/XML) | Unlimited (S3 storage) | ❌ CLI + pipeline | [AWS Docs - Auditing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-access-auditing.html) |
 | **User access frequency trends** | Audit log aggregation or periodic REST API collection | Unlimited (S3 storage) | ❌ Lambda + Athena | This repository |
 | **Quota exceeded notifications** | EMS Webhook | Real-time | ❌ CLI setup | This repo `docs/en/event-sources.md` |
 
@@ -307,7 +307,7 @@ Even with Timeline enabled (ONTAP 9.11.1+), retention is **only the previous 5 m
 ┌─────────────────────────────────────────────────────────────────┐
 │ Long-term Analysis (Audit Logs + Pipeline)                        │
 ├─────────────────────────────────────────────────────────────────┤
-│  Audit logs (EVTX/JSON)                                          │
+│  Audit logs (EVTX/XML)                                           │
 │    → S3 bucket (unlimited retention)                             │
 │    → Athena (SQL analysis)                                       │
 │    → QuickSight dashboard                                        │

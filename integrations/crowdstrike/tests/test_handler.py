@@ -164,10 +164,11 @@ class TestGetIngestToken:
 class TestSchedulerPolling:
     """Tests for the EventBridge Scheduler polling path.
 
-    The template sends `{"source": "scheduler"}` every 5 minutes. The handler
-    previously routed that through `_extract_s3_records`, which only understands
-    `Records`/`detail` payloads, so it returned an empty list and reported
-    success while shipping nothing — indefinitely.
+    The template sends `{"source": "scheduler"}` every 5 minutes. Progress is
+    tracked with a record-timestamp watermark, not a last-processed key: ONTAP's
+    active audit file has a fixed key that sorts AFTER every rotated file, so a
+    key high-water mark passed to ListObjectsV2 StartAfter stalls listing of
+    newly rotated files permanently (ROADMAP L80-L86).
     """
 
     SCHEDULER_EVENT = {
@@ -176,27 +177,42 @@ class TestSchedulerPolling:
         "prefix": "audit/",
     }
 
+    # The active audit file ONTAP appends to has a fixed key that sorts AFTER
+    # every rotated file's key, because "l" (last) > "D" (the rotated prefix).
+    ACTIVE_KEY = "audit/svm_last.xml"
+    ROTATED_KEY = "audit/svm_D2026-08-07-T04-00-00_0.xml"
+
     @staticmethod
-    def _audit_xml() -> bytes:
-        return (
+    def _ns(handler, ts: str) -> int:
+        return handler._audit_timestamp_ns({"timestamp": ts})
+
+    @staticmethod
+    def _audit_xml(second: int = 0) -> bytes:
+        template = (
             '<?xml version="1.0" encoding="UTF-8"?><Events>'
             '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
             "<System><EventID>4663</EventID>"
-            '<TimeCreated SystemTime="2026-08-07T04:00:00Z"/>'
+            '<TimeCreated SystemTime="2026-08-07T04:00:%02dZ"/>'
             "<Computer>svm-prod-01</Computer></System>"
             '<EventData><Data Name="SubjectUserName">CORP\\jdoe</Data>'
             '<Data Name="ObjectName">/vol/data/a.txt</Data>'
             '<Data Name="ObjectType">ReadData</Data></EventData>'
             "</Event></Events>"
-        ).encode("utf-8")
+        ) % second
+        return template.encode("utf-8")
 
-    def _s3_body(self):
+    def _s3_body(self, second: int = 0):
         from io import BytesIO
-        return {"Body": BytesIO(self._audit_xml())}
+        return {"Body": BytesIO(self._audit_xml(second))}
 
-    def test_scheduler_ships_new_files_and_advances_checkpoint(self, reset_handler, monkeypatch):
+    @staticmethod
+    def _lm(minute):
+        from datetime import datetime, timezone
+        return datetime(2026, 8, 7, 4, minute, tzinfo=timezone.utc)
+
+    def test_scheduler_ships_fresh_records_and_advances_watermark(self, reset_handler, monkeypatch):
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
 
         with patch.object(handler, "get_ingest_token", return_value="tok"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
@@ -205,31 +221,74 @@ class TestSchedulerPolling:
              patch.object(handler.s3_client, "get_object") as mock_obj, \
              patch.object(handler, "_ship_to_logscale", return_value=1) as mock_ship:
 
-            mock_get.return_value = {"Parameter": {"Value": "audit/2026/08/07/a.json"}}
+            mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
             mock_list.return_value = {
                 "Contents": [
-                    {"Key": "audit/2026/08/07/b.xml"},
-                    {"Key": "audit/2026/08/07/c.xml"},
+                    {"Key": self.ROTATED_KEY, "LastModified": self._lm(1)},
+                    {"Key": self.ACTIVE_KEY, "LastModified": self._lm(2)},
                 ],
                 "IsTruncated": False,
             }
-            mock_obj.side_effect = lambda **kw: self._s3_body()
+            mock_obj.side_effect = lambda **kw: self._s3_body(5)
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
 
         assert result["statusCode"] == 200
         assert result["body"]["new_files"] == 2
         assert mock_ship.call_count == 2
-        # StartAfter must use the checkpoint so processed keys are skipped
-        assert mock_list.call_args.kwargs["StartAfter"] == "audit/2026/08/07/a.json"
+        # A key high-water mark must never be passed to S3 — that is the stall.
+        assert "StartAfter" not in mock_list.call_args.kwargs
         assert mock_list.call_args.kwargs["Prefix"] == "audit/"
         mock_put.assert_called_once()
-        assert mock_put.call_args.kwargs["Value"] == "audit/2026/08/07/c.xml"
+        assert mock_put.call_args.kwargs["Value"] == str(self._ns(handler, "2026-08-07T04:00:05Z"))
+
+    def test_active_file_fixed_key_does_not_stop_later_rotated_files(self, reset_handler, monkeypatch):
+        """Regression for ROADMAP L82 — the exact failure mode.
+
+        Under the old key scheme, once the checkpoint reached the active file's
+        fixed key, StartAfter never returned a later-rotated file again (the
+        rotated key sorts BEFORE the active key). With the timestamp watermark,
+        a file rotated after the active one is still listed and shipped.
+        """
+        handler = reset_handler
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
+
+        # The ordering fact the old scheme broke on, asserted directly.
+        assert self.ROTATED_KEY < self.ACTIVE_KEY
+
+        watermark = self._ns(handler, "2026-08-07T04:00:03Z")
+        later_rotated = "audit/svm_D2026-08-07-T04-05-00_1.xml"
+
+        with patch.object(handler, "get_ingest_token", return_value="tok"), \
+             patch.object(handler.ssm_client, "get_parameter") as mock_get, \
+             patch.object(handler.ssm_client, "put_parameter"), \
+             patch.object(handler.s3_client, "list_objects_v2") as mock_list, \
+             patch.object(handler.s3_client, "get_object") as mock_obj, \
+             patch.object(handler, "_ship_to_logscale", return_value=1):
+
+            mock_get.return_value = {"Parameter": {"Value": str(watermark)}}
+            mock_list.return_value = {
+                "Contents": [
+                    {"Key": self.ACTIVE_KEY, "LastModified": self._lm(1)},
+                    {"Key": later_rotated, "LastModified": self._lm(6)},
+                ],
+                "IsTruncated": False,
+            }
+            # Each file holds a record at 04:00:08, newer than the 04:00:03 watermark.
+            mock_obj.side_effect = lambda **kw: self._s3_body(8)
+
+            result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
+
+        assert "StartAfter" not in mock_list.call_args.kwargs
+        assert mock_obj.call_count == 2
+        read_keys = {c.kwargs["Key"] for c in mock_obj.call_args_list}
+        assert read_keys == {self.ACTIVE_KEY, later_rotated}
+        assert result["body"]["total_shipped"] == 2
 
     def test_scheduler_no_longer_returns_zero_for_every_run(self, reset_handler, monkeypatch):
-        """Regression: the defect made every scheduled run report 0 events."""
+        """Regression: a defect once made every scheduled run report 0 events."""
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
 
         with patch.object(handler, "get_ingest_token", return_value="tok"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
@@ -240,25 +299,26 @@ class TestSchedulerPolling:
 
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
             mock_list.return_value = {
-                "Contents": [{"Key": "audit/a.xml"}], "IsTruncated": False,
+                "Contents": [{"Key": "audit/a.xml", "LastModified": self._lm(1)}],
+                "IsTruncated": False,
             }
-            mock_obj.side_effect = lambda **kw: self._s3_body()
+            mock_obj.side_effect = lambda **kw: self._s3_body(5)
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
 
         assert result["body"]["total_logs"] > 0, "scheduler run must parse events"
         assert result["body"]["total_shipped"] > 0, "scheduler run must ship events"
 
-    def test_no_new_files_is_a_noop(self, reset_handler, monkeypatch):
+    def test_no_candidate_files_is_a_noop(self, reset_handler, monkeypatch):
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
 
         with patch.object(handler, "get_ingest_token", return_value="tok"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
              patch.object(handler.ssm_client, "put_parameter") as mock_put, \
              patch.object(handler.s3_client, "list_objects_v2") as mock_list:
 
-            mock_get.return_value = {"Parameter": {"Value": "audit/z.xml"}}
+            mock_get.return_value = {"Parameter": {"Value": "12345"}}
             mock_list.return_value = {"Contents": [], "IsTruncated": False}
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
@@ -267,24 +327,24 @@ class TestSchedulerPolling:
         assert result["body"]["new_files"] == 0
         mock_put.assert_not_called()
 
-    def test_init_sentinel_is_not_sent_as_start_after(self, reset_handler, monkeypatch):
+    def test_legacy_key_checkpoint_is_a_cold_start_not_a_crash(self, reset_handler, monkeypatch):
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
+        with patch.object(handler.ssm_client, "get_parameter") as mock_get:
+            mock_get.return_value = {"Parameter": {"Value": "audit/2026/08/07/a.xml"}}
+            assert handler._get_checkpoint() == 0
 
-        with patch.object(handler, "get_ingest_token", return_value="tok"), \
-             patch.object(handler.ssm_client, "get_parameter") as mock_get, \
-             patch.object(handler.s3_client, "list_objects_v2") as mock_list:
-
+    def test_init_sentinel_is_a_cold_start(self, reset_handler, monkeypatch):
+        handler = reset_handler
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
+        with patch.object(handler.ssm_client, "get_parameter") as mock_get:
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
-            mock_list.return_value = {"Contents": [], "IsTruncated": False}
-            handler.lambda_handler(self.SCHEDULER_EVENT, None)
-
-        assert "StartAfter" not in mock_list.call_args.kwargs
+            assert handler._get_checkpoint() == 0
 
     def test_checkpoint_stops_at_first_failure(self, reset_handler, monkeypatch):
         """Advancing past a failed file would drop its audit events."""
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
 
         with patch.object(handler, "get_ingest_token", return_value="tok"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
@@ -296,23 +356,30 @@ class TestSchedulerPolling:
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
             mock_list.return_value = {
                 "Contents": [
-                    {"Key": "audit/a.xml"}, {"Key": "audit/b.xml"}, {"Key": "audit/c.xml"},
+                    {"Key": "audit/a.xml", "LastModified": self._lm(0)},
+                    {"Key": "audit/b.xml", "LastModified": self._lm(1)},
+                    {"Key": "audit/c.xml", "LastModified": self._lm(2)},
                 ],
                 "IsTruncated": False,
             }
-            mock_obj.side_effect = lambda **kw: self._s3_body()
+            bodies = {
+                "audit/a.xml": self._s3_body(0),
+                "audit/b.xml": self._s3_body(10),
+                "audit/c.xml": self._s3_body(20),
+            }
+            mock_obj.side_effect = lambda **kw: {"Body": bodies[kw["Key"]]["Body"]}
             mock_ship.side_effect = [1, RuntimeError("HEC 503"), 1]
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
 
         assert result["statusCode"] == 207
         assert mock_ship.call_count == 2, "must not continue past the failing file"
-        assert mock_put.call_args.kwargs["Value"] == "audit/a.xml"
+        assert mock_put.call_args.kwargs["Value"] == str(self._ns(handler, "2026-08-07T04:00:00Z"))
 
     def test_zero_shipped_with_events_is_a_failure(self, reset_handler, monkeypatch):
-        """Events parsed but none delivered must not advance the checkpoint."""
+        """Events parsed but none delivered must not advance the watermark."""
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
 
         with patch.object(handler, "get_ingest_token", return_value="tok"), \
              patch.object(handler.ssm_client, "get_parameter") as mock_get, \
@@ -322,8 +389,8 @@ class TestSchedulerPolling:
              patch.object(handler, "_ship_to_logscale", return_value=0):
 
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
-            mock_list.return_value = {"Contents": [{"Key": "audit/a.xml"}], "IsTruncated": False}
-            mock_obj.side_effect = lambda **kw: self._s3_body()
+            mock_list.return_value = {"Contents": [{"Key": "audit/a.xml", "LastModified": self._lm(1)}], "IsTruncated": False}
+            mock_obj.side_effect = lambda **kw: self._s3_body(5)
 
             result = handler.lambda_handler(self.SCHEDULER_EVENT, None)
 
@@ -332,7 +399,7 @@ class TestSchedulerPolling:
 
     def test_backlog_is_capped_per_run(self, reset_handler, monkeypatch):
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
         monkeypatch.setattr(handler, "MAX_KEYS_PER_RUN", 2)
 
         with patch.object(handler, "get_ingest_token", return_value="tok"), \
@@ -344,10 +411,10 @@ class TestSchedulerPolling:
 
             mock_get.return_value = {"Parameter": {"Value": "__INIT__"}}
             mock_list.return_value = {
-                "Contents": [{"Key": f"audit/{i}.xml"} for i in range(5)],
+                "Contents": [{"Key": f"audit/{i}.xml", "LastModified": self._lm(i)} for i in range(5)],
                 "IsTruncated": False,
             }
-            mock_obj.side_effect = lambda **kw: self._s3_body()
+            mock_obj.side_effect = lambda **kw: self._s3_body(5)
 
             handler.lambda_handler(self.SCHEDULER_EVENT, None)
 
@@ -358,11 +425,12 @@ class TestSchedulerPolling:
         with patch.object(handler.s3_client, "list_objects_v2") as mock_list:
             mock_list.return_value = {
                 "Contents": [
-                    {"Key": "audit/"}, {"Key": "audit/2026/"}, {"Key": "audit/2026/log.xml"},
+                    {"Key": "audit/"}, {"Key": "audit/2026/"},
+                    {"Key": "audit/2026/log.xml", "LastModified": self._lm(0)},
                 ],
                 "IsTruncated": False,
             }
-            keys = handler._list_new_keys("audit/", "")
+            keys = handler._list_candidate_keys("audit/", 0)
 
         assert keys == ["audit/2026/log.xml"]
 
@@ -370,11 +438,11 @@ class TestSchedulerPolling:
         handler = reset_handler
         with patch.object(handler.s3_client, "list_objects_v2") as mock_list:
             mock_list.side_effect = [
-                {"Contents": [{"Key": "audit/a.xml"}], "IsTruncated": True,
+                {"Contents": [{"Key": "audit/a.xml", "LastModified": self._lm(0)}], "IsTruncated": True,
                  "NextContinuationToken": "tok"},
-                {"Contents": [{"Key": "audit/b.xml"}], "IsTruncated": False},
+                {"Contents": [{"Key": "audit/b.xml", "LastModified": self._lm(1)}], "IsTruncated": False},
             ]
-            keys = handler._list_new_keys("audit/", "")
+            keys = handler._list_candidate_keys("audit/", 0)
 
         assert keys == ["audit/a.xml", "audit/b.xml"]
         assert mock_list.call_args.kwargs["ContinuationToken"] == "tok"
@@ -383,20 +451,20 @@ class TestSchedulerPolling:
         handler = reset_handler
         from botocore.exceptions import ClientError
 
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
         with patch.object(handler.ssm_client, "get_parameter") as mock_get:
             mock_get.side_effect = ClientError(
                 {"Error": {"Code": "ParameterNotFound", "Message": "nope"}}, "GetParameter"
             )
-            assert handler._get_checkpoint() == ""
+            assert handler._get_checkpoint() == 0
 
     def test_checkpoint_write_failure_does_not_raise(self, reset_handler, monkeypatch):
         """Events were already delivered — failing here would re-ship them."""
         handler = reset_handler
-        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/key")
+        monkeypatch.setattr(handler, "CHECKPOINT_PARAM_NAME", "/fsxn-crowdstrike/test/wm")
         with patch.object(handler.ssm_client, "put_parameter") as mock_put:
             mock_put.side_effect = Exception("AccessDenied")
-            handler._set_checkpoint("audit/a.xml")  # must not raise
+            handler._set_checkpoint(12345)  # must not raise
 
     def test_s3_event_path_still_works(self, reset_handler, monkeypatch):
         """Manual S3-event invocation must not be broken by the scheduler path."""
