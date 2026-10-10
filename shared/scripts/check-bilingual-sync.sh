@@ -7,6 +7,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# --list-scope prints, one per line, the ja/ directory of every pair this gate
+# would enumerate ("SCOPE <relative-ja-dir>"), then exits 0 without running any
+# parity check. It exists so scripts/tests/test_shell_gate_coverage.py can diff
+# the gate's own enumeration against a disk walk and fail if a deeper-nested
+# docs/ja tree stops being visited -- the silent-scope failure mode recorded in
+# the CFN_TEMPLATES coverage test. The listing reuses the exact enumeration loops
+# below, so the mode cannot drift from what normal mode actually checks.
+LIST_SCOPE=0
+case "${1:-}" in
+  --list-scope) LIST_SCOPE=1 ;;
+  "") : ;;
+  *) echo "unknown argument: $1" >&2; echo "usage: $0 [--list-scope]" >&2; exit 2 ;;
+esac
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -54,6 +68,14 @@ check_directory_pair() {
   local label="$3"
 
   if [ ! -d "$ja_dir" ] && [ ! -d "$en_dir" ]; then
+    return
+  fi
+
+  if [ "$LIST_SCOPE" -eq 1 ]; then
+    # Emit the ja/ directory as the stable identity of this pair, relative to
+    # the repository root, then skip the parity work. The coverage test matches
+    # on these lines.
+    printf 'SCOPE %s\n' "${ja_dir#"$PROJECT_ROOT"/}"
     return
   fi
 
