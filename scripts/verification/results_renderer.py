@@ -54,11 +54,13 @@ def render_bilingual_summary(result: BilingualComparisonResult) -> str:
 
     lines.append("## バイリンガル対応確認結果")
     lines.append("")
-    lines.append(f"- **ステータス**: {result.status}")
-    lines.append(f"- **見出し数**: {result.heading_count}")
-    lines.append(f"- **コードブロック数**: {result.code_block_count}")
-    lines.append(f"- **テーブル数**: {result.table_count}")
-    lines.append(f"- **差異件数**: {len(result.differences)}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| ステータス | {result.status} |")
+    lines.append(f"| 見出し数 | {result.heading_count} |")
+    lines.append(f"| コードブロック数 | {result.code_block_count} |")
+    lines.append(f"| テーブル数 | {result.table_count} |")
+    lines.append(f"| 差異件数 | {len(result.differences)} |")
     lines.append("")
 
     if result.files_compared:
@@ -87,22 +89,32 @@ def _render_title() -> str:
 
 
 def _render_header(report: VerificationReport) -> str:
-    """Render the header section with date, environment, and verifier."""
+    """Render the header section with date, environment, and verifier.
+
+    Label/value pairs are emitted as Markdown tables to match the
+    hand-authored done-set verification-results documents.
+    """
     lines: list[str] = []
 
-    lines.append(f"- **検証日時**: {report.verification_date}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| 検証日時 | {report.verification_date} |")
     lines.append("")
     lines.append("### 検証環境")
     lines.append("")
-    lines.append(f"- **AWS リージョン**: {report.environment.aws_region}")
-    lines.append(f"- **スタック名**: {report.environment.stack_name}")
-    lines.append(f"- **Lambda 関数名**: {report.environment.lambda_function_name}")
-    lines.append(f"- **Datadog サイト**: {report.environment.datadog_site}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| AWS リージョン | {report.environment.aws_region} |")
+    lines.append(f"| スタック名 | {report.environment.stack_name} |")
+    lines.append(f"| Lambda 関数名 | {report.environment.lambda_function_name} |")
+    lines.append(f"| Datadog サイト | {report.environment.datadog_site} |")
     lines.append("")
     lines.append("### 検証者")
     lines.append("")
-    lines.append(f"- **氏名**: {report.verifier.name}")
-    lines.append(f"- **ロール**: {report.verifier.role}")
+    lines.append("| 項目 | 値 |")
+    lines.append("|------|-----|")
+    lines.append(f"| 氏名 | {report.verifier.name} |")
+    lines.append(f"| ロール | {report.verifier.role} |")
     lines.append("")
 
     return "\n".join(lines)
@@ -128,7 +140,7 @@ def _render_single_step(step: VerificationStep) -> str:
     badge = _RESULT_BADGES.get(step.result, step.result)
     lines.append(f"### ステップ {step.step_number}: {step.step_name}")
     lines.append("")
-    lines.append(f"**結果**: {badge}")
+    lines.append(f"結果: {badge}")
     lines.append("")
 
     if step.command:
