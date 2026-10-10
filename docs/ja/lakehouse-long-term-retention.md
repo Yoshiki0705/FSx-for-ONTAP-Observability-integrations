@@ -10,7 +10,7 @@ Observability ベンダーは通常、FSx for ONTAP の監査ログを数週間�
 
 ## 第二の経路が必要な理由
 
-本プロジェクトの9ベンダー統合（Datadog、Splunk、Elastic など）は**検索とアラート**のために構築されています — 今この瞬間に問題のログ行を見つけ、数秒以内にアラートを発火させることです。**複数年にわたる SQL 分析**のためには構築されていません。「過去3年間の四半期ごとにSVM別で失敗した削除操作は何件か」という問いは異なる種類の問いであり、多くの Observability プラットフォームの保持期間（標準ティアで30〜90日）とGBあたりの取り込み課金は、この規模の問いには適していません。
+本プロジェクトの9ベンダー統合（Datadog、Splunk、Elastic など）は**検索とアラート**のために構築されています。つまり、今この瞬間に問題のログ行を見つけ、数秒以内にアラートを発火させることです。**複数年にわたる SQL 分析**のためには構築されていません。「過去3年間の四半期ごとにSVM別で失敗した削除操作は何件か」という問いは異なる種類の問いであり、多くの Observability プラットフォームの保持期間（標準ティアで30〜90日）とGBあたりの取り込み課金は、この規模の問いには適していません。
 
 | 要件 | Observability ベンダー（本プロジェクトの9統合） | Lakehouse 長期保管（本ガイド） |
 |---|---|---|
@@ -51,7 +51,7 @@ S3（保管バケット）
    （従量課金 SQL）            （SQL + Snowflake ガバナンス機能）
 ```
 
-本ガイドは本プロジェクトのベンダーパイプラインが使う FSx for ONTAP S3 Access Point パターンには触れません。Firehose ストリームは、既に監査ログJSONを受信している**標準 S3 バケット**（ベンダー Lambda が読み取っているのと同じソース）から読み取ります。これは意図的なスコープ境界です — 本ガイドの制約を、本プロジェクトの他の場所で文書化されている FSx for ONTAP S3 AP 固有の制約（S3イベント通知非対応、AD DC 到達性要件など）から独立させています。これらの制約はここには当てはまりません。Firehose ストリームとその後段の S3 イベント通知（下記 Snowflake セクションの Snowpipe 自動取り込みで使用）は、それらをネイティブにサポートするバケットに対して動作するためです。
+本ガイドは本プロジェクトのベンダーパイプラインが使う FSx for ONTAP S3 Access Point パターンには触れません。Firehose ストリームは、既に監査ログJSONを受信している**標準 S3 バケット**（ベンダー Lambda が読み取っているのと同じソース）から読み取ります。これは意図的なスコープ境界であり、本ガイドの制約を、本プロジェクトの他の場所で文書化されている FSx for ONTAP S3 AP 固有の制約（S3イベント通知非対応、AD DC 到達性要件など）から独立させています。これらの制約はここには当てはまりません。Firehose ストリームとその後段の S3 イベント通知（下記 Snowflake セクションの Snowpipe 自動取り込みで使用）は、それらをネイティブにサポートするバケットに対して動作するためです。
 
 ## Glue テーブルスキーマ
 
@@ -134,7 +134,7 @@ data format conversion configuration has the necessary permissions. Insufficient
 Lake Formation permission(s): Required Describe on audit_logs
 ```
 
-これは Firehose や Glue のドキュメントからは分かりにくい落とし穴です。IAM 権限と Lake Formation 権限は独立して加算的に評価されるため、片方だけでは、両方に依存するリソースを実際に作成しようとするまで問題が見えません。本テンプレートには既に必要な `AWS::LakeFormation::PrincipalPermissions` リソース（データベースに対する `DESCRIBE`、テーブルに対する `DESCRIBE`/`SELECT`/`ALTER`/`INSERT`、Firehose ロールへの付与）が含まれており、明示的な `DependsOn` 順序付けにより、これらの権限が存在するまで配信ストリームが作成されないようにしています。本テンプレートを自身のユースケース向けにフォークする場合、これらのリソースは残してください — 削除すると Lake Formation 有効アカックでのみサイレントにパイプラインが壊れ、Lake Formation 無効なテスト環境では見逃しやすく、本番環境で予期せず遭遇することになります。
+これは Firehose や Glue のドキュメントからは分かりにくい落とし穴です。IAM 権限と Lake Formation 権限は独立して加算的に評価されるため、片方だけでは、両方に依存するリソースを実際に作成しようとするまで問題が見えません。本テンプレートには既に必要な `AWS::LakeFormation::PrincipalPermissions` リソース（データベースに対する `DESCRIBE`、テーブルに対する `DESCRIBE`/`SELECT`/`ALTER`/`INSERT`、Firehose ロールへの付与）が含まれており、明示的な `DependsOn` 順序付けにより、これらの権限が存在するまで配信ストリームが作成されないようにしています。本テンプレートを自身のユースケース向けにフォークする場合、これらのリソースは残してください。削除すると Lake Formation 有効アカウントでのみサイレントにパイプラインが壊れ、Lake Formation 無効なテスト環境では見逃しやすく、本番環境で予期せず遭遇することになります。
 
 ### 検証時に判明したその他2つのCloudFormationの落とし穴
 
@@ -169,7 +169,7 @@ ORDER BY cnt DESC;
 
 ## Snowflake でのクエリ（External Table）
 
-Snowflake 対応は、[FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) の Snowflake 統合で既に確立済みの2段階 Storage Integration トラストパターンを再利用しています — FSx for ONTAP S3 Access Point 向けではなく、通常のS3バケット向けに適応しています。
+Snowflake 対応は、[FSx-for-ONTAP-Lakehouse-Integrations](https://github.com/Yoshiki0705/FSx-for-ONTAP-Lakehouse-Integrations) の Snowflake 統合で既に確立済みの2段階 Storage Integration トラストパターンを再利用し、FSx for ONTAP S3 Access Point 向けではなく通常のS3バケット向けに適応しています。
 
 ```bash
 # Phase 1: deploy the IAM role with a placeholder (own-account) trust policy
@@ -233,18 +233,18 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 検証時（2026年7月19日/20日、ap-northeast-1）に、2つのデプロイパスをE2Eで実行しました。いずれもクリーンなAWSアカウント状態（既存スタックなし）から開始し、`snowflake-role.yaml` は `template.yaml` のバケットにのみ依存するため（逆方向の依存はなし）、どちらを先にデプロイしても問題ありません。
 
 **パスA — Athenaのみ**（Snowflakeなし）:
-1. `bash integrations/lakehouse-retention/scripts/preflight-check.sh --region <対象リージョン>` を実行 — AWS認証情報を確認し、アカウントでLake Formationが有効かどうかを報告します。
+1. `bash integrations/lakehouse-retention/scripts/preflight-check.sh --region <対象リージョン>` を実行します。AWS認証情報を確認し、アカウントでLake Formationが有効かどうかを報告します。
 2. `aws cloudformation deploy --template-file integrations/lakehouse-retention/template.yaml ...`（[パイプラインのデプロイ](#パイプラインのデプロイ) 参照）。
 3. ベンダーパイプラインが既に書き込んでいる同じS3バケットに監査ログJSONレコードを送信する（あるいはスモークテストとして、`DeliveryStreamName` 出力にあるFirehose配信ストリームに直接 `PutRecord`/`PutRecordBatch` する）。
 4. 最初のParquetファイルが出現するまで `BufferIntervalSeconds` 分待ち、`AthenaWorkgroupName` 出力を使ってAthenaでクエリする。
 
 **パスB — Athena + Snowflake**:
-1. 上記パスAの手順1〜4（先にAthenaの結果が正しいことを確認する — これによりFirehose/Glue側の問題とSnowflake固有の問題を分離できる）。
+1. 上記パスAの手順1〜4（先にAthenaの結果が正しいことを確認します。これによりFirehose/Glue側の問題とSnowflake固有の問題を分離できます）。
 2. `snowflake-role.yaml` のPhase 1（自アカウントのプレースホルダートラスト）をデプロイ。
 3. Snowflakeで `sql/01_storage_integration_and_stage.sql` のPhase 1ステートメントを実行し、`DESCRIBE INTEGRATION` を実行。
 4. `DESCRIBE INTEGRATION` の出力から `SnowflakeAccountId`/`SnowflakeExternalId` を設定して `snowflake-role.yaml` のPhase 2を再デプロイ。
 5. `sql/01_storage_integration_and_stage.sql` の残りのステートメント（`CREATE STAGE`、`LIST`、`CREATE EXTERNAL TABLE`、`REFRESH`）を実行。
-6. 同じ元のParquetデータに対して、AthenaとSnowflake External Tableの `SELECT COUNT(*)` を比較する — 両方が同じS3オブジェクトを読み取るため、完全に一致するはずです。
+6. 同じ元のParquetデータに対して、AthenaとSnowflake External Tableの `SELECT COUNT(*)` を比較します。両方が同じS3オブジェクトを読み取るため、完全に一致するはずです。
 
 ## Day 2 運用
 
@@ -257,7 +257,7 @@ SELECT COUNT(*) AS total_records FROM audit_logs_ext;
 
 ## ロールバックとクリーンアップ
 
-クリーンアップの順序は重要です — 順序を誤ると、回避可能なCloudFormationの `DELETE_FAILED` 状態が発生します。
+クリーンアップの順序は重要です。順序を誤ると、回避可能なCloudFormationの `DELETE_FAILED` 状態が発生します。
 
 ```bash
 # 1. Delete the Athena workgroup FIRST if any queries were ever run against it.

@@ -15,20 +15,20 @@
 
 > **スコープに関する注記**
 >
-> 本ガイドが埋めるのは RC.RP の検証ギャップに限定されます。ONTAP ARP（攻撃発生中に本番ボリュームに対してランサムウェアを検知する仕組み）や、[自動インシデント対応ガイド](automated-response-guide.md)の Respond フェーズのブロック機能を置き換えるものではありません。本ガイドが答えるのは別の、より後段の問いです — 「復旧ポイントとして採用しようとしている、この特定の Snapshot は、実際にクリーンなのか？」
+> 本ガイドが埋めるのは RC.RP の検証ギャップに限定されます。ONTAP ARP（攻撃発生中に本番ボリュームに対してランサムウェアを検知する仕組み）や、[自動インシデント対応ガイド](automated-response-guide.md)の Respond フェーズのブロック機能を置き換えるものではありません。本ガイドが答えるのは、より後段の問いです。すなわち「復旧ポイントとして採用しようとしている、この特定の Snapshot は、実際にクリーンなのか？」です。
 
 > **デプロイ検証に関する注記**
 >
 > 本ワークフローは ONTAP 9.17.1P7D1（FSx for ONTAP、ap-northeast-1）に対して Step Functions ワークフロー全体のエンドツーエンドで検証済みです（2026年7月）。`CreateFlexClone` → `WaitForFsxSync` → `WaitForFsxDiscovery` → `AttachAccessPoint` → `ScanForIndicators` → `RecordVerdict` → `Cleanup` の全ステートが正常完了し、`SUCCEEDED` ステータスを確認しています。検証実行の結果: `verdict: suspicious`（テストデータにランサムウェア関連拡張子のファイルが含まれていたため）、`cleaned_up: true`。以下の知見はこの E2E 検証から得られたものです: FSx for ONTAP 同期遅延の実測（12-36分）、AD DC 到達不能時の AccessDenied パターン、Internet-origin AP への設計変更の経緯、`put_access_point_policy` 廃止の理由。
 
-**主要機能:**
+### 主要機能
 - FlexClone ベースの検証により本番ボリュームへの影響ゼロ（copy-on-write、クローンに対する読み取り専用処理のみ）
-- VPC 限定の S3 Access Point — クローンの内容がインターネットから到達可能になることはない
+- VPC 限定の S3 Access Point を使うため、クローンの内容がインターネットから到達可能になることはない
 - ランサムウェア痕跡の高速な拡張子ベース事前フィルタ
-- Step Functions の `Catch` により、失敗時も含めてクリーンアップを保証 — クローンや Access Point が残置されることはない
+- Step Functions の `Catch` により失敗時も含めてクリーンアップを保証するため、クローンや Access Point が残置されることはない
 - 全検証実行を DynamoDB 台帳に記録し、監査時の CSF 2.0 RC.RP エビデンスとしても機能
 
-**実行タイミング:**
+### 実行タイミング
 - [自動インシデント対応ガイド](automated-response-guide.md)の `create_snapshot` アクションが発火した後、その Snapshot を復旧ポイントとして信頼する前に
 - 定期的な保護 Snapshot / スケジュール Snapshot に対して定期実行し、復旧レディネスの継続チェックとして
 - 計画的な DR テストやコンプライアンス監査の前に、手動で「テスト済み」の復旧ポイントであることのエビデンスを取得するために
@@ -37,7 +37,7 @@
 
 > **位置づけに関する補足**
 >
-> ランサムウェアレジリエンスのために FSx for ONTAP を評価している読者に本ガイドを説明する際、正確な一文での位置づけは「人間がリストアサイクルを無駄にする前に、明らかに侵害された Snapshot を除外する自動化された事前フィルタであり、Snapshot がマルウェアを含まないことの証明書ではない」です。エンゲージメントの対話や RFP 回答において、「clean」判定を完全なフォレンジック証明と同等のものとして提示しないでください — 本ガイド内の他の Resilience-maturity や 脅威インテリジェンスに関する補足が、その位置づけがなぜ機能を過大に見せることになるかを正確に説明しています。正確でありながら十分に説得力のある主張は、自動化とエビデンストレイル自体です — これは、以前は存在しなかったギャップ（検証済みでクリーンな復旧ポイントのワークフローがなかった）を AWS ネイティブサービスと DynamoDB の監査証跡で解消するものであり、スキャンの深さを過剰に売り込む必要のない、意味のある能力です。
+> ランサムウェアレジリエンスのために FSx for ONTAP を評価している読者に本ガイドを説明する際、正確な一文での位置づけは「人間がリストアサイクルを無駄にする前に、明らかに侵害された Snapshot を除外する自動化された事前フィルタであり、Snapshot がマルウェアを含まないことの証明書ではない」です。エンゲージメントの対話や RFP 回答において、「clean」判定を完全なフォレンジック証明と同等のものとして提示しないでください。本ガイド内の他の Resilience-maturity や脅威インテリジェンスに関する補足が、その位置づけがなぜ機能を過大に見せることになるかを説明しています。正確でありながら十分に説得力のある主張は、自動化とエビデンストレイルそのものにあります。これは、検証済みでクリーンな復旧ポイントのワークフローがないという以前のギャップを AWS ネイティブサービスと DynamoDB の監査証跡で解消するものであり、スキャンの深さを過剰に売り込む必要がありません。
 
 ---
 
@@ -166,7 +166,7 @@ fsx.create_and_attach_s3_access_point(
 
 > **ONTAP UUID から fsvol-id への解決について — 実測した遅延とリトライ設計**
 >
-> AWS FSx は ONTAP REST API 経由で作成されたボリュームを非同期に検出します。ONTAP ボリューム UUID を対応する `fsvol-xxxx` ID に直接マッピングする API は存在しません。AWS 公式ドキュメントには、この同期に「数分かかる場合がある」と明記されています（[Managing FSx for ONTAP resources using NetApp applications](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-resources-ontap-apps.html)）。これは、ONTAP 自身の[非同期 REST API ジョブモデル](https://docs.netapp.com/us-en/ontap-automation/rest/asynchronous_processing.html)（上記ステップ1のような `POST` は job UUID 付きの HTTP 202 を返し、呼び出し側は `GET /cluster/jobs/{uuid}` をポーリングしてジョブ自身が `success`/`failure` に解決するまで待つ）とは別の関心事です — `CreateFlexClone` は、このステップが実行される前に、既に ONTAP ジョブが完了するまでポーリングしています。つまり `AttachAccessPoint` が実行される時点では、ONTAP 側の操作は既に成功しています。以下で説明する遅延は、その*後*に起きることです: FSx 自身の ONTAP ボリューム一覧が、ONTAP が既に行った変更にまだ追いついていないのです。本プロジェクト自身のエンドツーエンド検証では、観測ギャップを挟まない連続ポーリングにより、同じ（他にアイドル状態の）ファイルシステムに対する 3 回の別実行で、この遅延を直接計測しました — 1 回目は**約 12 分**、2 回目は**約 24 分**、3 回目は**約 36 分**。単発のばらつきではなく実行を重ねるごとに増加するパターンですが、データ点が 3 つしかないため、これが厳密に周期的なものか単なる偶然かは確証できていません。単一の数値そのものより、この変動とその傾向自体が運用上重要な事実です。この理由から、`AttachAccessPoint` は呼び出しごとに 1 回だけ確認（`DescribeVolumes` の後 `DescribeS3AccessPointAttachments` を照会）し、まだ準備できていない場合は `FsxDiscoveryPending`/`S3AttachPending` を発生させます — **Step Functions ステートマシン自身の `Retry` ブロック**（Lambda 内のループではなく）が、スケジュールに従ってこれを再呼び出しします（初回間隔 30 秒、バックオフ率 1.25、最大 150 秒でキャップ、最大 28 回試行 — 合計で約 60 分の予算があり、実測した 3 回のうち最も遅かったものに余裕を持たせたサイジングですが、自社の環境の遅延がさらに長くなる場合、この予算でも十分とは保証できません）。この設計上の選択は運用上重要です: 各リトライはそれぞれ数百ミリ秒の短い Lambda 呼び出しであり、Lambda 自身の最大タイムアウト（15 分。実測した遅延はこれに近づく、あるいは超えることがあります）にブロックされる単一の Lambda ではありません。また、リトライスケジュール全体が Step Functions の実行履歴上で可視化されており、sleep ループの中に隠れることもありません。
+> AWS FSx は ONTAP REST API 経由で作成されたボリュームを非同期に検出します。ONTAP ボリューム UUID を対応する `fsvol-xxxx` ID に直接マッピングする API は存在しません。AWS 公式ドキュメントには、この同期に「数分かかる場合がある」と明記されています（[Managing FSx for ONTAP resources using NetApp applications](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-resources-ontap-apps.html)）。これは、ONTAP 自身の[非同期 REST API ジョブモデル](https://docs.netapp.com/us-en/ontap-automation/rest/asynchronous_processing.html)（上記ステップ1のような `POST` は job UUID 付きの HTTP 202 を返し、呼び出し側は `GET /cluster/jobs/{uuid}` をポーリングしてジョブ自身が `success`/`failure` に解決するまで待つ）とは別の関心事です。`CreateFlexClone` は、このステップが実行される前に、既に ONTAP ジョブが完了するまでポーリングしています。つまり `AttachAccessPoint` が実行される時点では、ONTAP 側の操作は既に成功しています。以下で説明する遅延は、その*後*に起きることです: FSx 自身の ONTAP ボリューム一覧が、ONTAP が既に行った変更にまだ追いついていないのです。本プロジェクト自身のエンドツーエンド検証では、観測ギャップを挟まない連続ポーリングにより、同じ（他にアイドル状態の）ファイルシステムに対する 3 回の別実行で、この遅延を直接計測しました。1 回目は**約 12 分**、2 回目は**約 24 分**、3 回目は**約 36 分**でした。単発のばらつきではなく実行を重ねるごとに増加するパターンですが、データ点が 3 つしかないため、これが厳密に周期的なものか単なる偶然かは確証できていません。単一の数値そのものより、この変動とその傾向自体が運用上重要な事実です。この理由から、`AttachAccessPoint` は呼び出しごとに 1 回だけ確認（`DescribeVolumes` の後 `DescribeS3AccessPointAttachments` を照会）し、まだ準備できていない場合は `FsxDiscoveryPending`/`S3AttachPending` を発生させます。再呼び出しは、Lambda 内のループではなく **Step Functions ステートマシン自身の `Retry` ブロック**が、スケジュールに従って行います（初回間隔 30 秒、バックオフ率 1.25、最大 150 秒でキャップ、最大 28 回試行で、合計で約 60 分の予算があります。実測した 3 回のうち最も遅かったものに余裕を持たせたサイジングですが、自社の環境の遅延がさらに長くなる場合、この予算でも十分とは保証できません）。この設計上の選択は運用上重要です: 各リトライはそれぞれ数百ミリ秒の短い Lambda 呼び出しであり、Lambda 自身の最大タイムアウト（15 分。実測した遅延はこれに近づく、あるいは超えることがあります）にブロックされる単一の Lambda ではありません。また、リトライスケジュール全体が Step Functions の実行履歴上で可視化されており、sleep ループの中に隠れることもありません。
 
 Access Point は `CREATING` → `AVAILABLE`（エラー時は `FAILED`/`MISCONFIGURED`）と遷移します。上記の Retry による再呼び出しは、終了状態になるまで `DescribeS3AccessPointAttachments` をポーリングします。`AttachAccessPoint` 自身の「既にリクエスト済みか」の再確認（`Filters` ではなく `Names` パラメータを使った `DescribeS3AccessPointAttachments` — この特定の API では `Filters` を使うと `BadRequest: Request failed validation` が返ることを実際の API で確認済み）により、各リトライ試行はべき等になっています: Step Functions は失敗したタスクを毎回*元の*入力で再呼び出しし、前回の部分的な結果をマージすることはないため、Lambda は「既に作成済みである」という情報を引き渡された入力から得ることができません — 代わりに、呼び出しごとに AWS API からその事実を再取得します。
 
@@ -219,7 +219,7 @@ Cleanup Lambda は設計上べき等的に振る舞います。`access_point_nam
 
 > **運用上の知見 — ONTAP のクローン「recovery queue」が、FSx がクローン自体を「消えた」と報告した後でも、*親*ボリュームの削除をブロックすることがある**
 >
-> これは本ガイド内の他のタイミングに関する補足とは種類が異なります — FSx が*新しい* ONTAP リソースを発見するまでの話ではなく、ONTAP 自身の内部管理が、リソースの*削除*に追いつくまでの遅延に関する話です。`Cleanup` が `fsx.delete_volume()` で FlexClone を削除すると、FSx 側の `describe-volumes` はほぼ即座にそのクローンを一覧から外しますが、ONTAP 自身はそのクローンを即座には忘れません — 完全にパージされるまでの間、内部的な「volume recovery queue」（一部の ONTAP リリースでは NetApp のドキュメントによれば約 12 時間程度とされる保持期間のウィンドウ）にそれを配置します。クローンがこのキューに存在する間、**親**ボリューム自身の `clone.has_flexclone` フィールドは ONTAP 側で `true` のままとなり、その*親*ボリュームを削除しようとする試み（FSx API、ONTAP REST API、ONTAP CLI のいずれでも）は、`aws fsx describe-volumes` がもうどこにもクローンを表示していないにもかかわらず、`Failed to delete volume "..." because it has one or more clones. Only the cluster administrator can delete the clones associated with this volume.` というエラーで失敗します。本プロジェクト自身の検証でも、これに直接遭遇しました — 同じ親ボリュームに対して複数回のクローン作成/削除サイクルを繰り返した手動テスト実行の後、その親ボリュームの削除が全く同じエラーメッセージで何度も失敗し、ONTAP 自身の `clone.parent_volume` フィルタで相互確認したところ、実際に残っている子ボリュームは 0 件であることが確認できました — ブロックの原因は、実際のクローン関係ではなく、古い recovery-queue エントリでした。
+> これは本ガイド内の他のタイミングに関する補足とは種類が異なります。FSx が*新しい* ONTAP リソースを発見するまでの話ではなく、ONTAP 自身の内部管理が、リソースの*削除*に追いつくまでの遅延に関する話です。`Cleanup` が `fsx.delete_volume()` で FlexClone を削除すると、FSx 側の `describe-volumes` はほぼ即座にそのクローンを一覧から外しますが、ONTAP 自身はそのクローンを即座には忘れず、完全にパージされるまでの間、内部的な「volume recovery queue」（一部の ONTAP リリースでは NetApp のドキュメントによれば約 12 時間程度とされる保持期間のウィンドウ）にそれを配置します。クローンがこのキューに存在する間、**親**ボリューム自身の `clone.has_flexclone` フィールドは ONTAP 側で `true` のままとなり、その*親*ボリュームを削除しようとする試み（FSx API、ONTAP REST API、ONTAP CLI のいずれでも）は、`aws fsx describe-volumes` がもうどこにもクローンを表示していないにもかかわらず、`Failed to delete volume "..." because it has one or more clones. Only the cluster administrator can delete the clones associated with this volume.` というエラーで失敗します。本プロジェクト自身の検証でも、これに直接遭遇しました。同じ親ボリュームに対して複数回のクローン作成/削除サイクルを繰り返した手動テスト実行の後、その親ボリュームの削除が全く同じエラーメッセージで何度も失敗し、ONTAP 自身の `clone.parent_volume` フィルタで相互確認したところ、実際に残っている子ボリュームは 0 件であることが確認できました。ブロックの原因は、実際のクローン関係ではなく、古い recovery-queue エントリでした。
 >
 > **これは、本プロジェクトの中で唯一、FSx 側で待つのではなく ONTAP を直接確認することでブロックを解消できるケースです** — `aws fsx describe-volumes` は、FSx の視点からは既に削除済みのこれらのクローンを表示することが決してないため、FSx 側でポーリングする対象自体が存在しません。この状況に遭遇した場合は、保持期間が自然に終了するのを待つのではなく、ONTAP の recovery queue を直接クエリし（`GET /private/cli/volume/recovery-queue?vserver=<svm>`）、詰まっている該当エントリを purge してください（`DELETE /private/cli/volume/recovery-queue/purge?vserver=<svm>&volume=<queued-volume-name>`）。これには ONTAP 管理者認証情報が必要で、ONTAP CLI 相当のプライベート API です — 本ワークフロー自身の `Cleanup` Lambda がこれを自動的に行うことは**なく**、行うべきでもありません（クローンを予定より早く queue からパージすると、その特定のクローンに対する ONTAP 自身の安全ウィンドウを失うことになり、この操作は日常的な自動化ではなく手動のインシデント対応に限定されるべきものです）。これは、基盤となる親ボリュームを管理する担当者向けの純粋な運用上の補足です（例: 本ワークフローの検証に繰り返し使ったテストボリュームを廃止する場合など）— `Cleanup` は常に自分自身が作成したクローンのみを削除し、親ボリュームを削除することは一度もないため、ワークフロー自体の実行ごとの正しさには影響しません。
 >
@@ -299,7 +299,7 @@ ONTAP object storage server on SVM <svm-name>. Please delete the existing
 s3 server and retry.
 ```
 
-これは**構造的な競合であり、タイミングの問題ではありません** — 下記ステップ2で説明する FSx for ONTAP 同期遅延とは異なり、リトライしても、待ち時間を延ばしても、`AttachAccessPoint` のリトライ予算を広げても、決して解決しません。本プロジェクト自身のエンドツーエンド検証でも、まさにこのケースに遭遇しました — 共有テスト用ファイルシステムの SVM に、本ワークフローとは無関係の ONTAP S3 サーバー（他チームのテストデータが入ったバケットを含む）が既に設定されており、その SVM 上のボリュームに対する検証実行は、リトライ設定に関わらず全てここで失敗しました。
+これは**構造的な競合であり、タイミングの問題ではありません**。下記ステップ2で説明する FSx for ONTAP 同期遅延とは異なり、リトライしても、待ち時間を延ばしても、`AttachAccessPoint` のリトライ予算を広げても、決して解決しません。本プロジェクト自身のエンドツーエンド検証でも、まさにこのケースに遭遇しました。共有テスト用ファイルシステムの SVM に、本ワークフローとは無関係の ONTAP S3 サーバー（他チームのテストデータが入ったバケットを含む）が既に設定されており、その SVM 上のボリュームに対する検証実行は、リトライ設定に関わらず全てここで失敗しました。
 
 自分が完全に管理していない SVM に対してデプロイする前に、必ず確認してください:
 
@@ -312,13 +312,13 @@ curl -sk -u "<user>:<pass>" "https://<mgmt-ip>/api/protocols/s3/services?svm.nam
 # {"records": [...], "num_records": 1}  <- conflict; pick a different SVM
 ```
 
-チェックでレコードが返ってきた場合、**その S3 サーバーの所有者とそこに格納されているデータを確認せずに削除しないでください** — 共有ファイルシステムでは、それが無関係な別のユースケースに使われている可能性が非常に高いです。代わりに、別の SVM（あるいは新規作成した SVM）に対して本ワークフローをデプロイしてください。これは、他者の ONTAP S3 サーバー設定の削除について合意を取るよりも、ほぼ常に簡単で安全です。
+チェックでレコードが返ってきた場合、**その S3 サーバーの所有者とそこに格納されているデータを確認せずに削除しないでください**。共有ファイルシステムでは、それが無関係な別のユースケースに使われている可能性が非常に高いです。代わりに、別の SVM（あるいは新規作成した SVM）に対して本ワークフローをデプロイしてください。これは、他者の ONTAP S3 サーバー設定の削除について合意を取るよりも、ほぼ常に簡単で安全です。
 
 ### ボリュームの前提条件 — UNIX security style のみ対応
 
-**本ワークフローは出荷時点では UNIX security style のボリュームでのみ動作します。** `AttachAccessPoint` は `UnixUser` パラメータ（デフォルト `root`）経由で常に `FileSystemIdentity.Type=UNIX` を設定します。AWS 公式ドキュメントには、この組み合わせが必須であることが明記されています: 「UNIX security style のボリュームには UNIX ファイルシステムアイデンティティタイプを、NTFS security style のボリュームには Windows アイデンティティタイプを使用してください」（[Managing access point access](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/s3-ap-manage-access-fsxn.html)）。FSx for ONTAP の S3 Access Point は「二層認可モデル」を採用しています — S3 の IAM/リソースポリシーと、基盤ファイルシステム自身の権限チェックの両方が通過する必要があり、NTFS security style のボリュームに対して UNIX アイデンティティを使うと、2つ目の層で失敗します。
+**本ワークフローは出荷時点では UNIX security style のボリュームでのみ動作します。** `AttachAccessPoint` は `UnixUser` パラメータ（デフォルト `root`）経由で常に `FileSystemIdentity.Type=UNIX` を設定します。AWS 公式ドキュメントには、この組み合わせが必須であることが明記されています: 「UNIX security style のボリュームには UNIX ファイルシステムアイデンティティタイプを、NTFS security style のボリュームには Windows アイデンティティタイプを使用してください」（[Managing access point access](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/s3-ap-manage-access-fsxn.html)）。FSx for ONTAP の S3 Access Point は「二層認可モデル」を採用しており、S3 の IAM/リソースポリシーと、基盤ファイルシステム自身の権限チェックの両方が通過する必要があります。NTFS security style のボリュームに対して UNIX アイデンティティを使うと、2つ目の層で失敗します。
 
-本プロジェクト自身のエンドツーエンド検証でも、まさにこのケースに遭遇しました — `AttachAccessPoint` と S3 Access Point のリソースポリシーはいずれも成功したものの、`ScanForIndicators` の `ListObjectsV2` 呼び出しが `AccessDenied` で失敗しました。IAM 側は完全に正しく見えるため、混乱しやすい失敗モードです。対象ボリュームの security style を確認すると初めて理解できます:
+本プロジェクト自身のエンドツーエンド検証でも、まさにこのケースに遭遇しました。`AttachAccessPoint` と S3 Access Point のリソースポリシーはいずれも成功したものの、`ScanForIndicators` の `ListObjectsV2` 呼び出しが `AccessDenied` で失敗しました。IAM 側は完全に正しく見えるため、混乱しやすい失敗モードです。対象ボリュームの security style を確認すると初めて理解できます:
 
 ```bash
 curl -sk -u "<user>:<pass>" \
@@ -327,7 +327,7 @@ curl -sk -u "<user>:<pass>" \
 # "security_style": "ntfs"  <- ScanForIndicators will get AccessDenied
 ```
 
-対象ボリュームが NTFS security style の場合（Windows クライアントに SMB 共有しているボリュームでよくあるケース）、本ワークフローは出荷時点では対応していません — Windows アイデンティティ（`FileSystemIdentity.Type=WINDOWS`、Active Directory 連携が必要）を受け付けるように `AttachAccessPoint` を拡張することが先に必要です。代わりに、検証用に UNIX security style のボリュームを選ぶか新規作成してください。
+対象ボリュームが NTFS security style の場合（Windows クライアントに SMB 共有しているボリュームでよくあるケース）、本ワークフローは出荷時点では対応していません。先に、Windows アイデンティティ（`FileSystemIdentity.Type=WINDOWS`、Active Directory 連携が必要）を受け付けるように `AttachAccessPoint` を拡張する必要があります。代わりに、検証用に UNIX security style のボリュームを選ぶか新規作成してください。
 
 ### AWS 権限
 
@@ -410,9 +410,9 @@ aws ec2 describe-vpc-endpoints \
 | `com.amazonaws.<region>.s3`（Gateway）、かつ本デプロイで指定する `RouteTableIds` と同じルートテーブルに既に関連付けられている | `CreateS3GatewayEndpoint=false` |
 | 上記のいずれも存在しない | 3 つ全てデフォルトの `true` のままでよい |
 
-`CreateFsxEndpoint` というパラメータは存在しません — `AttachAccessPoint` と `Cleanup` はいずれも FSx コントロールプレーン API（パブリックな AWS API）のみを呼び出し、ONTAP REST API は一切呼び出さないため、本スタック内のどの Lambda も FSx 用 Interface Endpoint を必要としません。これは本スタックの以前のバージョンからの意図的な単純化です — 理由は上記「検証の仕組み」内のステップ5の FlexClone 削除に関する補足を参照してください。
+`CreateFsxEndpoint` というパラメータは存在しません。`AttachAccessPoint` と `Cleanup` はいずれも FSx コントロールプレーン API（パブリックな AWS API）のみを呼び出し、ONTAP REST API は一切呼び出さないため、本スタック内のどの Lambda も FSx 用 Interface Endpoint を必要としません。これは本スタックの以前のバージョンからの意図的な単純化です。理由は上記「検証の仕組み」内のステップ5の FlexClone 削除に関する補足を参照してください。
 
-[`automated-response.yaml`](automated-response-guide.md) と同じ VPC に本スタックをデプロイする場合、そのスタック自身は VPC Endpoint を一切作成しません — 元々その VPC に存在していた Endpoint に依存する構成です。したがって上記のチェックはそのまま全て適用されます。「`automated-response.yaml` が先にデプロイされているから、この 4 つの Endpoint のいずれかが既に存在するはずだ」という前提は置かないでください。
+[`automated-response.yaml`](automated-response-guide.md) と同じ VPC に本スタックをデプロイする場合、そのスタック自身は VPC Endpoint を一切作成せず、元々その VPC に存在していた Endpoint に依存する構成です。したがって上記のチェックはそのまま全て適用されます。「`automated-response.yaml` が先にデプロイされているから、この 4 つの Endpoint のいずれかが既に存在するはずだ」という前提は置かないでください。
 
 > **Route53 プライベートホストゾーンに関する補足**
 >
@@ -562,7 +562,7 @@ FSx for ONTAP 同期に対するワークフローの総待機バジェット:
 - CloudWatch Logs にエントリを生成（ワークフロー監視者へのノイズ）
 - Step Functions ステート遷移を消費（STANDARD タイプでは遷移ごとに課金）
 
-`Wait` ステートは Step Functions のネイティブステートです — Lambda 呼び出しゼロ、CloudWatch Logs ゼロ、コストゼロ。設定された時間だけ実行を一時停止し、その後ポーリングステップに引き渡します。Wait 後は（既に同期時間が経過しているため）1〜2 回目の試行で成功する確率が大幅に高くなります。
+`Wait` ステートは Step Functions のネイティブステートで、Lambda 呼び出しゼロ、CloudWatch Logs ゼロ、コストゼロです。設定された時間だけ実行を一時停止し、その後ポーリングステップに引き渡します。Wait 後は（既に同期時間が経過しているため）1〜2 回目の試行で成功する確率が大幅に高くなります。
 
 **自社環境に合わせたチューニング:**
 
@@ -717,7 +717,7 @@ A: `VerificationLedgerTable` の `KeySchema` や `AttributeDefinitions` を変�
 
 ---
 
-## 関連ドキュメント
+## 参考情報
 
 - [デプロイメントガイド](deployment-guide.md) — デプロイ前検証、VPC Endpoint 競合回避、パラメータファイルの設定方法
 - [Automated Response ガイド](automated-response-guide.md) — リカバリ検証に先立つインシデント対応アクション
