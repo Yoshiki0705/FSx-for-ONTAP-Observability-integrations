@@ -6,17 +6,17 @@
 
 | 項目 | 値 |
 |------|-----|
-| **検証日時** | `2026-05-17T07:20:00+09:00` |
-| **検証者** | リポジトリ管理者 |
+| 検証日時 | `2026-05-17T07:20:00+09:00` |
+| 検証者 | リポジトリ管理者 |
 
 ### 検証環境
 
 | 項目 | 値 |
 |------|-----|
-| **AWS リージョン** | `ap-northeast-1` |
-| **FSx for ONTAP ファイルシステム ID** | `fs-0123456789abcdef0` (SINGLE_AZ_1) |
-| **SVM 名** | `FPolicySMB` (svm-0123456789abcdef0), `FSxN_OnPre` (svm-0abcdef123456789a) | <!-- allow:naming: SVM resource name -->
-| **ONTAP バージョン** | `9.17.1P6` |
+| AWS リージョン | `ap-northeast-1` |
+| FSx for ONTAP ファイルシステム ID | `fs-0123456789abcdef0` (SINGLE_AZ_1) |
+| SVM 名 | `FPolicySMB` (svm-0123456789abcdef0), `FSxN_OnPre` (svm-0abcdef123456789a) | <!-- allow:naming: SVM resource name -->
+| ONTAP バージョン | `9.17.1P6` |
 
 ### CloudFormation スタック名
 
@@ -40,10 +40,10 @@ cfn-lint 1.45.0
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 1-1 |
-| **ステップ名** | EMS Webhook CloudFormation スタックデプロイ |
+| ステップ番号 | 1-1 |
+| ステップ名 | EMS Webhook CloudFormation スタックデプロイ |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 aws cloudformation deploy \
@@ -59,15 +59,13 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-> **注記**
->
-> テンプレートが名前付き IAM ロール (`RoleName`) を作成するため、`CAPABILITY_NAMED_IAM` が必要です（`CAPABILITY_IAM` では不十分）。
+> **注記:** テンプレートが名前付き IAM ロール (`RoleName`) を作成するため、`CAPABILITY_NAMED_IAM` が必要です（`CAPABILITY_IAM` では不十分）。
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | スタックが CREATE_COMPLETE となり、Outputs に `ApiEndpointUrl`、`ApiGatewayId`、`DeadLetterQueueArn` が出力される |
-| **実際の結果** | スタック `fsxn-ems-webhook` が CREATE_COMPLETE。Outputs: ApiEndpointUrl=`https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems`, ApiGatewayId=`<api-gateway-id>`, DeadLetterQueueArn=`arn:aws:sqs:ap-northeast-1:123456789012:fsxn-ems-webhook-ems-dlq` |
-| **判定** | ✅ PASS |
+| 期待結果 | スタックが CREATE_COMPLETE となり、Outputs に `ApiEndpointUrl`、`ApiGatewayId`、`DeadLetterQueueArn` が出力される |
+| 実際の結果 | スタック `fsxn-ems-webhook` が CREATE_COMPLETE。Outputs: ApiEndpointUrl=`https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems`, ApiGatewayId=`<api-gateway-id>`, DeadLetterQueueArn=`arn:aws:sqs:ap-northeast-1:123456789012:fsxn-ems-webhook-ems-dlq` |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -75,10 +73,10 @@ aws cloudformation deploy \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 1-2 |
-| **ステップ名** | EMS Webhook エンドポイント POST リクエスト疎通確認 |
+| ステップ番号 | 1-2 |
+| ステップ名 | EMS Webhook エンドポイント POST リクエスト疎通確認 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 curl -X POST \
@@ -89,9 +87,9 @@ curl -X POST \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | HTTP 200 レスポンスが返却され、レスポンスボディに `{"status": "ok", "event_name": "arw.volume.state"}` が含まれる |
-| **実際の結果** | HTTP 200。レスポンスボディ: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}` |
-| **判定** | ✅ PASS |
+| 期待結果 | HTTP 200 レスポンスが返却され、レスポンスボディに `{"status": "ok", "event_name": "arw.volume.state"}` が含まれる |
+| 実際の結果 | HTTP 200。レスポンスボディ: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}` |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -99,10 +97,10 @@ curl -X POST \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 1-3 |
-| **ステップ名** | GET リクエストによる 405 Method Not Allowed 確認 |
+| ステップ番号 | 1-3 |
+| ステップ名 | GET リクエストによる 405 Method Not Allowed 確認 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 curl -X GET https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems
@@ -110,9 +108,9 @@ curl -X GET https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/pr
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | HTTP 405 レスポンスが返却され、POST 以外のメソッドが拒否される |
-| **実際の結果** | HTTP 405。レスポンスボディ: `{"message": "Method Not Allowed"}` |
-| **判定** | ✅ PASS |
+| 期待結果 | HTTP 405 レスポンスが返却され、POST 以外のメソッドが拒否される |
+| 実際の結果 | HTTP 405。レスポンスボディ: `{"message": "Method Not Allowed"}` |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -120,10 +118,10 @@ curl -X GET https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/pr
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 1-4 |
-| **ステップ名** | CloudWatch Logs Lambda 受信確認 |
+| ステップ番号 | 1-4 |
+| ステップ名 | CloudWatch Logs Lambda 受信確認 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 aws logs filter-log-events \
@@ -135,9 +133,9 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | CloudWatch Logs に EMS イベント受信ログが記録される |
-| **実際の結果** | ログ確認: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` および `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
-| **判定** | ✅ PASS |
+| 期待結果 | CloudWatch Logs に EMS イベント受信ログが記録される |
+| 実際の結果 | ログ確認: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` および `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
+| 判定 | ✅ PASS |
 
 ---
 
@@ -145,10 +143,10 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 1-5 |
-| **ステップ名** | API Gateway アクセスログ確認 |
+| ステップ番号 | 1-5 |
+| ステップ名 | API Gateway アクセスログ確認 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 aws logs filter-log-events \
@@ -160,9 +158,9 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | API Gateway アクセスログに requestId、sourceIp、httpMethod、resourcePath、status、responseLatency が記録される |
-| **実際の結果** | アクセスログ確認: requestId、sourceIp (92.202.153.119)、httpMethod (POST/GET)、resourcePath (/prod/ems)、status (200/405)、responseLatency が正常に記録 |
-| **判定** | ✅ PASS |
+| 期待結果 | API Gateway アクセスログに requestId、sourceIp、httpMethod、resourcePath、status、responseLatency が記録される |
+| 実際の結果 | アクセスログ確認: requestId、sourceIp (92.202.153.119)、httpMethod (POST/GET)、resourcePath (/prod/ems)、status (200/405)、responseLatency が正常に記録 |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -170,10 +168,10 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 1-6 |
-| **ステップ名** | cfn-lint による EMS Webhook テンプレート検証 |
+| ステップ番号 | 1-6 |
+| ステップ名 | cfn-lint による EMS Webhook テンプレート検証 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 cfn-lint shared/templates/ems-webhook-apigw.yaml
@@ -181,9 +179,9 @@ cfn-lint shared/templates/ems-webhook-apigw.yaml
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | エラー (E) 0 件、警告 (W) 0 件で検証を通過する |
-| **実際の結果** | エラー 0 件、警告 0 件 (cfn-lint 1.45.0) |
-| **判定** | ✅ PASS |
+| 期待結果 | エラー (E) 0 件、警告 (W) 0 件で検証を通過する |
+| 実際の結果 | エラー 0 件、警告 0 件 (cfn-lint 1.45.0) |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -193,10 +191,10 @@ cfn-lint shared/templates/ems-webhook-apigw.yaml
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 2-1 |
-| **ステップ名** | FPolicy CloudFormation スタックデプロイ (ECS Fargate + SQS + EventBridge) |
+| ステップ番号 | 2-1 |
+| ステップ名 | FPolicy CloudFormation スタックデプロイ (ECS Fargate + SQS + EventBridge) |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 aws cloudformation deploy \
@@ -218,15 +216,13 @@ aws cloudformation deploy \
   --region ap-northeast-1
 ```
 
-> **注記**
->
-> テンプレートが名前付き IAM ロール (`RoleName`) を作成するため、`CAPABILITY_NAMED_IAM` が必要です（`CAPABILITY_IAM` では不十分）。
+> **注記:** テンプレートが名前付き IAM ロール (`RoleName`) を作成するため、`CAPABILITY_NAMED_IAM` が必要です（`CAPABILITY_IAM` では不十分）。
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | スタックが CREATE_COMPLETE となり、ECS クラスター、サービス、SQS キュー、Bridge Lambda、EventBridge カスタムバスが作成される |
-| **実際の結果** | スタック `fsxn-fp-srv` が正常稼働中 (ECS Fargate, ARM64, 256 CPU, 512 MB) |
-| **判定** | ✅ PASS |
+| 期待結果 | スタックが CREATE_COMPLETE となり、ECS クラスター、サービス、SQS キュー、Bridge Lambda、EventBridge カスタムバスが作成される |
+| 実際の結果 | スタック `fsxn-fp-srv` が正常稼働中 (ECS Fargate, ARM64, 256 CPU, 512 MB) |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -234,10 +230,10 @@ aws cloudformation deploy \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 2-2 |
-| **ステップ名** | ECS Fargate タスクヘルスチェック |
+| ステップ番号 | 2-2 |
+| ステップ名 | ECS Fargate タスクヘルスチェック |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 # ECS task status check
@@ -256,9 +252,9 @@ aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <task ARN> \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | ECS タスクが RUNNING 状態で、runningCount = desiredCount (1) であること。Fargate タスクのプライベート IP が取得できること |
-| **実際の結果** | タスク RUNNING、runningCount=1、desiredCount=1。Fargate タスク IP: `10.0.x.x` |
-| **判定** | ✅ PASS |
+| 期待結果 | ECS タスクが RUNNING 状態で、runningCount = desiredCount (1) であること。Fargate タスクのプライベート IP が取得できること |
+| 実際の結果 | タスク RUNNING、runningCount=1、desiredCount=1。Fargate タスク IP: `10.0.x.x` |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -266,10 +262,10 @@ aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <task ARN> \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 2-3 |
-| **ステップ名** | ONTAP KeepAlive メッセージ確認 |
+| ステップ番号 | 2-3 |
+| ステップ名 | ONTAP KeepAlive メッセージ確認 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 # Check KeepAlive messages in ECS logs (sent at 120 second intervals)
@@ -284,9 +280,9 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | 300 秒以内に `KeepAlive from <IP>` メッセージが ECS ログに記録されていること。これは ONTAP が FPolicy サーバーに正常に接続していることを示す |
-| **実際の結果** | ~~ONTAP から約6秒間隔で KeepAlive メッセージ受信確認。~~ **撤回します。** 6 秒間隔は再現しませんでした。後続のセッションで KeepAlive 4,694 行・最大間隔 120.4 秒を実測しており、エンジンの設定は `keep_alive_interval=PT2M` です。約 10 秒間隔で届くのは `status_request_interval=PT10S` による `STATUS_REQ` で、これは別のメッセージかつ DEBUG レベルの出力です。ここに記録された数値はこの 10 秒周期を見たものと考えられます。訂正後の間隔: **120 秒**。送信元 IP: `10.0.x.x`。[FPolicy S3 Access Point とセッションの検証結果](verification-results-fpolicy-s3ap-and-session.md) を参照 |
-| **判定** | ✅ PASS（接続は確認済み。撤回したのは間隔の数値であり、判定そのものではありません） |
+| 期待結果 | 300 秒以内に `KeepAlive from <IP>` メッセージが ECS ログに記録されていること。これは ONTAP が FPolicy サーバーに正常に接続していることを示す |
+| 実際の結果 | ~~ONTAP から約6秒間隔で KeepAlive メッセージ受信確認。~~ **撤回します。** 6 秒間隔は再現しませんでした。後続のセッションで KeepAlive 4,694 行・最大間隔 120.4 秒を実測しており、エンジンの設定は `keep_alive_interval=PT2M` です。約 10 秒間隔で届くのは `status_request_interval=PT10S` による `STATUS_REQ` で、これは別のメッセージかつ DEBUG レベルの出力です。ここに記録された数値はこの 10 秒周期を見たものと考えられます。訂正後の間隔: 120 秒。送信元 IP: `10.0.x.x`。[FPolicy S3 Access Point とセッションの検証結果](verification-results-fpolicy-s3ap-and-session.md) を参照 |
+| 判定 | ✅ PASS（接続は確認済み。撤回したのは間隔の数値であり、判定そのものではありません） |
 
 ---
 
@@ -294,10 +290,10 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 2-4 |
-| **ステップ名** | FPolicy ファイル操作イベント SQS 送信確認 |
+| ステップ番号 | 2-4 |
+| ステップ名 | FPolicy ファイル操作イベント SQS 送信確認 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 # 1. Check ECS logs for [SQS] Sent: pattern
@@ -316,9 +312,9 @@ aws sqs get-queue-attributes \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | ファイル操作後、ECS ログに `[SQS] Sent: <filename> (<operation>)` パターンのメッセージが記録され、SQS キューにメッセージが到着すること |
-| **実際の結果** | ECS ログ確認: `[SQS] Sent: phase12-final-test-1778924241.txt (create)`, `[SQS] Sent: replay-test-1.txt (create)` 等。SQS キュー: 20 メッセージ確認 (イベント正常フロー) |
-| **判定** | ✅ PASS |
+| 期待結果 | ファイル操作後、ECS ログに `[SQS] Sent: <filename> (<operation>)` パターンのメッセージが記録され、SQS キューにメッセージが到着すること |
+| 実際の結果 | ECS ログ確認: `[SQS] Sent: phase12-final-test-1778924241.txt (create)`, `[SQS] Sent: replay-test-1.txt (create)` 等。SQS キュー: 20 メッセージ確認 (イベント正常フロー) |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -326,10 +322,10 @@ aws sqs get-queue-attributes \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 2-5 |
-| **ステップ名** | cfn-lint による FPolicy テンプレート検証 |
+| ステップ番号 | 2-5 |
+| ステップ名 | cfn-lint による FPolicy テンプレート検証 |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 cfn-lint shared/templates/fpolicy-apigw.yaml
@@ -337,9 +333,9 @@ cfn-lint shared/templates/fpolicy-apigw.yaml
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | エラー (E) 0 件、警告 (W) 0 件で検証を通過する |
-| **実際の結果** | エラー 0 件、警告 0 件 (cfn-lint 1.45.0) |
-| **判定** | ✅ PASS |
+| 期待結果 | エラー (E) 0 件、警告 (W) 0 件で検証を通過する |
+| 実際の結果 | エラー 0 件、警告 0 件 (cfn-lint 1.45.0) |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -349,10 +345,10 @@ cfn-lint shared/templates/fpolicy-apigw.yaml
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 3-1 |
-| **ステップ名** | ARP ランサムウェア攻撃シミュレーション実行 (curl による EMS Webhook 送信) |
+| ステップ番号 | 3-1 |
+| ステップ名 | ARP ランサムウェア攻撃シミュレーション実行 (curl による EMS Webhook 送信) |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 curl -X POST \
@@ -363,13 +359,11 @@ curl -X POST \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | HTTP 200 レスポンスが返却され、ARP イベント (`arw.volume.state`) が Lambda で処理される |
-| **実際の結果** | HTTP 200。レスポンスボディ: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}`。CloudWatch Logs にイベント正常記録 |
-| **判定** | ✅ PASS |
+| 期待結果 | HTTP 200 レスポンスが返却され、ARP イベント (`arw.volume.state`) が Lambda で処理される |
+| 実際の結果 | HTTP 200。レスポンスボディ: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}`。CloudWatch Logs にイベント正常記録 |
+| 判定 | ✅ PASS |
 
-> **注記**
->
-> curl によるシミュレーション実行。ONTAP CLI (`security anti-ransomware volume attack simulate`) による完全 E2E は SVM 管理エンドポイントへの SSH アクセスが必要。
+> **注記:** curl によるシミュレーション実行。ONTAP CLI (`security anti-ransomware volume attack simulate`) による完全 E2E は SVM 管理エンドポイントへの SSH アクセスが必要。
 
 ---
 
@@ -377,10 +371,10 @@ curl -X POST \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 3-2 |
-| **ステップ名** | ARP イベント Lambda 受信確認 (CloudWatch Logs) |
+| ステップ番号 | 3-2 |
+| ステップ名 | ARP イベント Lambda 受信確認 (CloudWatch Logs) |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 aws logs filter-log-events \
@@ -392,9 +386,9 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | CloudWatch Logs に `event_name=arw.volume.state`、`severity=alert`、`volume_name`、`state` を含む INFO レベルのログが記録される |
-| **実際の結果** | CloudWatch Logs 確認: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` |
-| **判定** | ✅ PASS |
+| 期待結果 | CloudWatch Logs に `event_name=arw.volume.state`、`severity=alert`、`volume_name`、`state` を含む INFO レベルのログが記録される |
+| 実際の結果 | CloudWatch Logs 確認: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` |
+| 判定 | ✅ PASS |
 
 ---
 
@@ -404,10 +398,10 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 4-1 |
-| **ステップ名** | クォータイベントシミュレーション実行 (curl による EMS Webhook 送信) |
+| ステップ番号 | 4-1 |
+| ステップ名 | クォータイベントシミュレーション実行 (curl による EMS Webhook 送信) |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 curl -X POST \
@@ -418,13 +412,11 @@ curl -X POST \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | HTTP 200 レスポンスが返却され、クォータイベント (`wafl.quota.softlimit.exceeded`) が Lambda で処理される |
-| **実際の結果** | HTTP 200。レスポンスボディ: `{"status": "ok", "event_name": "wafl.quota.softlimit.exceeded", "severity": "warning"}`。CloudWatch Logs にイベント正常記録 |
-| **判定** | ✅ PASS |
+| 期待結果 | HTTP 200 レスポンスが返却され、クォータイベント (`wafl.quota.softlimit.exceeded`) が Lambda で処理される |
+| 実際の結果 | HTTP 200。レスポンスボディ: `{"status": "ok", "event_name": "wafl.quota.softlimit.exceeded", "severity": "warning"}`。CloudWatch Logs にイベント正常記録 |
+| 判定 | ✅ PASS |
 
-> **注記**
->
-> curl によるシミュレーション実行。ONTAP CLI によるクォータルール設定 + データ書き込みによる完全 E2E は SVM 管理エンドポイントへの SSH アクセスが必要。
+> **注記:** curl によるシミュレーション実行。ONTAP CLI によるクォータルール設定 + データ書き込みによる完全 E2E は SVM 管理エンドポイントへの SSH アクセスが必要。
 
 ---
 
@@ -432,10 +424,10 @@ curl -X POST \
 
 | 項目 | 内容 |
 |------|------|
-| **ステップ番号** | 4-2 |
-| **ステップ名** | クォータイベント Lambda 受信確認 (CloudWatch Logs) |
+| ステップ番号 | 4-2 |
+| ステップ名 | クォータイベント Lambda 受信確認 (CloudWatch Logs) |
 
-**実行コマンド:**
+#### 実行コマンド
 
 ```bash
 aws logs filter-log-events \
@@ -447,9 +439,9 @@ aws logs filter-log-events \
 
 | 項目 | 内容 |
 |------|------|
-| **期待結果** | CloudWatch Logs に `event_name=wafl.quota.softlimit.exceeded`、`volume_name`、`quota_target`、`used_bytes`、`limit_bytes` を含む INFO レベルのログが記録される |
-| **実際の結果** | CloudWatch Logs 確認: `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
-| **判定** | ✅ PASS |
+| 期待結果 | CloudWatch Logs に `event_name=wafl.quota.softlimit.exceeded`、`volume_name`、`quota_target`、`used_bytes`、`limit_bytes` を含む INFO レベルのログが記録される |
+| 実際の結果 | CloudWatch Logs 確認: `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
+| 判定 | ✅ PASS |
 
 ---
 
@@ -459,9 +451,7 @@ aws logs filter-log-events \
 |---|---------|--------|-------------|---------|-----------|
 | - | 問題なし | - | - | - | - |
 
-> **注記**
->
-> 全ステップが PASS のため、問題は検出されなかった。
+> **注記:** 全ステップが PASS のため、問題は検出されなかった。
 
 ### event-sources.md 修正事項
 
@@ -475,9 +465,9 @@ aws logs filter-log-events \
 
 | 項目 | 結果 |
 |------|------|
-| **総合判定** | ✅ **合格** |
-| **PASS ステップ数** | 14 / 14 |
-| **FAIL ステップ数** | 0 |
+| 総合判定 | ✅ 合格 |
+| PASS ステップ数 | 14 / 14 |
+| FAIL ステップ数 | 0 |
 
 ### 検証ステップサマリ
 
