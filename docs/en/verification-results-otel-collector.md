@@ -254,6 +254,6 @@
 
 ## Key Architectural Points
 
-1. **Lambda code unchanged**: Switching the backend from Grafana+Honeycomb to Datadog requires zero changes to `handler.py`
-2. **Configuration-only change**: Simply use `otel-collector-config-datadog.yaml` to redirect logs to Datadog
-3. **OTLP standard compliance**: Lambda sends OTLP/HTTP JSON, making it compatible with any OTLP-capable backend
+- Switching the backend from Grafana+Honeycomb to Datadog requires zero changes to `handler.py` (the Lambda code is unchanged).
+- Redirecting delivery is a configuration-only change: use `otel-collector-config-datadog.yaml`.
+- Lambda sends OTLP/HTTP JSON, so it is compatible with any OTLP-capable backend (OTLP standard compliance).

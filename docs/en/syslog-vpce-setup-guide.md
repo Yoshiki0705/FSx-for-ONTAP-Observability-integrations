@@ -51,9 +51,7 @@ aws cloudformation deploy \
   --no-fail-on-empty-changeset
 ```
 
-> **Template defect note**
->
-> Observed on 2026-10-09 and fixed since. Copies of the template taken from `main` before the fix fail this deploy with `ROLLBACK_COMPLETE`: EC2 rejects the security group description ("Invalid security group description"), because `GroupDescription` was a YAML folded scalar `>`, which keeps a trailing newline. The template now uses `>-`, the change the 2026-10-09 run deployed from a local copy, and `scripts/tests/test_cfn_security_group_description.py` fails if a description EC2 rejects comes back. If you deployed an older copy and it failed, note that the log group has `DeletionPolicy: Retain`, so the failed stack leaves `/syslog/fsxn-admin-audit` behind; delete it (`aws logs delete-log-group`) and the `ROLLBACK_COMPLETE` stack before you retry. A retry while that log group still exists was not tried. See the [2026-10-09 record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09).
+> **Template defect note:** Observed on 2026-10-09 and fixed since. Copies of the template taken from `main` before the fix fail this deploy with `ROLLBACK_COMPLETE`: EC2 rejects the security group description ("Invalid security group description"), because `GroupDescription` was a YAML folded scalar `>`, which keeps a trailing newline. The template now uses `>-`, the change the 2026-10-09 run deployed from a local copy, and `scripts/tests/test_cfn_security_group_description.py` fails if a description EC2 rejects comes back. If you deployed an older copy and it failed, note that the log group has `DeletionPolicy: Retain`, so the failed stack leaves `/syslog/fsxn-admin-audit` behind; delete it (`aws logs delete-log-group`) and the `ROLLBACK_COMPLETE` stack before you retry. A retry while that log group still exists was not tried. See the [2026-10-09 record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09).
 
 Then retrieve the VPC Endpoint ENI IP:
 
@@ -93,9 +91,7 @@ python3 shared/scripts/create-syslog-configuration.py \
 
 > **CLI command naming**: ONTAP 9.11.1+ uses `security audit log-forwarding` (replacing the older `cluster log-forwarding`). Both refer to the same feature.
 
-> **Port choice note**
->
-> The first command in each option creates the TLS destination on port 6514. In the 2026-10-09 run, that destination returned 201 and then delivered nothing, while a destination on port 1514 without TLS delivered its first line about 3 seconds after it was created (see the [TLS delivery note](#protocol-options)). Each option therefore also shows the 1514 form. Port 1514 carries the audit lines, which include the request bodies of change operations, unencrypted between ONTAP and the endpoint inside the VPC. Keeping 6514 avoids that, and you may then have to make TLS delivery work in your environment; using 1514 trades encryption in transit for a path that delivered in this run. That choice is a security decision for your environment. Whichever port you use, run [Check That Lines Arrive](#check-that-lines-arrive) before relying on the destination.
+> **Port choice note:** The first command in each option creates the TLS destination on port 6514. In the 2026-10-09 run, that destination returned 201 and then delivered nothing, while a destination on port 1514 without TLS delivered its first line about 3 seconds after it was created (see the [TLS delivery note](#protocol-options)). Each option therefore also shows the 1514 form. Port 1514 carries the audit lines, which include the request bodies of change operations, unencrypted between ONTAP and the endpoint inside the VPC. Keeping 6514 avoids that, and you may then have to make TLS delivery work in your environment; using 1514 trades encryption in transit for a path that delivered in this run. That choice is a security decision for your environment. Whichever port you use, run [Check That Lines Arrive](#check-that-lines-arrive) before relying on the destination.
 
 ### Option A: REST API (recommended for automation)
 
@@ -175,14 +171,15 @@ An empty list a few minutes after the destination was created means the new dest
 | TCP+TLS | 6514 | `tcp-encrypted` | Production, once you have confirmed that lines arrive (see the note below) |
 | TCP Plaintext | 1514 | `tcp-unencrypted` | Validation, and the setting that delivered in the 2026-10-09 run |
 
-> **TLS delivery note**
->
-> Observed on 2026-10-09. With the destination addressed by the endpoint IP, port 6514 and `tcp_encrypted`, the `POST` returned 201 and ONTAP set `verify_server: true`, but nothing reached the log group in about 4 minutes, and ONTAP wrote no EMS event about it. Addressing it by `syslog-logs.<region>.amazonaws.com` instead was rejected with "Cannot resolve the destination host", because the cluster could not resolve that name. Port 1514 with `tcp_unencrypted` delivered its first line about 3 seconds after it was created. The cause is inferred, not confirmed: ONTAP's certificate check cannot match an IP address against the endpoint certificate's name. After creating a destination, check that its own audit line arrives before relying on it ([Check That Lines Arrive](#check-that-lines-arrive)).
+> **TLS delivery note:** Observed on 2026-10-09. With the destination addressed by the endpoint IP, port 6514 and `tcp_encrypted`, the `POST` returned 201 and ONTAP set `verify_server: true`, but nothing reached the log group in about 4 minutes, and ONTAP wrote no EMS event about it. Addressing it by `syslog-logs.<region>.amazonaws.com` instead was rejected with "Cannot resolve the destination host", because the cluster could not resolve that name. Port 1514 with `tcp_unencrypted` delivered its first line about 3 seconds after it was created. The cause is inferred, not confirmed: ONTAP's certificate check cannot match an IP address against the endpoint certificate's name. After creating a destination, check that its own audit line arrives before relying on it ([Check That Lines Arrive](#check-that-lines-arrive)).
 
-> **Production security hardening**:
-> - Restrict Security Group source to FSx subnet CIDR (not full VPC CIDR)
-> - Use Secrets Manager for credentials (not inline `curl -u`)
-> - Prefer `tcp-encrypted` (port 6514) in production, and confirm that lines arrive (see the TLS delivery note above)
+> **Production security hardening:** apply the following three measures in production.
+>
+> | Measure | Detail |
+> |---------|--------|
+> | Restrict the Security Group source to the FSx subnet CIDR | Narrow the template default VPC CIDR (`10.0.0.0/16`) to the subnet CIDR where FSx for ONTAP sits (e.g. `10.0.3.0/24`). |
+> | Use Secrets Manager for credentials | Passing a password on the command line (`curl -u fsxadmin:<PASSWORD>`) is for verification only. In production, read it from Secrets Manager and pass it via an environment variable. |
+> | Use TLS | Prefer `tcp-encrypted` (port 6514) in production and confirm that lines arrive (see the TLS delivery note above). Even inside PrivateLink, encryption is recommended as defense in depth. |
 
 ---
 
@@ -275,9 +272,7 @@ aws fsx update-file-system \
 
 ### Security Group Caveat
 
-> **Finding from verification**
->
-> The FSx for ONTAP node ENIs use an internal security group that is not the one you assigned to the file system. Specifying "inbound from the FSx security group" as the source on the VPC endpoint's security group therefore **does not work**. Use the **VPC CIDR** as the source instead.
+> **Finding from verification:** The FSx for ONTAP node ENIs use an internal security group that is not the one you assigned to the file system. Specifying "inbound from the FSx security group" as the source on the VPC endpoint's security group therefore **does not work**. Use the **VPC CIDR** as the source instead.
 
 ---
 
@@ -344,20 +339,18 @@ aws cloudwatch put-metric-alarm \
 | `SyslogMessagesDropped` | Messages dropped because delivery failed | > 0 (5 min) |
 | `IncomingLogEvents` | Received log events | < 1 (1 hour) detects "logs stopped arriving" |
 
-> **Syslog metrics note**
->
-> Observed on 2026-10-09. During that run, `AWS/Logs` had `SyslogConnectionsEstablished` and `SyslogConnectionsClosed` with no dimension, and `SyslogMessagesReceived` per log group. There was no `SyslogMessagesDropped` series, including at the 3 losses described in [First Operation Lost After an Idle Connection](#first-operation-lost-after-an-idle-connection), so the alarm above would not have caught them.
+> **Syslog metrics note:** Observed on 2026-10-09. During that run, `AWS/Logs` had `SyslogConnectionsEstablished` and `SyslogConnectionsClosed` with no dimension, and `SyslogMessagesReceived` per log group. There was no `SyslogMessagesDropped` series, including at the 3 losses described in [First Operation Lost After an Idle Connection](#first-operation-lost-after-an-idle-connection), so the alarm above would not have caught them.
 
-> **Tip**
->
-> The ONTAP fsx-control-plane runs periodic access checks, so logs normally arrive continuously for the cluster as a whole. That does not hold per node: on 2026-10-09 one node sent nothing for about 4–5 minutes three times, and the first operation after each quiet period was lost ([First Operation Lost After an Idle Connection](#first-operation-lost-after-an-idle-connection)). More than an hour with no logs at all suggests a problem with the VPCE connection or the ONTAP configuration.
+> **Tip:** The ONTAP fsx-control-plane runs periodic access checks, so logs normally arrive continuously for the cluster as a whole. That does not hold per node: on 2026-10-09 one node sent nothing for about 4–5 minutes three times, and the first operation after each quiet period was lost ([First Operation Lost After an Idle Connection](#first-operation-lost-after-an-idle-connection)). More than an hour with no logs at all suggests a problem with the VPCE connection or the ONTAP configuration.
 
 ### Other Next Steps
 
-- **CloudWatch Alarms** — detect specific operations (privilege escalation, user creation) with metric filters, for example with the Terraform module [`terraform/fsxn-log-alarm/`](../../terraform/fsxn-log-alarm/README.md); check its verification status before using the default patterns
-- **Subscription Filter** — CloudWatch Logs → Lambda → Datadog/Splunk/SIEM for secondary delivery
-- **S3 Export** — export to S3 for long-term retention (can transition to Glacier)
-- **CloudWatch Logs Insights** — analysis queries over admin operations
+| Capability | Use |
+|------------|-----|
+| CloudWatch Alarms | Detect specific operations (privilege escalation, user creation) with metric filters, for example with the Terraform module [`terraform/fsxn-log-alarm/`](../../terraform/fsxn-log-alarm/README.md); check its verification status before using the default patterns |
+| Subscription Filter | CloudWatch Logs → Lambda → Datadog/Splunk/SIEM for secondary delivery |
+| S3 Export | Export to S3 for long-term retention (can transition to Glacier) |
+| CloudWatch Logs Insights | Analysis queries over admin operations |
 
 ### CloudWatch Logs Insights Query Examples
 

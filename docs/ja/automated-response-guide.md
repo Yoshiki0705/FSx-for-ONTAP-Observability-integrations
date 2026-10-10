@@ -6,11 +6,9 @@
 
 本ガイドでは、Amazon FSx for NetApp ONTAP に対する自動ストレージ層アクセス遮断（ユーザーブロック、IP ブロック、保護 Snapshot）を、AWS ネイティブの検知サービスと ONTAP REST API の応答アクションを組み合わせて実装する方法を解説します。専用のストレージセキュリティ製品と同等の封じ込めフェーズの能力を、AWS エコシステムとサードパーティ Observability プラットフォーム内で実現します。
 
-> **スコープに関する注記**
->
-> 本モジュールが自動化するのは NIST SP 800-61 における「封じ込め（Containment）」フェーズのうち、ストレージ層でのアクセス遮断と証拠保全のみです。侵害端末の隔離、マルウェア除去、認証情報のローテーション、他システムへの横展開の遮断（根絶・復旧フェーズ）は範囲外であり、引き続き人間の判断または他の IR ツールが必要です。
+> **スコープに関する注記:** 本モジュールが自動化するのは NIST SP 800-61 における「封じ込め（Containment）」フェーズのうち、ストレージ層でのアクセス遮断と証拠保全のみです。侵害端末の隔離、マルウェア除去、認証情報のローテーション、他システムへの横展開の遮断（根絶・復旧フェーズ）は範囲外であり、引き続き人間の判断または他の IR ツールが必要です。
 
-**主要機能:**
+### 主要機能
 - ONTAP name-mapping による SMB ユーザーブロック（全ボリュームでアクセス拒否）
 - export-policy ルールによる NFS IP ブロック
 - 証拠保全のための保護 Snapshot 作成（ストーム防止クールダウン付き）
@@ -22,7 +20,7 @@
 - E2E（検知 → ルーティング → 応答）: **2 分以内**（通常）、**3 分以内**（worst-case: Lambda コールドスタート + VPC ENI アタッチ込み）
 - SMB ブロック有効化: 次回認証試行時に即座に拒否（既存セッションはトークン期限切れまたはセッション切断まで継続）
 
-**検知ソース（任意の組み合わせ）:**
+### 検知ソース（任意の組み合わせ）
 - CloudWatch Log Alarm（管理監査ログの異常検知）
 - EMS Webhook（ARP ランサムウェア検知、クォータイベント）
 - FPolicy 分析（大量削除、異常な拡張子変更）
@@ -118,9 +116,7 @@ ONTAP の name-mapping を利用します。win->unix マッピングを作成�
 
 **スコープ**: name-mapping は SVM 全体に作成され、win->unix マッピングを参照する全ボリュームに適用されます。アクセスを拒否するのは `unix` と `mixed` のセキュリティスタイルのボリュームのみです。`ntfs` スタイルのボリュームでは効果がありません — 代わりに認証を止めてください（AD アカウントを無効化する）。確立済みのセッションにはセッション切断を使います。`block_smb_user` は `status: mapping_created`（`blocked` ではない）と `access_denial_verified: False` を返します。マッピングが作成されたことは確認しますが、アクセスが拒否されたことは確認しません。測定済みの内容と未測定の内容は [セキュリティ補遺](automated-response-security-addendum.md) を参照してください。
 
-> **運用安全性に関する補足（position 1 挿入）**
->
-> 拒否マッピングはデフォルトで position 1 に挿入され、既存の name-mapping よりも *先に* 評価されます。サービスアカウントや自動化ワークフロー用の既存 name-mapping がある SVM では、新しいエントリがそれらを shadowing する可能性があります。常に `health_check` + 非本番ユーザーで事前テストしてください。誤ブロックを即座に解除するには: `./automated-response-cli.sh unblock-smb --domain <DOMAIN> --user <username>`。マルチテナント SVM では、あるテナントの侵害ユーザーをブロックした際に、より高い position の共有サービスアカウントに影響しないことを確認してください。
+> **運用安全性に関する補足（position 1 挿入）:** 拒否マッピングはデフォルトで position 1 に挿入され、既存の name-mapping よりも *先に* 評価されます。サービスアカウントや自動化ワークフロー用の既存 name-mapping がある SVM では、新しいエントリがそれらを shadowing する可能性があります。常に `health_check` + 非本番ユーザーで事前テストしてください。誤ブロックを即座に解除するには: `./automated-response-cli.sh unblock-smb --domain <DOMAIN> --user <username>`。マルチテナント SVM では、あるテナントの侵害ユーザーをブロックした際に、より高い position の共有サービスアカウントに影響しないことを確認してください。
 
 **解除**: name-mapping エントリを削除するとアクセスが復元されます。
 
@@ -184,25 +180,15 @@ aws cloudformation deploy \
 {"action": "unblock_nfs_ip_network", "svm_name": "svm-prod", "client_ip": "203.0.113.99"}
 ```
 
-> **スコープに関する補足**
->
-> NACL deny rule は指定 IP からサブネット全体への全トラフィックをブロックします（NFS ポート 2049 だけではない）。NFS ポートのみに制限する場合は SNS メッセージで `block_all_ports: false` を指定してください。ONTAP export-policy rule は NFS 固有でより粒度が細かいです。
+> **スコープに関する補足:** NACL deny rule は指定 IP からサブネット全体への全トラフィックをブロックします（NFS ポート 2049 だけではない）。NFS ポートのみに制限する場合は SNS メッセージで `block_all_ports: false` を指定してください。ONTAP export-policy rule は NFS 固有でより粒度が細かいです。
 
-> **クリーンアップに関する補足**
->
-> 本モジュールが作成する NACL ルールはルール番号 50-99 を使用します。この範囲外のルールは一切変更されません。`unblock_nfs_ip_network` または TTL 自動クリーンアップで削除します。
+> **クリーンアップに関する補足:** 本モジュールが作成する NACL ルールはルール番号 50-99 を使用します。この範囲外のルールは一切変更されません。`unblock_nfs_ip_network` または TTL 自動クリーンアップで削除します。
 
-> **VPC Endpoint の要件**
->
-> Lambda は EC2 API（`CreateNetworkAclEntry`）を呼び出して NACL ルールを管理します。VPC に NAT Gateway がある場合は自動的に動作します。ない場合は EC2 Interface VPC Endpoint（`com.amazonaws.<region>.ec2`）を追加してください。EC2 API へのアクセスがないと NACL ブロックはタイムアウトします（非致命的 — ONTAP export-policy ブロックはフォールバックとして成功します）。
+> **VPC Endpoint の要件:** Lambda は EC2 API（`CreateNetworkAclEntry`）を呼び出して NACL ルールを管理します。VPC に NAT Gateway がある場合は自動的に動作します。ない場合は EC2 Interface VPC Endpoint（`com.amazonaws.<region>.ec2`）を追加してください。EC2 API へのアクセスがないと NACL ブロックはタイムアウトします（非致命的 — ONTAP export-policy ブロックはフォールバックとして成功します）。
 
-> **NFSv4 リースに関する補足**
->
-> NFSv4 には内部的なリース管理がありますが、ONTAP は特定クライアントのリース強制取り消し用の REST API エンドポイントを公開していません。NACL アプローチはプロトコルバージョンに関係なく NFSv3/NFSv4 の両方で機能します。
+> **NFSv4 リースに関する補足:** NFSv4 には内部的なリース管理がありますが、ONTAP は特定クライアントのリース強制取り消し用の REST API エンドポイントを公開していません。NACL アプローチはプロトコルバージョンに関係なく NFSv3/NFSv4 の両方で機能します。
 
-> **影響範囲に関する補足**
->
-> デフォルトでは NACL ルールは指定 IP からの全プロトコルをブロックします（NFS ポート 2049 だけではない）。ブロック対象の IP がモニタリングや管理にも使われている場合は、SNS メッセージで `"block_all_ports": false` を指定して NFS ポートのみに制限してください。
+> **影響範囲に関する補足:** デフォルトでは NACL ルールは指定 IP からの全プロトコルをブロックします（NFS ポート 2049 だけではない）。ブロック対象の IP がモニタリングや管理にも使われている場合は、SNS メッセージで `"block_all_ports": false` を指定して NFS ポートのみに制限してください。
 
 ---
 
@@ -223,13 +209,9 @@ aws cloudformation deploy \
 | SIEM 連携 | 限定的なエクスポート | ネイティブ（検知が SIEM から発生） |
 | コストモデル | ノード単位ライセンス | 従量課金（Lambda 実行回数） |
 
-> **運用に関する補足**
->
-> 基盤となる ONTAP メカニズムは同一です。両方のアプローチが同じ REST API エンドポイントを使用します。違いは検知インテリジェンスの配置場所です。専用製品は ML を SaaS に組み込み、本アプローチは利用者が選択した Observability プラットフォームに検知を委ねます。
+> **運用に関する補足:** 基盤となる ONTAP メカニズムは同一です。両方のアプローチが同じ REST API エンドポイントを使用します。違いは検知インテリジェンスの配置場所です。専用製品は ML を SaaS に組み込み、本アプローチは利用者が選択した Observability プラットフォームに検知を委ねます。
 
-> **セキュリティアーキテクチャに関する補足**
->
-> AWS ネイティブの検知は、ストレージ専用ソリューションでは相関できない広範な攻撃コンテキスト（VPC Flow Logs、CloudTrail、GuardDuty findings）を提供します。既存の SIEM 投資がある組織にとって、これはセキュリティ運用ワークフローの自然な拡張です。
+> **セキュリティアーキテクチャに関する補足:** AWS ネイティブの検知は、ストレージ専用ソリューションでは相関できない広範な攻撃コンテキスト（VPC Flow Logs、CloudTrail、GuardDuty findings）を提供します。既存の SIEM 投資がある組織にとって、これはセキュリティ運用ワークフローの自然な拡張です。
 
 ---
 
@@ -237,11 +219,13 @@ aws cloudformation deploy \
 
 ### ONTAP バージョン
 
-- **FSx for ONTAP** — 現在サポートされている全バージョン（ONTAP 9.11.1+）
-- **Name-mapping REST API** — ONTAP 9.6+ から利用可能
-- **Export-policy REST API** — ONTAP 9.6+ から利用可能
-- **CIFS sessions REST API** — ONTAP 9.8+ から利用可能
-- **ARP (Autonomous Ransomware Protection)** — 世代は ONTAP の版とボリューム種別の 2 軸で決まります。旧世代 ARP は FlexVol の 9.10.1〜9.15.1 と FlexGroup の 9.13.1〜9.17.1 で、NAS FlexVol では 30 日の学習期間があります。ARP/AI は FlexVol の 9.16.1 以降と FlexGroup の 9.18.1 以降で、学習期間はありません。[Adoption Playbook の ARP の世代の表](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md)を参照
+| コンポーネント | 対応バージョン |
+|---------------|---------------|
+| FSx for ONTAP | 現在サポートされている全バージョン（ONTAP 9.11.1+） |
+| Name-mapping REST API | ONTAP 9.6+ から利用可能 |
+| Export-policy REST API | ONTAP 9.6+ から利用可能 |
+| CIFS sessions REST API | ONTAP 9.8+ から利用可能 |
+| ARP (Autonomous Ransomware Protection) | 世代は ONTAP の版とボリューム種別の 2 軸で決まります。旧世代 ARP は FlexVol の 9.10.1〜9.15.1 と FlexGroup の 9.13.1〜9.17.1 で、NAS FlexVol では 30 日の学習期間があります。ARP/AI は FlexVol の 9.16.1 以降と FlexGroup の 9.18.1 以降で、学習期間はありません。[Adoption Playbook の ARP の世代の表](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md)を参照 |
 
 ### ONTAP 権限
 
@@ -274,9 +258,7 @@ Lambda 関数は以下の VPC 内にデプロイする必要があります:
 | クロス VPC（該当する場合） | VPC ピアリングまたは Transit Gateway ルート + SG 参照 |
 | 同一 VPC 異なるサブネット | NACL がサブネット間の TCP 443 をブロックしていないか確認 |
 
-> **TLS に関する注記**
->
-> デフォルトのモジュール設定は証明書検証を無効にしています（`CERT_NONE`）。本番環境では FSx for ONTAP の CA 証明書を取得し、`CA_CERT_PATH` 環境変数で指定してください。証明書取得方法: `security certificate show -type root-ca -vserver <svm>`（ONTAP CLI）。
+> **TLS に関する注記:** デフォルトのモジュール設定は証明書検証を無効にしています（`CERT_NONE`）。本番環境では FSx for ONTAP の CA 証明書を取得し、`CA_CERT_PATH` 環境変数で指定してください。証明書取得方法: `security certificate show -type root-ca -vserver <svm>`（ONTAP CLI）。
 
 ### Secrets Manager
 
@@ -370,13 +352,9 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-> **`SharedPythonLayerArn` パラメータ（新規）**
->
-> `ontap_response.py` を含む `fsxn-shared-python` Lambda Layer の ARN を指定します。未指定の場合、ハンドラーは `ModuleNotFoundError` で失敗します。事前に `bash shared/python/build-layer.sh` でビルド・発行してください。
+> **`SharedPythonLayerArn` パラメータ（新規）:** `ontap_response.py` を含む `fsxn-shared-python` Lambda Layer の ARN を指定します。未指定の場合、ハンドラーは `ModuleNotFoundError` で失敗します。事前に `bash shared/python/build-layer.sh` でビルド・発行してください。
 
-> **`CreateVpcEndpoints` パラメータ**
->
-> Secrets Manager と SNS のインターフェース VPC Endpoint をデフォルトで作成します。VPC 内の Lambda は VPC Endpoint（または NAT Gateway）なしでは AWS API に到達**できません**。既にこれらの VPC Endpoint がある場合は `false` に設定してください。VPC に NAT Gateway がある場合も `false` にすることで追加の ~$14/月 を避けられます。
+> **`CreateVpcEndpoints` パラメータ:** Secrets Manager と SNS のインターフェース VPC Endpoint をデフォルトで作成します。VPC 内の Lambda は VPC Endpoint（または NAT Gateway）なしでは AWS API に到達**できません**。既にこれらの VPC Endpoint がある場合は `false` に設定してください。VPC に NAT Gateway がある場合も `false` にすることで追加の ~$14/月 を避けられます。
 
 ### デプロイ後: Lambda Layer の接続
 
@@ -430,13 +408,13 @@ aws logs filter-log-events \
 
 デプロイ後、トリガー SNS トピックに検知ソースをサブスクライブします:
 
-**CloudWatch Log Alarm → SNS:**
+#### CloudWatch Log Alarm → SNS
 ```bash
 # The Log Alarm's action points to the trigger topic
 # (configured during Log Alarm creation)
 ```
 
-**SIEM / Observability プラットフォーム → SNS:**
+#### SIEM / Observability プラットフォーム → SNS
 
 | プラットフォーム | 接続方法 |
 |-------------|---------|
@@ -448,7 +426,7 @@ aws logs filter-log-events \
 | PagerDuty | Event Orchestration → Custom Action → Lambda → SNS |
 | 任意のプラットフォーム | HTTP Webhook → Lambda → SNS publish |
 
-**手動テスト実行:**
+#### 手動テスト実行
 ```bash
 aws sns publish \
   --topic-arn <TriggerTopicArn from stack outputs> \
@@ -534,9 +512,7 @@ aws sns publish \
 | severity | いいえ（推奨） | `critical` / `high` / `medium` / `low` |
 | trigger_id | いいえ | SNS MessageId または上流の相関 ID |
 
-> **コンプライアンス補足（HIPAA/FISC/SOC2）**
->
-> 規制環境では、常に `incident_id`、`detection_source`、`severity` を含めてください。これらのフィールドは CloudWatch Logs と通知メッセージにパススルーされ、監査証跡を形成します。
+> **コンプライアンス補足（HIPAA/FISC/SOC2）:** 規制環境では、常に `incident_id`、`detection_source`、`severity` を含めてください。これらのフィールドは CloudWatch Logs と通知メッセージにパススルーされ、監査証跡を形成します。
 
 ---
 
@@ -551,9 +527,7 @@ ARP は 2 つの重大度レベルでイベントを発火します。**`alert`�
 | `alert` | 高（ファイル改ざん + 暗号化確認済み） | ✅ 自動封じ込め (`contain_smb_threat`) | 高信頼度、被害進行中 |
 | `warning` | 中（疑わしいが未確認） | ⚠️ 通知のみ（自動ブロック禁止） | 誤検知の可能性（旧世代 ARP の学習期間中は特に多い） |
 
-> **ARP 学習期間**
->
-> 学習期間があるのは旧世代 ARP だけです。NAS FlexVol では行動ベースラインの構築に 30 日を要します。ARP/AI（FlexVol は 9.16.1 以降、FlexGroup は 9.18.1 以降）には学習期間がなく、有効化した直後から保護します（上記「前提条件」を参照）。学習期間中は `warning` イベントが頻発し、多くは良性です（大量ファイル変換、バックアップソフトウェア）。`warning` で自動ブロックすると正当なユーザーを妨害します。
+> **ARP 学習期間:** 学習期間があるのは旧世代 ARP だけです。NAS FlexVol では行動ベースラインの構築に 30 日を要します。ARP/AI（FlexVol は 9.16.1 以降、FlexGroup は 9.18.1 以降）には学習期間がなく、有効化した直後から保護します（上記「前提条件」を参照）。学習期間中は `warning` イベントが頻発し、多くは良性です（大量ファイル変換、バックアップソフトウェア）。`warning` で自動ブロックすると正当なユーザーを妨害します。
 
 **検知ルール設定例（任意の SIEM）**:
 ```
@@ -647,24 +621,22 @@ export-policy rule delete -vserver <svm> -policyname <policy> -ruleindex <index>
 | 保護対象アカウントへのブロック試行 | CloudWatch Logs フィルタ `Cannot block protected account`（`_validate_username` からの HTTP 403） | > 0 — 即時調査 |
 | ブロック発生率（プロトコル問わず） | Lambda 呼び出し回数からのカスタムメトリクス | 想定インシデント発生率を超えたらアラーム — [自動応答セキュリティ補遺](automated-response-security-addendum.md)の「10. レート制限 & スケーラビリティ」セクションを参照 |
 
-> **インシデント対応に関する補足**
+> **インシデント対応に関する補足:** 保護対象アカウント（`fsxadmin`、`administrator`、または `PROTECTED_ACCOUNTS_EXTRA` に登録されたエントリ）へのブロック試行が拒否された場合、それ自体が調査に値する信号です。誤った ID を指す検知ルールの設定ミス、または攻撃者が応答パイプライン自体を悪用して正当な管理者をロックアウトしようとしている可能性を示唆します。ログに記録するだけでなく、この状態にアラートを設定してください。
 >
-> 保護対象アカウント（`fsxadmin`、`administrator`、または `PROTECTED_ACCOUNTS_EXTRA` に登録されたエントリ）へのブロック試行が拒否された場合、それ自体が調査に値する信号です。誤った ID を指す検知ルールの設定ミス、または攻撃者が応答パイプライン自体を悪用して正当な管理者をロックアウトしようとしている可能性を示唆します。ログに記録するだけでなく、この状態にアラートを設定してください。
->
-> **信頼性に関する補足**
->
-> 過剰に反応する自動応答システムは、それ自体が自己誘発型のサービス拒否ベクターになり得ます（例: ノイズの多い検知ルールが短時間で多数のユーザーに対して `contain_smb_threat` を発火させる）。失敗だけでなく呼び出し/ブロック発生率にもアラームを設定し、暴走した検知ソースが大量のユーザーをロックアウトする前に検知できるようにしてください。
+> **信頼性に関する補足:** 過剰に反応する自動応答システムは、それ自体が自己誘発型のサービス拒否ベクターになり得ます（例: ノイズの多い検知ルールが短時間で多数のユーザーに対して `contain_smb_threat` を発火させる）。失敗だけでなく呼び出し/ブロック発生率にもアラームを設定し、暴走した検知ソースが大量のユーザーをロックアウトする前に検知できるようにしてください。
 
 ---
 
 ## セキュリティ考慮事項
 
-- **最小権限** — Lambda ロールは Secrets Manager（読取）、SNS（発行）、ONTAP への VPC ネットワークアクセスのみ。広範な IAM 権限なし。
-- **認証情報ローテーション** — Secrets Manager の自動ローテーションを ONTAP 認証情報に使用。
-- **監査証跡** — 全アクションは CloudWatch Logs に相関 ID 付きで記録。
-- **クールダウン保護** — Snapshot 作成に設定可能なクールダウン（デフォルト 15 分）を適用し、持続的攻撃時のストレージ枯渇を防止。
-- **マーカーベースのクリーンアップ** — 全応答ルールに `fsxn_auto_response` マーカーを含め、安全な識別と一括削除を実現。
-- **時間制限付きブロック** — 付随する [`automated-response-ttl.yaml`](../../shared/templates/automated-response-ttl.yaml) スタックをデプロイすると、EventBridge Scheduler により設定可能な期間後にブロックを自動解除できます。未デプロイの場合、ブロックは手動で解除するまで残り続けます — この挙動が環境として許容できるか、デプロイ計画時に判断してください。
+| 項目 | 内容 |
+|------|------|
+| 最小権限 | Lambda ロールは Secrets Manager（読取）、SNS（発行）、ONTAP への VPC ネットワークアクセスのみ。広範な IAM 権限なし。 |
+| 認証情報ローテーション | Secrets Manager の自動ローテーションを ONTAP 認証情報に使用。 |
+| 監査証跡 | 全アクションは CloudWatch Logs に相関 ID 付きで記録。 |
+| クールダウン保護 | Snapshot 作成に設定可能なクールダウン（デフォルト 15 分）を適用し、持続的攻撃時のストレージ枯渇を防止。 |
+| マーカーベースのクリーンアップ | 全応答ルールに `fsxn_auto_response` マーカーを含め、安全な識別と一括削除を実現。 |
+| 時間制限付きブロック | 付随する [`automated-response-ttl.yaml`](../../shared/templates/automated-response-ttl.yaml) スタックをデプロイすると、EventBridge Scheduler により設定可能な期間後にブロックを自動解除できます。未デプロイの場合、ブロックは手動で解除するまで残り続けます — この挙動が環境として許容できるか、デプロイ計画時に判断してください。 |
 
 ---
 
@@ -789,9 +761,7 @@ aws lambda delete-layer-version --layer-name fsxn-shared-python --version-number
 | 全ブロックが早期に削除される | TTL Lambda が全レスポンスマーカー付きブロックを削除 | 下記「TTL の制限事項」参照 |
 | クリーンアップ Lambda エラー | TTL Lambda から ONTAP に到達不可 | メイン Lambda と同じ VPC/SG 要件 |
 
-> **TTL の制限事項**
->
-> 現在の TTL 実装は、各実行時に `fsxn_auto_response` マーカーを持つ ALL ブロックを作成時刻に関係なく削除します。ONTAP の name-mapping エントリは作成タイムスタンプを持ちません。正確な時間ベースの TTL 実施には、ブロック作成時刻を記録する DynamoDB テーブルを実装し、TTL Lambda がそのテーブルを確認してから削除する必要があります。将来の拡張として追跡中です。
+> **TTL の制限事項:** 現在の TTL 実装は、各実行時に `fsxn_auto_response` マーカーを持つ ALL ブロックを作成時刻に関係なく削除します。ONTAP の name-mapping エントリは作成タイムスタンプを持ちません。正確な時間ベースの TTL 実施には、ブロック作成時刻を記録する DynamoDB テーブルを実装し、TTL Lambda がそのテーブルを確認してから削除する必要があります。将来の拡張として追跡中です。
 
 ---
 
@@ -807,13 +777,13 @@ aws lambda delete-layer-version --layer-name fsxn-shared-python --version-number
 
 ## FAQ
 
-**Q: これは DII Storage Workload Security を完全に置き換えますか？**
+**Q:** これは DII Storage Workload Security を完全に置き換えますか？
 A: ストレージ層での同じ *封じ込めフェーズのアクション*（ブロック/Snapshot/切断）を提供します。検知インテリジェンスは異なります: DII は内蔵のユーザー別 ML ベースラインを使用し、本アプローチは利用者が選択した SIEM の分析機能を使用します。本モジュールも DII も根絶・復旧（侵害端末の隔離、マルウェア除去、認証情報のローテーション）は行いません — どちらも封じ込めフェーズのツールであり、インシデント対応ライフサイクルの残りの部分には引き続き人間または別の IR ツールが必要です。既存の SIEM 投資がある組織では、組み合わせアプローチにより、ストレージ単体の検知よりも広い検知文脈（ネットワーク + アプリケーション + ストレージ）を提供できます。
 
-**Q: Lambda が ONTAP に到達できない場合はどうなりますか？**
+**Q:** Lambda が ONTAP に到達できない場合はどうなりますか？
 A: 実行が失敗し、メッセージが DLQ に入り、DLQ アラームが発火します。ネットワーク接続性（Security Group、ルートテーブル、ONTAP 管理 LIF の状態）を調査してください。
 
-**Q: 複数の SVM で同時にユーザーをブロックできますか？**
+**Q:** 複数の SVM で同時にユーザーをブロックできますか？
 A: SVM ごとに 1 つの SNS メッセージを送信してください。複合アクションは 1 回の実行で単一 SVM を対象とします。マルチ SVM ブロックには、以下の Step Functions ファンアウトパターンまたは CLI ループを使用:
 
 ```
@@ -838,13 +808,13 @@ export RESPONSE_TOPIC_ARN="arn:aws:sns:ap-northeast-1:123456789012:fsxn-automate
   --reason "ARP detection - multi-SVM block"
 ```
 
-**Q: ブロックはどのくらいの速さで有効になりますか？**
+**Q:** ブロックはどのくらいの速さで有効になりますか？
 A: SMB name-mapping ブロックは新しい接続に対して即時有効です。既存セッションは切断されるまでアクティブのままです（`contain_smb_threat` アクションがこれを処理します）。NFS export-policy ルールは新しいマウントに対して即時有効ですが、既存マウントはキャッシュの有効期限切れが必要な場合があります。
 
-**Q: 正当なユーザーをブロックしてしまうリスクはありますか？**
+**Q:** 正当なユーザーをブロックしてしまうリスクはありますか？
 A: はい — これは全ての自動応答システムに共通です。対策: (1) 検知閾値を保守的に設定、(2) 通知トピックでオペレーターに即時通知、(3) 自動解除付きの時間制限ブロックの実装、(4) 迅速な手動解除の手順書を整備。
 
-**Q: 本モジュールは AWS Backup の論理エアギャップボールトへのコピージョブに干渉しますか？**
+**Q:** 本モジュールは AWS Backup の論理エアギャップボールトへのコピージョブに干渉しますか？
 A: 現状のコードでは干渉しません。本モジュールのテンプレートと Lambda は ONTAP の name-mapping、export policy、NACL、セッションのみを操作し、AWS RAM の共有、AWS Backup のボールト、KMS のグラントには触れないため、ボールトへのコピーに反応しません。論理エアギャップボールトへのコピー中、CloudTrail には `userIdentity.invokedBy` が `backup.amazonaws.com` のイベントが記録されます。本モジュールを将来拡張してアカウント外への共有を取り消す、または RAM の共有を変更する場合は、`userIdentity.invokedBy = backup.amazonaws.com` を除外し、自動修復がボールトのコピージョブを失敗させないようにしてください。Cyber Resilience Patterns リポジトリの[自動修復との干渉](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/data-protection/aws-backup-logically-air-gapped-vault.md#%E8%87%AA%E5%8B%95%E4%BF%AE%E5%BE%A9%E3%81%A8%E3%81%AE%E5%B9%B2%E6%B8%89--interaction-with-automated-remediation)を参照してください。
 
 ---

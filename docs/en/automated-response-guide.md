@@ -8,7 +8,7 @@ This guide describes how to implement automated storage-layer access blocking fo
 
 > **Scope note**: This module automates the *containment* phase (NIST SP 800-61) at the storage layer only — blocking access and preserving evidence. Host isolation, malware removal, credential rotation, and blocking lateral movement to other systems (eradication/recovery) are out of scope and still require human judgment or another IR tool.
 
-**Key capabilities:**
+### Key capabilities
 - Block compromised SMB users via ONTAP name-mapping (access denied across all volumes)
 - Block attacker IPs from NFS access via export-policy rules
 - Create protective snapshots for evidence preservation (with storm-prevention cooldown)
@@ -20,7 +20,7 @@ This guide describes how to implement automated storage-layer access blocking fo
 - End-to-end (detection → routing → response): **under 2 minutes** (typical), **under 3 minutes** (worst-case with Lambda cold start + VPC ENI attach)
 - SMB block effective: immediately on next authentication attempt (existing sessions continue until token expiry or session disconnect)
 
-**Detection sources (any combination):**
+### Detection sources (any combination)
 - CloudWatch Log Alarm (admin audit log anomalies)
 - EMS Webhook (ARP ransomware detection, quota events)
 - FPolicy analytics (mass deletion, abnormal extension changes)
@@ -228,11 +228,13 @@ Dedicated storage security products (such as DII Storage Workload Security) prov
 
 ### ONTAP Version
 
-- **FSx for ONTAP**: All currently supported versions (ONTAP 9.11.1+)
-- **Name-mapping REST API**: Available from ONTAP 9.6+
-- **Export-policy REST API**: Available from ONTAP 9.6+
-- **CIFS sessions REST API**: Available from ONTAP 9.8+
-- **ARP (Autonomous Ransomware Protection)**: the generation depends on both ONTAP version and volume type. Older-generation ARP runs on FlexVol 9.10.1-9.15.1 and FlexGroup 9.13.1-9.17.1, with a 30-day learning period on a NAS FlexVol. ARP/AI runs on FlexVol from 9.16.1 and FlexGroup from 9.18.1, with no learning period. See the [ARP generation table in the Adoption Playbook](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md) (Japanese)
+| Component | Supported version |
+|-----------|-------------------|
+| FSx for ONTAP | All currently supported versions (ONTAP 9.11.1+) |
+| Name-mapping REST API | Available from ONTAP 9.6+ |
+| Export-policy REST API | Available from ONTAP 9.6+ |
+| CIFS sessions REST API | Available from ONTAP 9.8+ |
+| ARP (Autonomous Ransomware Protection) | The generation depends on both ONTAP version and volume type. Older-generation ARP runs on FlexVol 9.10.1-9.15.1 and FlexGroup 9.13.1-9.17.1, with a 30-day learning period on a NAS FlexVol. ARP/AI runs on FlexVol from 9.16.1 and FlexGroup from 9.18.1, with no learning period. See the [ARP generation table in the Adoption Playbook](https://github.com/Yoshiki0705/FSx-for-ONTAP-Adoption-Playbook/blob/main/docs/ja/domains/data-protection/notes/snaplock-and-layered-ransomware-readiness.md) (Japanese) |
 
 ### ONTAP Permissions
 
@@ -416,13 +418,13 @@ aws logs filter-log-events \
 
 After deployment, subscribe the trigger SNS topic to your detection sources:
 
-**CloudWatch Log Alarm → SNS:**
+#### CloudWatch Log Alarm → SNS
 ```bash
 # The Log Alarm's action points to the trigger topic
 # (configured during Log Alarm creation)
 ```
 
-**SIEM / Observability Platform → SNS:**
+#### SIEM / Observability Platform → SNS
 
 | Platform | How to Connect |
 |----------|---------------|
@@ -434,7 +436,7 @@ After deployment, subscribe the trigger SNS topic to your detection sources:
 | PagerDuty | Event Orchestration → Custom Action → SNS publish via Lambda |
 | Any platform | HTTP webhook → Lambda → SNS publish |
 
-**Manual test invocation:**
+#### Manual test invocation
 ```bash
 aws sns publish \
   --topic-arn <TriggerTopicArn from stack outputs> \
@@ -640,12 +642,14 @@ export-policy rule delete -vserver <svm> -policyname <policy> -ruleindex <index>
 
 ## Security Considerations
 
-- **Least privilege**: The Lambda role only has access to Secrets Manager (read), SNS (publish), and VPC network access to ONTAP. No broad IAM permissions.
-- **Credential rotation**: Use Secrets Manager auto-rotation for ONTAP credentials.
-- **Audit trail**: All actions are logged in CloudWatch Logs with correlation IDs.
-- **Cooldown protection**: Snapshot creation has a configurable cooldown (default 15 min) to prevent storage exhaustion during sustained attacks.
-- **Marker-based cleanup**: All response rules include `fsxn_auto_response` marker for safe identification and bulk removal.
-- **Time-limited blocks**: Deploy the companion [`automated-response-ttl.yaml`](../../shared/templates/automated-response-ttl.yaml) stack to auto-remove blocks after a configurable duration via EventBridge Scheduler. Without it, blocks persist until manually removed — decide during deployment planning whether that is acceptable for your environment.
+| Item | Detail |
+|------|--------|
+| Least privilege | The Lambda role only has access to Secrets Manager (read), SNS (publish), and VPC network access to ONTAP. No broad IAM permissions. |
+| Credential rotation | Use Secrets Manager auto-rotation for ONTAP credentials. |
+| Audit trail | All actions are logged in CloudWatch Logs with correlation IDs. |
+| Cooldown protection | Snapshot creation has a configurable cooldown (default 15 min) to prevent storage exhaustion during sustained attacks. |
+| Marker-based cleanup | All response rules include `fsxn_auto_response` marker for safe identification and bulk removal. |
+| Time-limited blocks | Deploy the companion [`automated-response-ttl.yaml`](../../shared/templates/automated-response-ttl.yaml) stack to auto-remove blocks after a configurable duration via EventBridge Scheduler. Without it, blocks persist until manually removed — decide during deployment planning whether that is acceptable for your environment. |
 
 ---
 
@@ -780,13 +784,13 @@ This solution was E2E verified on:
 
 ## FAQ
 
-**Q: Does this replace DII Storage Workload Security entirely?**
+**Q:** Does this replace DII Storage Workload Security entirely?
 A: It provides the same *containment-phase actions* (block/snapshot/disconnect) at the storage layer. Detection intelligence differs: DII uses built-in per-user ML baselines, while this approach uses your chosen SIEM's analytics capabilities. Neither this module nor DII performs eradication or recovery (host isolation, malware removal, credential rotation) — both are containment-phase tools; the rest of the incident response lifecycle still requires a human or a separate IR tool. For organizations with existing SIEM investments, the combined approach can provide broader detection context (network + application + storage) than storage-only detection.
 
-**Q: What happens if the Lambda cannot reach ONTAP?**
+**Q:** What happens if the Lambda cannot reach ONTAP?
 A: The invocation fails, the message goes to the DLQ, and the DLQ alarm fires. Investigate network connectivity (Security Group, route tables, ONTAP management LIF status).
 
-**Q: Can I block a user across multiple SVMs simultaneously?**
+**Q:** Can I block a user across multiple SVMs simultaneously?
 A: Send one SNS message per SVM. The composite actions operate on a single SVM per invocation. For multi-SVM blocking, publish multiple messages or use the Step Functions fan-out pattern below:
 
 ```
@@ -811,13 +815,13 @@ export RESPONSE_TOPIC_ARN="arn:aws:sns:ap-northeast-1:123456789012:fsxn-automate
   --reason "ARP detection - multi-SVM block"
 ```
 
-**Q: How quickly does the block take effect?**
+**Q:** How quickly does the block take effect?
 A: SMB name-mapping blocks are effective immediately for new connections. Existing sessions remain active until disconnected (the `contain_smb_threat` action handles this). NFS export-policy rules are effective immediately for new mounts; existing mounts may require cache expiry.
 
-**Q: Is there a risk of blocking legitimate users?**
+**Q:** Is there a risk of blocking legitimate users?
 A: Yes — this is true for any automated response system. Mitigations: (1) set detection thresholds conservatively, (2) use the notification topic to alert operators immediately, (3) implement time-limited blocks with auto-unblock, (4) maintain a runbook for rapid manual reversal.
 
-**Q: Does this module interfere with an AWS Backup logically air-gapped vault copy job?**
+**Q:** Does this module interfere with an AWS Backup logically air-gapped vault copy job?
 A: Not as written. The templates and Lambda functions in this module act on ONTAP name-mapping, export policies, NACLs, and sessions only; they do not touch AWS RAM shares, AWS Backup vaults, or KMS grants, so they do not react to vault copy activity. During a copy into a logically air-gapped vault, CloudTrail records events with `userIdentity.invokedBy` set to `backup.amazonaws.com`. If you ever extend this module to revoke external resource sharing or modify RAM shares, exclude `userIdentity.invokedBy = backup.amazonaws.com` so that remediation does not fail a vault copy job. See [Interaction with Automated Remediation](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/data-protection/aws-backup-logically-air-gapped-vault.md#%E8%87%AA%E5%8B%95%E4%BF%AE%E5%BE%A9%E3%81%A8%E3%81%AE%E5%B9%B2%E6%B8%89--interaction-with-automated-remediation) in the Cyber Resilience Patterns repository.
 
 

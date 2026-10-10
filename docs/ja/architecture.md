@@ -42,40 +42,46 @@
 ```
 ONTAP 監査ログ → S3 Access Point → EventBridge Scheduler → Lambda → Vendor API
 ```
-- **用途** — コンプライアンス向けファイルアクセス履歴
-- **レイテンシ** — ニアリアルタイム（Scheduler 間隔依存、通常5分）
-- **形式** — EVTX / XML
+| 項目 | 内容 |
+|------|------|
+| 用途 | コンプライアンス向けファイルアクセス履歴 |
+| レイテンシ | ニアリアルタイム（Scheduler 間隔依存、通常5分） |
+| 形式 | EVTX / XML |
 
 ### パス 2: 管理監査ログ（Syslog VPC Endpoint → CloudWatch Logs）
 ```
 ONTAP log-forwarding → Syslog (TCP 1514/6514) → VPC Endpoint → CloudWatch Logs
 ```
-- **用途** — 管理アクティビティの記録（CLI/API 操作）
-- **レイテンシ** — リアルタイム（秒単位）
-- **形式** — RFC 3164 syslog（CloudWatch が自動パース）
-- **コンピュート** — なし（フルマネージド、Lambda/EC2 不要）
-- **オプション** — CloudWatch Logs → Subscription Filter → Lambda/Firehose → Vendor
+| 項目 | 内容 |
+|------|------|
+| 用途 | 管理アクティビティの記録（CLI/API 操作） |
+| レイテンシ | リアルタイム（秒単位） |
+| 形式 | RFC 3164 syslog（CloudWatch が自動パース） |
+| コンピュート | なし（フルマネージド、Lambda/EC2 不要） |
+| オプション | CloudWatch Logs → Subscription Filter → Lambda/Firehose → Vendor |
 
 ### パス 3: EMS イベント（Webhook）
 ```
 ONTAP EMS → Webhook (HTTPS) → API Gateway → Lambda → Vendor API
 ```
-- **用途** — ARP ランサムウェア検知、クォータ超過、HA フェイルオーバー等
-- **レイテンシ** — リアルタイム（~30秒）
-- **形式** — JSON
+| 項目 | 内容 |
+|------|------|
+| 用途 | ARP ランサムウェア検知、クォータ超過、HA フェイルオーバー等 |
+| レイテンシ | リアルタイム（~30秒） |
+| 形式 | JSON |
 
 ### パス 4: FPolicy ファイル操作（ECS Fargate）
 ```
 ONTAP FPolicy → ECS Fargate (TCP:9898) → SQS → Lambda → Vendor API
 ```
-- **用途** — リアルタイムファイル操作監視（create, write, rename, delete）
-- **レイテンシ** — リアルタイム（~6-8秒）
-- **形式** — FPolicy バイナリプロトコル → JSON 正規化
-- **注意** — FPolicy は独自バイナリプロトコルのため Lambda 不可、ECS Fargate が必要
+| 項目 | 内容 |
+|------|------|
+| 用途 | リアルタイムファイル操作監視（create, write, rename, delete） |
+| レイテンシ | リアルタイム（~6-8秒） |
+| 形式 | FPolicy バイナリプロトコル → JSON 正規化 |
+| 注意 | FPolicy は独自バイナリプロトコルのため Lambda 不可、ECS Fargate が必要 |
 
-> **本シリーズにおける「サーバーレス」の意味**
->
-> サーバー管理や差別化されないコレクター運用を最小化すること — 全てを Lambda に押し込むことではありません。FPolicy は永続的な TCP リスナーが必要なため ECS Fargate（サーバーレスコンテナ）を使用し、イベントのデカップリングには SQS、短時間処理には Lambda を使用します。各 AWS サービスはその運用特性に応じて選択しています。
+> **本シリーズにおける「サーバーレス」の意味:** サーバー管理や差別化されないコレクター運用を最小化すること — 全てを Lambda に押し込むことではありません。FPolicy は永続的な TCP リスナーが必要なため ECS Fargate（サーバーレスコンテナ）を使用し、イベントのデカップリングには SQS、短時間処理には Lambda を使用します。各 AWS サービスはその運用特性に応じて選択しています。
 
 ## ONTAP テレメトリソース選択ガイド
 
@@ -94,14 +100,14 @@ ONTAP FPolicy → ECS Fargate (TCP:9898) → SQS → Lambda → Vendor API
 
 FSx for ONTAP の監査ログ機能を有効化し、SVM 内の audit volume に出力します。
 
-- **ログ形式** — EVTX (Windows Event Log) または XML — `-format {evtx|xml}` で設定
-- **出力先** — SVM 内の audit volume（`vserver audit create -destination /audit_log`）
-- **ログ内容** — ファイルアクセス（SMB/NFS）、認証イベント
-- **アクセス方式** — FSx for ONTAP S3 Access Point 経由で S3 API としてアクセス
+| 項目 | 内容 |
+|------|------|
+| ログ形式 | EVTX (Windows Event Log) または XML（`-format {evtx|xml}` で設定） |
+| 出力先 | SVM 内の audit volume（`vserver audit create -destination /audit_log`） |
+| ログ内容 | ファイルアクセス（SMB/NFS）、認証イベント |
+| アクセス方式 | FSx for ONTAP S3 Access Point 経由で S3 API としてアクセス |
 
-> **重要**
->
-> 監査ログは FSx ボリューム上に保存されます。S3 バケットには書き込まれません。Lambda は FSx for ONTAP S3 Access Point を通じて S3 API でログファイルを読み取ります。
+> **重要:** 監査ログは FSx ボリューム上に保存されます。S3 バケットには書き込まれません。Lambda は FSx for ONTAP S3 Access Point を通じて S3 API でログファイルを読み取ります。
 
 #### 監査ログフォーマット: EVTX vs XML
 
@@ -153,40 +159,41 @@ vserver audit create -vserver <svm-name> -destination /audit_log -rotate-size 20
 
 参考: [AWS Docs — ファイルアクセス監査](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/file-access-auditing.html) | [NetApp Docs — 監査設定の作成](https://docs.netapp.com/us-en/ontap/nas-audit/create-auditing-config-task.html)
 
-> **NFS 監査に関する注意**
->
-> NFS ファイルアクセス監査（ONTAP 9.13.1+）では、SMB 監査イベントにはない追加フィールドが含まれる場合があります。上記のフィールドマッピングは SMB アクセスイベント（EventID 4656/4660/4663）に基づいています。NFS 監査を設定する際は、ご利用の ONTAP バージョンで実際のフィールド可用性を確認してください。
+> **NFS 監査に関する注意:** NFS ファイルアクセス監査（ONTAP 9.13.1+）では、SMB 監査イベントにはない追加フィールドが含まれる場合があります。上記のフィールドマッピングは SMB アクセスイベント（EventID 4656/4660/4663）に基づいています。NFS 監査を設定する際は、ご利用の ONTAP バージョンで実際のフィールド可用性を確認してください。
 
 ### 2. FSx for ONTAP S3 Access Point
 
 FSx for ONTAP ボリュームにアタッチされる S3 Access Point です。
 
-- **目的** — Lambda が NFS/SMB マウントなしで監査ログを読み取るためのアクセス境界
-- **特性** — データは FSx ファイルシステム上に残り、S3 API でアクセス可能
-- **制約** — S3 Event Notifications / EventBridge 通知は非対応
-- **VPC 制約** — Internet-origin S3 AP の場合、VPC 内 Lambda + Gateway Endpoint のみではタイムアウト（NAT Gateway または VPC-origin AP が必要）
+| 項目 | 内容 |
+|------|------|
+| 目的 | Lambda が NFS/SMB マウントなしで監査ログを読み取るためのアクセス境界 |
+| 特性 | データは FSx ファイルシステム上に残り、S3 API でアクセス可能 |
+| 制約 | S3 Event Notifications / EventBridge 通知は非対応 |
+| VPC 制約 | Internet-origin S3 AP の場合、VPC 内 Lambda + Gateway Endpoint のみではタイムアウト（NAT Gateway または VPC-origin AP が必要） |
 
 ### 3. トリガー方式
 
 FSx for ONTAP S3 Access Points は S3 イベント通知をサポートしないため、EventBridge Scheduler による定期起動を使用します。
 
-**EventBridge Scheduler + チェックポイント**
+#### EventBridge Scheduler + チェックポイント
 - EventBridge Scheduler が Lambda を定期的に起動（例: 5分間隔）
 - Lambda は前回処理済みファイルをチェックポイント（DynamoDB）で管理
 - 新しくローテーションされたログファイルのみを処理
 
 ### 4. Lambda 関数
 
-監査ログを取得・パースし、各ベンダーの API へ配信します。
+監査ログを取得・パースし、各ベンダーの API へ配信します。ランタイムは Python 3.12 です。
 
-- **ランタイム** — Python 3.12
-- **処理フロー** — 1. FSx for ONTAP S3 Access Point 経由でログファイル一覧取得
-  2. チェックポイントと比較し、未処理ファイルを特定
-  3. EVTX/XML パース
-  4. ベンダー固有フォーマットへ変換
-  5. API エンドポイントへバッチ送信
-  6. 失敗時リトライ（exponential backoff）
-  7. チェックポイント更新
+処理フロー:
+
+1. FSx for ONTAP S3 Access Point 経由でログファイル一覧取得
+2. チェックポイントと比較し、未処理ファイルを特定
+3. EVTX/XML パース
+4. ベンダー固有フォーマットへ変換
+5. API エンドポイントへバッチ送信
+6. 失敗時リトライ（exponential backoff）
+7. チェックポイント更新
 
 ### 5. 代替パターン: Kinesis Data Firehose
 
@@ -196,8 +203,10 @@ FSx for ONTAP S3 Access Points は S3 イベント通知をサポートしない
 FSx for ONTAP S3 AP → Lambda (変換) → Kinesis Data Firehose → ベンダー API
 ```
 
-- **利点** — 自動バッファリング、リトライ、スケーリング
-- **対応ベンダー** — Splunk (HEC), Datadog, New Relic, HTTP エンドポイント全般
+| 項目 | 内容 |
+|------|------|
+| 利点 | 自動バッファリング、リトライ、スケーリング |
+| 対応ベンダー | Splunk (HEC), Datadog, New Relic, HTTP エンドポイント全般 |
 
 ### 6. AWS ネイティブ代替案との比較
 
@@ -237,13 +246,15 @@ FSx for ONTAP S3 AP → Lambda (変換) → Kinesis Data Firehose → ベンダ�
 ### ネットワーク
 
 - FSx for ONTAP S3 Access Point へのアクセスは NAT Gateway 経由（VPC 内配置時）
-- **注意** — Internet-origin S3 AP は VPC 内から Gateway Endpoint のみではアクセス不可（NAT Gateway 必要）
+- **Internet-origin S3 AP は VPC 内から Gateway Endpoint のみではアクセス不可**（NAT Gateway 必要）
 - Lambda を VPC 外に配置する場合は問題なくアクセス可能（推奨: 読み取り専用の場合）
 - セキュリティグループで最小限のアウトバウンドのみ許可
 
 ## 監視・アラート
 
-- **CloudWatch Metrics** — Lambda エラー率、実行時間、スロットリング
-- **CloudWatch Alarms** — 配信失敗率閾値超過時に SNS 通知
-- **Dead Letter Queue** — 処理失敗イベントを SQS DLQ に退避
-- **X-Ray** — 分散トレーシングによるボトルネック特定
+| 項目 | 内容 |
+|------|------|
+| CloudWatch Metrics | Lambda エラー率、実行時間、スロットリング |
+| CloudWatch Alarms | 配信失敗率閾値超過時に SNS 通知 |
+| Dead Letter Queue | 処理失敗イベントを SQS DLQ に退避 |
+| X-Ray | 分散トレーシングによるボトルネック特定 |

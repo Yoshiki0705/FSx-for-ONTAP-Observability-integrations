@@ -6,17 +6,17 @@
 
 | Item | Value |
 |------|-------|
-| **Verification Date** | `2026-05-17T07:20:00+09:00` |
-| **Verifier** | repository maintainer |
+| Verification Date | `2026-05-17T07:20:00+09:00` |
+| Verifier | repository maintainer |
 
 ### Verification Environment
 
 | Item | Value |
 |------|-------|
-| **AWS Region** | `ap-northeast-1` |
-| **FSx for ONTAP File System ID** | `fs-0123456789abcdef0` (SINGLE_AZ_1) |
-| **SVM Name** | `FPolicySMB` (svm-0123456789abcdef0), `FSxN_OnPre` (svm-0abcdef123456789a) | <!-- allow:naming: SVM resource name -->
-| **ONTAP Version** | `9.17.1P6` |
+| AWS Region | `ap-northeast-1` |
+| FSx for ONTAP File System ID | `fs-0123456789abcdef0` (SINGLE_AZ_1) |
+| SVM Name | `FPolicySMB` (svm-0123456789abcdef0), `FSxN_OnPre` (svm-0abcdef123456789a) | <!-- allow:naming: SVM resource name -->
+| ONTAP Version | `9.17.1P6` |
 
 ### CloudFormation Stack Names
 
@@ -40,10 +40,10 @@ cfn-lint 1.45.0
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 1-1 |
-| **Step Name** | EMS Webhook CloudFormation Stack Deployment |
+| Step Number | 1-1 |
+| Step Name | EMS Webhook CloudFormation Stack Deployment |
 
-**Command:**
+#### Command
 
 ```bash
 aws cloudformation deploy \
@@ -63,9 +63,9 @@ aws cloudformation deploy \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | Stack reaches CREATE_COMPLETE with Outputs: `ApiEndpointUrl`, `ApiGatewayId`, `DeadLetterQueueArn` |
-| **Actual Result** | Stack `fsxn-ems-webhook` reached CREATE_COMPLETE. Outputs: ApiEndpointUrl=`https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems`, ApiGatewayId=`<api-gateway-id>`, DeadLetterQueueArn=`arn:aws:sqs:ap-northeast-1:123456789012:fsxn-ems-webhook-ems-dlq` |
-| **Judgment** | ✅ PASS |
+| Expected Result | Stack reaches CREATE_COMPLETE with Outputs: `ApiEndpointUrl`, `ApiGatewayId`, `DeadLetterQueueArn` |
+| Actual Result | Stack `fsxn-ems-webhook` reached CREATE_COMPLETE. Outputs: ApiEndpointUrl=`https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems`, ApiGatewayId=`<api-gateway-id>`, DeadLetterQueueArn=`arn:aws:sqs:ap-northeast-1:123456789012:fsxn-ems-webhook-ems-dlq` |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -73,10 +73,10 @@ aws cloudformation deploy \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 1-2 |
-| **Step Name** | EMS Webhook Endpoint POST Request Connectivity |
+| Step Number | 1-2 |
+| Step Name | EMS Webhook Endpoint POST Request Connectivity |
 
-**Command:**
+#### Command
 
 ```bash
 curl -X POST \
@@ -87,9 +87,9 @@ curl -X POST \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | HTTP 200 response with body containing `{"status": "ok", "event_name": "arw.volume.state"}` |
-| **Actual Result** | HTTP 200. Response body: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}` |
-| **Judgment** | ✅ PASS |
+| Expected Result | HTTP 200 response with body containing `{"status": "ok", "event_name": "arw.volume.state"}` |
+| Actual Result | HTTP 200. Response body: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}` |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -97,10 +97,10 @@ curl -X POST \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 1-3 |
-| **Step Name** | GET Request Returns 405 Method Not Allowed |
+| Step Number | 1-3 |
+| Step Name | GET Request Returns 405 Method Not Allowed |
 
-**Command:**
+#### Command
 
 ```bash
 curl -X GET https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/prod/ems
@@ -108,9 +108,9 @@ curl -X GET https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/pr
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | HTTP 405 response rejecting non-POST methods |
-| **Actual Result** | HTTP 405. Response body: `{"message": "Method Not Allowed"}` |
-| **Judgment** | ✅ PASS |
+| Expected Result | HTTP 405 response rejecting non-POST methods |
+| Actual Result | HTTP 405. Response body: `{"message": "Method Not Allowed"}` |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -118,10 +118,10 @@ curl -X GET https://<api-gateway-id>.execute-api.ap-northeast-1.amazonaws.com/pr
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 1-4 |
-| **Step Name** | CloudWatch Logs Lambda Reception Confirmation |
+| Step Number | 1-4 |
+| Step Name | CloudWatch Logs Lambda Reception Confirmation |
 
-**Command:**
+#### Command
 
 ```bash
 aws logs filter-log-events \
@@ -133,9 +133,9 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | CloudWatch Logs contains EMS event reception log entries |
-| **Actual Result** | Log confirmed: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` and `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
-| **Judgment** | ✅ PASS |
+| Expected Result | CloudWatch Logs contains EMS event reception log entries |
+| Actual Result | Log confirmed: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` and `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
+| Judgment | ✅ PASS |
 
 ---
 
@@ -143,10 +143,10 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 1-5 |
-| **Step Name** | API Gateway Access Log Verification |
+| Step Number | 1-5 |
+| Step Name | API Gateway Access Log Verification |
 
-**Command:**
+#### Command
 
 ```bash
 aws logs filter-log-events \
@@ -158,9 +158,9 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | API Gateway access logs contain requestId, sourceIp, httpMethod, resourcePath, status, responseLatency |
-| **Actual Result** | Access logs confirmed: requestId, sourceIp (92.202.153.119), httpMethod (POST/GET), resourcePath (/prod/ems), status (200/405), responseLatency recorded correctly |
-| **Judgment** | ✅ PASS |
+| Expected Result | API Gateway access logs contain requestId, sourceIp, httpMethod, resourcePath, status, responseLatency |
+| Actual Result | Access logs confirmed: requestId, sourceIp (203.0.113.10), httpMethod (POST/GET), resourcePath (/prod/ems), status (200/405), responseLatency recorded correctly |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -168,10 +168,10 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 1-6 |
-| **Step Name** | cfn-lint EMS Webhook Template Validation |
+| Step Number | 1-6 |
+| Step Name | cfn-lint EMS Webhook Template Validation |
 
-**Command:**
+#### Command
 
 ```bash
 cfn-lint shared/templates/ems-webhook-apigw.yaml
@@ -179,9 +179,9 @@ cfn-lint shared/templates/ems-webhook-apigw.yaml
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | 0 errors (E), 0 warnings (W) |
-| **Actual Result** | 0 errors, 0 warnings (cfn-lint 1.45.0) |
-| **Judgment** | ✅ PASS |
+| Expected Result | 0 errors (E), 0 warnings (W) |
+| Actual Result | 0 errors, 0 warnings (cfn-lint 1.45.0) |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -191,10 +191,10 @@ cfn-lint shared/templates/ems-webhook-apigw.yaml
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 2-1 |
-| **Step Name** | FPolicy CloudFormation Stack Deployment (ECS Fargate + SQS + EventBridge) |
+| Step Number | 2-1 |
+| Step Name | FPolicy CloudFormation Stack Deployment (ECS Fargate + SQS + EventBridge) |
 
-**Command:**
+#### Command
 
 ```bash
 aws cloudformation deploy \
@@ -220,9 +220,9 @@ aws cloudformation deploy \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | Stack reaches CREATE_COMPLETE with ECS cluster, service, SQS queue, Bridge Lambda, and EventBridge custom bus created |
-| **Actual Result** | Stack `fsxn-fp-srv` running normally (ECS Fargate, ARM64, 256 CPU, 512 MB) |
-| **Judgment** | ✅ PASS |
+| Expected Result | Stack reaches CREATE_COMPLETE with ECS cluster, service, SQS queue, Bridge Lambda, and EventBridge custom bus created |
+| Actual Result | Stack `fsxn-fp-srv` running normally (ECS Fargate, ARM64, 256 CPU, 512 MB) |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -230,10 +230,10 @@ aws cloudformation deploy \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 2-2 |
-| **Step Name** | ECS Fargate Task Health Check |
+| Step Number | 2-2 |
+| Step Name | ECS Fargate Task Health Check |
 
-**Command:**
+#### Command
 
 ```bash
 # ECS task status check
@@ -252,9 +252,9 @@ aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <task ARN> \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | ECS task in RUNNING state with runningCount = desiredCount (1). Fargate task private IP retrievable |
-| **Actual Result** | Task RUNNING, runningCount=1, desiredCount=1. Fargate task IP: `10.0.x.x` |
-| **Judgment** | ✅ PASS |
+| Expected Result | ECS task in RUNNING state with runningCount = desiredCount (1). Fargate task private IP retrievable |
+| Actual Result | Task RUNNING, runningCount=1, desiredCount=1. Fargate task IP: `10.0.x.x` |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -262,10 +262,10 @@ aws ecs describe-tasks --cluster fsxn-fp-srv-cluster --tasks <task ARN> \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 2-3 |
-| **Step Name** | ONTAP KeepAlive Message Confirmation |
+| Step Number | 2-3 |
+| Step Name | ONTAP KeepAlive Message Confirmation |
 
-**Command:**
+#### Command
 
 ```bash
 # Check KeepAlive messages in ECS logs (sent at 120 second intervals)
@@ -280,9 +280,9 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | `KeepAlive from <IP>` messages recorded in ECS logs within 300 seconds, indicating ONTAP is connected to the FPolicy server |
-| **Actual Result** | ~~KeepAlive messages received from ONTAP at ~6 second intervals.~~ **Retracted.** The 6-second interval did not reproduce. A later session measured 4,694 KeepAlive lines with a widest gap of 120.4 s, against an engine configured `keep_alive_interval=PT2M`. What arrives about every 10 seconds is the `STATUS_REQ` from `status_request_interval=PT10S`, which is a different message and is logged at DEBUG — that cadence is the likely origin of the figure recorded here. Corrected interval: **120 seconds**. Source IP: `10.0.x.x`. See [FPolicy S3 Access Point and session verification](verification-results-fpolicy-s3ap-and-session.md) |
-| **Judgment** | ✅ PASS (connection confirmed; the interval figure is retracted, not the result) |
+| Expected Result | `KeepAlive from <IP>` messages recorded in ECS logs within 300 seconds, indicating ONTAP is connected to the FPolicy server |
+| Actual Result | ~~KeepAlive messages received from ONTAP at ~6 second intervals.~~ **Retracted.** The 6-second interval did not reproduce. A later session measured 4,694 KeepAlive lines with a widest gap of 120.4 s, against an engine configured `keep_alive_interval=PT2M`. What arrives about every 10 seconds is the `STATUS_REQ` from `status_request_interval=PT10S`, which is a different message and is logged at DEBUG — that cadence is the likely origin of the figure recorded here. Corrected interval: 120 seconds. Source IP: `10.0.x.x`. See [FPolicy S3 Access Point and session verification](verification-results-fpolicy-s3ap-and-session.md) |
+| Judgment | ✅ PASS (connection confirmed; the interval figure is retracted, not the result) |
 
 ---
 
@@ -290,10 +290,10 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 2-4 |
-| **Step Name** | FPolicy File Operation Event SQS Send Confirmation |
+| Step Number | 2-4 |
+| Step Name | FPolicy File Operation Event SQS Send Confirmation |
 
-**Command:**
+#### Command
 
 ```bash
 # 1. Check ECS logs for [SQS] Sent: pattern
@@ -312,9 +312,9 @@ aws sqs get-queue-attributes \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | After file operation, ECS logs contain `[SQS] Sent: <filename> (<operation>)` pattern and messages arrive in SQS queue |
-| **Actual Result** | ECS logs confirmed: `[SQS] Sent: phase12-final-test-1778924241.txt (create)`, `[SQS] Sent: replay-test-1.txt (create)` etc. SQS queue: 20 messages confirmed (normal event flow) |
-| **Judgment** | ✅ PASS |
+| Expected Result | After file operation, ECS logs contain `[SQS] Sent: <filename> (<operation>)` pattern and messages arrive in SQS queue |
+| Actual Result | ECS logs confirmed: `[SQS] Sent: phase12-final-test-1778924241.txt (create)`, `[SQS] Sent: replay-test-1.txt (create)` etc. SQS queue: 20 messages confirmed (normal event flow) |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -322,10 +322,10 @@ aws sqs get-queue-attributes \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 2-5 |
-| **Step Name** | cfn-lint FPolicy Template Validation |
+| Step Number | 2-5 |
+| Step Name | cfn-lint FPolicy Template Validation |
 
-**Command:**
+#### Command
 
 ```bash
 cfn-lint shared/templates/fpolicy-apigw.yaml
@@ -333,9 +333,9 @@ cfn-lint shared/templates/fpolicy-apigw.yaml
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | 0 errors (E), 0 warnings (W) |
-| **Actual Result** | 0 errors, 0 warnings (cfn-lint 1.45.0) |
-| **Judgment** | ✅ PASS |
+| Expected Result | 0 errors (E), 0 warnings (W) |
+| Actual Result | 0 errors, 0 warnings (cfn-lint 1.45.0) |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -345,10 +345,10 @@ cfn-lint shared/templates/fpolicy-apigw.yaml
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 3-1 |
-| **Step Name** | ARP Ransomware Attack Simulation (EMS Webhook via curl) |
+| Step Number | 3-1 |
+| Step Name | ARP Ransomware Attack Simulation (EMS Webhook via curl) |
 
-**Command:**
+#### Command
 
 ```bash
 curl -X POST \
@@ -359,9 +359,9 @@ curl -X POST \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | HTTP 200 response with ARP event (`arw.volume.state`) processed by Lambda |
-| **Actual Result** | HTTP 200. Response body: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}`. Event recorded in CloudWatch Logs |
-| **Judgment** | ✅ PASS |
+| Expected Result | HTTP 200 response with ARP event (`arw.volume.state`) processed by Lambda |
+| Actual Result | HTTP 200. Response body: `{"status": "ok", "event_name": "arw.volume.state", "severity": "alert"}`. Event recorded in CloudWatch Logs |
+| Judgment | ✅ PASS |
 
 > **Note**: Executed via curl simulation. Full E2E via ONTAP CLI (`security anti-ransomware volume attack simulate`) requires SSH access to the SVM management endpoint.
 
@@ -371,10 +371,10 @@ curl -X POST \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 3-2 |
-| **Step Name** | ARP Event Lambda Reception Confirmation (CloudWatch Logs) |
+| Step Number | 3-2 |
+| Step Name | ARP Event Lambda Reception Confirmation (CloudWatch Logs) |
 
-**Command:**
+#### Command
 
 ```bash
 aws logs filter-log-events \
@@ -386,9 +386,9 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | CloudWatch Logs contains INFO-level log with `event_name=arw.volume.state`, `severity=alert`, `volume_name`, `state` |
-| **Actual Result** | CloudWatch Logs confirmed: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` |
-| **Judgment** | ✅ PASS |
+| Expected Result | CloudWatch Logs contains INFO-level log with `event_name=arw.volume.state`, `severity=alert`, `volume_name`, `state` |
+| Actual Result | CloudWatch Logs confirmed: `EMS event received: event_name=arw.volume.state severity=alert source_node=fsxn-node-01 svm=FPolicySMB timestamp=2026-05-17T07:20:00+09:00` |
+| Judgment | ✅ PASS |
 
 ---
 
@@ -398,10 +398,10 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 4-1 |
-| **Step Name** | Quota Event Simulation (EMS Webhook via curl) |
+| Step Number | 4-1 |
+| Step Name | Quota Event Simulation (EMS Webhook via curl) |
 
-**Command:**
+#### Command
 
 ```bash
 curl -X POST \
@@ -412,9 +412,9 @@ curl -X POST \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | HTTP 200 response with quota event (`wafl.quota.softlimit.exceeded`) processed by Lambda |
-| **Actual Result** | HTTP 200. Response body: `{"status": "ok", "event_name": "wafl.quota.softlimit.exceeded", "severity": "warning"}`. Event recorded in CloudWatch Logs |
-| **Judgment** | ✅ PASS |
+| Expected Result | HTTP 200 response with quota event (`wafl.quota.softlimit.exceeded`) processed by Lambda |
+| Actual Result | HTTP 200. Response body: `{"status": "ok", "event_name": "wafl.quota.softlimit.exceeded", "severity": "warning"}`. Event recorded in CloudWatch Logs |
+| Judgment | ✅ PASS |
 
 > **Note**: Executed via curl simulation. Full E2E via ONTAP CLI (quota rule setup + data write) requires SSH access to the SVM management endpoint.
 
@@ -424,10 +424,10 @@ curl -X POST \
 
 | Item | Details |
 |------|---------|
-| **Step Number** | 4-2 |
-| **Step Name** | Quota Event Lambda Reception Confirmation (CloudWatch Logs) |
+| Step Number | 4-2 |
+| Step Name | Quota Event Lambda Reception Confirmation (CloudWatch Logs) |
 
-**Command:**
+#### Command
 
 ```bash
 aws logs filter-log-events \
@@ -439,9 +439,9 @@ aws logs filter-log-events \
 
 | Item | Details |
 |------|---------|
-| **Expected Result** | CloudWatch Logs contains INFO-level log with `event_name=wafl.quota.softlimit.exceeded`, `volume_name`, `quota_target`, `used_bytes`, `limit_bytes` |
-| **Actual Result** | CloudWatch Logs confirmed: `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
-| **Judgment** | ✅ PASS |
+| Expected Result | CloudWatch Logs contains INFO-level log with `event_name=wafl.quota.softlimit.exceeded`, `volume_name`, `quota_target`, `used_bytes`, `limit_bytes` |
+| Actual Result | CloudWatch Logs confirmed: `EMS event received: event_name=wafl.quota.softlimit.exceeded severity=warning source_node=fsxn-node-01 svm=FSxN_OnPre timestamp=2026-05-17T07:21:00+09:00` | <!-- allow:naming: SVM resource name -->
+| Judgment | ✅ PASS |
 
 ---
 
@@ -465,9 +465,9 @@ aws logs filter-log-events \
 
 | Item | Result |
 |------|--------|
-| **Overall Judgment** | ✅ **PASS** |
-| **PASS Steps** | 14 / 14 |
-| **FAIL Steps** | 0 |
+| Overall Judgment | ✅ PASS |
+| PASS Steps | 14 / 14 |
+| FAIL Steps | 0 |
 
 ### Verification Step Summary
 
