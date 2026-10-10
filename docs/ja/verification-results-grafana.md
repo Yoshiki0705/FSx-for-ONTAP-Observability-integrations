@@ -32,10 +32,9 @@
 [`integrations/grafana/docs/screenshots/README.md`](../../integrations/grafana/docs/screenshots/README.md)
 にあります。
 
-> **`grafana-logs-arrival.png` に関する補足**
->
-> このファイルは `explore-log-arrival.png` とバイト単位で同一（MD5 一致）です。別名の
-> 重複であり、2 回目の実行を示す独立した証跡ではありません。
+> **`grafana-logs-arrival.png` に関する補足:** このファイルは `explore-log-arrival.png` と
+> バイト単位で同一（MD5 一致）です。別名の重複であり、2 回目の実行を示す独立した証跡では
+> ありません。
 
 ---
 
