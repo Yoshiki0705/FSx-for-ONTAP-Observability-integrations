@@ -41,9 +41,10 @@ iteration, while the class figures pool only the kept samples, so a class can
 hold fewer than `object_count × iterations` samples.
 
 Each class reports `sample_count`, the size of its pool, and
-`percentile_method: "pooled_nearest_rank"`. Result files written before this
-change have neither key, and their class `p50_ms` and `p99_ms` are the simple
-mean of each object's own p50 and p99, which is not a percentile of the class.
+`percentile_method: "pooled_nearest_rank"`. Result files without these keys come
+from the version that averaged per-object percentiles; their class `p50_ms` and
+`p99_ms` are the simple mean of each object's own p50 and p99, which is not a
+percentile of the class.
 Check for `percentile_method` before comparing class figures across files.
 
 With nearest-rank, p99 is the maximum unless the pooled sample count is at
@@ -106,8 +107,9 @@ as the Lambda's `bucket` parameter. Optional overrides: `LIST_ITERATIONS` (20),
 Those are the defaults of `run-benchmark.sh`, which sends `iterations` with both
 tests and `max_keys` with the `get` test only. The Lambda's own default, used
 when an event omits `iterations`, is 5 for both tests; for `max_keys` it is 100
-for `list` and 10 for `get`. `MAX_KEYS` is the number of objects read by the
-`get` test, not the number of reads per object. With 5 `get` iterations per
+for `list` and 10 for `get`. `MAX_KEYS` is the maximum number of objects read
+by the `get` test (a prefix with fewer objects measures fewer), not the number
+of reads per object. With 5 `get` iterations per
 object, a size class of 3 objects pools 15 samples, so its p99 is the maximum.
 
 Record the result together with its environment context (FSx throughput
