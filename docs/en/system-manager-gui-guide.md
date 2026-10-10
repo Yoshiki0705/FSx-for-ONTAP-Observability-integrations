@@ -14,7 +14,7 @@ This document provides step-by-step instructions for operations teams to use **O
 > **Target audience**: Operations staff familiar with Windows File Resource Manager
 
 > **Where this fits**: this guide covers the NetApp Console / System Manager GUI path, which
-> this project treats as an **alternative** to its AWS-native default. The default GUI path is
+> this project treats as an alternative to its AWS-native default. The default GUI path is
 > the self-hosted [management-console/](../../management-console/) (Cognito/IAM) plus the
 > Amplify Gen2 file portal built in the sibling repo
 > ([solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)).
@@ -29,15 +29,15 @@ This document provides step-by-step instructions for operations teams to use **O
 
 | Tool | Type | Cost | Account Required | Purpose |
 |------|------|------|-----------------|---------|
-| **ONTAP System Manager** | ONTAP GUI (accessed via NetApp Console<!-- allow:naming -->) | **Free** | NSS account required | General storage management |
-| **NetApp Console**<!-- allow:naming --> (formerly BlueXP<!-- allow:naming -->) | SaaS portal | Free (basic features) | NSS account required | System Manager host + multi-cloud management |
-| **[Self-hosted Management Console](../../management-console/)** | AWS-native (ECS Fargate + AMP/AMG) | ~$250/month (24/7) | None (AWS account only) | VPC-internal monitoring + management UI |
-| **ONTAP REST API** | HTTP API (direct access) | **Free** | None (fsxadmin auth) | Automation & scripting |
-| **ONTAP CLI** | SSH command line | **Free** | None (fsxadmin auth) | Advanced configuration |
+| ONTAP System Manager | ONTAP GUI (accessed via NetApp Console<!-- allow:naming -->) | Free | NSS account required | General storage management |
+| NetApp Console<!-- allow:naming --> (formerly BlueXP<!-- allow:naming -->) | SaaS portal | Free (basic features) | NSS account required | System Manager host + multi-cloud management |
+| [Self-hosted Management Console](../../management-console/) | AWS-native (ECS Fargate + AMP/AMG) | ~$250/month (24/7) | None (AWS account only) | VPC-internal monitoring + management UI |
+| ONTAP REST API | HTTP API (direct access) | Free | None (fsxadmin auth) | Automation & scripting |
+| ONTAP CLI | SSH command line | Free | None (fsxadmin auth) | Advanced configuration |
 
 > ⚠️ **Critical constraint**: Unlike on-premises ONTAP, FSx for ONTAP does **NOT** display the System Manager UI when you directly browse to `https://<management-endpoint-ip>` (returns 404 error). System Manager GUI access requires **NetApp Console<!-- allow:naming -->**. REST API (`/api/`) and CLI (SSH) are directly accessible.
 
-**Bottom line**: GUI-based storage management requires **NetApp Console<!-- allow:naming --> setup**. CLI/REST API can be used immediately without any NetApp account.
+GUI-based storage management requires **NetApp Console<!-- allow:naming --> setup**. CLI/REST API can be used immediately without any NetApp account.
 
 ---
 
@@ -66,8 +66,10 @@ To use System Manager with FSx for ONTAP, the following setup is required:
 
 Add AWS credentials to NetApp Console<!-- allow:naming -->:
 
-- **Read-only**: Discovery and monitoring of FSx for ONTAP only
-- **Read/write**: Volume creation, modification, and other management operations
+| Permission mode | Operations allowed |
+|-----------------|--------------------|
+| Read-only | Discovery and monitoring of FSx for ONTAP only |
+| Read/write | Volume creation, modification, and other management operations |
 
 Reference: [Set up permissions](https://docs.netapp.com/us-en/storage-management-fsx-ontap/requirements/task-setting-up-permissions-fsx.html)
 
@@ -103,13 +105,14 @@ Management methods that do NOT require NetApp Console<!-- allow:naming --> setup
 
 | Method | Access Target | Authentication | Use Case |
 |--------|--------------|----------------|----------|
-| **ONTAP CLI** | `ssh fsxadmin@<management-endpoint-ip>` | fsxadmin password | All ONTAP operations |
-| **ONTAP REST API** | `https://<management-endpoint-ip>/api/` | Basic Auth (fsxadmin) | Automation & scripting |
+| ONTAP CLI | `ssh fsxadmin@<management-endpoint-ip>` | fsxadmin password | All ONTAP operations |
+| ONTAP REST API | `https://<management-endpoint-ip>/api/` | Basic Auth (fsxadmin) | Automation & scripting |
 | **AWS CLI** | `aws fsx ...` | IAM authentication | File system-level management |
 
 > **Recommended**: Perform initial configuration (audit logs, quotas) via CLI/REST API, then use NetApp Console<!-- allow:naming --> (System Manager) for day-to-day monitoring and management. This hybrid approach is the most practical.
 
-> **Security best practices**:
+> **Security best practices:** observe the following two points.
+>
 > - Store `fsxadmin` password in AWS Secrets Manager
 > - All System Manager operations are recorded in ONTAP audit logs
 
@@ -158,7 +161,7 @@ Management methods that do NOT require NetApp Console<!-- allow:naming --> setup
 
 Which folders/files are audited is controlled by Windows SACL (System Access Control List).
 
-**Configure from Windows Explorer:**
+#### Configure from Windows Explorer
 1. Right-click target folder → **Properties**
 2. **Security** tab → **Advanced**
 3. **Auditing** tab → **Add**
@@ -268,7 +271,7 @@ Qtree capacity exceeded
 
 #### Setup Steps
 
-**Step 1: Deploy AWS-side resources**
+##### Step 1: Deploy AWS-side resources
 
 Use the EMS Webhook template from this repository:
 
@@ -282,7 +285,7 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-**Step 2: Create SNS Topic + Email Subscription**
+##### Step 2: Create SNS Topic + Email Subscription
 
 ```bash
 # Create SNS topic
@@ -295,7 +298,7 @@ aws sns subscribe \
   --notification-endpoint ops-team@example.com
 ```
 
-**Step 3: Configure ONTAP EMS Webhook (CLI)**
+##### Step 3: Configure ONTAP EMS Webhook (CLI)
 
 > ⚠️ EMS Webhook configuration is **CLI-only** (not available in System Manager GUI).
 
@@ -321,7 +324,7 @@ event notification show
 event notification destination show
 ```
 
-**Step 4: Verification**
+##### Step 4: Verification
 
 ```bash
 # Test: Write data to Qtree exceeding soft limit
@@ -478,9 +481,9 @@ Root (/)
 ### CSV Export from Explorer
 
 The Explorer view supports CSV download:
-- Click the **download icon** (↓) in the Explorer toolbar
+- Click the download icon (↓) in the Explorer toolbar
 - CSV contains: file/directory name, size, access history, modify history
-- **Important**: This is a **point-in-time snapshot** of the currently displayed view, NOT a time-series export
+- This is a **point-in-time snapshot of the currently displayed view, NOT a time-series export**
 
 > ⚠️ **Limitation**: Explorer CSV captures only what is currently visible. For long-term access history analysis, use audit logs (S3 → Athena). See [Decision Tree](decision-tree-management-monitoring.md) for the recommended architecture.
 
@@ -509,7 +512,7 @@ For each operation available in System Manager (via NetApp Console), this sectio
 | ONTAP REST API | `POST /api/protocols/audit` | IaC-friendly, fully automatable | [ONTAP REST API Reference](ontap-rest-api-reference.md) |
 | Setup script | `ontap-audit-setup.sh` | Dry-run support, parameterized | [Script](../../shared/scripts/ontap-audit-setup.sh) |
 
-**Delivery options**
+#### Delivery options
 
 | Method | Architecture | Cost Estimate | Link |
 |--------|-------------|---------------|------|

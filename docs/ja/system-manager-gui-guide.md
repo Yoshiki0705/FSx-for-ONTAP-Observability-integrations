@@ -11,12 +11,10 @@
 - Qtree クォータ（容量制限）設定
 - 容量監視・通知の設定
 
-> **対象読者**
->
-> Windows ファイルリソースマネージャーに慣れた運用担当者
+> **対象読者:** Windows ファイルリソースマネージャーに慣れた運用担当者
 
 > **本ガイドの位置づけ**: 本ガイドは NetApp Console / System Manager の GUI 経路を扱います。
-> 本プロジェクトはこれを AWS ネイティブの既定に対する**代替**として位置づけています。既定の
+> 本プロジェクトはこれを AWS ネイティブの既定に対する代替として位置づけています。既定の
 > GUI 経路は、セルフホストの [management-console/](../../management-console/)（Cognito/IAM）と、
 > 姉妹リポジトリで構築された Amplify Gen2 ファイルポータル
 > （[solutions/amplify-portal](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/tree/main/solutions/amplify-portal)）です。
@@ -31,15 +29,15 @@
 
 | ツール | 種類 | 費用 | アカウント | 用途 |
 |--------|------|------|-----------|------|
-| **ONTAP System Manager** | ONTAP GUI（NetApp Console<!-- allow:naming --> 経由で利用） | **無料** | NSS アカウント必要 | ストレージ管理全般 |
-| **NetApp Console**<!-- allow:naming --> (旧 BlueXP<!-- allow:naming -->) | SaaS ポータル | 基本無料 | NSS アカウント必要 | System Manager ホスト + マルチクラウド管理 |
-| **[セルフホスト Management Console](../../management-console/)** | AWS ネイティブ（ECS Fargate + AMP/AMG） | 約 $250/月（24時間稼働） | 不要（AWS アカウントのみ） | VPC 内監視・管理 UI |
-| **ONTAP REST API** | HTTP API（直接アクセス可能） | **無料** | 不要（fsxadmin で認証） | 自動化・スクリプト |
-| **ONTAP CLI** | SSH コマンドライン | **無料** | 不要（fsxadmin で認証） | 高度な設定 |
+| ONTAP System Manager | ONTAP GUI（NetApp Console<!-- allow:naming --> 経由で利用） | 無料 | NSS アカウント必要 | ストレージ管理全般 |
+| NetApp Console<!-- allow:naming --> (旧 BlueXP<!-- allow:naming -->) | SaaS ポータル | 基本無料 | NSS アカウント必要 | System Manager ホスト + マルチクラウド管理 |
+| [セルフホスト Management Console](../../management-console/) | AWS ネイティブ（ECS Fargate + AMP/AMG） | 約 $250/月（24時間稼働） | 不要（AWS アカウントのみ） | VPC 内監視・管理 UI |
+| ONTAP REST API | HTTP API（直接アクセス可能） | 無料 | 不要（fsxadmin で認証） | 自動化・スクリプト |
+| ONTAP CLI | SSH コマンドライン | 無料 | 不要（fsxadmin で認証） | 高度な設定 |
 
 > ⚠️ **重要な制約**: FSx for ONTAP では、オンプレミス ONTAP と異なり、管理エンドポイント (`https://<management-endpoint-ip>`) に直接ブラウザアクセスしても **System Manager UI は表示されません**（404 エラー）。System Manager を GUI で利用するには **NetApp Console<!-- allow:naming --> 経由** が必須です。REST API (`/api/`) と CLI (SSH) は直接利用可能です。
 
-**結論**: GUI でストレージ管理を行うには **NetApp Console<!-- allow:naming --> のセットアップが必要** です。CLI/REST API であれば NetApp アカウント不要で即座に利用可能です。
+GUI でストレージ管理を行うには **NetApp Console<!-- allow:naming --> のセットアップが必要** です。CLI/REST API であれば NetApp アカウント不要で即座に利用可能です。
 
 ---
 
@@ -56,9 +54,7 @@ FSx for ONTAP で System Manager を利用するには、以下のセットア�
 3. **SERIAL NUMBER** フィールドに FSx for ONTAP の **File System ID** を入力
 4. 登録完了後、1営業日以内にエンドユーザーレベルのアクセスに昇格
 
-> **Note**
->
-> アカウント作成自体は無料です。サポートケース起票には有償サポート契約が必要ですが、System Manager の利用には不要です。
+> **Note:** アカウント作成自体は無料です。サポートケース起票には有償サポート契約が必要ですが、System Manager の利用には不要です。
 
 #### Step 2: NetApp Console<!-- allow:naming --> にログイン
 
@@ -70,8 +66,10 @@ FSx for ONTAP で System Manager を利用するには、以下のセットア�
 
 NetApp Console<!-- allow:naming --> に AWS クレデンシャルを追加します:
 
-- **読み取り専用** — FSx for ONTAP の検出・監視のみ
-- **読み書き** — ボリューム作成・変更等の管理操作も可能
+| 権限モード | 可能な操作 |
+|-----------|-----------|
+| 読み取り専用 | FSx for ONTAP の検出・監視のみ |
+| 読み書き | ボリューム作成・変更等の管理操作も可能 |
 
 参考: [Set up permissions](https://docs.netapp.com/us-en/storage-management-fsx-ontap/requirements/task-setting-up-permissions-fsx.html)
 
@@ -107,15 +105,14 @@ NetApp Console<!-- allow:naming --> のセットアップが不要な管理方�
 
 | 方法 | アクセス先 | 認証 | 用途 |
 |------|-----------|------|------|
-| **ONTAP CLI** | `ssh fsxadmin@<management-endpoint-ip>` | fsxadmin パスワード | 全ての ONTAP 操作 |
-| **ONTAP REST API** | `https://<management-endpoint-ip>/api/` | Basic Auth (fsxadmin) | 自動化・スクリプト |
+| ONTAP CLI | `ssh fsxadmin@<management-endpoint-ip>` | fsxadmin パスワード | 全ての ONTAP 操作 |
+| ONTAP REST API | `https://<management-endpoint-ip>/api/` | Basic Auth (fsxadmin) | 自動化・スクリプト |
 | **AWS CLI** | `aws fsx ...` | IAM 認証 | ファイルシステムレベルの管理 |
 
-> **推奨**
->
-> 監査ログやクォータの初期設定は CLI/REST API で実施し、日常的な監視・確認に NetApp Console<!-- allow:naming --> (System Manager) を使用するハイブリッドアプローチが現実的です。
+> **推奨:** 監査ログやクォータの初期設定は CLI/REST API で実施し、日常的な監視・確認に NetApp Console<!-- allow:naming --> (System Manager) を使用するハイブリッドアプローチが現実的です。
 
-> **セキュリティベストプラクティス**
+> **セキュリティのベストプラクティス:** 次の 2 点を守ります。
+>
 > - `fsxadmin` パスワードは AWS Secrets Manager に保存すること
 > - System Manager の全操作は ONTAP 監査ログに記録される
 
@@ -164,7 +161,8 @@ NetApp Console<!-- allow:naming --> のセットアップが不要な管理方�
 
 監査ログで「どのフォルダ/ファイルへのアクセスを記録するか」は、Windows の SACL（System Access Control List）で制御します。
 
-**Windows エクスプローラーから設定:**
+#### Windows エクスプローラーからの設定手順
+
 1. 対象フォルダを右クリック → **プロパティ**
 2. **セキュリティ** タブ → **詳細設定**
 3. **監査** タブ → **追加**
@@ -173,9 +171,7 @@ NetApp Console<!-- allow:naming --> のセットアップが不要な管理方�
    - 種類: **成功** と **失敗** の両方
    - アクセス許可: **フル コントロール**（全操作を記録する場合）
 
-> **Note**
->
-> SACL は Windows のファイルリソースマネージャーで設定するため、運用部門の既存スキルで対応可能です。
+> **Note:** SACL は Windows のファイルリソースマネージャーで設定するため、運用部門の既存スキルで対応可能です。
 
 ### 2.5 監査ログの確認
 
@@ -233,9 +229,7 @@ Qtree クォータを使用すると、フォルダ単位で容量制限を設�
 1. System Manager → **Storage** → **Volumes** → 対象ボリューム
 2. **Quota Rules** タブ → **Initialize Quotas** ボタンをクリック
 
-> **Note**
->
-> クォータの初期化には数分かかる場合があります。大量のファイルがある場合は、初回のスキャンに時間がかかります。
+> **Note:** クォータの初期化には数分かかる場合があります。大量のファイルがある場合は、初回のスキャンに時間がかかります。
 
 ### 3.5 クォータ使用状況の確認
 
@@ -278,7 +272,7 @@ Qtree 容量超過
 
 #### 設定手順
 
-**Step 1: AWS 側のデプロイ**
+##### Step 1: AWS 側のデプロイ
 
 本リポジトリの EMS Webhook テンプレートを使用:
 
@@ -292,7 +286,7 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-**Step 2: SNS トピック作成 + メールサブスクリプション**
+##### Step 2: SNS トピック作成 + メールサブスクリプション
 
 ```bash
 # Create SNS topic
@@ -305,7 +299,7 @@ aws sns subscribe \
   --notification-endpoint ops-team@example.com
 ```
 
-**Step 3: ONTAP EMS Webhook 設定（CLI）**
+##### Step 3: ONTAP EMS Webhook 設定（CLI）
 
 > ⚠️ EMS Webhook の設定は **CLI でのみ可能** です（System Manager GUI では未対応）。
 
@@ -331,7 +325,7 @@ event notification show
 event notification destination show
 ```
 
-**Step 4: 動作確認**
+##### Step 4: 動作確認
 
 ```bash
 # Test: Write data to Qtree exceeding soft limit
@@ -389,9 +383,7 @@ aws events put-targets \
   --targets "Id"="1","Arn"="arn:aws:sns:ap-northeast-1:123456789012:fsxn-quota-alerts"
 ```
 
-> **Note**
->
-> CloudWatch Events 経由の EMS イベント配信は、全ての EMS イベントが対象ではありません。対応イベントは [AWS ドキュメント](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/monitoring-cloudwatch-events.html) を参照してください。
+> **Note:** CloudWatch Events 経由の EMS イベント配信は、全ての EMS イベントが対象ではありません。対応イベントは [AWS ドキュメント](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/monitoring-cloudwatch-events.html) を参照してください。
 
 ### 4.5 推奨構成（組み合わせ）
 
@@ -490,9 +482,9 @@ Root (/)
 ### Explorer からの CSV エクスポート
 
 Explorer ビューは CSV ダウンロードをサポート:
-- Explorer ツールバーの**ダウンロードアイコン**（↓）をクリック
+- Explorer ツールバーのダウンロードアイコン（↓）をクリック
 - CSV 内容: ファイル/ディレクトリ名、サイズ、アクセス履歴、更新履歴
-- **重要** — これは現在表示されているビューの **point-in-time スナップショット** であり、時系列エクスポートではない
+- これは現在表示されているビューの **point-in-time スナップショットであり、時系列エクスポートではない**
 
 > ⚠️ **制限事項**: Explorer CSV は現在表示中の内容のみをキャプチャします。長期的なアクセス履歴分析には、監査ログ（S3 → Athena）を使用してください。推奨アーキテクチャは [管理・監視 Decision Tree](decision-tree-management-monitoring.md) を参照。
 
@@ -521,7 +513,7 @@ System Manager（NetApp Console 経由）で行える各操作について、AWS
 | ONTAP REST API | `POST /api/protocols/audit` | IaC 統合可能、完全自動化 | [ONTAP REST API リファレンス](ontap-rest-api-reference.md) |
 | セットアップスクリプト | `ontap-audit-setup.sh` | ドライラン対応、パラメータ化 | [スクリプト](../../shared/scripts/ontap-audit-setup.sh) |
 
-**配信先の選択肢**
+#### 配信先の選択肢
 
 | 配信方法 | アーキテクチャ | コスト目安 | 導線 |
 |---------|-------------|-----------|------|
@@ -666,9 +658,7 @@ NetApp Console<!-- allow:naming --> に AWS 認証情報を登録する際のセ
 | **NetApp Console<!-- allow:naming --> が取得しない情報** | ファイルデータ、監査ログの中身、ユーザーデータ |
 | **最小権限の推奨** | `fsx:Describe*` + `ec2:Describe*` のみ（読み取り専用） |
 
-> **比較**
->
-> Datadog AWS Integration も同様に IAM Role を assume してメトリクスを収集します。NetApp Console<!-- allow:naming --> の trust model はこれと同等です。読み書き権限を付与する場合は影響範囲を理解した上で判断してください。
+> **比較:** Datadog AWS Integration も同様に IAM Role を assume してメトリクスを収集します。NetApp Console<!-- allow:naming --> の trust model はこれと同等です。読み書き権限を付与する場合は影響範囲を理解した上で判断してください。
 
 ### 8.2 NetApp Console<!-- allow:naming --> の可用性と依存関係
 
@@ -680,9 +670,7 @@ NetApp Console<!-- allow:naming --> に AWS 認証情報を登録する際のセ
 | 監査ログ配信パイプライン | ✅ 影響なし | Lambda は S3 AP を直接使用 |
 | EMS Webhook | ✅ 影響なし | ONTAP が直接 API Gateway に送信 |
 
-> **結論**
->
-> NetApp Console<!-- allow:naming --> は GUI アクセスの便利なレイヤーですが、運用の critical path には含まれません。本プロジェクトの監査ログ配信パイプラインは NetApp Console<!-- allow:naming --> に一切依存しません。
+> **結論:** NetApp Console<!-- allow:naming --> は GUI アクセスの便利なレイヤーですが、運用の critical path には含まれません。本プロジェクトの監査ログ配信パイプラインは NetApp Console<!-- allow:naming --> に一切依存しません。
 
 ### 8.3 Link Lambda の権限スコープと通信先
 
