@@ -52,10 +52,15 @@ prefix that also held one pre-existing large file, so 13 keys were listed.
 ## How to read the figures
 
 The class-level `p50_ms` and `p99_ms` in `per_size_class` are the simple mean
-of each object's own p50 and p99, not percentiles over pooled samples (tracked
-in [#147](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/147)).
-With 10 reads per object, each per-object p99 is the maximum of 10 samples; the
-ListObjectsV2 p99 is the maximum of 20 samples. `throughput_mbps` is per stream
-at concurrency 1, derived from mean latency and object size, in MiB/s. Two runs
-do not establish statistical stability. These are latencies observed in this
-environment on this date, not a service limit.
+of each object's own p50 and p99, not percentiles over pooled samples. The tool
+aggregated this way when these files were taken. The aggregation was changed in
+a later tool version
+([#147](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/issues/147)),
+and [`../2026-10-10-pooled/`](../2026-10-10-pooled/README.md) holds a
+re-measurement with pooled class percentiles. The class p99 figures in these
+files are not comparable with the pooled ones. With 10 reads per object, each
+per-object p99 is the maximum of 10 samples; the ListObjectsV2 p99 is the
+maximum of 20 samples. `throughput_mbps` is per stream at concurrency 1,
+derived from mean latency and object size, in MiB/s. Two runs do not establish
+statistical stability. These are latencies observed in this environment on this
+date, not a service limit.
