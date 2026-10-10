@@ -159,7 +159,7 @@ aws logs filter-log-events \
 | Item | Details |
 |------|---------|
 | Expected Result | API Gateway access logs contain requestId, sourceIp, httpMethod, resourcePath, status, responseLatency |
-| Actual Result | Access logs confirmed: requestId, sourceIp (92.202.153.119), httpMethod (POST/GET), resourcePath (/prod/ems), status (200/405), responseLatency recorded correctly |
+| Actual Result | Access logs confirmed: requestId, sourceIp (203.0.113.10), httpMethod (POST/GET), resourcePath (/prod/ems), status (200/405), responseLatency recorded correctly |
 | Judgment | ✅ PASS |
 
 ---

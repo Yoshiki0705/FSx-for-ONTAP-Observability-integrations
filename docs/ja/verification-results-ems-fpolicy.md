@@ -159,7 +159,7 @@ aws logs filter-log-events \
 | 項目 | 内容 |
 |------|------|
 | 期待結果 | API Gateway アクセスログに requestId、sourceIp、httpMethod、resourcePath、status、responseLatency が記録される |
-| 実際の結果 | アクセスログ確認: requestId、sourceIp (92.202.153.119)、httpMethod (POST/GET)、resourcePath (/prod/ems)、status (200/405)、responseLatency が正常に記録 |
+| 実際の結果 | アクセスログ確認: requestId、sourceIp (203.0.113.10)、httpMethod (POST/GET)、resourcePath (/prod/ems)、status (200/405)、responseLatency が正常に記録 |
 | 判定 | ✅ PASS |
 
 ---
