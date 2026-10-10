@@ -183,7 +183,7 @@ Defects in the dashboard template or the Terraform module: none found in this ru
 | ALARM path of the file-system capacity alarm (CloudFormation and Terraform) | Not verified in this run | F1. Verified later on a first-generation file system: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06) |
 | Second-generation file systems (`file_server_names`, `FileServer` and `Aggregate` dimensions) | Not run | The test file system is first generation |
 | File systems with more than one HA pair | Not run | The test file system has one HA pair |
-| SNS notification delivery | Not exercised | No `NotificationEmail` / `notification_email` was set, so no topic, subscription, or alarm/OK action existed |
+| SNS notification delivery | Not exercised in this run | No `NotificationEmail` / `notification_email` was set, so no topic, subscription, or alarm/OK action existed. The delivery path was verified separately on 2026-10-10: [SNS Delivery Path Verification on 2026-10-10](#sns-delivery-path-verification-on-2026-10-10) |
 | Latency widget | Not applicable | The dashboard does not implement a latency widget |
 | Behavior under load | Not run | Idle file system, no load generated |
 
@@ -392,7 +392,7 @@ Two items remain open:
 | Cause of the 401, and the ONTAP-side read-back of the quota rule and qtree | Not verified | ONTAP access was not restored during the run |
 | Second-generation file systems and more than one HA pair | Not run | The test file system was first generation with one HA pair |
 | TLS with a CA certificate (`CaCertPath`, `CaCertLayerArn`) | Not run | Only `CERT_NONE` ran |
-| SNS notification delivery | Not exercised | `NotificationEmail` was empty, so no topic was created |
+| SNS notification delivery | Not exercised in this run | `NotificationEmail` was empty, so no topic was created. The delivery path was verified separately on 2026-10-10: [SNS Delivery Path Verification on 2026-10-10](#sns-delivery-path-verification-on-2026-10-10) |
 | Pagination beyond one page, the truncation path (`QtreeQuotaReportTruncated=1`), and SVMs with more than 200 qtrees | Not run | The SVM returned 2 records on one page |
 | A dedicated read-only ONTAP account for the poller | Not tested | The run used `fsxadmin` |
 | Least-privilege security group and export policy | Not tested | The run reused a security group open to `0.0.0.0/0` and the `default` export policy, which allows `0.0.0.0/0` read/write and superuser access |
@@ -524,7 +524,7 @@ The 5 custom metric series in `FSxONTAP/Qtree` cannot be deleted and are left to
 |------|--------|--------|
 | Second-generation file systems and more than one HA pair | Not run | The test file system was first generation with one HA pair |
 | TLS with a CA certificate (`CaCertPath`, `CaCertLayerArn`) | Not run | Only `CERT_NONE` ran (RF5) |
-| SNS notification delivery | Not exercised | `NotificationEmail` was empty, so the alarms had no actions |
+| SNS notification delivery | Not exercised in this run | `NotificationEmail` was empty, so the alarms had no actions. The delivery path was verified separately on 2026-10-10: [SNS Delivery Path Verification on 2026-10-10](#sns-delivery-path-verification-on-2026-10-10) |
 | Pagination beyond one page, the truncation path (`QtreeQuotaReportTruncated=1`), and SVMs with more than 200 qtrees | Not run | The SVM returned 2 records on one page |
 | Least-privilege security group and export policy | Not tested | The run reused the permissive test configuration (RF4) |
 | A dedicated read-only ONTAP account for the poller | Not tested | The run used `fsxadmin` |
@@ -662,7 +662,7 @@ No security group, IAM, or export policy was changed. No other volume or recover
 | Item | Status | Reason |
 |------|--------|--------|
 | Second-generation file systems (capacity with the `Aggregate` dimension) and more than one HA pair | Not run | The test file system was first generation with one HA pair |
-| SNS notification delivery | Not exercised | No notification email was set, so the alarms had no actions |
+| SNS notification delivery | Not exercised in this run | No notification email was set, so the alarms had no actions. The delivery path was verified separately on 2026-10-10: [SNS Delivery Path Verification on 2026-10-10](#sns-delivery-path-verification-on-2026-10-10) |
 | ALARM at thresholds other than 50, including the default 80 | Not run | Only 50 was used, to keep the fill small |
 | Space release when a recovery-queue entry expires without a purge | Not observed | Entries were purged |
 | Cause of the write-rate drop | Not determined | No burst-credit or IOPS metric was checked |
@@ -890,7 +890,7 @@ No export policy, IAM outside the module, or security group outside the module w
 | Heartbeat failure path (`CollectorSucceeded` = 0) | Not driven | Both collectors succeeded on every poll |
 | SVM-scoped ONTAP user | Not tested | The user was cluster-scoped `fsxadmin-readonly` |
 | `security login create` over SSH from the README prerequisites | Not run | The user was created with `POST /api/security/accounts` |
-| SNS notification delivery | Not exercised | `notification_email` was not set |
+| SNS notification delivery | Not exercised in this run | `notification_email` was not set. The delivery path was verified separately on 2026-10-10: [SNS Delivery Path Verification on 2026-10-10](#sns-delivery-path-verification-on-2026-10-10) |
 | TLS verification with a CA certificate (`ca_cert_path`, `ca_cert_layer_arn`) | Not run | Both were empty |
 | Default 5-minute poll and default 10800-second lag threshold | Not run | 1 minute and 300 seconds were used to shorten the test |
 | More than one page, the `snapmirror_max_relationships` cap, a truncation value of 1 | Not exercised | 1 relationship and 2 quota records; truncation 0 |
@@ -1144,7 +1144,7 @@ An older log group and its syslog configuration, both from before this run, were
 | `unauthorized-access` (file-path pattern) | Not run | Its shipped pattern is a placeholder, and file access is not in the admin audit log |
 | ONTAP CLI (SSH) change and delete operations | Not exercised | Only REST calls were made. The new `bulk-delete` default matched a constructed CLI-style line, not a captured one |
 | New `bulk-delete` default on a live alarm | Not run | Chosen after the run; checked with `test-metric-filter` only |
-| SNS notification on ALARM and OK | Not exercised | No topic was configured |
+| SNS notification on ALARM and OK | Not exercised | No topic was configured. This row is in the EMS admin-audit (F8) context, outside the monitoring modules the [SNS Delivery Path Verification on 2026-10-10](#sns-delivery-path-verification-on-2026-10-10) scopes itself to, so that run's wiring result is not claimed for it |
 | Deployer IAM policy `examples/basic/iam-policy.json` | Not verified | The deployer had administrator access |
 | Mitigation for F9, for example a periodic write that keeps each node's connection active | Not tested | — |
 | Why ONTAP held 2 stale destinations before the run | Not determined | They were recorded and deleted |
@@ -1349,6 +1349,30 @@ One item remains: the archive bucket, with 12 object versions and 0 delete marke
 | Done with remaining items | 1 of 20 (M1): the archive bucket stays until 2026-10-10T12:33:00.194Z |
 | T4 completion criteria | Not all met. The `notify_only`, `approve`, IAM-deny, policy-simulation, alarm-OK, concurrency and deploy-time validation rows pass. The decision-archive row is open: the positive controls for identities A and B were not run, and latched runs are not archived (F3) |
 | Module code defects | None found. No code was changed. F1–F3 are differences from the design wording, recorded in the module README |
+
+---
+
+## SNS Delivery Path Verification on 2026-10-10
+
+The per-run tables above each note that no notification email was set in that run, so no SNS topic, subscription, or alarm action existed. The notification-delivery path was therefore never exercised during the metric-evaluation runs. On 2026-10-10 (UTC), region `ap-northeast-1`, a separate dedicated run exercised the delivery path once, independently of any metric evaluation.
+
+| Item | Value |
+|------|-------|
+| Verification date | 2026-10-10 (UTC) |
+| Region | `ap-northeast-1` |
+| Context file system | `fs-0123456789abcdef0` (the alarm referenced its `StorageCapacityUtilization` dimension). The file system was not modified; the alarm state was FORCED, not driven by real utilization |
+| Scope | The ALARM-action → SNS topic → subscriber delivery path only (the SNS wiring) |
+
+Method: a temporary SNS topic, an SQS queue subscribed to that topic, and a temporary CloudWatch alarm whose `AlarmActions` pointed at the SNS topic were created. SQS was chosen as the subscriber so delivery is machine-confirmable without a manual email-subscription click. `aws cloudwatch set-alarm-state --state-value ALARM` forced the alarm into ALARM.
+
+Result: within about 12 seconds, the SQS queue received exactly one message: an SNS Notification envelope whose inner CloudWatch message had `NewStateValue=ALARM` for the test alarm. All temporary resources were then deleted and confirmed gone (alarm absent, SNS topic NotFound, SQS NonExistentQueue).
+
+Scope and limits (evidence-discipline):
+
+- Verified: the ALARM-action → SNS topic → subscriber delivery path. This path is identical across the monitoring modules (an alarm's `AlarmActions` is an SNS topic ARN), so this one representative run confirms the wiring for them.
+- Not changed: the per-module metric-evaluation results recorded above stand as-is.
+- Not proven: email-protocol rendering specifically (SQS was used), SNS delivery-status logging / DLQ-on-SNS, and anything about real metric-driven transitions (the state was artificial).
+- Confidence tier: `verified`, scoped to the delivery path, forced state, a single run, `ap-northeast-1`, 2026-10-10.
 
 ---
 
