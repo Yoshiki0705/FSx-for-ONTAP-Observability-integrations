@@ -225,6 +225,8 @@ These figures are derived from the per-object samples of the three runs. They ar
 
 The 3 x p50 thresholds are 130.458, 131.499, 165.939, and 359.832 ms for 1 KB, 100 KB, 1 MB, and 5 MB.
 
+The slow reads are concentrated at two positions in the invocation. This is derived from `samples_ms`, and the cause is not isolated. In all 12 GetObject invocations (4 size classes x 3 runs), the 100th read (object 3, read 20) took at least 3.8 times the class p50 in the table above (169.818 to 582.888 ms), and the 50th read (object 2, read 10) did so in 7 of 12. These two positions hold 19 of the 23 slow reads. The other 1,416 reads include 4 (0.3 %), all in the 5 MB class. One key listing precedes the first read of each invocation.
+
 ### Comparison with the averaging formula (derived)
 
 The earlier run reported each class p99 as the mean of three per-object p99 values (the averaging formula). The table applies the same formula to the per-object p99 values in the pooled-run files (40 samples per object) and sets it next to the pooled class p99 that the tool reported. The middle column is derived; the right column is tool output.
@@ -236,14 +238,14 @@ The earlier run reported each class p99 as the mean of three per-object p99 valu
 | 1 MB | 74.535 / 69.393 | 251.7 / 191.2 / 201.2 | 291.514 / 176.486 / 203.847 |
 | 5 MB | 191.688 / 444.951 | 336.9 / 450.7 / 399.9 | 263.822 / 410.531 / 501.195 |
 
-The formula on 40-sample objects gives 130.2 to 251.7 ms for 1 KB to 1 MB, where the earlier run reported 43.14 to 74.535 ms from 10-sample objects. For 5 MB the two are in the same range (191.688 and 444.951 ms earlier; 336.9, 450.7, and 399.9 ms on the pooled-run files). A difference between the earlier p99 and the pooled p99 reflects the method and the sample count; it is not evidence that the file system changed.
+The formula on 40-sample objects gives 130.2 to 251.7 ms for 1 KB to 1 MB, where the earlier run reported 43.14 to 74.535 ms from 10-sample objects. For 5 MB the two are in the same range (191.688 and 444.951 ms earlier; 336.9, 450.7, and 399.9 ms on the pooled-run files). A difference between the earlier p99 and the pooled p99 reflects the method, the sample count per object (10 earlier, 40 now), and the reads per invocation (30 earlier, 120 now); it is not evidence that the file system changed.
 
-Inference, not a re-test of the earlier run: at a slow-read share of 1.4 to 1.9 %, and assuming each read is slow independently, about 82 to 87 % of 10-read objects would hold no slow read. This is consistent with the p99 values of 43 to 75 ms for 1 KB to 1 MB in the earlier run. The earlier raw files keep no samples, so this cannot be checked.
+Hypothesis, not checked and not a re-test of the earlier run: each earlier invocation read 3 objects x 10 times = 30 times, so it never reached the 50th or the 100th read. If slow reads are tied to those positions in the invocation rather than to reads in general, a 30-read invocation would hold few of them. That would be consistent with the p99 values of 43 to 75 ms for 1 KB to 1 MB in the earlier run, and with 10-read objects that mostly held no slow read. The earlier raw files keep no samples, so this cannot be checked. The hypothesis does not account for the 5 MB class: within its 30 reads, earlier run 2 had per-object largest values of 361.481 and 820.689 ms.
 
 ### What the three runs support
 
-- p50 is stable run to run. The spread within each class (largest class p50 divided by smallest, minus 1) is 2 % for 5 MB (118.597 to 120.898 ms), 8 % for 1 KB (41.542 to 44.786 ms), 18 % for 100 KB (38.132 to 44.939 ms), and 20 % for 1 MB (50.072 to 60.024 ms). With three runs, this statement is limited to these runs.
-- A small share of reads took at least 3 times the class p50, in every size class. Of 360 samples, 5 (1.4 %) for 1 KB and 100 KB, 6 (1.7 %) for 1 MB, and 7 (1.9 %) for 5 MB. The ranges per class are in the derived table. The cause is not isolated: the client network path, the S3 Access Points front end, ONTAP, and Lambda were not separated.
+- The class p50 varied by 2 to 20 % between runs. The spread within each class (largest class p50 divided by smallest, minus 1) is 2 % for 5 MB (118.597 to 120.898 ms), 8 % for 1 KB (41.542 to 44.786 ms), 18 % for 100 KB (38.132 to 44.939 ms), and 20 % for 1 MB (50.072 to 60.024 ms). With three runs, this statement is limited to these runs.
+- A small share of reads took at least 3 times the class p50, in every size class. Of 360 samples, 5 (1.4 %) for 1 KB and 100 KB, 6 (1.7 %) for 1 MB, and 7 (1.9 %) for 5 MB. The ranges per class are in the derived table. These reads are not spread evenly: 19 of the 23 are the 50th or the 100th GetObject of an invocation (the 100th in all 12 invocations, the 50th in 7 of 12), and the other 1,416 reads include 4. The cause of the slow reads and of the positional pattern is not isolated: the client network path, the S3 Access Points front end, ONTAP, and Lambda were not separated.
 - A single run's class p99 is indicative only. With 120 pooled samples the class p99 is the second-largest sample, and it moved between runs. The largest p99 divided by the smallest is 1.7 for 1 MB (176.486 to 291.514 ms), 1.9 for 5 MB (263.822 to 501.195 ms), 2.8 for 1 KB (82.878 to 229.291 ms), and 3.7 for 100 KB (59.016 to 218.75 ms). The across-run p99 (4th-largest of 360) is steadier, but it is derived from three runs in one environment on one day.
 - Across the three ListObjectsV2 series (12 keys), p50 ranged from 28.11 to 28.665 ms and p99 from 234.278 to 285.43 ms (the second-largest of 120).
 
@@ -254,6 +256,7 @@ Inference, not a re-test of the earlier run: at a slow-read share of 1.4 to 1.9 
 - Throughput is per stream at concurrency 1. It is not the file system's throughput limit.
 - That the reads were served from SSD is inferred from the tiering policy and was not measured.
 - The tool does not separate the Lambda cold-start effect.
+- The cause of the concentration of slow reads at the 50th and 100th read of an invocation is not isolated.
 - The ListObjectsV2 p99 cannot be recomputed, because its result keeps no samples.
 - Three runs do not establish statistical stability. No confidence interval is claimed.
 - Request charges for this run were not estimated, and no cost figure is given.
