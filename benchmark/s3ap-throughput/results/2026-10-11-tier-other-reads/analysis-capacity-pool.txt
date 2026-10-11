@@ -1,0 +1,105 @@
+cw-all.tsv: 48 datapoints, 0 duplicate keys
+
+== 0. inputs
+invocations by kind: {'chn': 2, 'cohort': 6, 'warm': 3} total 11
+invocations with a non-zero CLI exit code or a status other than 200: none
+GetObject reads in raw/: 327 reads, 1,089,994,752 bytes (and 11 ListObjectsV2, one per invocation)
+logical size per volume, from manifest.txt (q, p1, p2 include the 64 KiB warm/ object):
+  q     127,205,376 B in 61 objects (sizes: {65536: 21, 1048576: 20, 5242880: 20})
+  p1    127,205,376 B in 61 objects (sizes: {65536: 21, 1048576: 20, 5242880: 20})
+  p2    127,205,376 B in 61 objects (sizes: {65536: 21, 1048576: 20, 5242880: 20})
+  chn   707,788,800 B in 135 objects (sizes: {5242880: 135})
+q, p1, and p2 hold the same number of objects and the same logical size: True
+
+== 1. tiering writes (whole file; logical size includes the warm/ object)
+q    write ops=  30 bytes=  126,935,040 logical= 127,205,376 ratio=0.9979  bytes per op=4,231,168  buckets=['18:05Z']
+p1   write ops=  30 bytes=  126,935,040 logical= 127,205,376 ratio=0.9979  bytes per op=4,231,168  buckets=['18:05Z']
+p2   write ops=  30 bytes=  126,935,040 logical= 127,205,376 ratio=0.9979  bytes per op=4,231,168  buckets=['18:05Z']
+chn  capacity pool write datapoints (policy NONE): 0 in total
+
+== 2. reads: f = capacity pool read bytes in the window / bytes read by the invocation
+x4-q-c1      vol=q    start=18:09:59Z buckets=18:09Z..18:11Z ops= 372 bytes=60,768,288 expected= 63,569,920 f=0.956  DataReadOps= 30  -> above 0.80 (nearly all of the data was read from the capacity pool)
+x4-chn-a     vol=chn  start=18:10:59Z buckets=18:10Z..18:12Z DataReadOps=  25 DataReadBytes= 131,072,000 expected=131,072,000 capacity pool ops=0
+x4-p1-c1     vol=p1   start=18:11:59Z buckets=18:11Z..18:13Z ops= 399 bytes=62,134,656 expected= 63,569,920 f=0.977  DataReadOps= 30  -> above 0.80 (nearly all of the data was read from the capacity pool)
+x4-chn-b     vol=chn  start=18:12:59Z buckets=18:12Z..18:14Z DataReadOps= 110 DataReadBytes= 576,716,800 expected=576,716,800 capacity pool ops=0
+x4-p2-c1     vol=p2   start=18:14:29Z buckets=18:14Z..18:15Z ops= 419 bytes=60,751,776 expected= 63,569,920 f=0.956  DataReadOps= 30  -> above 0.80 (nearly all of the data was read from the capacity pool)
+x4-q-c2      vol=q    start=18:19:29Z buckets=18:19Z..18:20Z ops= 371 bytes=62,122,272 expected= 63,569,920 f=0.977  DataReadOps= 30  -> above 0.80 (nearly all of the data was read from the capacity pool)
+x4-p1-c2     vol=p1   start=18:21:29Z buckets=18:21Z..18:22Z ops= 353 bytes=60,698,112 expected= 63,569,920 f=0.955  DataReadOps= 30  -> above 0.80 (nearly all of the data was read from the capacity pool)
+x4-p2-c2     vol=p2   start=18:23:29Z buckets=18:23Z..18:24Z ops= 394 bytes=62,085,120 expected= 63,569,920 f=0.977  DataReadOps= 30  -> above 0.80 (nearly all of the data was read from the capacity pool)
+
+pre-registered reading of the three main reads (cohort 1 of q, p1, p2):
+  Q f=0.956, P1 f=0.977, P2 f=0.956
+  row of the table fixed before the first invocation: Q above 0.10 (the control is not zero; any P1, P2)
+  x4-q-c2 (auxiliary, not used for the row): f=0.977
+  x4-p1-c2 (auxiliary, not used for the row): f=0.955
+  x4-p2-c2 (auxiliary, not used for the row): f=0.977
+
+== 3. non-zero CapacityPoolRead* buckets outside every read window of block 2
+q 
+  18:05Z ops= 30 bytes=  122,880  bytes per op=4,096  inside the window of x4-warm-q  (write ops in the same bucket: 30)
+p1 
+  18:05Z ops= 30 bytes=  122,880  bytes per op=4,096  inside the window of x4-warm-p1  (write ops in the same bucket: 30)
+p2 
+  18:05Z ops= 30 bytes=  122,880  bytes per op=4,096  inside the window of x4-warm-p2  (write ops in the same bucket: 30)
+chn none
+
+== 4. node counters (object_store_client_op, node 1) against the CloudWatch sums
+node1 get: 18:03:49Z -> 18:24:05Z increase 2,398 ops, 368,928,864 B
+   whole-file CloudWatch sums over the volumes: 2,398 ops, 368,928,864 B -> equal to the counter increase: True
+node1 put: 18:03:49Z -> 18:24:05Z increase 90 ops, 380,805,120 B
+   whole-file CloudWatch sums over the volumes: 90 ops, 380,805,120 B -> equal to the counter increase: True
+CapacityPoolReadOperations in the buckets that also hold tiering writes (the reads that follow a write): 90; the other CapacityPoolReadOperations: 2,308
+get increase minus the reads that follow a write: 2,308 ops, which is the CapacityPoolReadOperations of the six cohort reads
+the counters are cumulative from an unknown start, so only differences are used; the first counter read of this run was taken after the volumes were created and before the reads (18:03:49Z), so the interval holds this run's writes, tiering, and reads.
+
+== 5. DataReadOperations / DataReadBytes (CloudWatch, whole file) against the GetObject samples in raw/
+q    DataReadOps=    64 raw reads=    64  DataReadBytes=    127,401,984 raw bytes=    127,401,984  equal
+p1   DataReadOps=    64 raw reads=    64  DataReadBytes=    127,401,984 raw bytes=    127,401,984  equal
+p2   DataReadOps=    64 raw reads=    64  DataReadBytes=    127,401,984 raw bytes=    127,401,984  equal
+chn  DataReadOps=   135 raw reads=   135  DataReadBytes=    707,788,800 raw bytes=    707,788,800  equal
+all four volumes equal: True
+
+== 6. tier state from cw-storageused.tsv (one-minute StorageUsed points, bytes)
+points per volume and tier: {'q/SSD': 25, 'q/Sta': 25, 'p1/SSD': 25, 'p1/Sta': 25, 'p2/SSD': 25, 'p2/Sta': 25, 'chn/SSD': 25, 'chn/Sta': 25}; first 18:03Z, last 18:27Z
+q    first point at the full logical size 18:05Z (127,205,376 B); equal to it at every later point to 18:27Z: True; partial points: [('18:04', 262144)]
+     SSD one point before 34,959,360, at the point 15,933,440, at 18:27Z 16,744,448; change from the first full point to 18:27Z +811,008 B (0.6 % of the logical size)
+p1   first point at the full logical size 18:05Z (127,205,376 B); equal to it at every later point to 18:27Z: True; partial points: [('18:04', 262144)]
+     SSD one point before 31,473,664, at the point 15,089,664, at 18:27Z 16,756,736; change from the first full point to 18:27Z +1,667,072 B (1.3 % of the logical size)
+p2   first point at the full logical size 18:05Z (127,205,376 B); equal to it at every later point to 18:27Z: True; partial points: [('18:04', 262144)]
+     SSD one point before 34,967,552, at the point 15,941,632, at 18:27Z 16,752,640; change from the first full point to 18:27Z +811,008 B (0.6 % of the logical size)
+chn  capacity pool tier: largest point 0 B; SSD at the first point 22,695,936, largest 732,626,944, at 18:27Z 732,626,944; manifest size 707,788,800
+
+poll (tier-polls.log; the Amazon FSx API policy and the volume-level metric, read during the run):
+  18:08:02Z  q    policy=ALL  capacity pool tier 127,205,376 B (point 18:07Z)
+  18:08:02Z  p1   policy=ALL  capacity pool tier 127,205,376 B (point 18:07Z)
+  18:08:02Z  p2   policy=ALL  capacity pool tier 127,205,376 B (point 18:07Z)
+  18:08:02Z  chn  policy=NONE  capacity pool tier 0 B (point 18:07Z)
+
+== 7. elapsed time from the data entering the capacity pool to each read (minutes)
+q    tiering write buckets 18:05Z; first starts 18:05:00Z, last ends 18:06:00Z
+  x4-q-c1    read starts 18:09:59.0Z  at least (from 18:06:00Z): 3.984 -> rounded down 3.9;  at most (from 18:05:00Z): 4.984 -> rounded up 5.0; with a label up to 1 minute late: up to 6.0
+             range, at least to at most: 3.9 to 5.0
+  x4-q-c2    read starts 18:19:29.0Z  at least (from 18:06:00Z): 13.484 -> rounded down 13.4;  at most (from 18:05:00Z): 14.484 -> rounded up 14.5; with a label up to 1 minute late: up to 15.5
+             range, at least to at most: 13.4 to 14.5
+  run-log times, printed for reference and not used as bounds:
+    writes ended 18:04:29.0Z (U); first PUT of the direct volumes 18:03:51.0Z
+    x4-q-c1    from the end of the writes (U): 5.5
+    x4-q-c2    from the end of the writes (U): 15.0
+p1   tiering write buckets 18:05Z; first starts 18:05:00Z, last ends 18:06:00Z
+  x4-p1-c1   read starts 18:11:59.0Z  at least (from 18:06:00Z): 5.984 -> rounded down 5.9;  at most (from 18:05:00Z): 6.984 -> rounded up 7.0; with a label up to 1 minute late: up to 8.0
+             range, at least to at most: 5.9 to 7.0
+  x4-p1-c2   read starts 18:21:29.0Z  at least (from 18:06:00Z): 15.484 -> rounded down 15.4;  at most (from 18:05:00Z): 16.484 -> rounded up 16.5; with a label up to 1 minute late: up to 17.5
+             range, at least to at most: 15.4 to 16.5
+  run-log times, printed for reference and not used as bounds:
+    writes ended 18:04:29.0Z (U); first PUT of the direct volumes 18:03:51.0Z
+    x4-p1-c1   from the end of the writes (U): 7.5
+    x4-p1-c2   from the end of the writes (U): 17.0
+p2   tiering write buckets 18:05Z; first starts 18:05:00Z, last ends 18:06:00Z
+  x4-p2-c1   read starts 18:14:29.0Z  at least (from 18:06:00Z): 8.484 -> rounded down 8.4;  at most (from 18:05:00Z): 9.484 -> rounded up 9.5; with a label up to 1 minute late: up to 10.5
+             range, at least to at most: 8.4 to 9.5
+  x4-p2-c2   read starts 18:23:29.0Z  at least (from 18:06:00Z): 17.484 -> rounded down 17.4;  at most (from 18:05:00Z): 18.484 -> rounded up 18.5; with a label up to 1 minute late: up to 19.5
+             range, at least to at most: 17.4 to 18.5
+  run-log times, printed for reference and not used as bounds:
+    writes ended 18:04:29.0Z (U); first PUT of the direct volumes 18:03:51.0Z
+    x4-p2-c1   from the end of the writes (U): 10.0
+    x4-p2-c2   from the end of the writes (U): 19.0

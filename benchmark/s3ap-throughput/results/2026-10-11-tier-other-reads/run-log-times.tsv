@@ -1,0 +1,12 @@
+event	volume	time_utc
+plan_frozen	all	2026-10-11T18:01:24Z
+volumes_created	q,p1,p2,chn	2026-10-11T18:01:25Z to 18:01:26Z
+volumes_settled	all	2026-10-11T18:02:17Z
+stack_deployed	all	2026-10-11T18:02:41Z
+access_points_available	all	2026-10-11T18:02:51Z
+chn_upload_start	chn	2026-10-11T18:03:00Z
+chn_upload_end	chn	2026-10-11T18:03:39Z
+direct_upload_start	q,p1,p2	2026-10-11T18:03:51Z
+direct_upload_end_U	q,p1,p2	2026-10-11T18:04:29Z
+listings_verified	q,p1,p2	2026-10-11T18:04:31Z
+teardown_done	all	2026-10-11T18:30:37Z
