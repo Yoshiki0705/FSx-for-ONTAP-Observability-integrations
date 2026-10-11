@@ -1,0 +1,167 @@
+cw-all.tsv: 88 datapoints, 0 duplicate keys
+
+== 0. inputs
+invocations by kind: {'cold': 4, 'coldre': 6, 'k1first': 12, 'k1re': 12, 'pre': 8, 'warm': 5} total 47
+invocations with a non-zero CLI exit code or a status other than 200: none
+GetObject reads in raw/: 2,480 reads, 5,214,044,160 bytes (and 47 ListObjectsV2, one per invocation)
+logical size per volume, from manifest.txt, including the 64 KiB warm/ object:
+  k1    254,345,216 B in 121 objects
+  s2     63,635,456 B in 31 objects
+  s3     63,635,456 B in 31 objects
+  s3p    63,635,456 B in 31 objects
+  s4     63,635,456 B in 31 objects
+
+== 1. tiering writes (whole file; logical size includes the warm/ object)
+k1   write ops=  60 bytes=  253,870,080 logical= 254,345,216 ratio=0.9981 (1/1.0)  bytes per op=4,231,168
+s2   write ops=  15 bytes=   63,467,520 logical=  63,635,456 ratio=0.9974 (1/1.0)  bytes per op=4,231,168
+s3   write ops=  15 bytes=      860,160 logical=  63,635,456 ratio=0.0135 (1/74.0)  bytes per op=57,344
+s3p  write ops=  15 bytes=      860,160 logical=  63,635,456 ratio=0.0135 (1/74.0)  bytes per op=57,344
+s4   write ops=  15 bytes=   63,467,520 logical=  63,635,456 ratio=0.9974 (1/1.0)  bytes per op=4,231,168
+
+== 2. reads: f = capacity pool read bytes in the window / bytes read by the invocation(s)
+x2-cold-s2                 vol=s2   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:22:15Z
+x2-cold-s3                 vol=s3   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:22:20Z
+x2-cold-s4                 vol=s4   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:22:23Z
+x2-cold-s3p                vol=s3p  ops=  374 bytes=      916,864 expected= 63,569,920 f=0.014  DataReadOps=  30  start=12:22:33Z
+x2-k1first (12 prefixes)   vol=k1   ops= 1896 bytes=  246,862,656 expected=254,279,680 f=0.971  DataReadOps= 120  start=12:22:38Z
+x2-k1re-c1                 vol=k1   ops=    9 bytes=      528,384 expected= 63,569,920 f=0.008  DataReadOps=  30  start=12:26:01Z  since the end of cohort 1 first read   3.3 min, since the end of the first-read sweep   3.0 min
+x2-k1re-c2                 vol=k1   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:31:25Z  since the end of cohort 2 first read   8.6 min, since the end of the first-read sweep   8.4 min
+x2-coldre-m30-s2           vol=s2   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:52:16Z  since the start of the first read of s2  30.0 min
+x2-coldre-m30-s3           vol=s3   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:52:20Z  since the start of the first read of s3  30.0 min
+x2-coldre-m30-s4           vol=s4   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:52:24Z  since the start of the first read of s4  30.0 min
+x2-k1re-c3                 vol=k1   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=12:53:01Z  since the end of cohort 3 first read  30.1 min, since the end of the first-read sweep  30.0 min
+x2-coldre-m60-s2           vol=s2   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=13:22:16Z  since the start of the first read of s2  60.0 min
+x2-coldre-m60-s3           vol=s3   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=13:22:21Z  since the start of the first read of s3  60.0 min
+x2-coldre-m60-s4           vol=s4   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=13:22:24Z  since the start of the first read of s4  60.0 min
+x2-k1re-c4                 vol=k1   ops=    0 bytes=            0 expected= 63,569,920 f=0.000  DataReadOps=  30  start=13:23:01Z  since the end of cohort 4 first read  60.0 min, since the end of the first-read sweep  60.0 min
+
+== 3. stored-bytes ratio g (post-hoc): first-read capacity pool read bytes / tiering write bytes
+k1   read bytes=  246,862,656 / write bytes=  253,870,080 = 0.972
+s3p  read bytes=      916,864 / write bytes=      860,160 = 1.066
+s2   read bytes=            0 / write bytes=   63,467,520 = 0.000
+s3   read bytes=            0 / write bytes=      860,160 = 0.000
+s4   read bytes=            0 / write bytes=   63,467,520 = 0.000
+
+== 4. non-zero CapacityPoolRead* buckets outside every read window of block 2
+k1
+  12:07Z ops= 14 bytes=   57,344  bytes per op=4,096  (write ops in the same bucket: 14)
+  12:08Z ops= 46 bytes=  188,416  bytes per op=4,096  (write ops in the same bucket: 46)
+  12:10Z ops=  1 bytes=   66,048  bytes per op=66,048  inside the window of x2-warm-k1  (write ops in the same bucket: 0)
+s2
+  12:15Z ops= 15 bytes=   61,440  bytes per op=4,096  (write ops in the same bucket: 15)
+s3
+  12:15Z ops= 15 bytes=   61,440  bytes per op=4,096  (write ops in the same bucket: 15)
+s3p
+  12:07Z ops= 14 bytes=   57,344  bytes per op=4,096  (write ops in the same bucket: 14)
+  12:08Z ops=  1 bytes=    4,096  bytes per op=4,096  (write ops in the same bucket: 1)
+  12:10Z ops=  1 bytes=    1,248  bytes per op=1,248  inside the window of x2-warm-s3p  (write ops in the same bucket: 0)
+s4
+  12:15Z ops= 15 bytes=   61,440  bytes per op=4,096  (write ops in the same bucket: 15)
+
+== 5. totals over all rows of cw-all.tsv
+k1   CPReadOperations=1,966  CPReadBytes=247,702,848  CPWriteOperations=60  CPWriteBytes=253,870,080
+s2   CPReadOperations=15  CPReadBytes=61,440  CPWriteOperations=15  CPWriteBytes=63,467,520
+s3   CPReadOperations=15  CPReadBytes=61,440  CPWriteOperations=15  CPWriteBytes=860,160
+s3p  CPReadOperations=390  CPReadBytes=979,552  CPWriteOperations=15  CPWriteBytes=860,160
+s4   CPReadOperations=15  CPReadBytes=61,440  CPWriteOperations=15  CPWriteBytes=63,467,520
+sum  CPReadOperations=2,401  CPReadBytes=248,866,720  CPWriteOperations=120  CPWriteBytes=382,525,440
+
+== 6. DataReadOperations / DataReadBytes (CloudWatch, whole file) against the GetObject samples in raw/
+k1   DataReadOps=   244 raw reads=   244  DataReadBytes=    508,821,504 raw bytes=    508,821,504  equal
+s2   DataReadOps= 1,054 raw reads= 1,054  DataReadBytes=  2,225,209,344 raw bytes=  2,225,209,344  equal
+s3   DataReadOps= 1,054 raw reads= 1,054  DataReadBytes=  2,225,209,344 raw bytes=  2,225,209,344  equal
+s3p  DataReadOps=    34 raw reads=    34  DataReadBytes=     63,832,064 raw bytes=     63,832,064  equal
+s4   DataReadOps=    94 raw reads=    94  DataReadBytes=    190,971,904 raw bytes=    190,971,904  equal
+all five volumes equal: True
+
+== 7. tier state from cw-storageused.tsv (one-minute StorageUsed points, bytes)
+points per volume and tier: {'k1/SSD': 81, 'k1/Sta': 81, 's2/SSD': 81, 's2/Sta': 81, 's3/SSD': 80, 's3/Sta': 80, 's3p/SSD': 80, 's3p/Sta': 80, 's4/SSD': 81, 's4/Sta': 81}; first 12:05Z, last 13:25Z
+  s3: no point at ['12:05']
+  s3p: no point at ['12:05']
+
+capacity pool tier:
+k1   first point at the full logical size 12:08Z (254,345,216 B); equal to it at every later point to 13:25Z: True; partial points: [('12:07', 60096512)]
+     first read started 12:22:38Z: 14.6 min after the start and 13.6 min after the end of that point (floor to 0.1: 14.6 and 13.6)
+     SSD at 12:09, 12:14, 12:15, 12:17: [19156992, 19316736, 19316736, 19316736]; range 12:09 to 12:14: 19,156,992 to 19,316,736
+     SSD at 13:25Z: 21,131,264; change from 12:17: +1,814,528 B (0.7 % of the logical size)
+     minute-to-minute SSD changes after 12:17 (minute, change in bytes, window):
+       12:23Z +675,840  in an invocation window of this volume
+       12:26Z +163,840  in an invocation window of this volume
+       12:27Z +163,840  in an invocation window of this volume
+       12:32Z +167,936  in an invocation window of this volume
+       12:50Z +147,456  in no invocation window
+       12:53Z +172,032  in an invocation window of this volume
+       13:23Z +323,584  in an invocation window of this volume
+s2   first point at the full logical size 12:15Z (63,635,456 B); equal to it at every later point to 13:25Z: True; partial points: none
+     first read started 12:22:15Z: 7.3 min after the start and 6.3 min after the end of that point (floor to 0.1: 7.2 and 6.2)
+     SSD at 12:09, 12:14, 12:15, 12:17: [77967360, 80560128, 17219584, 17219584]; range 12:09 to 12:14: 77,967,360 to 80,560,128
+     SSD at 13:25Z: 17,874,944; change from 12:17: +655,360 B (1.0 % of the logical size)
+     minute-to-minute SSD changes after 12:17 (minute, change in bytes, window):
+       12:23Z +167,936  in an invocation window of this volume
+       12:50Z +147,456  in no invocation window
+       12:53Z +172,032  in an invocation window of this volume
+       13:23Z +167,936  in an invocation window of this volume
+s3   first point at the full logical size 12:15Z (63,635,456 B); equal to it at every later point to 13:25Z: True; partial points: none
+     first read started 12:22:20Z: 7.3 min after the start and 6.3 min after the end of that point (floor to 0.1: 7.3 and 6.3)
+     SSD at 12:09, 12:14, 12:15, 12:17: [78151680, 80248832, 16908288, 16908288]; range 12:09 to 12:14: 78,151,680 to 80,248,832
+     SSD at 13:25Z: 17,563,648; change from 12:17: +655,360 B (1.0 % of the logical size)
+     minute-to-minute SSD changes after 12:17 (minute, change in bytes, window):
+       12:23Z +167,936  in an invocation window of this volume
+       12:50Z +147,456  in no invocation window
+       12:53Z +172,032  in an invocation window of this volume
+       13:23Z +167,936  in an invocation window of this volume
+s3p  first point at the full logical size 12:08Z (63,635,456 B); equal to it at every later point to 13:25Z: True; partial points: [('12:07', 60030976)]
+     first read started 12:22:33Z: 14.6 min after the start and 13.6 min after the end of that point (floor to 0.1: 14.5 and 13.5)
+     SSD at 12:09, 12:14, 12:15, 12:17: [15220736, 15380480, 15380480, 15380480]; range 12:09 to 12:14: 15,220,736 to 15,380,480
+     SSD at 13:25Z: 15,855,616; change from 12:17: +475,136 B (0.7 % of the logical size)
+     minute-to-minute SSD changes after 12:17 (minute, change in bytes, window):
+       12:23Z +327,680  in an invocation window of this volume
+       12:50Z +147,456  in no invocation window
+s4   first point at the full logical size 12:15Z (63,635,456 B); equal to it at every later point to 13:25Z: True; partial points: none
+     first read started 12:22:23Z: 7.4 min after the start and 6.4 min after the end of that point (floor to 0.1: 7.3 and 6.3)
+     SSD at 12:09, 12:14, 12:15, 12:17: [77946880, 78262272, 14921728, 14921728]; range 12:09 to 12:14: 77,946,880 to 78,262,272
+     SSD at 13:25Z: 16,224,256; change from 12:17: +1,302,528 B (2.0 % of the logical size)
+     minute-to-minute SSD changes after 12:17 (minute, change in bytes, window):
+       12:23Z +327,680  in an invocation window of this volume
+       12:50Z +147,456  in no invocation window
+       12:53Z +499,712  in an invocation window of this volume
+       13:23Z +327,680  in an invocation window of this volume
+
+largest and smallest first-read-to-full-size interval (minutes after the end of the point), by group:
+  K1 and S3p: smallest 13.56, largest 13.64
+  S2, S3, S4: smallest 6.27, largest 6.39
+
+== 8. elapsed time from the data entering the capacity pool to the first read (minutes)
+k1   first read starts 12:22:38.2Z to 12:22:59.0Z (12 invocation(s)); tiering write buckets 12:07Z, 12:08Z; first starts 12:07:00Z, last ends 12:09:00Z
+     at least (from 12:09:00Z): 13.637 to 13.984  -> rounded down 13.6 to 13.9
+     at most (from 12:07:00Z): 15.637 to 15.984  -> rounded up 15.7 to 16.0; with a label up to 1 minute late: up to 17.0
+     range, smallest at least to largest at most: 13.6 to 16.0
+     from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.403 to 15.750  -> 15.4 to 15.8
+     first write bucket starts 1.1 min after the start of the writes (12:05:56Z); the writes ended 0.2 min after it (12:07:14Z)
+s3p  first read starts 12:22:33.5Z to 12:22:33.5Z (1 invocation(s)); tiering write buckets 12:07Z, 12:08Z; first starts 12:07:00Z, last ends 12:09:00Z
+     at least (from 12:09:00Z): 13.558 to 13.558  -> rounded down 13.5 to 13.5
+     at most (from 12:07:00Z): 15.558 to 15.558  -> rounded up 15.6 to 15.6; with a label up to 1 minute late: up to 16.6
+     range, smallest at least to largest at most: 13.5 to 15.6
+     from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.325 to 15.325  -> 15.3 to 15.3
+     first write bucket starts 1.1 min after the start of the writes (12:05:56Z); the writes ended 0.2 min after it (12:07:14Z)
+s2   first read starts 12:22:15.9Z to 12:22:15.9Z (1 invocation(s)); tiering write buckets 12:15Z; first starts 12:15:00Z, last ends 12:16:00Z
+     at least (from 12:16:00Z): 6.265 to 6.265  -> rounded down 6.2 to 6.2
+     at most (from 12:15:00Z): 7.265 to 7.265  -> rounded up 7.3 to 7.3; with a label up to 1 minute late: up to 8.3
+     range, smallest at least to largest at most: 6.2 to 7.3
+     from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.032 to 15.032  -> 15.0 to 15.0
+     from the switch request (12:13:21.8Z): 8.902  -> 8.9  (534.1 s)
+     first write bucket starts 1.6 min after the switch request and 0.5 min after the first Amazon FSx API observation of ALL (12:14:29Z)
+s3   first read starts 12:22:20.5Z to 12:22:20.5Z (1 invocation(s)); tiering write buckets 12:15Z; first starts 12:15:00Z, last ends 12:16:00Z
+     at least (from 12:16:00Z): 6.342 to 6.342  -> rounded down 6.3 to 6.3
+     at most (from 12:15:00Z): 7.342 to 7.342  -> rounded up 7.4 to 7.4; with a label up to 1 minute late: up to 8.4
+     range, smallest at least to largest at most: 6.3 to 7.4
+     from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.108 to 15.108  -> 15.1 to 15.1
+     from the switch request (12:13:22.3Z): 8.969  -> 9.0  (538.2 s)
+     first write bucket starts 1.6 min after the switch request and 0.5 min after the first Amazon FSx API observation of ALL (12:14:29Z)
+s4   first read starts 12:22:23.2Z to 12:22:23.2Z (1 invocation(s)); tiering write buckets 12:15Z; first starts 12:15:00Z, last ends 12:16:00Z
+     at least (from 12:16:00Z): 6.387 to 6.387  -> rounded down 6.3 to 6.3
+     at most (from 12:15:00Z): 7.387 to 7.387  -> rounded up 7.4 to 7.4; with a label up to 1 minute late: up to 8.4
+     range, smallest at least to largest at most: 6.3 to 7.4
+     from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.153 to 15.153  -> 15.2 to 15.2
+     from the switch request (12:13:22.7Z): 9.008  -> 9.0  (540.5 s)
+     first write bucket starts 1.6 min after the switch request and 0.5 min after the first Amazon FSx API observation of ALL (12:14:29Z)

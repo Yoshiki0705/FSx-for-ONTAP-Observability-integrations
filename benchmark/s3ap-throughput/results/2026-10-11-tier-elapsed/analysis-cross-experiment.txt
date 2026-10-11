@@ -1,0 +1,100 @@
+== 1. first reads of the eight volumes: write path, capacity pool reads, elapsed time (minutes)
+experiment    volume path    read                 starts (UTC)               CP read ops  at least  at most
+experiment 1  B      direct  r1 s64k              08:40:00                             0       8.0     none
+experiment 1  B      direct  r1 s1m               08:43:00                            56      11.0     none
+experiment 1  B      direct  r1 s5m               08:46:00                           332      14.0     none
+experiment 1  B      direct  r2 s64k              08:57:45                             0      25.7     none
+experiment 1  B      direct  r2 s1m               09:00:45                            56      28.7     none
+experiment 1  B      direct  r2 s5m               09:03:45                           323      31.7     none
+experiment 1  B      direct  r3 s64k              09:15:43                             0      43.7     none
+experiment 1  B      direct  r3 s1m               09:18:43                            54      46.7     none
+experiment 1  B      direct  r3 s5m               09:21:43                           298      49.7     none
+experiment 2  K1     direct  first reads (12)     12:22:38..12:22:59                1896      13.6     16.0
+experiment 2  S3p    direct  first read           12:22:33                           374      13.5     15.6
+experiment 2  S2     switch  first read           12:22:15                             0       6.2      7.3
+experiment 2  S3     switch  first read           12:22:20                             0       6.3      7.4
+experiment 2  S4     switch  first read           12:22:23                             0       6.3      7.4
+experiment 3  DIR    direct  cohort 1 (primary)   16:02:26                             0       5.4      6.5
+experiment 3  DIR    direct  cohort 2 (auxiliary) 16:11:26                             0      14.4     15.5
+experiment 3  SW     switch  cohort 1 (primary)   16:13:36                             0      15.6     16.7
+experiment 3  SW     switch  cohort 2 (auxiliary) 16:28:36                             0      30.6     31.7
+B has no 'at most': the pull range of cw-b-tiering.tsv was not recorded, so it does not show whether tiering writes occurred before its first bucket.
+
+== 2. write path against the result of the first read (volumes)
+  written direct: first read with capacity pool reads: ['B', 'K1', 'S3p']; first read with none: ['DIR']
+  written switch: first read with capacity pool reads: none; first read with none: ['S2', 'S3', 'S4', 'SW']
+  volumes written directly: 4; volumes switched from NONE to ALL: 4
+  every volume with a positive first read was written directly: True
+  a volume written directly had no capacity pool reads at its first reads: ['DIR']
+  B counts as positive: its 1 MiB and 5 MiB reads had capacity pool reads in all three runs; its 64 KiB reads had none in any run.
+
+== 3. elapsed time: does the range of a read with no capacity pool reads overlap one with?
+  only reads with both ends are compared (every read except those of B, which has lower ends only)
+  ranges of the reads with capacity pool reads and both ends:
+    experiment 2  K1   direct  first reads (12)     13.6 to 16.0
+    experiment 2  S3p  direct  first read           13.5 to 15.6
+  ranges of the reads with no capacity pool reads and both ends:
+    experiment 2  S2   switch  first read           6.2 to 7.3: inside the range of none; overlaps the range of none
+    experiment 2  S3   switch  first read           6.3 to 7.4: inside the range of none; overlaps the range of none
+    experiment 2  S4   switch  first read           6.3 to 7.4: inside the range of none; overlaps the range of none
+    experiment 3  DIR  direct  cohort 1 (primary)   5.4 to 6.5: inside the range of none; overlaps the range of none
+    experiment 3  DIR  direct  cohort 2 (auxiliary) 14.4 to 15.5: inside the range of ['K1 first reads (12)', 'S3p first read']; overlaps the range of ['K1 first reads (12)', 'S3p first read']
+    experiment 3  SW   switch  cohort 1 (primary)   15.6 to 16.7: inside the range of none; overlaps the range of ['K1 first reads (12)', 'S3p first read']
+    experiment 3  SW   switch  cohort 2 (auxiliary) 30.6 to 31.7: inside the range of none; overlaps the range of none
+  ('overlaps' includes a shared end point; the ranges are rounded outward, so a shared end point is not evidence of a shared time)
+  B, lower ends only, in read order (minutes since the end of the last tiering write bucket; result):
+    r1 s64k  at least   8.0  capacity pool read ops    0
+    r1 s1m   at least  11.0  capacity pool read ops   56
+    r1 s5m   at least  14.0  capacity pool read ops  332
+    r2 s64k  at least  25.7  capacity pool read ops    0
+    r2 s1m   at least  28.7  capacity pool read ops   56
+    r2 s5m   at least  31.7  capacity pool read ops  323
+    r3 s64k  at least  43.7  capacity pool read ops    0
+    r3 s1m   at least  46.7  capacity pool read ops   54
+    r3 s5m   at least  49.7  capacity pool read ops  298
+
+== 4. (post-hoc) bytes read between the last tiering write bucket and the first read
+(a) other volumes of the experiment; (b) the volume's own earlier reads; (c) file-system-level DataReadBytes over the same buckets
+
+experiment    volume read                 E      m         (a) others B   (a) MB    (b) own B        (c) FS B   (c) MB (c)-(a)-(b) B CP ops
+experiment 1  B      r1 s64k              08:32  08:40        5,767,168      5.8      262,144       6,029,312      6.0             0      0
+      (a) by volume: a1=2,883,584, a2=2,883,584; the file-system file has no point for 4 of 8 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r1 s1m               08:32  08:43       89,653,248     89.7    2,883,584      92,536,832     92.5             0     56
+      (a) by volume: a1=44,826,624, a2=44,826,624; the file-system file has no point for 4 of 11 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r1 s5m               08:32  08:46      509,083,648    509.1   44,826,624     553,910,272    553.9             0    332
+      (a) by volume: a1=254,541,824, a2=254,541,824; the file-system file has no point for 4 of 14 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r2 s64k              08:32  08:57      509,083,648    509.1  254,541,824     763,625,472    763.6             0      0
+      (a) by volume: a1=254,541,824, a2=254,541,824; the file-system file has no point for 4 of 25 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r2 s1m               08:32  09:00      514,326,528    514.3  257,163,264     771,489,792    771.5             0     56
+      (a) by volume: a1=257,163,264, a2=257,163,264; the file-system file has no point for 4 of 28 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r2 s5m               08:32  09:03      598,212,608    598.2  299,106,304     897,318,912    897.3             0    323
+      (a) by volume: a1=299,106,304, a2=299,106,304; the file-system file has no point for 4 of 31 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r3 s64k              08:32  09:15    1,017,643,008   1017.6  508,821,504   1,526,464,512   1526.5             0      0
+      (a) by volume: a1=508,821,504, a2=508,821,504; the file-system file has no point for 4 of 43 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r3 s1m               08:32  09:18    1,020,264,448   1020.3  511,442,944   1,531,707,392   1531.7             0     54
+      (a) by volume: a1=511,442,944, a2=508,821,504; the file-system file has no point for 4 of 46 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 1  B      r3 s5m               08:32  09:21    1,064,828,928   1064.8  553,385,984   1,618,214,912   1618.2             0    298
+      (a) by volume: a1=553,385,984, a2=511,442,944; the file-system file has no point for 4 of 49 buckets (08:32 to 08:35), compared by the per-volume file only
+experiment 2  K1     first reads (12)     12:09  12:22    4,069,523,456   4069.5      262,144   4,069,785,600   4069.8             0   1896
+      (a) by volume: s2=2,034,499,584, s3=2,034,499,584, s3p=262,144, s4=262,144
+experiment 2  S3p    first read           12:09  12:22    4,069,523,456   4069.5      262,144   4,069,785,600   4069.8             0    374
+      (a) by volume: k1=262,144, s2=2,034,499,584, s3=2,034,499,584, s4=262,144
+experiment 2  S2     first read           12:16  12:22                0      0.0            0               0      0.0             0      0
+      (a) by volume: none
+experiment 2  S3     first read           12:16  12:22                0      0.0            0               0      0.0             0      0
+      (a) by volume: none
+experiment 2  S4     first read           12:16  12:22                0      0.0            0               0      0.0             0      0
+      (a) by volume: none
+experiment 3  DIR    cohort 1 (primary)   15:57  16:02          262,144      0.3      262,144         524,288      0.5             0      0
+      (a) by volume: sw=262,144
+experiment 3  DIR    cohort 2 (auxiliary) 15:57  16:11          262,144      0.3   63,832,064      64,094,208     64.1             0      0
+      (a) by volume: sw=262,144
+experiment 3  SW     cohort 1 (primary)   15:58  16:13      127,139,840    127.1            0     127,139,840    127.1             0      0
+      (a) by volume: dir=127,139,840
+experiment 3  SW     cohort 2 (auxiliary) 15:58  16:28      127,139,840    127.1   63,569,920     190,709,760    190.7             0      0
+      (a) by volume: dir=127,139,840
+
+largest absolute difference between (c) and (a) + (b) over the buckets that (c) covers: 0 B
+E is the end of the last one-minute bucket with tiering writes of the volume; m is the start minute of its first read. Buckets t with E <= t < m are counted, with the labels as recorded.
+(c) counts every volume on the file system, so a read on a volume outside the experiment would show in (c) - (a) - (b). DataReadBytes does not measure writes or non-data activity.
+Not counted by any column: writes by other volumes that overlapped, and any read whose bucket label differs from the minute of the read.

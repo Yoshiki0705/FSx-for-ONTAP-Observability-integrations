@@ -1,0 +1,32 @@
+== read order inside a cold/c<cohort>/ invocation (key order, one read each)
+  10 x s1m, then 10 x s5m, then 10 x s64k
+
+== warm-up, 4 reads of the 64 KiB warm/ object
+x3-warm-sw   64 KiB  n=  4  p50=   50.5  p90=   73.3  min=   49.4  max=   73.3
+x3-warm-dir  64 KiB  n=  4  p50=   50.0  p90=  122.3  min=   49.5  max=  122.3
+
+== reads of 30 objects: dir (created with ALL) and sw (NONE, then ALL), cohort 1 and 2
+x3-dir-c1    64 KiB  n= 10  p50=   40.6  p90=   42.9  min=   38.3  max=   43.2
+x3-dir-c1    1 MiB   n= 10  p50=   60.0  p90=   66.2  min=   58.6  max=   86.4
+x3-dir-c1    5 MiB   n= 10  p50=  363.1  p90=  380.5  min=  342.8  max=  398.5 n>300ms=10
+x3-dir-c2    64 KiB  n= 10  p50=   46.4  p90=   48.9  min=   44.9  max=   50.2
+x3-dir-c2    1 MiB   n= 10  p50=   59.4  p90=   60.2  min=   49.5  max=   68.1
+x3-dir-c2    5 MiB   n= 10  p50=  118.6  p90=  180.3  min=   99.0  max=  180.3 n>300ms=0
+x3-sw-c1     64 KiB  n= 10  p50=   43.2  p90=   45.6  min=   41.7  max=   53.1
+x3-sw-c1     1 MiB   n= 10  p50=   61.0  p90=   74.4  min=   47.5  max=  111.8
+x3-sw-c1     5 MiB   n= 10  p50=  118.7  p90=  145.9  min=  100.5  max=  159.7 n>300ms=0
+x3-sw-c2     64 KiB  n= 10  p50=   41.9  p90=   44.4  min=   39.9  max=   59.0
+x3-sw-c2     1 MiB   n= 10  p50=   61.9  p90=   91.6  min=   59.4  max=  118.8
+x3-sw-c2     5 MiB   n= 10  p50=  122.1  p90=  160.4  min=  101.4  max=  161.7 n>300ms=0
+
+5 MiB samples in read order and sorted (ms), to show the spread behind the p50:
+  x3-dir-c1: read order 380.5 380.2 398.5 353.4 368.1 363.1 354.9 359.8 342.8 377.6
+             sorted     342.8 353.4 354.9 359.8 363.1 368.1 377.6 380.2 380.5 398.5
+  x3-dir-c2: read order 180.3 180.3 158.8 118.1 121.6 99.0 101.2 119.2 100.5 118.6
+             sorted     99.0 100.5 101.2 118.1 118.6 119.2 121.6 158.8 180.3 180.3
+  x3-sw-c1: read order 145.9 120.4 100.5 159.7 100.6 137.4 103.1 118.7 121.2 118.6
+            sorted     100.5 100.6 103.1 118.6 118.7 120.4 121.2 137.4 145.9 159.7
+  x3-sw-c2: read order 161.7 160.4 141.7 122.1 119.6 117.5 122.1 139.9 157.9 101.4
+            sorted     101.4 117.5 119.6 122.1 122.1 139.9 141.7 157.9 160.4 161.7
+
+single-invocation p50 values checked against the tool's per_size_class p50_ms: 14 checked, 0 differ

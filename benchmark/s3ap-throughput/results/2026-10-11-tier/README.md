@@ -29,7 +29,8 @@ sizes, timings, run IDs, the Region, and per-object samples.
 | `fs-DataReadBytes.tsv`, `fs-DataReadOperations.tsv`, `fs-DataWriteBytes.tsv` | File-system-level CloudWatch Sum, 50 one-minute points each, 08:36 to 09:25 UTC (`+09:00` offset). Tab separated: timestamp, value |
 | `tier-polls.log` | 4 polls of the volume-level `StorageUsed` metric (bytes) per tier. Each line: volume label, `SSD`, timestamp, value, `CPOOL`, timestamp, value. The `CPOOL` value is the capacity pool tier. Poll times are in the `##` lines; timestamps in the data columns use the `+09:00` offset |
 | `analyze_latency.py`, `analysis-latency.txt` | Script and its output: per-run medians, the decision rule, and the pooled figures |
-| `analyze_capacity_pool.py`, `analysis-capacity-pool.txt` | Script and its output: capacity pool reads per invocation, CloudWatch buckets outside any invocation, and the position check |
+| `cw-b-tiering.tsv` | 48 lines of CloudWatch data for volume B, tab separated: volume label (`b`), metric, timestamp, Sum. Metrics `CapacityPoolReadOperations`, `CapacityPoolReadBytes`, `CapacityPoolWriteOperations`, `CapacityPoolWriteBytes`; 12 one-minute points per metric, 08:20 to 08:31 UTC (`+09:00` offset), all with a Sum above 0. It was pulled after the runs; the range of the pull was not recorded, so the file shows when tiering writes occurred from 08:20, and does not show whether any occurred earlier. `cw-all.tsv` starts at 08:30 and holds the last two of these points |
+| `analyze_capacity_pool.py`, `analysis-capacity-pool.txt` | Script and its output: capacity pool reads per invocation, CloudWatch buckets outside any invocation, the position check, and the elapsed time from the end of the last bucket with tiering writes to the start of each B invocation |
 
 ## Run IDs and schedule
 

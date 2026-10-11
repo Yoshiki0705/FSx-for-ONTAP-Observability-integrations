@@ -1,0 +1,89 @@
+cw-all.tsv: 20 datapoints, 0 duplicate keys
+
+== 0. inputs
+invocations by kind: {'read': 4, 'warm': 2} total 6
+invocations with a non-zero CLI exit code or a status other than 200: none
+GetObject reads in raw/: 128 reads, 254,803,968 bytes (and 6 ListObjectsV2, one per invocation)
+logical size per volume, from manifest.txt, including the 64 KiB warm/ object:
+  dir   127,205,376 B in 61 objects (sizes: {65536: 21, 1048576: 20, 5242880: 20})
+  sw    127,205,376 B in 61 objects (sizes: {65536: 21, 1048576: 20, 5242880: 20})
+the two volumes hold the same number of objects and the same logical size: True
+
+== 1. tiering writes (whole file; logical size includes the warm/ object)
+dir  write ops=  30 bytes=  126,935,040 logical= 127,205,376 ratio=0.9979  bytes per op=4,231,168  buckets=['15:56Z']
+sw   write ops=  30 bytes=  126,935,040 logical= 127,205,376 ratio=0.9979  bytes per op=4,231,168  buckets=['15:57Z']
+
+== 2. reads: f = capacity pool read bytes in the window / bytes read by the invocation
+x3-dir-c1    vol=dir  start=16:02:26Z buckets=16:02Z..16:03Z ops=   0 bytes=         0 expected= 63,569,920 f=0.000  DataReadOps= 30  -> below 0.10 (the reads did not reach the capacity pool)
+x3-dir-c2    vol=dir  start=16:11:26Z buckets=16:11Z..16:12Z ops=   0 bytes=         0 expected= 63,569,920 f=0.000  DataReadOps= 30  -> below 0.10 (the reads did not reach the capacity pool)
+x3-sw-c1     vol=sw   start=16:13:36Z buckets=16:13Z..16:14Z ops=   0 bytes=         0 expected= 63,569,920 f=0.000  DataReadOps= 30  -> below 0.10 (the reads did not reach the capacity pool)
+x3-sw-c2     vol=sw   start=16:28:36Z buckets=16:28Z..16:29Z ops=   0 bytes=         0 expected= 63,569,920 f=0.000  DataReadOps= 30  -> below 0.10 (the reads did not reach the capacity pool)
+
+pre-registered reading of the two main reads (cohort 1 of each volume):
+  SW cohort 1 f=0.000, DIR cohort 1 f=0.000
+  row of the table fixed before the first invocation: both below 0.10
+  cohort 2 of DIR (auxiliary, not used for the row): f=0.000
+  cohort 2 of SW (auxiliary, not used for the row):  f=0.000
+
+== 3. non-zero CapacityPoolRead* buckets outside every read window of block 2
+dir
+  15:56Z ops= 30 bytes=  122,880  bytes per op=4,096  inside the window of x3-warm-dir  (write ops in the same bucket: 30)
+sw
+  15:57Z ops= 30 bytes=  122,880  bytes per op=4,096  inside the window of x3-warm-sw  (write ops in the same bucket: 30)
+
+== 4. node counters (object_store_client_op, node 1) against the CloudWatch sums
+node1 get: 13:26:13Z -> 16:29:33Z increase 60 ops, 245,760 B
+   13:26:13Z -> 16:17:10Z: counter +60 ops, +245,760 B; CloudWatch buckets in [13:26, 16:17): 60 ops, 245,760 B
+   16:17:10Z -> 16:29:33Z: counter +0 ops, +0 B; CloudWatch buckets in [16:17, 16:29): 0 ops, 0 B
+   whole-file CloudWatch sums over the two volumes: 60 ops, 245,760 B -> equal to the counter increase: True
+node1 put: 13:26:13Z -> 16:29:33Z increase 60 ops, 253,870,080 B
+   13:26:13Z -> 16:17:10Z: counter +60 ops, +253,870,080 B; CloudWatch buckets in [13:26, 16:17): 60 ops, 253,870,080 B
+   16:17:10Z -> 16:29:33Z: counter +0 ops, +0 B; CloudWatch buckets in [16:17, 16:29): 0 ops, 0 B
+   whole-file CloudWatch sums over the two volumes: 60 ops, 253,870,080 B -> equal to the counter increase: True
+the counters are cumulative from an unknown start, so only differences are used; the interval starts at the last counter read of the second tiering run, not just before this run.
+bytes per get operation in the first interval: 4,096
+
+== 5. DataReadOperations / DataReadBytes (CloudWatch, whole file) against the GetObject samples in raw/
+dir  DataReadOps=    64 raw reads=    64  DataReadBytes=    127,401,984 raw bytes=    127,401,984  equal
+sw   DataReadOps=    64 raw reads=    64  DataReadBytes=    127,401,984 raw bytes=    127,401,984  equal
+both volumes equal: True
+
+== 6. tier state from cw-storageused.tsv (one-minute StorageUsed points, bytes)
+points per volume and tier: {'dir/SSD': 45, 'dir/Sta': 45, 'sw/SSD': 45, 'sw/Sta': 45}; first 15:50Z, last 16:34Z
+dir  first point at the full logical size 15:56Z (127,205,376 B); equal to it at every later point to 16:34Z: True; partial points: none
+     SSD one point before 66,867,200, at the point 14,753,792, at 16:34Z 15,253,504; change from the first full point to 16:34Z +499,712 B (0.4 % of the logical size)
+sw   first point at the full logical size 15:57Z (127,205,376 B); equal to it at every later point to 16:34Z: True; partial points: none
+     SSD one point before 141,955,072, at the point 15,351,808, at 16:34Z 15,691,776; change from the first full point to 16:34Z +339,968 B (0.3 % of the logical size)
+
+polls (tier-polls.log; the Amazon FSx API policy and the volume-level metric, read during the run):
+  15:56:30Z  sw   policy=ALL  capacity pool tier 0 B (point 15:56Z)
+  15:56:30Z  dir  policy=ALL  capacity pool tier 127,205,376 B (point 15:56Z)
+  15:56:40Z  sw   policy=ALL  capacity pool tier 0 B (point 15:56Z)
+  15:56:40Z  dir  policy=ALL  capacity pool tier 127,205,376 B (point 15:56Z)
+  15:56:48Z  sw   policy=ALL  capacity pool tier 0 B (point 15:56Z)
+  15:56:48Z  dir  policy=ALL  capacity pool tier 127,205,376 B (point 15:56Z)
+  15:57:10Z  sw   policy=ALL  capacity pool tier 0 B (point 15:56Z)
+  15:57:10Z  dir  policy=ALL  capacity pool tier 127,205,376 B (point 15:56Z)
+  15:57:31Z  sw   policy=ALL  capacity pool tier 127,205,376 B (point 15:57Z)
+  15:57:31Z  dir  policy=ALL  capacity pool tier 127,205,376 B (point 15:57Z)
+
+== 7. elapsed time from the data entering the capacity pool to each read (minutes)
+dir  tiering write buckets 15:56Z; first starts 15:56:00Z, last ends 15:57:00Z
+  x3-dir-c1  read starts 16:02:26.0Z  at least (from 15:57:00Z): 5.434 -> rounded down 5.4;  at most (from 15:56:00Z): 6.434 -> rounded up 6.5; with a label up to 1 minute late: up to 7.5
+             range, at least to at most: 5.4 to 6.5
+  x3-dir-c2  read starts 16:11:26.0Z  at least (from 15:57:00Z): 14.434 -> rounded down 14.4;  at most (from 15:56:00Z): 15.434 -> rounded up 15.5; with a label up to 1 minute late: up to 16.5
+             range, at least to at most: 14.4 to 15.5
+  run-log times, printed for reference and not used as bounds:
+    writes ended 15:55:26.0Z; the first PUT of the run was 15:54:51.0Z
+    x3-dir-c1  from the end of the volume's writes: 7.0; from the start of the writes: 7.6
+    x3-dir-c2  from the end of the volume's writes: 16.0; from the start of the writes: 16.6
+sw   tiering write buckets 15:57Z; first starts 15:57:00Z, last ends 15:58:00Z
+  x3-sw-c1   read starts 16:13:36.0Z  at least (from 15:58:00Z): 15.600 -> rounded down 15.6;  at most (from 15:57:00Z): 16.600 -> rounded up 16.7; with a label up to 1 minute late: up to 17.7
+             range, at least to at most: 15.6 to 16.7
+  x3-sw-c2   read starts 16:28:36.0Z  at least (from 15:58:00Z): 30.600 -> rounded down 30.6;  at most (from 15:57:00Z): 31.600 -> rounded up 31.7; with a label up to 1 minute late: up to 32.7
+             range, at least to at most: 30.6 to 31.7
+  run-log times, printed for reference and not used as bounds:
+    writes ended 15:55:25.0Z; the first PUT of the run was 15:54:51.0Z
+    x3-sw-c1   from the end of the volume's writes: 18.2; from the start of the writes: 18.8; from the switch request (15:55:36.1Z): 18.0
+    x3-sw-c2   from the end of the volume's writes: 33.2; from the start of the writes: 33.8; from the switch request (15:55:36.1Z): 33.0
+    first write bucket starts 1.4 min after the switch request; the Amazon FSx API showed ALL at the first poll (15:56:30Z); the capacity pool was full at the poll of 15:57:31Z
