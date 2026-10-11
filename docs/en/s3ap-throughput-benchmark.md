@@ -22,7 +22,7 @@ The table describes the 2026-10-10 measurement. The pooled re-measurement and th
 | SVM and volume | One volume of one SVM (the file system has several SVMs) |
 | Volume tiering policy | AUTO, cooling period 31 days (read from the FSx API on 2026-10-10) |
 | Data tier at read time | SSD (primary tier). Inferred from the policy and the age of the objects (written minutes before the reads, cooling period 31 days). Not verified from a per-tier capacity metric; none was taken during the run |
-| ONTAP version | 9.18.1P6, as read on 2026-10-06 through the ONTAP REST API on this file system (not re-read on the measurement day) |
+| ONTAP version | 9.18.1P6, as read on 2026-10-06 through the ONTAP REST API on this file system (not re-read on the measurement day). A later read on 2026-10-11 returned 9.19.1P2. The date of the change is unknown, so the version in effect on the measurement day is not known ([record](verification-results-cloudwatch-monitoring.md#qtree-quota-monitor-run-with-a-read-only-ontap-account-on-2026-10-11)) |
 | S3 Access Points type | ONTAP, internet origin, file system identity is UNIX user `root` |
 | Client | The tool in `benchmark/s3ap-throughput/`, deployed as a Lambda function |
 | Lambda memory and timeout | 256 MB, 300 s |
