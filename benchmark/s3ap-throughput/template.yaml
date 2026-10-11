@@ -134,6 +134,19 @@ Resources:
 
           import boto3
 
+          # The canonical parser lives in shared/python/ontap_audit_parser.py. It is NOT
+          # in this benchmark Lambda's inline ZipFile, so the import is guarded: the
+          # deployed inline body must load without it. scripts/deploy.sh bundles the
+          # parser alongside this handler and overwrites the inline code, and only then
+          # does the "process" test mode have a parser to call. Imported here (rather
+          # than inside the function) so a test suite with shared/python on sys.path
+          # exercises the real parser, while the deployed inline body degrades to a clear
+          # runtime error if "process" is requested before deploy.sh has run.
+          try:
+              from ontap_audit_parser import parse_audit_log
+          except ImportError:  # pragma: no cover - exercised only in the inline deploy
+              parse_audit_log = None
+
           # Measurements are taken with time.perf_counter and reported in milliseconds.
           _MS_PER_SECOND = 1000.0
           _BYTES_PER_MB = 1024 * 1024
@@ -422,8 +435,145 @@ Resources:
               return summaries
 
 
+          def _run_process(
+              s3: Any,
+              bucket: str,
+              prefix: str,
+              max_keys: int,
+              iterations: int,
+              size_labels: dict[str, str] | None,
+          ) -> dict[str, Any]:
+              """Measure the read leg and parse leg of audit-log processing separately.
+
+              Lists up to ``max_keys`` keys under ``prefix`` (reusing ``_list_keys``, the
+              same helper ``_run_get`` uses) and, for each key over ``iterations``
+              repetitions, times two legs apart with ``time.perf_counter``: the read leg
+              is ``s3.get_object(...)["Body"].read()`` and the parse leg is
+              ``parse_audit_log(body, key)`` on the bytes just read. This isolates the
+              processing cost (read + parse) that the "get" test does not cover, because
+              "get" measures only the read. Delivery to a vendor is a separate leg not
+              measured here.
+
+              Each object's result carries its read and parse summaries over all
+              ``iterations`` and bounded raw samples for both legs, capped at
+              ``MAX_SAMPLES_PER_OBJECT`` samples per object and per leg. The size-class
+              summaries pool those samples per leg (see
+              ``_summarize_process_size_classes``).
+
+              Args:
+                  s3: A boto3 S3 client.
+                  bucket: S3 Access Points alias or ARN.
+                  prefix: Key prefix to list objects under.
+                  max_keys: Maximum number of keys to benchmark.
+                  iterations: Read-and-parse repetitions per key.
+                  size_labels: Optional caller-supplied map of object key to size label.
+                      Keys not present fall back to a rounded-size label.
+
+              Returns:
+                  A dict with operation "ReadAndParse", objects_measured, a per-object
+                  array (each carrying key, size_bytes, size_label, events_parsed, the
+                  read and parse summaries, and bounded read and parse samples), and a
+                  per-size-class summary pooling both legs.
+
+              Raises:
+                  RuntimeError: If the parser is not importable, which means the inline
+                      deploy body is running without the bundle scripts/deploy.sh builds.
+              """
+              if parse_audit_log is None:
+                  raise RuntimeError(
+                      "ontap_audit_parser is not importable; the 'process' test needs the "
+                      "parser bundled alongside this handler. Deploy with "
+                      "benchmark/s3ap-throughput/scripts/deploy.sh, which zips "
+                      "shared/python/ontap_audit_parser.py with handler.py."
+                  )
+              keys = _list_keys(s3, bucket, prefix, max_keys)
+              per_object: list[dict[str, Any]] = []
+              for key in keys:
+                  read_ms: list[float] = []
+                  parse_ms: list[float] = []
+                  sizes: list[int] = []
+                  event_counts: list[int] = []
+                  for _ in range(iterations):
+                      start = time.perf_counter()
+                      body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+                      after_read = time.perf_counter()
+                      events = parse_audit_log(body, key)
+                      after_parse = time.perf_counter()
+                      read_ms.append((after_read - start) * _MS_PER_SECOND)
+                      parse_ms.append((after_parse - after_read) * _MS_PER_SECOND)
+                      sizes.append(len(body))
+                      event_counts.append(len(events))
+                  mean_size = sum(sizes) / len(sizes)
+                  label = (size_labels or {}).get(key) or _size_label(round(mean_size))
+                  per_object.append({
+                      "key": key,
+                      "size_bytes": int(round(mean_size)),
+                      "size_label": label,
+                      "iterations": iterations,
+                      "events_parsed": int(round(sum(event_counts) / len(event_counts))),
+                      "read": summarize_latencies(read_ms),
+                      "parse": summarize_latencies(parse_ms),
+                      "read_samples_ms": bounded_samples(read_ms),
+                      "parse_samples_ms": bounded_samples(parse_ms),
+                  })
+              return {
+                  "operation": "ReadAndParse",
+                  "objects_measured": len(per_object),
+                  "per_object": per_object,
+                  "per_size_class": _summarize_process_size_classes(per_object),
+              }
+
+
+          def _summarize_process_size_classes(
+              per_object: list[dict[str, Any]],
+          ) -> list[dict[str, Any]]:
+              """Aggregate per-object read-and-parse results into per-size-class summaries.
+
+              Pools the read leg and the parse leg per size class the SAME WAY
+              ``_summarize_size_classes`` pools the "get" samples: every object's
+              ``read_samples_ms`` are merged into one list and summarized with
+              ``summarize_latencies`` (nearest-rank percentiles), and the same is done
+              independently for ``parse_samples_ms``. The class figures are NOT a mean of
+              per-object percentiles. Each leg carries its own ``sample_count``, and the
+              class carries ``percentile_method``. With nearest-rank, p99 is the maximum
+              unless a leg's pool holds at least 100 samples. Because each object
+              contributes at most ``MAX_SAMPLES_PER_OBJECT`` samples per leg, a pool can
+              be smaller than ``object_count * iterations``.
+
+              Args:
+                  per_object: Per-object measurement dicts produced by ``_run_process``,
+                      each including its ``read_samples_ms`` and ``parse_samples_ms``.
+
+              Returns:
+                  One summary per size label, sorted by mean size, each with size_label,
+                  object_count, mean_size_bytes, mean_events_parsed, percentile_method, a
+                  pooled ``read`` summary with its ``sample_count``, and a pooled
+                  ``parse`` summary with its ``sample_count``.
+              """
+              classes: dict[str, list[dict[str, Any]]] = {}
+              for obj in per_object:
+                  classes.setdefault(obj["size_label"], []).append(obj)
+              summaries: list[dict[str, Any]] = []
+              for label, objs in classes.items():
+                  read_pool = [sample for o in objs for sample in o["read_samples_ms"]]
+                  parse_pool = [sample for o in objs for sample in o["parse_samples_ms"]]
+                  sizes = [o["size_bytes"] for o in objs]
+                  events = [o["events_parsed"] for o in objs]
+                  summaries.append({
+                      "size_label": label,
+                      "object_count": len(objs),
+                      "mean_size_bytes": int(round(sum(sizes) / len(sizes))),
+                      "mean_events_parsed": int(round(sum(events) / len(events))),
+                      "percentile_method": PERCENTILE_METHOD,
+                      "read": {**summarize_latencies(read_pool), "sample_count": len(read_pool)},
+                      "parse": {**summarize_latencies(parse_pool), "sample_count": len(parse_pool)},
+                  })
+              summaries.sort(key=lambda s: s["mean_size_bytes"])
+              return summaries
+
+
           def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-              """Lambda entry point: route a benchmark event to the list or get test.
+              """Lambda entry point: route a benchmark event to the list, get or process test.
 
               Args:
                   event: One of::
@@ -432,13 +582,18 @@ Resources:
                        "iterations": 20, "max_keys": 100}
                       {"test": "get", "bucket": "<alias-or-arn>", "prefix": "...",
                        "max_keys": 10, "iterations": 5, "size_labels": {"<key>": "1MB"}}
+                      {"test": "process", "bucket": "<alias-or-arn>", "prefix": "...",
+                       "max_keys": 10, "iterations": 5, "size_labels": {"<key>": "1MB"}}
 
-                      ``iterations`` defaults to 5 for both tests when omitted, and
-                      ``max_keys`` defaults to 100 for "list" and 10 for "get". The
-                      helper script run-benchmark.sh always sends ``iterations`` (20 for
-                      list and 5 for get, unless its environment variables override
-                      them), so it does not rely on the Lambda default.
-                      ``benchmark_run_id`` is echoed if present, otherwise generated.
+                      ``iterations`` defaults to 5 for all three tests when omitted, and
+                      ``max_keys`` defaults to 100 for "list" and 10 for "get" and
+                      "process". The helper script run-benchmark.sh always sends
+                      ``iterations`` (20 for list and 5 for get, unless its environment
+                      variables override them), so it does not rely on the Lambda
+                      default. ``benchmark_run_id`` is echoed if present, otherwise
+                      generated. The "process" test reads each object and then parses it
+                      with the bundled ONTAP audit parser, timing the two legs
+                      separately; it needs scripts/deploy.sh to bundle the parser.
                   context: Lambda context (unused).
 
               Returns:
@@ -447,6 +602,7 @@ Resources:
 
               Raises:
                   ValueError: For a missing ``bucket`` or an unknown ``test`` value.
+                  RuntimeError: For "process" when the parser is not bundled.
               """
               test = event.get("test")
               bucket = event.get("bucket")
@@ -465,8 +621,12 @@ Resources:
                   max_keys = int(event.get("max_keys", 10))
                   size_labels = event.get("size_labels")
                   result = _run_get(s3, bucket, prefix, max_keys, iterations, size_labels)
+              elif test == "process":
+                  max_keys = int(event.get("max_keys", 10))
+                  size_labels = event.get("size_labels")
+                  result = _run_process(s3, bucket, prefix, max_keys, iterations, size_labels)
               else:
-                  raise ValueError(f"unknown test {test!r}: expected 'list' or 'get'")
+                  raise ValueError(f"unknown test {test!r}: expected 'list', 'get' or 'process'")
 
               return {
                   "benchmark_run_id": event.get("benchmark_run_id") or f"bench-{uuid.uuid4().hex[:12]}",
