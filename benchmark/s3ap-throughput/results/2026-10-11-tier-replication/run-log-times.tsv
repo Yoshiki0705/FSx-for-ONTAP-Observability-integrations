@@ -1,0 +1,12 @@
+event	volume	time_utc
+plan_frozen	all	2026-10-11T18:42:26Z
+volumes_created	sw,dir	2026-10-11T18:42:26Z to 18:42:30Z
+stack_deployed	all	2026-10-11T18:43:44Z
+access_points_available	all	2026-10-11T18:44:07Z
+upload_start	sw,dir	2026-10-11T18:44:14Z
+upload_end	dir	2026-10-11T18:44:47Z
+upload_end	sw	2026-10-11T18:44:48Z
+listings_verified	sw,dir	2026-10-11T18:44:49Z
+switch_request	sw	2026-10-11T18:44:49.6Z
+warm_up	sw,dir	2026-10-11T18:46:09.7Z
+teardown_done	all	2026-10-11T19:30:39Z
