@@ -45,7 +45,7 @@ IDs as recorded.
 | `x2-cold-<volume>` | First read after tiering, volume `s2`, `s3`, `s3p`, `s4` | 4 |
 | `x2-k1first-c<cohort>-<size>` | K1 first read, cohort 1 to 4, size `s64k`, `s1m`, `s5m` | 12 |
 | `x2-k1re-c<cohort>-<size>` | K1 re-read of the same prefixes | 12 |
-| `x2-coldre-m<minutes>-<volume>` | Re-read of the 30 objects of `s2`, `s3`, `s4`, minutes `30` or `60` | 6 |
+| `x2-coldre-m<minutes>-<volume>` | Re-read of the 30 objects of `s2`, `s3`, `s4`, minutes `30` or `60` (added to the plan after the first reads: post-hoc) | 6 |
 
 Volumes `k1` and `s3p` were created with tiering policy ALL and written
 directly. Volumes `s2`, `s3`, and `s4` were created with policy NONE and changed
@@ -59,7 +59,7 @@ hold random bytes.
 | Writes to the five volumes | 12:05:56 to 12:07:14 |
 | Warm-up invocations | 12:09:16 to 12:09:22 |
 | Pre-read invocations | 12:09:30 to 12:12:21 |
-| Switch requests for `s2`, `s3`, `s4` | 12:13:21.8, 12:13:22.3, 12:13:22.7. The FSx API showed ALL from 12:14:29 |
+| Switch requests for `s2`, `s3`, `s4` | 12:13:21.8, 12:13:22.3, 12:13:22.7. The Amazon FSx API showed ALL from 12:14:29 |
 | First reads of `s2`, `s3`, `s4` | Start 12:22:15.9, 12:22:20.5, 12:22:23.2; 534.1, 538.2, and 540.5 s after the switch requests (the plan was 503 s) |
 | First read of `s3p` | 12:22:33.5 to 12:22:38.2 |
 | First reads of `k1` | 12:22:38.2 to 12:23:01.9 |

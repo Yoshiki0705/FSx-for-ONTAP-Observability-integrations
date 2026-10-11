@@ -567,7 +567,7 @@ The numbers do not support:
 - A cost or billing figure.
 - The reason repeat reads are fast, or the reason 64 KiB first reads caused no capacity pool reads (`hypothesis`). One candidate is a cache in ONTAP. It was not tested, and other causes are not excluded. The capacity pool size of B equals everything written to it, so the 64 KiB objects were presumably tiered too.
 
-For a reader that fetches each object once, the first-read figures are the ones that correspond; the all-reads figures include repeat reads that this reader does not make. Whether such a reader finds its objects already in the capacity pool depends on the volume's tiering policy, on how the volume reached that policy (see "Tiering path: direct ALL and NONE-then-ALL (2026-10-11)"), and on the time between the write and the read; here that time was 8.5 to 50.2 minutes for the B volume (6.5 to 52.2 minutes across all 27 invocations). For orientation only, the all-reads p50 of the A volumes was 52.61 ms at 1 MiB and 116.69 ms at 5 MiB, and the class p50 values of the three 2026-10-10 pooled runs were 50.07 to 60.02 ms at 1 MB and 118.60 to 120.90 ms at 5 MB. Sizes, read counts, volumes, and ONTAP versions differ, so no comparison is claimed.
+For a reader that fetches each object once, the first-read figures are the ones that correspond; the all-reads figures include repeat reads that this reader does not make. Whether such a reader finds its objects already in the capacity pool depends on the volume's tiering policy and on the time between the write and the read; here that time was 8.5 to 50.2 minutes for the B volume (6.5 to 52.2 minutes across all 27 invocations). In a second experiment the same day, volumes written directly under ALL and volumes changed from NONE to ALL differed in this respect, for reasons that experiment does not isolate (see "Tiering path: direct ALL and NONE-then-ALL (2026-10-11)"). For orientation only, the all-reads p50 of the A volumes was 52.61 ms at 1 MiB and 116.69 ms at 5 MiB, and the class p50 values of the three 2026-10-10 pooled runs were 50.07 to 60.02 ms at 1 MB and 118.60 to 120.90 ms at 5 MB. Sizes, read counts, volumes, and ONTAP versions differ, so no comparison is claimed.
 
 ### Limits of the tier comparison
 
@@ -601,13 +601,13 @@ For a reader that fetches each object once, the first-read figures are the ones 
 
 Evidence tier: the measured values are `verified` for the environment, date, and sample size shown. Every other statement carries its own tier under "Evidence tiers of the tiering path statements". These operation counts and latencies were observed in the environment under "Environment of the tiering path experiment" below, on 2026-10-11, in 47 invocations between 12:09 and 13:23 UTC (34 measured invocations, 8 pre-read invocations, and 5 warm-up invocations). The tier does not cover other file systems, Regions, ONTAP versions, object sizes, concurrency levels, network paths, or dates. This is a sample run in one environment: a sizing reference, not a production estimate and not a service limit. Tables show tool output unless the heading says derived. Derived values were computed from the committed raw files under `benchmark/s3ap-throughput/results/2026-10-11-tier-path/` and are not tool output.
 
-On the three volumes whose tiering policy was changed from NONE to ALL after the data were written (S2, S3, S4), the first read after tiering caused 0 capacity pool read operations. The 30 reads per volume were recorded (`DataReadOperations` was 30 per volume in the same windows), and re-reads about 30 and 60 minutes later also caused 0. On the two volumes created with policy ALL and written directly (K1, S3p), the first read caused capacity pool reads: K1 1,896 operations and 246,862,656 B (0.971 of the logical size of the objects read), and S3p 374 operations and 916,864 B (0.014 of the logical size, and 1.07 times the bytes tiered for it, because same-byte content was tiered as about 1/74 of its logical size). K1 re-reads caused 9 operations about 3 minutes later and none at about 8.4, 30, and 60 minutes. Reading each object 32 times before the switch (S2, S3) or not at all (S4) gave the same zero. These are results for this environment and are not a general property of the service.
+On the three volumes whose tiering policy was changed from NONE to ALL after the data were written (S2, S3, S4), the first read after tiering caused 0 capacity pool read operations. The 30 reads per volume were recorded (`DataReadOperations` was 30 per volume in the same windows), and re-reads about 30 and 60 minutes later (post-hoc) also caused 0. On the two volumes created with policy ALL and written directly (K1, S3p), the first read caused capacity pool reads: K1 1,896 operations and 246,862,656 B (0.971 of the logical size of the objects read), and S3p 374 operations and 916,864 B (0.014 of the logical size, and 1.07 times the bytes tiered for it (post-hoc); the bytes tiered for S3p were about 1/74 of its logical size). K1 re-reads caused 9 operations about 3 minutes later and none at about 8.4, 30, and 60 minutes. Reading each object 32 times before the switch (S2, S3) or not at all (S4) gave the same zero. The first reads of B of the tier comparison, K1, and S3p (written directly) reached the capacity pool and those of S2, S3, and S4 (changed from NONE to ALL) did not. That split is an observation: no comparison in this experiment varies the write path alone, and the write path as its cause is a `hypothesis`. These are results for this environment and are not a general property of the service.
 
 The tier comparison above used volume B, which was created with policy ALL and written directly. This experiment adds the case in which the policy is changed to ALL after the data were written.
 
 ### Question, design, and differences from the tier comparison
 
-The question: does the way a volume reached tiering policy ALL change whether the first read of an object after tiering reaches the capacity pool? Billing, other object sizes, concurrency above 1, second-generation or Multi-AZ file systems, and other ONTAP versions are outside it.
+The question: does the way a volume reached tiering policy ALL change whether the first read of an object after tiering reaches the capacity pool? Billing, other object sizes, concurrency above 1, second-generation or Multi-AZ file systems, and other ONTAP versions are outside it. The design turned out to contain no comparison that varies the write path alone (see "Factors by volume" below), so the results describe a split between two groups of volumes and do not attribute it to the write path.
 
 AWS documents that when the ALL policy is applied to a volume that already contains data, the existing data is tiered from SSD to the capacity pool ([Volume storage capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-storage-capacity.html), tiering policies; `documented`). The page does not say whether later reads of that data reach the capacity pool in the same way as reads of data written under ALL. That is what this experiment measures.
 
@@ -616,7 +616,7 @@ Five volumes on one SVM, one per condition. S3p has the same content as S3 and w
 | Volume | How it reached ALL | Content | Reads of each object before tiering | Objects read after tiering | Reads after tiering |
 |--------|--------------------|---------|-------------------------------------|----------------------------|---------------------|
 | K1 | Created with ALL, data written directly | Random bytes | None | 120 (4 cohorts x 3 sizes x 10) | First read of all 12 prefixes; each cohort read again at about 3, 8.4, 30, and 60 minutes |
-| S2 | Created with NONE, changed to ALL after the writes | Random bytes | 32 | 30 (3 sizes x 10) | First read; read again at about 30 and 60 minutes |
+| S2 | Created with NONE, changed to ALL after the writes | Random bytes | 32 | 30 (3 sizes x 10) | First read; read again at about 30 and 60 minutes (post-hoc) |
 | S3 | Created with NONE, changed to ALL after the writes | Same byte | 32 | 30 | As S2 |
 | S3p | Created with ALL, data written directly | Same byte | None | 30 | First read only |
 | S4 | Created with NONE, changed to ALL after the writes | Random bytes | None | 30 | As S2 |
@@ -624,7 +624,22 @@ Five volumes on one SVM, one per condition. S3p has the same content as S3 and w
 - Sizes are 64 KiB, 1 MiB, and 5 MiB, 10 objects per size (K1: 10 objects per size in each of four cohorts). Random bytes come from `os.urandom` and differ per volume and per object. Same-byte content is one repeated byte value (the letter `r`), so all objects of one size have identical content. Each volume also holds one 64 KiB `warm/` object, read 4 times in a warm-up invocation.
 - After tiering, each invocation reads each object once (`iterations` 1). S2 and S3 had been read 32 times per object before the switch, on SSD under policy NONE. No object was read between the switch and its first read after tiering.
 - The first reads of S2, S3, S4, and S3p are one invocation per volume (`cold/`, `max_keys` 30, `iterations` 1: 1 ListObjectsV2 and 30 GetObject requests). Within it the objects are read in key order: the ten 1 MiB objects, then the ten 5 MiB objects, then the ten 64 KiB objects. The first reads of K1 are 12 invocations (`c<cohort>/<size>/`, `max_keys` 10, `iterations` 1: 11 requests each), cohort by cohort in the order 64 KiB, 1 MiB, 5 MiB. The pre-reads are 8 invocations (`cold/`, `max_keys` 30, `iterations` 8: 241 requests each; S2 and S3 alternate, r1 to r4), so each object is read 32 times. Concurrency is 1, with a new boto3 client per invocation.
-- The design allows three comparisons that differ in one factor: S2 against S4 (reads before tiering), S2 against S3 (content, on the switched path), and K1 against S3p (content, on the direct path). K1 against S4 differs in how the volume reached ALL, and also in data volume (120 against 30 objects) and in time since tiering, so it supports a statement about the write path only with those qualifiers. S3p against S3 differs in how the volume reached ALL and in reads before tiering, so it is not used for a statement about either factor.
+- The design allows two comparisons that differ in one factor: S2 against S4 (reads before tiering) and S2 against S3 (content, on the switched path). No comparison varies the write path (how the volume reached ALL) alone. K1 against S4 also differs in data volume (120 against 30 objects) and in time since tiering. S3p against S3 also differs in reads before tiering. K1 against S3p differs in content and in data volume (120 against 30 objects).
+
+Factors by volume, including B of the tier comparison (a different experiment on the same file system and day, with a different read procedure; see the table of differences below). "Objects on the volume" includes the 64 KiB `warm/` object.
+
+| Volume | How it reached ALL | Content | Objects on the volume | Storage efficiency | Reads of each object before tiering |
+|--------|--------------------|---------|----------------------:|--------------------|------------------------------------|
+| B (tier comparison) | Created with ALL, written directly | Random bytes | 91 | Enabled (compression `inline`, deduplication `both`, read back) | None |
+| K1 | Created with ALL, written directly | Random bytes | 121 | Disabled (specified at creation, not read back) | None |
+| S3p | Created with ALL, written directly | Same byte | 31 | Disabled (specified at creation, not read back) | None |
+| S2 | Created with NONE, changed to ALL | Random bytes | 31 | Disabled (specified at creation, not read back) | 32 |
+| S3 | Created with NONE, changed to ALL | Same byte | 31 | Disabled (specified at creation, not read back) | 32 |
+| S4 | Created with NONE, changed to ALL | Random bytes | 31 | Disabled (specified at creation, not read back) | None |
+
+- Observed: on B, K1, and S3p (the three directly written volumes) the first read caused capacity pool reads; on S2, S3, and S4 (the three volumes changed from NONE to ALL) the first read and the re-reads at about 30 and 60 minutes (post-hoc) caused none.
+- Descriptive: of the five factors in the table, only how the volume reached ALL separates the two groups completely. Each other factor has a value that occurs in both groups: random and same-byte content, 31 objects, storage efficiency disabled, and no reads before tiering.
+- This describes the six volumes. It is not a test, and it does not show which factor, or which interaction among the unequal factors, accounts for the split.
 
 Schedule (UTC, 2026-10-11). The times of the volume creation, writes, and switch requests are from a run log that is not in this repository; the other times are in `invocations.jsonl` and `cw-storageused.tsv`.
 
@@ -635,13 +650,13 @@ Schedule (UTC, 2026-10-11). The times of the volume creation, writes, and switch
 | Writes to the five volumes | 12:05:56 to 12:07:14 |
 | Warm-up invocations | 12:09:16 to 12:09:22 |
 | Pre-read invocations (S2, S3) | 12:09:30 to 12:12:21 |
-| Switch requests (S2, S3, S4) | 12:13:21.8, 12:13:22.3, 12:13:22.7; the FSx API showed ALL from 12:14:29 |
+| Switch requests (S2, S3, S4) | 12:13:21.8, 12:13:22.3, 12:13:22.7; the Amazon FSx API showed ALL from 12:14:29 |
 | First one-minute point showing the full logical size in the capacity pool tier | 12:08 (K1, S3p); 12:15 (S2, S3, S4) |
 | First reads of S2, S3, S4 | 12:22:15.9 to 12:22:26.0; started 534.1, 538.2, and 540.5 s after the switch requests (planned: 503 s) |
 | First read of S3p | 12:22:33.5 to 12:22:38.2 |
 | First reads of K1 (12 invocations) | 12:22:38.2 to 12:23:01.9 |
 | K1 re-reads, cohorts 1 to 4 | Start 12:26:01, 12:31:25, 12:53:01, 13:23:01 |
-| Re-reads of S2, S3, S4 | 12:52:16 to 12:52:27 and 13:22:16 to 13:22:27 |
+| Re-reads of S2, S3, S4 (post-hoc) | 12:52:16 to 12:52:27 and 13:22:16 to 13:22:27 |
 
 The differences from the tier comparison:
 
@@ -669,9 +684,9 @@ The table lists what this experiment used and what was read back.
 | File system | The same file system as the tier comparison: SINGLE_AZ_1 (first generation), throughput capacity 128 MBps, 1024 GiB SSD |
 | SSD utilization | About 3.5 % in a check at about 12:03 UTC, before the volumes were created. It was not re-read afterwards and is not in the committed raw data. At or below 50 % only volumes with tiering policy ALL tier data ([documented](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-storage-capacity.html)) |
 | ONTAP version | 9.19.1P2, read through the ONTAP REST API on 2026-10-11 before the volumes were created. The 2026-10-10 tables record 9.18.1P6 (see "Test Environment"); this section makes no comparison with them |
-| Volumes | Five on one SVM, 1024 MiB each, UNIX security style, snapshot policy none, `StorageEfficiencyEnabled` false: all specified at creation and not read back through ONTAP. K1 and S3p were created with tiering policy ALL. S2, S3, S4 were created with NONE and changed to ALL through the FSx API (requests at the times above); the FSx API showed ALL from 12:14:29 UTC. The tiering policy was not read through the ONTAP REST API for these volumes |
+| Volumes | Five on one SVM, 1024 MiB each, UNIX security style, snapshot policy none, `StorageEfficiencyEnabled` false: all specified at creation and not read back through ONTAP. K1 and S3p were created with tiering policy ALL. S2, S3, S4 were created with NONE and changed to ALL through the Amazon FSx API (requests at the times above); the Amazon FSx API showed ALL from 12:14:29 UTC. The tiering policy was not read through the ONTAP REST API for these volumes |
 | Cloud retrieval policy | Not read for these volumes |
-| Tier state | From the volume-level `StorageUsed` metric at one-minute points (`cw-storageused.tsv`): see "Setup checks". Individual object locations were not checked |
+| Tier state | From the volume-level `StorageUsed` metric at one-minute points (`cw-storageused.tsv`): see "Setup checks (derived)". Individual object locations were not checked |
 | Writes | `put-object` through the S3 Access Points, one object at a time per volume, the five volumes in parallel, 12:05:56 to 12:07:14 UTC. No object was deleted afterwards. A listing of each volume at 12:07:28 UTC matched the manifest (keys and sizes); the listings are not committed, `manifest.txt` is |
 | S3 Access Points | Five, one per volume, internet origin |
 | Client | The tool in `benchmark/s3ap-throughput/`. `handler.py` and `template.yaml` are those of `main` commit `6808382` and have not changed on `main` since; the commit actually deployed for this experiment was not recorded. Lambda Python 3.12, 256 MB, no VPC config (the template sets a 300 s timeout). Invoked through the AWS CLI; the client-side start and end times are in `invocations.jsonl`. The boto3 and urllib3 versions and the cold or warm start of each invocation were not recorded |
@@ -690,14 +705,14 @@ Fixed before the first invocation, in a plan file that is not in this repository
 - The metric f, the capacity pool read ratio: the `CapacityPoolReadBytes` of the volume in the invocation window divided by the logical size of the objects the invocation read. f below 0.10 reads as "the reads did not reach the capacity pool", f above 0.80 as "nearly all of the data was read from it", and a value in between as partial, reported as it is.
 - The window rule: the one-minute buckets from the start minute of the invocation through the minute after its end.
 - The K1 re-read intervals (about 3, 8.4, 30, and 60 minutes), read with the same f.
-- The comparisons: K1 against S4 for the write path, S2 against S4 for reads before tiering, S3 against S2 and S3p against K1 for content, and S3p against S3 for the write path.
+- The comparisons: K1 against S4 for the write path, S2 against S4 for reads before tiering, S3 against S2 and S3p against K1 for content, and S3p against S3 for the write path. Of these, only S2 against S4 and S3 against S2 vary one factor; the design section lists what the others also vary.
 - The tiering write ratio: `CapacityPoolWriteBytes` divided by the logical size.
 - Results are reported as they split, and the mechanism is not asserted.
 
-Two additions were written into the same plan file afterwards. They are marked post-hoc wherever their values appear.
+Two additions were written into the same plan file afterwards. They are marked post-hoc wherever their values appear. The K1 re-reads at about 3, 8.4, 30, and 60 minutes were fixed before the first invocation and are not marked.
 
 - Post-hoc 1, the stored-bytes ratio g: the capacity pool read bytes of a first read divided by the capacity pool write bytes of the volume's tiering. It was added after the S3p first-read result was seen. The f table is unchanged. By f, the S3p reads did not reach the capacity pool (0.014); by g they read the bytes that were tiered (1.07). The two readings disagree, and both are reported.
-- Post-hoc 2, the re-reads of S2, S3, S4 at about 30 and 60 minutes after their first read, with the same f and a reading fixed before their results were seen (below 0.10: the first-read result persists; above 0.80: capacity pool reads start). The same note withdrew S3p against S3 as a write-path comparison, because it also differs in reads before tiering; the write path is read from K1 against S4.
+- Post-hoc 2, the re-reads of S2, S3, S4 at about 30 and 60 minutes after their first read, with the same f and a reading fixed before their results were seen (below 0.10: the first-read result persists; above 0.80: capacity pool reads start). The same note withdrew S3p against S3 as a write-path comparison, because it also differs in reads before tiering; the note named K1 against S4 for the write path, which also differs in data volume and in time since tiering (see the design above), so it is not a single-factor comparison either.
 
 The two notes are timed 12:36 and 12:42 UTC. The first reads had been made by 12:23 UTC and the re-reads at about 30 minutes started at 12:52 UTC, so both notes lie between them. That order is stated by the plan file and cannot be checked from the repository.
 
@@ -715,7 +730,7 @@ The two notes are timed 12:36 and 12:42 UTC. The first reads had been made by 12
 
 - The random volumes wrote 0.9974 to 0.9981 of the logical size. K1 has four times the data and four times the operations (60 against 15).
 - Both same-byte volumes wrote 860,160 B in 15 operations (1/74.0 of the logical size), on the switched path (S3) and on the direct path (S3p) alike.
-- The capacity pool tier of S3 and S3p reached the full logical size of 63,635,456 B in `StorageUsed` (see "Setup checks"). The two metrics count different things. How same-byte content came to be written as fewer bytes was not examined; `StorageEfficiencyEnabled` was specified as false at creation and not read back.
+- The capacity pool tier of S3 and S3p reached the full logical size of 63,635,456 B in `StorageUsed` (see "Setup checks (derived)"). The two metrics count different things. How same-byte content came to be written as fewer bytes was not examined; `StorageEfficiencyEnabled` was specified as false at creation and not read back.
 
 ### Reads by volume and time (derived)
 
@@ -730,19 +745,19 @@ Each first read and re-read is assigned the CloudWatch one-minute buckets from i
 | First reads, 12 invocations | K1 | 12:22:38 | 1,896 | 246,862,656 | 0.971 | 0.972 | 120 |
 | Re-read, cohort 1 (about 3 min) | K1 | 12:26:01 | 9 | 528,384 | 0.008 | - | 30 |
 | Re-read, cohort 2 (about 8.4 min) | K1 | 12:31:25 | 0 | 0 | 0.000 | - | 30 |
-| Re-read about 30 min after the first read | S2 | 12:52:16 | 0 | 0 | 0.000 | - | 30 |
-| Re-read about 30 min after the first read | S3 | 12:52:20 | 0 | 0 | 0.000 | - | 30 |
-| Re-read about 30 min after the first read | S4 | 12:52:24 | 0 | 0 | 0.000 | - | 30 |
+| Re-read about 30 min after the first read (post-hoc) | S2 | 12:52:16 | 0 | 0 | 0.000 | - | 30 |
+| Re-read about 30 min after the first read (post-hoc) | S3 | 12:52:20 | 0 | 0 | 0.000 | - | 30 |
+| Re-read about 30 min after the first read (post-hoc) | S4 | 12:52:24 | 0 | 0 | 0.000 | - | 30 |
 | Re-read, cohort 3 (30 min) | K1 | 12:53:01 | 0 | 0 | 0.000 | - | 30 |
-| Re-read about 60 min after the first read | S2 | 13:22:16 | 0 | 0 | 0.000 | - | 30 |
-| Re-read about 60 min after the first read | S3 | 13:22:21 | 0 | 0 | 0.000 | - | 30 |
-| Re-read about 60 min after the first read | S4 | 13:22:24 | 0 | 0 | 0.000 | - | 30 |
+| Re-read about 60 min after the first read (post-hoc) | S2 | 13:22:16 | 0 | 0 | 0.000 | - | 30 |
+| Re-read about 60 min after the first read (post-hoc) | S3 | 13:22:21 | 0 | 0 | 0.000 | - | 30 |
+| Re-read about 60 min after the first read (post-hoc) | S4 | 13:22:24 | 0 | 0 | 0.000 | - | 30 |
 | Re-read, cohort 4 (60 min) | K1 | 13:23:01 | 0 | 0 | 0.000 | - | 30 |
 
 - How a zero is read: a 0 means that `cw-all.tsv` has no `CapacityPoolReadOperations` datapoint with a positive Sum in the windows. The file holds only datapoints above 0. In the same windows `DataReadOperations` summed to 30 per volume (120 for the K1 first reads), which is the number of GetObject reads, so the reads were recorded and the zero is not a missing read.
 - No operation count by object size is published for K1 or S3p. The 1,896 operations of the 12 K1 first-read invocations (12:22:38 to 12:23:01) are all in the 12:23 UTC bucket, and the S3p invocation reads three sizes at once, so one-minute data cannot separate the sizes.
 - Buckets with positive `CapacityPoolReadOperations` that lie outside every window above: S2, S3, and S4 have 15 operations and 61,440 B each at 12:15 UTC, the minute of their 15 tiering write operations (4,096 B per read operation). K1 has 14 operations (57,344 B) at 12:07 and 46 (188,416 B) at 12:08, equal to its write operations in those minutes, and 1 operation (66,048 B) at 12:10. S3p has 14 operations (57,344 B) at 12:07 and 1 (4,096 B) at 12:08, equal to its write operations, and 1 (1,248 B) at 12:10. AWS documents that ONTAP performs a read on the capacity pool right after a write (`documented`, [Volume metrics](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-metrics.html)). The two 12:10 buckets have no write operations in the same minute and lie in the minute after the end minute of the warm-up invocation of K1 and of S3p (12:09:16 to 12:09:19 and 12:09:20 to 12:09:21 UTC). Whether the warm-up reads caused them was not examined (`open`).
-- Time since tiering: the first reads of K1 and S3p started at least 13.5 minutes, and the first reads of S2, S3, and S4 at least 6.2 minutes, after the end of the first one-minute point that showed the full logical size in the capacity pool tier (13.6 minutes for K1 and S3p, and 6.3 to 6.4 minutes for S2, S3, and S4; measured from the start of that point, 14.6 and 7.3 to 7.4 minutes). The re-reads of S2, S3, and S4 therefore started at least 36 and at least 66 minutes after tiering.
+- Time since tiering: the first reads of K1 and S3p started at least 13.5 minutes, and the first reads of S2, S3, and S4 at least 6.2 minutes, after the end of the first one-minute point that showed the full logical size in the capacity pool tier (13.6 minutes for K1 and S3p, and 6.3 to 6.4 minutes for S2, S3, and S4; measured from the start of that point, 14.6 and 7.3 to 7.4 minutes). The re-reads of S2, S3, and S4 (post-hoc) therefore started at least 36 and at least 66 minutes after tiering.
 
 ### K1 re-read cohorts (derived)
 
@@ -781,17 +796,17 @@ p50 in ms, nearest rank over the samples of one group. For a single invocation (
 | Re-read, cohort 2 (about 8.4 min) | K1 | 10 | 50.6 | 59.8 | 350.8 |
 | Re-read, cohort 3 (30 min) | K1 | 10 | 47.0 | 58.8 | 120.7 |
 | Re-read, cohort 4 (60 min) | K1 | 10 | 45.7 | 56.0 | 103.1 |
-| Re-read about 30 min after the first read | S2 | 10 | 43.7 | 59.9 | 100.6 |
-| Re-read about 30 min after the first read | S3 | 10 | 76.1 | 69.5 | 141.1 |
-| Re-read about 30 min after the first read | S4 | 10 | 40.4 | 59.4 | 101.4 |
-| Re-read about 60 min after the first read | S2 | 10 | 44.1 | 70.2 | 137.8 |
-| Re-read about 60 min after the first read | S3 | 10 | 39.8 | 59.8 | 140.2 |
-| Re-read about 60 min after the first read | S4 | 10 | 39.1 | 63.6 | 122.6 |
+| Re-read about 30 min after the first read (post-hoc) | S2 | 10 | 43.7 | 59.9 | 100.6 |
+| Re-read about 30 min after the first read (post-hoc) | S3 | 10 | 76.1 | 69.5 | 141.1 |
+| Re-read about 30 min after the first read (post-hoc) | S4 | 10 | 40.4 | 59.4 | 101.4 |
+| Re-read about 60 min after the first read (post-hoc) | S2 | 10 | 44.1 | 70.2 | 137.8 |
+| Re-read about 60 min after the first read (post-hoc) | S3 | 10 | 39.8 | 59.8 | 140.2 |
+| Re-read about 60 min after the first read (post-hoc) | S4 | 10 | 39.1 | 63.6 | 122.6 |
 
 - n is 10 per size and read, with no significance test and no latency decision rule. A 10-sample median moves between cohorts of one volume: the K1 first-read p50 at 1 MiB ranges from 86.8 to 131.5 ms.
 - On the same volume, the first read after the switch is close to the reads before the switch: at 1 MiB 60.0 against 53.5 ms (S2) and 54.2 against 55.7 ms (S3), and at 5 MiB 119.7 against 117.3 ms (S2) and 100.0 against 102.3 ms (S3). The largest difference is 6.5 ms at 1 MiB and 2.4 ms at 5 MiB.
 - At 1 MiB and 5 MiB the first reads of S3p (106.4 and 220.0 ms) and K1 (113.6 and 225.4 ms, pooled) are 1.8 to 2.1 times and 1.8 to 2.3 times the first reads of S2, S3, and S4 (54.2 to 60.0 ms and 100.0 to 120.5 ms). The same Lambda function made all of these reads. At 64 KiB, S3p (69.6 ms) and K1 cohort 1 (96.4 ms) are higher than the 39.3 to 43.6 ms of the switched volumes, while K1 cohorts 2 and 3 (41.1 ms) and cohort 4 (52.3 ms) are close to them. The per-size operation counts that would show whether the 64 KiB reads reached the capacity pool are not available.
-- Re-reads of the switched volumes at about 30 and 60 minutes were slower at 5 MiB than their first reads in some cases (S3: 141.1 and 140.2 ms against 100.0 ms; S2 at 60 minutes: 137.8 ms against 119.7 ms), and S3 at 30 minutes was slower at all three sizes (76.1, 69.5, and 141.1 ms). None of these re-reads had capacity pool read operations. The cause was not examined; each is one observation (`open`).
+- Re-reads of the switched volumes at about 30 and 60 minutes (post-hoc) were slower at 5 MiB than their first reads in some cases (S3: 141.1 and 140.2 ms against 100.0 ms; S2 at 60 minutes: 137.8 ms against 119.7 ms), and S3 at 30 minutes was slower at all three sizes (76.1, 69.5, and 141.1 ms). None of these re-reads had capacity pool read operations. The cause was not examined; each is one observation (`open`).
 
 ### Setup checks (derived)
 
@@ -817,34 +832,36 @@ Tier state. The source is the volume-level `StorageUsed` metric at one-minute po
 | S3p | 12:08 | 63,635,456 | 15,380,480 | 15,380,480 | 15,855,616 | +475,136 |
 | S4 | 12:15 | 63,635,456 | 78,262,272 | 14,921,728 | 16,224,256 | +1,302,528 |
 
-On S2, S3, and S4 the SSD figure was 77,946,880 to 80,560,128 B at the points from 12:09 to 12:14 and 14,921,728 to 17,219,584 B at 12:15, the minute in which the capacity pool tier filled. After 12:17 the SSD figure rose on all five volumes, by 0.7 % to 2.0 % of the logical size, in steps of 147,456 to 675,840 B. Every step except one lies in an invocation window of the same volume (start minute through the minute after the end). The exception is a step of 147,456 B at 12:50 on all five volumes, which lies in no invocation window of any volume. Under policy ALL, data blocks that are read remain cold and are not written to the primary tier (`documented`, [Volume storage capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-storage-capacity.html)); the rises are far below the 63,635,456 B (K1: 254,345,216 B) that moving all of the data back to SSD would add. The cause of the rises was not examined. This is a volume-level metric; the location of individual objects was not checked.
+On S2, S3, and S4 the SSD figure was 77,946,880 to 80,560,128 B at the points from 12:09 to 12:14 and 14,921,728 to 17,219,584 B at 12:15, the minute in which the capacity pool tier filled. After 12:17 the SSD figure rose on all five volumes, by 0.7 % to 2.0 % of the logical size, in steps of 147,456 to 675,840 B. Every step except the step at 12:50, which occurs on all five volumes, lies in an invocation window of the same volume (start minute through the minute after the end). The step at 12:50 is 147,456 B on each of the five volumes and lies in no invocation window of any volume. Under policy ALL, data blocks that are read remain cold and are not written to the primary tier (`documented`, [Volume storage capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/volume-storage-capacity.html)); the rises are far below the 63,635,456 B (K1: 254,345,216 B) that moving all of the data back to SSD would add. The cause of the rises was not examined. This is a volume-level metric; the location of individual objects was not checked.
 
 ### What the tiering path numbers support and what they do not
 
 The numbers support, for this environment and these five volumes:
 
-- On the three volumes changed from NONE to ALL, the first read after tiering and the re-reads at about 30 and 60 minutes caused 0 capacity pool read operations. This held whether the objects had been read 32 times before the switch (S2, S3) or not at all (S4), and for random content (S2, S4) and same-byte content (S3).
-- On the two volumes created with ALL, the first read caused capacity pool reads (K1 f 0.971; S3p f 0.014, g 1.07). K1 re-reads fell to 9 operations at about 3 minutes and to 0 at about 8.4, 30, and 60 minutes.
+- On the three volumes changed from NONE to ALL, the first read after tiering and the re-reads at about 30 and 60 minutes (post-hoc) caused 0 capacity pool read operations. This held whether the objects had been read 32 times before the switch (S2, S3) or not at all (S4), and for random content (S2, S4) and same-byte content (S3).
+- On the two volumes created with ALL, the first read caused capacity pool reads (K1 f 0.971; S3p f 0.014, g 1.07 (post-hoc)). K1 re-reads fell to 9 operations at about 3 minutes and to 0 at about 8.4, 30, and 60 minutes.
 - Reads before the switch made no difference to the zero (S2 against S4).
-- Content changed the bytes written at tiering (0.0135 against 0.9974 to 0.9981) and, on the direct path, f (S3p 0.014 against K1 0.971), while g was close to 1 on both (1.07 and 0.97).
-- The way a volume reached ALL is associated with whether the first reads reached the capacity pool: B of the tier comparison, K1, and S3p (written directly) against S2, S3, and S4 (switched). The qualifiers are in the evidence tier table: K1 against S4 also differs in data volume and time since tiering, and B differs from the other volumes in storage efficiency.
+- Content changed the bytes written at tiering (0.0135 against 0.9974 to 0.9981). For random content the ratio was about the same at 120 objects (K1, 0.9981) and at 30 objects (S2 and S4, 0.9974); same-byte content was measured at 30 objects only (S3 and S3p). On the direct path, f was 0.014 on S3p and 0.971 on K1, which differ in content and also in data volume (30 and 120 objects). g (post-hoc) was close to 1 on both (1.07 and 0.97).
+- A split was observed between the directly written volumes (B of the tier comparison, K1, and S3p) and the volumes changed from NONE to ALL (S2, S3, and S4): the first read caused capacity pool reads on the first three and none on the last three, and the re-reads of S2, S3, and S4 at about 30 and 60 minutes (post-hoc) caused none. S3p is placed with the directly written volumes by its 374 operations and by g (post-hoc); by the f rule fixed before the first invocation (below 0.10), it is in the group whose reads did not reach the capacity pool.
+- Of the five factors in the table "Factors by volume", only how the volume reached ALL separates the two groups completely; each other factor has a value that occurs in both groups. This describes these six volumes. The write path as the cause of the split is a `hypothesis`: the single-factor effect of the write path is not shown by this experiment.
 
 The numbers do not support:
 
 - That a volume changed to ALL never reads from the capacity pool: this is three volumes, one file system, one ONTAP version, 60 minutes, three sizes, and concurrency 1.
+- That the write path decides whether the first read reaches the capacity pool. No comparison varies it alone (K1 against S4 also differs in data volume and in time since tiering, S3p against S3 also differs in reads before tiering, and B differs in storage efficiency and was measured in another experiment), and interactions among the unequal factors are not excluded.
 - Any statement about the mechanism, including that an ONTAP cache explains the zero (`hypothesis`). That the zero persists to 60 minutes while SSD usage stays far below the logical size has not been shown to fit an ordinary cache, and other explanations are not excluded.
 - A content effect on reads on the switched path: S2 and S3 are both zero.
 - Any per-size capacity pool statement for K1 or S3p, any cost or billing figure, or any relation between the CloudWatch operation count and billed requests (`open`).
 - An explanation of the K1 5 MiB re-read slowdown at about 3 and 8.4 minutes, or of the S3 slowdown at 30 minutes.
-- Any comparison with the 2026-10-10 tables, which record a different ONTAP version.
+- Any comparison with the 2026-10-10 tables, which record 9.18.1P6.
 
 ### Limits of the tiering path experiment
 
 - One file system, one Region, and 2026-10-11 only (invocations 12:09 to 13:23 UTC; the experiment from 12:03 to 13:29 UTC). Three object sizes. Concurrency 1 with sequential reads, from a 256 MB Lambda outside a VPC to internet-origin S3 Access Points.
 - One volume per condition, 30 objects per volume (K1: 120). No significance test, and n is 10 per size and read.
-- K1 against S4 differ in data volume (120 against 30 objects) and in time since tiering (at least 13.5 against at least 6.2 minutes). The re-reads of S2, S3, and S4 at least 36 and 66 minutes after tiering were also zero, so elapsed time alone does not account for the split, but the design did not vary it.
+- No comparison varies the write path alone. K1 against S4 differ in data volume (120 against 30 objects) and in time since tiering (at least 13.5 against at least 6.2 minutes). The re-reads of S2, S3, and S4 (post-hoc) at least 36 and 66 minutes after tiering were also zero, so elapsed time alone does not account for the split, but the design did not vary it.
 - One count of reads before the switch (32), and one interval from the switch request to the first read (534 to 541 s). Neither was varied.
-- Volume settings other than those specified were not read back: storage efficiency, the cloud retrieval policy, and the tiering policy beyond what the FSx API reported.
+- Volume settings other than those specified were not read back: storage efficiency, the cloud retrieval policy, and the tiering policy beyond what the Amazon FSx API reported.
 - Per-size operation counts are not available for K1 and S3p. A zero means no positive datapoint.
 - The interpretation text was written before the first invocation in a plan file that is not in this repository.
 - The boto3 and urllib3 versions and the cold or warm start of each invocation were not recorded, and the deployed commit of the tool was not recorded. No request charge or cost figure was estimated.
@@ -860,13 +877,16 @@ The numbers do not support:
 | Statement | Tier | Basis |
 |-----------|------|-------|
 | The measured counts, byte totals, and latencies in this section, each with the environment, date, and n shown | `verified` | Sample run in one environment. Not a service limit and not a production estimate |
-| On S2, S3, and S4 (changed from NONE to ALL after the writes), the first read after tiering and the re-reads at about 30 and 60 minutes caused no capacity pool read operations | `verified` | This environment, 3 of 3 volumes, one experiment. `DataReadOperations` in the same windows was 30 per volume, so the zero is not an unrecorded read |
-| On K1 and S3p (created with ALL, written directly), the first read caused capacity pool reads | `verified` | This environment, 2 of 2 volumes. B of the tier comparison, also written directly, had them too |
-| The way a volume reached ALL changes whether first reads reach the capacity pool | `verified` | With qualifiers: K1 against S4 also differ in data volume (120 and 30 objects) and in time since tiering (at least 13.5 and 6.2 minutes). S3p against S3 also differ in reads before tiering and are not used here. The split of B, K1, and S3p against S2, S3, and S4 also differs in storage efficiency for B (enabled for B, specified as disabled for the others). Not a general property of the service |
+| On S2, S3, and S4 (changed from NONE to ALL after the writes), the first read after tiering and the re-reads at about 30 and 60 minutes (post-hoc) caused no capacity pool read operations | `verified` | This environment, 3 of 3 volumes, one experiment. `DataReadOperations` in the same windows was 30 per volume, so the zero is not an unrecorded read |
+| On K1 and S3p (created with ALL, written directly), the first read caused capacity pool reads | `verified` | This environment, 2 of 2 volumes. B of the tier comparison, also written directly, had them too. S3p is counted by its 374 operations and by g (post-hoc); its f of 0.014 is below the 0.10 line fixed before the first invocation |
+| Observed split: on the directly written volumes (B of the tier comparison, K1, S3p) the first read caused capacity pool reads; on the volumes changed from NONE to ALL (S2, S3, S4) the first read and the re-reads at about 30 and 60 minutes (post-hoc) caused none | `verified` | This environment, one day, 3 volumes against 3. S3p is placed in the first group by operation count and g (post-hoc), not by the f rule fixed before the first invocation. B was measured in another experiment with another read procedure and has storage efficiency enabled. Not a general property of the service |
+| Of the factors in "Factors by volume" (how the volume reached ALL, content, objects on the volume, storage efficiency, reads before tiering), only how the volume reached ALL separates the two groups completely | `verified` | A description of the recorded setup of these six volumes: each other factor has a value that occurs in both groups. The storage efficiency of the five volumes of this section was specified at creation and not read back |
+| The write path (how the volume reached ALL) causes the split | `hypothesis` | No comparison varies the write path alone: K1 against S4 also differs in data volume (120 and 30 objects) and in time since tiering (at least 13.5 and 6.2 minutes); S3p against S3 also differs in reads before tiering; K1 against S3p differs in content and in data volume. Interactions among the unequal factors are not excluded. The single-factor effect of the write path is not shown by this experiment |
 | Reads before the switch (32 per object) do not change the result | `verified` | S2 against S4: 0 and 0 operations. One count of reads before the switch, not varied |
-| Same-byte content wrote 860,160 B (0.0135 of the logical size) at tiering on both S3 and S3p; random bytes wrote 0.9974 to 0.9981 | `verified` | Two same-byte volumes, one content pattern |
-| On S3p the first-read capacity pool bytes were 1.07 times the bytes tiered for it, while f was 0.014 | `verified` | Stored-bytes ratio g, added post-hoc after the result was seen; one volume |
+| Same-byte content wrote 860,160 B (0.0135 of the logical size) at tiering on both S3 and S3p; random bytes wrote 0.9974 to 0.9981 | `verified` | Two same-byte volumes, one content pattern, measured at 30 objects per volume only. For random content the ratio was 0.9981 at 120 objects (K1) and 0.9974 at 30 objects (S2, S4) |
+| On S3p the first-read capacity pool bytes were 1.07 times the bytes tiered for it (post-hoc), while f was 0.014 | `verified` | Stored-bytes ratio g, added post-hoc after the result was seen; one volume |
 | K1 re-reads caused 9 operations at about 3 minutes and none at about 8.4, 30, and 60 minutes | `verified` | One cohort of 30 objects per interval |
+| Summed over the five volumes, `CapacityPoolReadOperations` and `CapacityPoolReadBytes` equal the increase of the node 1 `get` row of `object_store_client_op` (2,401 operations, 248,866,720 B), and `CapacityPoolWriteOperations` and `CapacityPoolWriteBytes` equal the increase of the `put` row (120 operations, 382,525,440 B) | `verified` | This environment, one interval (09:24:08 to 13:26:13 UTC). Counters read through the ONTAP REST API; counter dumps are not published, only the differences, so the node side cannot be recomputed from the committed files (the CloudWatch side can, from `cw-all.tsv`). The interval starts at the last counter read of the tier comparison |
 | Whether content changes capacity pool reads on the switched path | `open` | S2 and S3 are both zero, so the comparison cannot resolve it |
 | Why the changed volumes caused no capacity pool reads, and why the two paths differ | `open` | Not tested |
 | One candidate for the zero: a cache in ONTAP | `hypothesis` | That the zero persists to 60 minutes while SSD usage stays far below the logical size has not been shown to fit an ordinary cache explanation. Other explanations are not excluded |
