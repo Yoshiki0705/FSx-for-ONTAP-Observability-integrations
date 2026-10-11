@@ -10,8 +10,9 @@ python3 analyze_capacity_pool.py
 2. Position check: samples above 3x the invocation's median, excluding first reads of B.
 3. Elapsed time: for each B invocation, the minutes from the end of the last one-minute
    bucket with CapacityPoolWriteOperations above 0 (cw-b-tiering.tsv) to the invocation's
-   start. This is a lower bound: B's tiering writes ran over 12 buckets and the time at which
-   an individual object was tiered was not recorded. Minutes are rounded down.
+   start. This is a lower bound only: the pull range of cw-b-tiering.tsv was not recorded, so
+   the file does not show whether tiering writes occurred before its first bucket, and the
+   time at which an individual object was tiered was not recorded. Minutes are rounded down.
 
 The node-level object_store_client_op counter deltas are not computed here; the
 counter dumps are not committed. The derived deltas are in README.md.

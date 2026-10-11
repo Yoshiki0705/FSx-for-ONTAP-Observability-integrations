@@ -132,26 +132,36 @@ largest and smallest first-read-to-full-size interval (minutes after the end of 
   S2, S3, S4: smallest 6.27, largest 6.39
 
 == 8. elapsed time from the data entering the capacity pool to the first read (minutes)
-k1   first read starts 12:22:38.2Z to 12:22:59.0Z (12 invocation(s)); tiering write buckets 12:07Z, 12:08Z; last ends 12:09:00Z
+k1   first read starts 12:22:38.2Z to 12:22:59.0Z (12 invocation(s)); tiering write buckets 12:07Z, 12:08Z; first starts 12:07:00Z, last ends 12:09:00Z
      at least (from 12:09:00Z): 13.637 to 13.984  -> rounded down 13.6 to 13.9
-     at most (writes started 12:05:56Z): 16.703 to 17.050  -> 16.7 to 17.1
+     at most (from 12:07:00Z): 15.637 to 15.984  -> rounded up 15.7 to 16.0; with a label up to 1 minute late: up to 17.0
+     range, smallest at least to largest at most: 13.6 to 16.0
      from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.403 to 15.750  -> 15.4 to 15.8
-s3p  first read starts 12:22:33.5Z to 12:22:33.5Z (1 invocation(s)); tiering write buckets 12:07Z, 12:08Z; last ends 12:09:00Z
+     first write bucket starts 1.1 min after the start of the writes (12:05:56Z); the writes ended 0.2 min after it (12:07:14Z)
+s3p  first read starts 12:22:33.5Z to 12:22:33.5Z (1 invocation(s)); tiering write buckets 12:07Z, 12:08Z; first starts 12:07:00Z, last ends 12:09:00Z
      at least (from 12:09:00Z): 13.558 to 13.558  -> rounded down 13.5 to 13.5
-     at most (writes started 12:05:56Z): 16.625 to 16.625  -> 16.6 to 16.6
+     at most (from 12:07:00Z): 15.558 to 15.558  -> rounded up 15.6 to 15.6; with a label up to 1 minute late: up to 16.6
+     range, smallest at least to largest at most: 13.5 to 15.6
      from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.325 to 15.325  -> 15.3 to 15.3
-s2   first read starts 12:22:15.9Z to 12:22:15.9Z (1 invocation(s)); tiering write buckets 12:15Z; last ends 12:16:00Z
+     first write bucket starts 1.1 min after the start of the writes (12:05:56Z); the writes ended 0.2 min after it (12:07:14Z)
+s2   first read starts 12:22:15.9Z to 12:22:15.9Z (1 invocation(s)); tiering write buckets 12:15Z; first starts 12:15:00Z, last ends 12:16:00Z
      at least (from 12:16:00Z): 6.265 to 6.265  -> rounded down 6.2 to 6.2
-     at most (the Amazon FSx API first showed ALL 12:14:29Z): 7.782 to 7.782  -> 7.8 to 7.8
+     at most (from 12:15:00Z): 7.265 to 7.265  -> rounded up 7.3 to 7.3; with a label up to 1 minute late: up to 8.3
+     range, smallest at least to largest at most: 6.2 to 7.3
      from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.032 to 15.032  -> 15.0 to 15.0
      from the switch request (12:13:21.8Z): 8.902  -> 8.9  (534.1 s)
-s3   first read starts 12:22:20.5Z to 12:22:20.5Z (1 invocation(s)); tiering write buckets 12:15Z; last ends 12:16:00Z
+     first write bucket starts 1.6 min after the switch request and 0.5 min after the first Amazon FSx API observation of ALL (12:14:29Z)
+s3   first read starts 12:22:20.5Z to 12:22:20.5Z (1 invocation(s)); tiering write buckets 12:15Z; first starts 12:15:00Z, last ends 12:16:00Z
      at least (from 12:16:00Z): 6.342 to 6.342  -> rounded down 6.3 to 6.3
-     at most (the Amazon FSx API first showed ALL 12:14:29Z): 7.858 to 7.858  -> 7.9 to 7.9
+     at most (from 12:15:00Z): 7.342 to 7.342  -> rounded up 7.4 to 7.4; with a label up to 1 minute late: up to 8.4
+     range, smallest at least to largest at most: 6.3 to 7.4
      from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.108 to 15.108  -> 15.1 to 15.1
      from the switch request (12:13:22.3Z): 8.969  -> 9.0  (538.2 s)
-s4   first read starts 12:22:23.2Z to 12:22:23.2Z (1 invocation(s)); tiering write buckets 12:15Z; last ends 12:16:00Z
+     first write bucket starts 1.6 min after the switch request and 0.5 min after the first Amazon FSx API observation of ALL (12:14:29Z)
+s4   first read starts 12:22:23.2Z to 12:22:23.2Z (1 invocation(s)); tiering write buckets 12:15Z; first starts 12:15:00Z, last ends 12:16:00Z
      at least (from 12:16:00Z): 6.387 to 6.387  -> rounded down 6.3 to 6.3
-     at most (the Amazon FSx API first showed ALL 12:14:29Z): 7.903 to 7.903  -> 7.9 to 7.9
+     at most (from 12:15:00Z): 7.387 to 7.387  -> rounded up 7.4 to 7.4; with a label up to 1 minute late: up to 8.4
+     range, smallest at least to largest at most: 6.3 to 7.4
      from the end of the writes (12:07:14Z, each volume's own end is not recorded): 15.153 to 15.153  -> 15.2 to 15.2
      from the switch request (12:13:22.7Z): 9.008  -> 9.0  (540.5 s)
+     first write bucket starts 1.6 min after the switch request and 0.5 min after the first Amazon FSx API observation of ALL (12:14:29Z)
