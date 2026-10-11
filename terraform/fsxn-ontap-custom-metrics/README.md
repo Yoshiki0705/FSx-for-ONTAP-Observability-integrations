@@ -118,6 +118,10 @@ ssh fsxadmin@<management-endpoint-ip>
 security login create -user-or-group-name ontap-monitor -application http -authentication-method password -role fsxadmin-readonly
 ```
 
+> **Role documentation note**
+>
+> Two AWS pages disagree about file-system roles (`documented`, read on 2026-10-11). [ONTAP roles and users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/roles-and-users.html) says a file-system user can be assigned `fsxadmin` or `fsxadmin-readonly`. [Creating ONTAP users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/create-new-ontap-users.html) says that at the file-system level the only role that can be specified is `fsxadmin`, yet its own examples create file-system users with `fsxadmin-readonly`. The observed results come from the ONTAP REST API, not the CLI. `POST /api/security/accounts` with role `fsxadmin-readonly` returned HTTP 201 on 2026-10-08 (ONTAP 9.18.1P6) and on 2026-10-11 (ONTAP 9.19.1P2), once each, on a first-generation file system with one HA pair ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#qtree-quota-monitor-run-with-a-read-only-ontap-account-on-2026-10-11)). The same call with role `readonly` was rejected with `not authorized for that command` on 2026-10-09 ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09)). The SSH `security login create` command above was not run for this module. T1 and T3 hold no ONTAP credential: T1 uses AWS APIs only, and T3 reads a CloudWatch Logs log group.
+
 A Secrets Manager secret holds that user's credentials as `{"username": "...", "password": "..."}`. Only the ARN goes into Terraform and the Lambda environment. Writing the JSON to a file keeps the password out of the shell history; delete the file afterwards.
 
 ```bash

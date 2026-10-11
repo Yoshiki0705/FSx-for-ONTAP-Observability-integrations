@@ -69,6 +69,10 @@ The dated records behind each module's status are linked from this table.
 >
 > Two interface endpoints for the same service cannot coexist in one VPC with private DNS. If the VPC already has a `monitoring` or `secretsmanager` interface endpoint, leave `create_monitoring_endpoint` and `create_secretsmanager_endpoint` at `false` and set `aws_api_egress_cidr_blocks` to the VPC CIDR instead ([Network options](../../terraform/fsxn-ontap-custom-metrics/README.md#network-options)).
 
+> **ONTAP user role note**
+>
+> Two AWS pages disagree about file-system roles (`documented`, read on 2026-10-11): [ONTAP roles and users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/roles-and-users.html) lists `fsxadmin-readonly` as assignable to a file-system user, while [Creating ONTAP users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/create-new-ontap-users.html) says the only file-system role that can be specified is `fsxadmin`. Over the ONTAP REST API, `POST /api/security/accounts` with role `fsxadmin-readonly` returned HTTP 201 on 2026-10-08 and on 2026-10-11, and with role `readonly` it was rejected on 2026-10-09 ([record](verification-results-cloudwatch-monitoring.md#qtree-quota-monitor-run-with-a-read-only-ontap-account-on-2026-10-11)). T1 and T3 hold no ONTAP credential; of the three monitoring modules, only T2 logs in to ONTAP. Details: [Prerequisites](../../terraform/fsxn-ontap-custom-metrics/README.md#prerequisites).
+
 > **Delivery path note**
 >
 > This repository has no Terraform module for the syslog delivery path. Deploy the CloudFormation template (a copy taken before the fix needs the `GroupDescription` change in step 4), or build an equivalent in your own Terraform code. The template's log group has `DeletionPolicy: Retain`, so it remains when the stack is deleted. In the 2026-10-09 run, the first operation after a node's connection had been idle for about 4–5 minutes was lost three times; a detection that depends on a single line can miss that operation ([First operation lost after an idle connection](syslog-vpce-setup-guide.md#first-operation-lost-after-an-idle-connection)).
