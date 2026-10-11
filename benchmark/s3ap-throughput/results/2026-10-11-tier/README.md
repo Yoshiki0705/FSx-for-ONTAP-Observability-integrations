@@ -127,9 +127,11 @@ medians equal those of the all class in every run, size, and condition.
 
 For capacity pool reads, `analyze_capacity_pool.py` assigns each B invocation the
 1-minute `CapacityPoolReadOperations` and `CapacityPoolReadBytes` buckets from its
-start minute through the minute after its end. CloudWatch put some operations from
-the second half of a minute into the next minute's bucket (first seen in run 2),
-so the window was extended after run 2. The extension affects only the capacity
+start minute through the minute after its end. In runs 2 and 3, all four B
+invocations that had capacity pool reads (1 MiB and 5 MiB, started 43 to 45 seconds
+past the minute) had every operation in the next minute's bucket; the two such
+invocations in run 1 (started at :00) did not. The cause was not investigated, and
+the window was extended after run 2. The extension affects only the capacity
 pool table, not the latency rule. B invocations are at least 3 minutes apart, so
 the windows do not overlap.
 
