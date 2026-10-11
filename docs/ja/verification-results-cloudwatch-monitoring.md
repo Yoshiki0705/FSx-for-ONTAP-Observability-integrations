@@ -605,7 +605,7 @@ RO3 の期待（HTTP 403）と、RO5、RO6、RO7 の合格基準は、実行の�
 | RO7 | 基準: `QtreeQuotaAlarm` が INSUFFICIENT_DATA を抜けて OK | 合格 | 01:24:57Z |
 | RO8 | 後片付けと、AWS と ONTAP での再読み取り | 合格（3 つの残存物は後片付けの節に記載） | 01:34:37Z → 約 01:39:50Z |
 
-「約」を付けた時刻は、ONTAP 側の出力ファイルの保存時刻から取りました。RO1 の 60 MiB の書き込みは、RO2 と RO3 のアカウント確認より後です。
+この表で「約」を付けた時刻は、ONTAP 側の出力ファイルの保存時刻から取りました。下の後片付けの表の「約」と「同上」の時刻は、ファイルの時刻ではなく、手書きの実行記録から取りました。RO1 の 60 MiB の書き込みは、RO2 と RO3 のアカウント確認より後です。
 
 ### 観測したメトリクス（読み取り専用の実行）
 
@@ -659,7 +659,7 @@ ALARM は駆動していません。`NotificationEmail` が空だったため、
 | ONTAP REST API: アカウント `zz-ro-poller` の削除 | HTTP 200。`zz*` のアカウントは 0 件 | 同上 |
 | `SkipFinalBackup=true` での `aws fsx delete-volume` | 再読み取りで `VolumeNotFound` | 約 01:38Z → 01:39:14Z |
 | シークレット `fsxn-ro-verify-poller` | 7 日の回復期間で削除予約（強制削除はしていない） | 01:39:21Z |
-| AWS での再読み取り | スタック、Lambda、ロググループ、2 つのアラーム、スケジュールルール、DLQ、IAM ロール、ボリューム、ネットワークインターフェイスは、いずれも存在しない。VPC のエンドポイントの一覧は実行前の 5 件（s3、ssm、ssmmessages、ec2messages、secretsmanager。それぞれの種別は確認していない）に戻った | 約 01:39Z |
+| AWS での再読み取り | スタック、Lambda、ロググループ、2 つのアラーム、スケジュールルール、DLQ、IAM ロール、ボリューム、ネットワークインターフェイスは、いずれも存在しない。VPC のエンドポイントの一覧は実行前の 5 件（s3、ssm、ssmmessages、ec2messages、secretsmanager。実行前の `describe-vpc-endpoints` では、s3 が gateway エンドポイント、残りの 4 つがプライベート DNS 有効の interface エンドポイントだった。種別は後片付けの後には読み直していない）に戻った | 約 01:39Z |
 | ONTAP での再読み取り | `zz*` のアカウント 0 件、`zz*` のボリューム 0 件、`zz*` と `qt_ro*` の Qtree 0 件、SVM のクォータルール 0 件。踏み台ホストに鍵のディレクトリとマウントポイントは無い | 約 01:39:50Z |
 
 残存物は 3 つあります。

@@ -605,7 +605,7 @@ The expectation for RO3 (HTTP 403) and the pass criteria for RO5, RO6, and RO7 w
 | RO7 | Criterion: `QtreeQuotaAlarm` leaves INSUFFICIENT_DATA and reaches OK | Pass | 01:24:57Z |
 | RO8 | Cleanup, with re-read on AWS and ONTAP | Pass (the 3 residual items are in the cleanup section) | 01:34:37Z → about 01:39:50Z |
 
-Times marked "about" come from the save times of the ONTAP-side output files. The 60 MiB write in RO1 came after the account checks of RO2 and RO3.
+Times marked "about" in this table come from the save times of the ONTAP-side output files. The "about" and "same" times in the cleanup table below come from a hand-written run record, not from file times. The 60 MiB write in RO1 came after the account checks of RO2 and RO3.
 
 ### Observed Metrics (Read-Only Run)
 
@@ -659,7 +659,7 @@ ALARM was not driven. `NotificationEmail` was empty, so the alarms have no SNS a
 | ONTAP REST: delete account `zz-ro-poller` | HTTP 200. 0 accounts named `zz*` | Same |
 | `aws fsx delete-volume` with `SkipFinalBackup=true` | Re-read returned `VolumeNotFound` | About 01:38Z → 01:39:14Z |
 | Secret `fsxn-ro-verify-poller` | Scheduled for deletion with a 7-day recovery window (no force delete) | 01:39:21Z |
-| Re-read on AWS | The stack, Lambda, log group, both alarms, schedule rule, DLQ, IAM role, volume, and network interfaces are all absent. The VPC's endpoint list is back to the 5 that existed before the run (s3, ssm, ssmmessages, ec2messages, secretsmanager; the type of each was not checked) | About 01:39Z |
+| Re-read on AWS | The stack, Lambda, log group, both alarms, schedule rule, DLQ, IAM role, volume, and network interfaces are all absent. The VPC's endpoint list is back to the 5 that existed before the run (s3, ssm, ssmmessages, ec2messages, secretsmanager; before the run, `describe-vpc-endpoints` listed s3 as a gateway endpoint and the other four as interface endpoints with private DNS on; the types were not read again after cleanup) | About 01:39Z |
 | Re-read on ONTAP | 0 accounts named `zz*`, 0 volumes named `zz*`, 0 qtrees named `zz*` or `qt_ro*`, 0 quota rules in the SVM. The bastion host has no key directory or mount point | About 01:39:50Z |
 
 Three items remain:
