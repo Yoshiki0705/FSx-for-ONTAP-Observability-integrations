@@ -72,7 +72,7 @@ hold random bytes.
 | Listing check against the manifest (61 objects each) | 15:55:36 |
 | Switch request for `sw` | 15:55:36.1. The Amazon FSx API showed ALL at the first poll, 15:56:30 |
 | Warm-up invocations (`sw`, then `dir`) | 15:56:11 to 15:56:14 |
-| First one-minute `StorageUsed` point with the full logical size in the capacity pool tier | 15:56 (`dir`), 15:57 (`sw`; the poll of 15:57:11 still showed 0, the poll of 15:57:31 the full size) |
+| First one-minute `StorageUsed` point with the full logical size in the capacity pool tier | 15:56 (`dir`), 15:57 (`sw`; the poll of 15:57:10 still showed 0, the poll of 15:57:31 the full size) |
 | `dir` cohort 1, `dir` cohort 2 | Start 16:02:26, 16:11:26 |
 | `sw` cohort 1, `sw` cohort 2 | Start 16:13:36, 16:28:36 |
 | Node counter reads | 13:26:13 (the end of experiment 2), 16:17:10, 16:29:33 |

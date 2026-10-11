@@ -954,7 +954,7 @@ Schedule (UTC, 2026-10-11). The times of the volume creation, the writes, the sw
 | Listing check against the manifest | 15:55:36 |
 | Switch request (SW) | 15:55:36.1; the Amazon FSx API showed ALL at the first poll (15:56:30) |
 | Warm-up invocations (SW, then DIR) | 15:56:11 to 15:56:14 |
-| First one-minute point showing the full logical size in the capacity pool tier | 15:56 (DIR), 15:57 (SW; the poll of 15:57:11 still showed 0, the poll of 15:57:31 the full size) |
+| First one-minute point showing the full logical size in the capacity pool tier | 15:56 (DIR), 15:57 (SW; the poll of 15:57:10 still showed 0, the poll of 15:57:31 the full size) |
 | DIR cohort 1, DIR cohort 2 | Start 16:02:26, 16:11:26 |
 | SW cohort 1, SW cohort 2 | Start 16:13:36, 16:28:36 |
 | Node counter reads | 13:26:13 (the end of experiment 2), 16:17:10, 16:29:33 |
@@ -971,7 +971,7 @@ Each cohort read is assigned the CloudWatch one-minute buckets from its start mi
 | Cohort 1 (main) | SW | 16:13:36 | 15.6 to 16.7 | 0 | 0 | 0.000 | 30 |
 | Cohort 2 (auxiliary) | SW | 16:28:36 | 30.6 to 31.7 | 0 | 0 | 0.000 | 30 |
 
-- The row of the table fixed before the first invocation: both main reads are below 0.10, the fourth row. By that row, a directly written volume with none at about 7 minutes means that the direct path also has a time before capacity pool reads appear, and a switched volume with none at about 16 minutes means that the switched path needs more than 16 minutes; elapsed time alone does not account for the split between the two groups.
+- The row of the table fixed before the first invocation: both main reads are below 0.10, the fourth row. By that row, a directly written volume with none at about 7 minutes means that the direct path also has a time before capacity pool reads appear, and a switched volume with none at about 16 minutes means that the switched path needs more than 16 minutes; elapsed time alone does not account for the split between the two groups. Of this reading, the switched half stands: SW had none to 31.7 minutes. The direct half is not supported (post-hoc, because it uses the auxiliary cohort 2): DIR cohort 2 had none at 14.4 to 15.5 minutes, inside the ranges of K1 and S3p below, so no time before reads appear can be read from the direct volumes.
 - DIR cohort 2 (auxiliary, so outside the reading fixed in advance) was a directly written volume with none at 14.4 to 15.5 minutes. K1 and S3p of experiment 2, also written directly, had capacity pool reads at 13.6 to 16.0 and 13.5 to 15.6 minutes. This comparison is post-hoc; see "The eight volumes together (derived, post-hoc)".
 - How a zero is read: a 0 means that `cw-all.tsv` has no `CapacityPoolReadOperations` datapoint with a positive Sum in the windows. The file holds only datapoints above 0. In the same windows `DataReadOperations` summed to 30 per read, the number of GetObject reads, so the reads were recorded and the zero is not a missing read.
 - Counted from the run log instead (printed by the script, not used as bounds): DIR cohorts 1 and 2 started 7.0 and 16.0 minutes after the end of the DIR writes, and SW cohorts 1 and 2 started 18.0 and 33.0 minutes after the switch request.
@@ -1159,7 +1159,7 @@ These are the limits of experiment 2 and of the statements about the first six v
 | K1 re-reads caused 9 operations at about 3 minutes and none at about 8.4, 30, and 60 minutes | `verified` | One cohort of 30 objects per interval |
 | Summed over the five volumes, `CapacityPoolReadOperations` and `CapacityPoolReadBytes` equal the increase of the node 1 `get` row of `object_store_client_op` (2,401 operations, 248,866,720 B), and `CapacityPoolWriteOperations` and `CapacityPoolWriteBytes` equal the increase of the `put` row (120 operations, 382,525,440 B) | `verified` | This environment, one interval (09:24:08 to 13:26:13 UTC). Counters read through the ONTAP REST API; counter dumps are not published, only the differences, so the node side cannot be recomputed from the committed files (the CloudWatch side can, from `cw-all.tsv`). The interval starts at the last counter read of the tier comparison |
 | Whether content changes capacity pool reads on the switched path | `open` | S2 and S3 are both zero, so the comparison cannot resolve it |
-| Why the changed volumes caused no capacity pool reads, and why the two paths differ | `open` | Not tested |
+| Why B, K1, and S3p had capacity pool reads at their first read while DIR, S2, S3, S4, and SW had none | `open` | Not tested. The write path alone is not sufficient in this record (DIR was written directly and had none) |
 | One candidate for the zero: a cache in ONTAP | `hypothesis` | That the zero persists to 60 minutes while SSD usage stays at about 8 % to 28 % of the logical size (at 13:25) has not been shown to fit an ordinary cache explanation. Other explanations are not excluded |
 | The K1 5 MiB re-read slowdown at about 3 and 8.4 minutes, and the S3 slowdown at 30 minutes | `open` | One observation each, not reproduced. Cohort 2 had 0 operations |
 | The relation between the CloudWatch operation count and billed capacity pool read requests | `open` | No billing data was compared |
@@ -1342,6 +1342,7 @@ Record the result together with its environment context: FSx for ONTAP throughpu
 - [Raw data of the 2026-10-10 position check](../../benchmark/s3ap-throughput/results/2026-10-10-position/README.md)
 - [Raw data of the 2026-10-11 tier comparison](../../benchmark/s3ap-throughput/results/2026-10-11-tier/README.md)
 - [Raw data of the 2026-10-11 tiering path experiment](../../benchmark/s3ap-throughput/results/2026-10-11-tier-path/README.md)
+- [Raw data of the 2026-10-11 exchanged elapsed times experiment (experiment 3)](../../benchmark/s3ap-throughput/results/2026-10-11-tier-elapsed/README.md)
 - [S3 AP Specification & Troubleshooting](s3ap-fsxn-specification.md)
 - [Pipeline SLO](pipeline-slo.md)
 - [Operational Guide](operational-guide.md)
