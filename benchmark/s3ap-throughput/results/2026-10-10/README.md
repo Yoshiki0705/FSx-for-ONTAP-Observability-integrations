@@ -38,7 +38,9 @@ Date 2026-10-10, Region ap-northeast-1. An Amazon FSx for NetApp ONTAP file
 system of type SINGLE_AZ_1 (first generation) with 1 HA pair, throughput
 capacity 128 MBps, and 1024 GiB of SSD. The measurement used one volume of one
 SVM (the file system has several SVMs). ONTAP 9.18.1P6, as read on 2026-10-06
-through the ONTAP REST API (not re-read on the measurement day). The volume's
+through the ONTAP REST API (not re-read on the measurement day). A later read
+on 2026-10-11 returned 9.19.1P2. The date of the change is unknown, so the
+version in effect on the measurement day is not known. The volume's
 tiering policy was AUTO with a 31-day cooling period. The test objects were
 written minutes before they were read, so the reads are inferred to have been
 served from the SSD (primary) tier; no per-tier capacity metric was captured.

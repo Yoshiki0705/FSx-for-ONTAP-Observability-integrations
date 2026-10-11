@@ -111,12 +111,16 @@ git checkout FETCH_HEAD
 
 - Terraform `>= 1.11.0`、`hashicorp/aws` `>= 6.67.0`、`hashicorp/archive` `>= 2.8.1`（6.67.0 と 2.8.1 で確認）。
 - ファイルシステムの VPC（またはピアリングした VPC）にあり、ファイルシステムの管理エンドポイントへ TCP 443 で届くサブネット。
-- ポーラー用の ONTAP ユーザー。AWS のドキュメントは、組み込みのファイルシステムのロール `fsxadmin-readonly` を、ファイルシステムのレベルですべてを参照でき変更はできないロールで、監視アプリケーションに向くと説明し、ファイルシステムのロールは新しく作れないとしています（[ロールとユーザー](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/roles-and-users.html)）。ユーザーは `fsxadmin` で SSH 接続し、`security login create` で作ります（[ONTAP ユーザーの作成](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/create-new-ontap-users.html)）。そのページは `-application` の値として `http`、`ontapi`、`ssh` を挙げ、例は `ssh` で示しています。下のコマンドは REST API で使うために `http` を指定します。このモジュールのためには実行していません（`unverified`）。ONTAP はパスワードを 2 回尋ねます。
+- ポーラー用の ONTAP ユーザー。AWS のドキュメントは、組み込みのファイルシステムのロール `fsxadmin-readonly` を、ファイルシステムのレベルですべてを参照でき変更はできないロールで、監視アプリケーションに向くと説明し（同ページのロールの表では、`security` コマンドディレクトリは自分のアカウントの `security login password` を除いてアクセスなし、それ以外のディレクトリは読み取り専用）、ファイルシステムのロールは新しく作れないとしています（[ロールとユーザー](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/roles-and-users.html)）。ユーザーは `fsxadmin` で SSH 接続し、`security login create` で作ります（[ONTAP ユーザーの作成](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/create-new-ontap-users.html)）。そのページは `-application` の値として `http`、`ontapi`、`ssh` を挙げ、例は `ssh` で示しています。下のコマンドは REST API で使うために `http` を指定します。このモジュールのためには実行していません（`unverified`）。ONTAP はパスワードを 2 回尋ねます。
 
 ```bash
 ssh fsxadmin@<management-endpoint-ip>
 security login create -user-or-group-name ontap-monitor -application http -authentication-method password -role fsxadmin-readonly
 ```
+
+> **ロールの文書に関する補足**
+>
+> AWS の 2 つのページが、ファイルシステムのロールについて食い違っています（`documented`。2026-10-11 に読んだ内容）。[ONTAP roles and users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/roles-and-users.html) は、ファイルシステムのユーザーに `fsxadmin` か `fsxadmin-readonly` を割り当てられるとしています。[Creating ONTAP users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/create-new-ontap-users.html) は、ファイルシステムのレベルで指定できるロールは `fsxadmin` だけとしていますが、同じページの例は `fsxadmin-readonly` のファイルシステムのユーザーを作っています。観測した結果は、CLI ではなく ONTAP REST API の経路のものです。ロール `fsxadmin-readonly` を指定した `POST /api/security/accounts` は、2026-10-08（ONTAP 9.18.1P6、[T2 の記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)）と 2026-10-11（ONTAP 9.19.1P2、[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-11-の読み取り専用-ontap-アカウントによる-qtree-クォータ監視の実行)）にそれぞれ 1 回、HTTP 201 を返しました。どちらも HA ペア 1 つの第 1 世代ファイルシステムです。T2 の記録は、2026-10-08 のアカウントがこの呼び出しで作られ、コレクターのすべての要求に応答したことを示していますが、ステータスコードは載せていません。ロール `readonly` を指定した同じ呼び出しは、2026-10-09 に `not authorized for that command` で拒否されました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)）。上の SSH での `security login create` は、このモジュールのためには実行していません。T1 と T3 のモジュールは ONTAP の認証情報を持ちません。T1 は AWS の API だけを呼び、T3 は CloudWatch Logs のロググループを読みます。T3 の実行記録にある `t3-alarm-ro` のアカウントは、拒否されるリクエストを作るためのテスト用の足場で、モジュールの入力ではありません。
 
 そのユーザーの認証情報は、`{"username": "...", "password": "..."}` の形で Secrets Manager のシークレットに保存します。Terraform と Lambda の環境変数に入るのは ARN だけです。JSON をファイルに書くと、パスワードがシェルの履歴に残りません。作成後にファイルを削除してください。
 

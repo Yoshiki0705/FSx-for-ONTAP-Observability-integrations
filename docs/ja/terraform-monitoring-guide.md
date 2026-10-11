@@ -69,6 +69,10 @@ Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開�
 >
 > プライベート DNS を有効にした同じサービスのインターフェイスエンドポイントは、1 つの VPC に 2 つ置けません。VPC に `monitoring` か `secretsmanager` のインターフェイスエンドポイントが既にあるなら、`create_monitoring_endpoint` と `create_secretsmanager_endpoint` は `false` のままにし、`aws_api_egress_cidr_blocks` に VPC の CIDR を設定します（[ネットワークの選択肢](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#ネットワークの選択肢)）。
 
+> **ONTAP ユーザーのロールに関する補足**
+>
+> AWS の 2 つのページが、ファイルシステムのロールについて食い違っています（`文書化済み`。2026-10-11 に読んだ内容）。[ONTAP roles and users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/roles-and-users.html) は `fsxadmin-readonly` をファイルシステムのユーザーに割り当てられるロールとして挙げ、[Creating ONTAP users](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/create-new-ontap-users.html) は、ファイルシステムのレベルで指定できるロールは `fsxadmin` だけとしています。ONTAP REST API では、ロール `fsxadmin-readonly` を指定した `POST /api/security/accounts` が 2026-10-08（[T2 の記録](verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)）と 2026-10-11（[記録](verification-results-cloudwatch-monitoring.md#2026-10-11-の読み取り専用-ontap-アカウントによる-qtree-クォータ監視の実行)）に HTTP 201 を返し、ロール `readonly` では 2026-10-09 に拒否されました（[T3 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)）。T2 の記録は、2026-10-08 のアカウントがこの呼び出しで作られ、コレクターのすべての要求に応答したことを示していますが、ステータスコードは載せていません。T1 と T3 は ONTAP の認証情報を持たず、3 つの監視モジュールのうち、ONTAP にログインするのは T2 だけです。詳しくは[前提条件](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#前提条件)を参照してください。
+
 > **配信経路に関する補足**
 >
 > syslog の配信経路を作る Terraform モジュールは本リポジトリにありません。CloudFormation テンプレート（修正前に取ったコピーなら、手順 4 の `GroupDescription` の変更を加えたもの）をデプロイするか、同等の構成を自分の Terraform コードで作ります。テンプレートのロググループは `DeletionPolicy: Retain` なので、スタックを削除しても残ります。2026-10-09 の実行では、ノードの接続が約 4〜5 分無通信だった後の最初の操作が 3 回失われました。1 行に依存する検出はその操作を取りこぼすことがあります（[無通信の接続の後の最初の操作の欠落](syslog-vpce-setup-guide.md#無通信の接続の後の最初の操作の欠落)）。
