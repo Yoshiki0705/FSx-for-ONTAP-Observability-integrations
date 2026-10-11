@@ -1,0 +1,47 @@
+== read order inside a cold/c<cohort>/ invocation (key order, one read each)
+  10 x s1m, then 10 x s5m, then 10 x s64k
+
+== warm-up, 4 reads of the 64 KiB warm/ object
+x4-warm-q    64 KiB  n=  4  p50=   45.9  p90=   51.6  min=   44.8  max=   51.6
+x4-warm-p1   64 KiB  n=  4  p50=   45.9  p90=   81.2  min=   44.7  max=   81.2
+x4-warm-p2   64 KiB  n=  4  p50=   38.1  p90=   47.2  min=   38.0  max=   47.2
+
+== reads of 30 objects: q, p1, p2 (created with ALL, written directly), cohort 1 and 2
+x4-q-c1      64 KiB  n= 10  p50=   47.0  p90=   55.5  min=   44.8  max=   82.7
+x4-q-c1      1 MiB   n= 10  p50=  127.5  p90=  216.1  min=  104.1  max=  280.8
+x4-q-c1      5 MiB   n= 10  p50=  260.5  p90=  340.7  min=  238.4  max=  378.5 n>300ms=4
+x4-p1-c1     64 KiB  n= 10  p50=   42.3  p90=   44.1  min=   40.4  max=   44.3
+x4-p1-c1     1 MiB   n= 10  p50=  111.3  p90=  183.9  min=   96.0  max=  244.1
+x4-p1-c1     5 MiB   n= 10  p50=  262.1  p90=  359.4  min=  215.9  max=  470.5 n>300ms=2
+x4-p2-c1     64 KiB  n= 10  p50=   38.5  p90=   41.1  min=   37.7  max=   56.4
+x4-p2-c1     1 MiB   n= 10  p50=  118.6  p90=  227.5  min=  100.8  max=  306.8
+x4-p2-c1     5 MiB   n= 10  p50=  243.2  p90=  303.1  min=  216.9  max=  342.7 n>300ms=2
+x4-q-c2      64 KiB  n= 10  p50=   43.6  p90=   49.4  min=   42.5  max=   60.4
+x4-q-c2      1 MiB   n= 10  p50=  191.0  p90=  243.4  min=  113.2  max=  268.3
+x4-q-c2      5 MiB   n= 10  p50=  253.9  p90=  299.3  min=  225.8  max=  433.1 n>300ms=1
+x4-p1-c2     64 KiB  n= 10  p50=   42.3  p90=   43.4  min=   40.2  max=   43.8
+x4-p1-c2     1 MiB   n= 10  p50=  155.0  p90=  174.0  min=   99.9  max=  234.6
+x4-p1-c2     5 MiB   n= 10  p50=  240.4  p90=  279.1  min=  219.6  max=  304.2 n>300ms=1
+x4-p2-c2     64 KiB  n= 10  p50=   45.3  p90=   60.3  min=   42.5  max=   66.2
+x4-p2-c2     1 MiB   n= 10  p50=  112.6  p90=  184.3  min=  100.7  max=  250.2
+x4-p2-c2     5 MiB   n= 10  p50=  258.9  p90=  317.8  min=  221.4  max=  356.9 n>300ms=3
+
+== reads of the churn volume chn (policy NONE, 5 MiB objects)
+x4-chn-a     5 MiB   n= 25  p50=  120.0  p90=  139.7  min=   98.1  max=  225.0 n>300ms=0
+x4-chn-b     5 MiB   n=110  p50=  119.8  p90=  140.9  min=   82.2  max=  403.5 n>300ms=2
+
+5 MiB samples of the cohort reads in read order and sorted (ms), to show the spread behind the p50:
+  x4-q-c1: read order 334.1 260.5 378.5 340.7 302.0 258.5 240.8 298.1 242.1 238.4
+           sorted     238.4 240.8 242.1 258.5 260.5 298.1 302.0 334.1 340.7 378.5
+  x4-p1-c1: read order 293.8 262.1 359.4 278.7 240.2 280.1 470.5 215.9 254.1 219.1
+            sorted     215.9 219.1 240.2 254.1 262.1 278.7 280.1 293.8 359.4 470.5
+  x4-p2-c1: read order 266.8 231.0 342.7 278.6 240.0 303.1 275.0 221.9 243.2 216.9
+            sorted     216.9 221.9 231.0 240.0 243.2 266.8 275.0 278.6 303.1 342.7
+  x4-q-c2: read order 433.1 261.6 240.2 239.0 259.5 299.3 225.8 253.9 256.3 244.9
+           sorted     225.8 239.0 240.2 244.9 253.9 256.3 259.5 261.6 299.3 433.1
+  x4-p1-c2: read order 304.2 278.2 279.1 239.2 260.1 221.0 259.0 219.7 240.4 219.6
+            sorted     219.6 219.7 221.0 239.2 240.4 259.0 260.1 278.2 279.1 304.2
+  x4-p2-c2: read order 356.9 300.8 317.8 239.9 222.0 278.1 240.9 221.4 258.9 282.5
+            sorted     221.4 222.0 239.9 240.9 258.9 278.1 282.5 300.8 317.8 356.9
+
+single-invocation p50 values checked against the tool's per_size_class p50_ms: 23 checked, 0 differ

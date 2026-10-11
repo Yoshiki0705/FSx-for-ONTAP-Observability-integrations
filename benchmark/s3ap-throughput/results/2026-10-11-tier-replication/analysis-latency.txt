@@ -1,0 +1,32 @@
+== read order inside a cold/c<cohort>/ invocation (key order, one read each)
+  10 x s1m, then 10 x s5m, then 10 x s64k
+
+== warm-up, 4 reads of the 64 KiB warm/ object
+x5-warm-sw   64 KiB  n=  4  p50=   50.3  p90=   58.1  min=   48.8  max=   58.1
+x5-warm-dir  64 KiB  n=  4  p50=   51.0  p90=   63.2  min=   48.6  max=   63.2
+
+== reads of 30 objects: dir (ALL, written directly), sw (NONE -> ALL), cohort 1 and 2
+x5-dir-c1    64 KiB  n= 10  p50=   45.4  p90=   61.1  min=   42.1  max=   64.8
+x5-dir-c1    1 MiB   n= 10  p50=   60.0  p90=   83.9  min=   54.2  max=   95.5
+x5-dir-c1    5 MiB   n= 10  p50=  373.6  p90=  402.3  min=  346.3  max=  564.4 n>300ms=10
+x5-dir-c2    64 KiB  n= 10  p50=   44.9  p90=   60.2  min=   42.2  max=   76.3
+x5-dir-c2    1 MiB   n= 10  p50=   65.3  p90=   79.0  min=   57.6  max=  135.9
+x5-dir-c2    5 MiB   n= 10  p50=  119.5  p90=  140.9  min=  100.7  max=  219.9 n>300ms=0
+x5-sw-c1     64 KiB  n= 10  p50=   47.8  p90=   51.6  min=   45.2  max=   64.7
+x5-sw-c1     1 MiB   n= 10  p50=   59.5  p90=   66.7  min=   53.5  max=  100.1
+x5-sw-c1     5 MiB   n= 10  p50=  120.2  p90=  146.0  min=  101.5  max=  158.4 n>300ms=0
+x5-sw-c2     64 KiB  n= 10  p50=   42.8  p90=   44.0  min=   41.7  max=   61.2
+x5-sw-c2     1 MiB   n= 10  p50=   65.5  p90=   77.1  min=   57.5  max=  119.0
+x5-sw-c2     5 MiB   n= 10  p50=  118.4  p90=  141.6  min=  100.7  max=  192.1 n>300ms=0
+
+5 MiB samples of the cohort reads in read order and sorted (ms), to show the spread behind the p50:
+  x5-dir-c1: read order 402.3 398.6 360.5 379.1 346.3 373.6 361.1 564.4 374.5 361.2
+             sorted     346.3 360.5 361.1 361.2 373.6 374.5 379.1 398.6 402.3 564.4
+  x5-dir-c2: read order 219.9 140.9 137.9 120.7 100.7 101.3 119.5 120.3 118.3 102.3
+             sorted     100.7 101.3 102.3 118.3 119.5 120.3 120.7 137.9 140.9 219.9
+  x5-sw-c1: read order 146.0 158.4 120.2 119.1 121.7 120.4 139.6 101.5 119.9 119.9
+            sorted     101.5 119.1 119.9 119.9 120.2 120.4 121.7 139.6 146.0 158.4
+  x5-sw-c2: read order 192.1 141.6 137.4 121.0 102.0 120.3 117.9 100.7 118.4 101.9
+            sorted     100.7 101.9 102.0 117.9 118.4 120.3 121.0 137.4 141.6 192.1
+
+single-invocation p50 values checked against the tool's per_size_class p50_ms: 14 checked, 0 differ

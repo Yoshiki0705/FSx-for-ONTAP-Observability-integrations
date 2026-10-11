@@ -1,0 +1,55 @@
+== 1. first reads of the thirteen volumes (post-hoc table)
+volume      experiment    path    read                 CP read ops at least  at most  others MB (bucket rule)
+B           experiment 1  direct  r1 s64k                        0      8.0     none                      5.8
+B           experiment 1  direct  r1 s1m                        56     11.0     none                     89.7
+B           experiment 1  direct  r1 s5m                       332     14.0     none                    509.1
+B           experiment 1  direct  r2 s64k                        0     25.7     none                    509.1
+B           experiment 1  direct  r2 s1m                        56     28.7     none                    514.3
+B           experiment 1  direct  r2 s5m                       323     31.7     none                    598.2
+B           experiment 1  direct  r3 s64k                        0     43.7     none                   1017.6
+B           experiment 1  direct  r3 s1m                        54     46.7     none                   1020.3
+B           experiment 1  direct  r3 s5m                       298     49.7     none                   1064.8
+K1          experiment 2  direct  first reads (12)            1896     13.6     16.0                   4069.5
+S3p         experiment 2  direct  first read                   374     13.5     15.6                   4069.5
+DIR         experiment 3  direct  cohort 1 (primary)             0      5.4      6.5                      0.3
+DIR         experiment 3  direct  cohort 2 (auxiliary)           0     14.4     15.5                      0.3
+DIR (exp 5) experiment 5  direct  cohort 1 (primary)             0      5.7      6.8                      0.3
+DIR (exp 5) experiment 5  direct  cohort 2 (auxiliary)           0     14.7     15.8                      0.3
+Q           experiment 4  direct  cohort 1 (primary)           372      3.9      5.0                      0.5
+Q           experiment 4  direct  cohort 2 (auxiliary)         371     13.4     14.5                    835.5
+P1          experiment 4  direct  cohort 1 (primary)           399      5.9      7.0                     64.1
+P1          experiment 4  direct  cohort 2 (auxiliary)         353     15.4     16.5                    899.0
+P2          experiment 4  direct  cohort 1 (primary)           419      8.4      9.5                    756.8
+P2          experiment 4  direct  cohort 2 (auxiliary)         394     17.4     18.5                    962.6
+S2          experiment 2  switch  first read                     0      6.2      7.3                      0.0
+S3          experiment 2  switch  first read                     0      6.3      7.4                      0.0
+S4          experiment 2  switch  first read                     0      6.3      7.4                      0.0
+SW          experiment 3  switch  cohort 1 (primary)             0     15.6     16.7                    127.1
+SW          experiment 3  switch  cohort 2 (auxiliary)           0     30.6     31.7                    127.1
+SW (exp 5)  experiment 5  switch  cohort 1 (primary)             0     13.8     14.9                    127.1
+SW (exp 5)  experiment 5  switch  cohort 2 (auxiliary)           0     36.3     37.4                    127.1
+B has no 'at most' (pull range of cw-b-tiering.tsv not recorded). B's rows are its nine reads: 64 KiB, 1 MiB, 5 MiB of runs 1 to 3; its 64 KiB reads had none in any run.
+
+== 2. write path against the result of the first read (volumes)
+  written direct: first read with capacity pool reads: ['B', 'K1', 'P1', 'P2', 'Q', 'S3p']; first read with none: ['DIR', 'DIR (exp 5)']
+  written switch: first read with capacity pool reads: none; first read with none: ['S2', 'S3', 'S4', 'SW', 'SW (exp 5)']
+  volumes written directly: 8 (6 with capacity pool reads, 2 with none); volumes switched from NONE to ALL: 5 (0 with capacity pool reads, 5 with none)
+  total volumes: 13
+  every volume with capacity pool reads was written directly: True
+  directly written volumes with none at all of their reads: ['DIR', 'DIR (exp 5)']
+  S3p counts as positive by operation count (374 operations; its f is 0.014, below 0.10) and by g, not by the f rule fixed before its run; B counts as positive by its 1 MiB and 5 MiB reads.
+
+== 3. the two directly written volumes that read zero: experiment 3 DIR and experiment 5 DIR
+volume      read                  elapsed (min)  others MB (bucket rule) CP read ops
+DIR         cohort 1 (primary)      5.4 to  6.5                      0.3           0
+DIR         cohort 2 (auxiliary)   14.4 to 15.5                      0.3           0
+DIR (exp 5) cohort 1 (primary)      5.7 to  6.8                      0.3           0
+DIR (exp 5) cohort 2 (auxiliary)   14.7 to 15.8                      0.3           0
+  cohort 1: experiment 3 DIR 5.4 to 6.5 min, experiment 5 DIR 5.7 to 6.8 min; both none
+  experiment 5 reproduces experiment 3: a directly written volume (DIR) read zero on its first read in both runs. The DIR zero is not a one-off.
+  facts (not ranked, none shown to be a cause): experiment 5 replicated experiment 3's design -- two volumes uploaded in parallel, no large preceding write, a switched volume (SW) tiering out at the same time. Which of the three conditions matters is not isolated.
+
+== 4. does a one-sided threshold on the elapsed time fit the bounds? (reads with both ends)
+  reads with both ends: 19 (8 with capacity pool reads, 11 with none)
+  every 'at most' raised by 0.0 minute(s): 'only above T' is excluded by 35 pairs (a read with none is definitely longer than a read with capacity pool reads), 'only below T' by 35 pairs (definitely shorter)
+  every 'at most' raised by 1.0 minute(s): 'only above T' is excluded by 32 pairs (a read with none is definitely longer than a read with capacity pool reads), 'only below T' by 31 pairs (definitely shorter)

@@ -1,0 +1,60 @@
+== 0. inputs
+invocations: 11; bytes read per invocation from raw/ (total 1,089,994,752 B)
+windows of two invocations on the same volume that overlap: [('x4-chn-a', 'x4-chn-b')]
+end of the direct writes U (run-log-times.tsv): 18:04:29.0Z; start of the first invocation of the run: 18:05:14.0Z
+file-system-level DataReadBytes in the buckets before 18:06Z: 0 B (so no volume of the file system was read before the first invocation)
+E per volume (end of the last bucket with tiering writes): q 18:06Z, p1 18:06Z, p2 18:06Z
+
+== 1. bucket rule of experiments 1 to 3: one-minute buckets t with E <= t < m (MB = 10^6 B)
+read       E      m        (a) others B   (a) MB    (b) own B       (c) FS B (c)-(a)-(b) B  (a) by volume
+x4-q-c1    18:06  18:09         524,288      0.5      262,144        786,432             0  p1=262,144, p2=262,144
+x4-p1-c1   18:06  18:11      64,094,208     64.1      262,144     64,356,352             0  q=63,832,064, p2=262,144
+x4-p2-c1   18:06  18:14     756,809,728    756.8      262,144    778,043,392    20,971,520  q=63,832,064, p1=63,832,064, chn=629,145,600
+x4-q-c2    18:06  18:19     835,452,928    835.5   63,832,064    899,284,992             0  p1=63,832,064, p2=63,832,064, chn=707,788,800
+x4-p1-c2   18:06  18:21     899,022,848    899.0   63,832,064    962,854,912             0  q=127,401,984, p2=63,832,064, chn=707,788,800
+x4-p2-c2   18:06  18:23     962,592,768    962.6   63,832,064  1,026,424,832             0  q=127,401,984, p1=127,401,984, chn=707,788,800
+largest absolute difference (c) - (a) - (b): 20,971,520 B (a nonzero value is a read on a volume outside the run, or a bucket shifted between the files)
+
+== 2. per-invocation recount (post-hoc): bytes read by the invocations of other volumes that started after U and ended before the read started
+x4-q-c1    read starts 18:09:59.0Z  others=      524,288 B =     0.5 MB (0.524); 2 invocations:
+           x4-warm-p1 262,144, x4-warm-p2 262,144
+x4-p1-c1   read starts 18:11:59.0Z  others=  195,166,208 B =   195.2 MB (195.166); 4 invocations:
+           x4-warm-q 262,144, x4-warm-p2 262,144, x4-q-c1 63,569,920, x4-chn-a 131,072,000
+x4-p2-c1   read starts 18:14:29.0Z  others=  835,452,928 B =   835.5 MB (835.453); 6 invocations:
+           x4-warm-q 262,144, x4-warm-p1 262,144, x4-q-c1 63,569,920, x4-chn-a 131,072,000, x4-p1-c1 63,569,920, x4-chn-b 576,716,800
+x4-q-c2    read starts 18:19:29.0Z  others=  835,452,928 B =   835.5 MB (835.453); 6 invocations:
+           x4-warm-p1 262,144, x4-warm-p2 262,144, x4-chn-a 131,072,000, x4-p1-c1 63,569,920, x4-chn-b 576,716,800, x4-p2-c1 63,569,920
+x4-p1-c2   read starts 18:21:29.0Z  others=  899,022,848 B =   899.0 MB (899.023); 7 invocations:
+           x4-warm-q 262,144, x4-warm-p2 262,144, x4-q-c1 63,569,920, x4-chn-a 131,072,000, x4-chn-b 576,716,800, x4-p2-c1 63,569,920, x4-q-c2 63,569,920
+x4-p2-c2   read starts 18:23:29.0Z  others=  962,592,768 B =   962.6 MB (962.593); 8 invocations:
+           x4-warm-q 262,144, x4-warm-p1 262,144, x4-q-c1 63,569,920, x4-chn-a 131,072,000, x4-p1-c1 63,569,920, x4-chn-b 576,716,800, x4-q-c2 63,569,920, x4-p1-c2 63,569,920
+
+== 3. bucket rule against the per-invocation recount
+read       bucket rule MB per invocation MB  difference B
+x4-q-c1               0.5               0.5             0
+x4-p1-c1             64.1             195.2   131,072,000
+x4-p2-c1            756.8             835.5    78,643,200
+x4-q-c2             835.5             835.5             0
+x4-p1-c2            899.0             899.0             0
+x4-p2-c2            962.6             962.6             0
+
+invocations of other volumes whose bytes the bucket rule leaves out of a read (the invocation ended before the read started):
+  x4-p1-c1  x4-chn-a    started 18:10:59.0Z ended 18:11:02.7Z read 131,072,000 B; CloudWatch labels {'18:11': 131072000}; m=18:11Z; counted by the bucket rule 0 B
+  x4-p2-c1  x4-chn-b    started 18:12:59.0Z ended 18:13:13.7Z read 576,716,800 B; CloudWatch labels {'18:13': 498073600, '18:14': 78643200}; m=18:14Z; counted by the bucket rule 498,073,600 B
+
+client start seconds of the invocations (hh:mm:ss.s) and the CloudWatch minute holding the first of their data-read bytes:
+  x4-q-c1    start 18:09:59.0Z end 18:10:04.6Z  first labelled bucket 18:10Z  last 18:10Z
+  x4-chn-a   start 18:10:59.0Z end 18:11:02.7Z  first labelled bucket 18:11Z  last 18:11Z
+  x4-p1-c1   start 18:11:59.0Z end 18:12:04.3Z  first labelled bucket 18:12Z  last 18:12Z
+  x4-chn-b   start 18:12:59.0Z end 18:13:13.7Z  first labelled bucket 18:13Z  last 18:14Z
+  x4-p2-c1   start 18:14:29.0Z end 18:14:34.2Z  first labelled bucket 18:15Z  last 18:15Z
+  x4-q-c2    start 18:19:29.0Z end 18:19:36.4Z  first labelled bucket 18:20Z  last 18:20Z
+  x4-p1-c2   start 18:21:29.0Z end 18:21:34.1Z  first labelled bucket 18:22Z  last 18:22Z
+  x4-p2-c2   start 18:23:29.0Z end 18:23:35.9Z  first labelled bucket 18:24Z  last 18:24Z
+
+== 4. the file-system-level and the per-volume metric place some reads in different minutes
+  18:13Z file-system-level 519,045,120 B, sum of the four volumes 498,073,600 B, difference +20,971,520 B
+  18:14Z file-system-level 57,671,680 B, sum of the four volumes 78,643,200 B, difference -20,971,520 B
+  sum of the differences over the file: 0 B (0 means the same bytes, placed in different minutes); 5 MiB = 5,242,880 B, so the first difference is 4 reads of chn
+
+plan values: about 0.5, 200, and 800 MB for q, p1, p2. Per invocation (cohort 1): q 0.5, p1 195.2, p2 835.5 MB.
