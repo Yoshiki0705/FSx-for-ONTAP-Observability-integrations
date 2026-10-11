@@ -30,7 +30,8 @@ sizes, timings, run IDs, the Region, and per-object samples.
 | `cw-all.tsv` | 88 lines of per-volume CloudWatch data, tab separated: volume label (`k1`, `s2`, `s3`, `s3p`, `s4`), metric, timestamp, Sum. Metrics `CapacityPoolReadOperations`, `CapacityPoolReadBytes`, `CapacityPoolWriteOperations`, `CapacityPoolWriteBytes`, `DataReadOperations`, `DataReadBytes`; one-minute points. The file holds only datapoints whose Sum is above 0, and it is de-duplicated. Timestamps carry the `+09:00` offset |
 | `cw-storageused.tsv` | 806 lines of the volume-level `StorageUsed` metric, tab separated: volume label, tier (`SSD` or `StandardCapacityPool`), timestamp, value in bytes. One-minute points from 12:05 to 13:25 UTC (S3 and S3p have no point at 12:05). The statistic and the call that produced the file were not recorded in it. Timestamps carry the `+09:00` offset |
 | `manifest.txt` | 245 lines: volume label, object key, size in bytes. It lists every object written to each volume, including the `warm/` object |
-| `analyze_capacity_pool.py`, `analysis-capacity-pool.txt` | Script and its output: inputs, tiering writes, capacity pool reads per read and window, the stored-bytes ratio, buckets outside every window, totals, read accounting, and tier state |
+| `run-log-times.tsv` | 6 lines of times from the run log, tab separated: event (`upload_start`, `upload_end`, `switch_request`, `api_showed_all`), volume label (`all`, or `s2`, `s3`, `s4`; `s2,s3,s4` for the one observation that covers the three), time in UTC. The five writes ran in parallel and the end of each volume's own writes was not recorded, so `upload_start` and `upload_end` are for the set. `api_showed_all` is the first time the Amazon FSx API showed ALL for the three volumes; it is a polled observation, so the policy may have applied earlier |
+| `analyze_capacity_pool.py`, `analysis-capacity-pool.txt` | Script and its output: inputs, tiering writes, capacity pool reads per read and window, the stored-bytes ratio, buckets outside every window, totals, read accounting, tier state, and the elapsed time between the data entering the capacity pool and the first read |
 | `analyze_latency.py`, `analysis-latency.txt` | Script and its output: p50, p90, smallest, and largest per group and size, with the check against the tool's own p50 |
 
 ## Run IDs and schedule
@@ -66,8 +67,10 @@ hold random bytes.
 | K1 re-reads, cohorts 1 to 4 | Start 12:26:01, 12:31:25, 12:53:01, 13:23:01 |
 | Re-reads of `s2`, `s3`, `s4` | 12:52:16 to 12:52:27 and 13:22:16 to 13:22:27 |
 
-The times of the volume creation, the writes, and the switch requests are from a
-run log that is not in this repository. The other times are in
+The times of the volume creation, the writes, the switch requests, and the first
+Amazon FSx API observation of ALL are from a run log that is not in this
+repository; the times of the writes, the switch requests, and that observation
+are also in `run-log-times.tsv`. The other times are in
 `invocations.jsonl` and `cw-storageused.tsv`. The K1 re-read start times were set
 from 12:23:01 UTC, the end of the first-read sweep, plus 3, 8.4, 30, and 60
 minutes. The re-reads of `s2`, `s3`, and `s4` were set at 12:52:16 and 13:22:16

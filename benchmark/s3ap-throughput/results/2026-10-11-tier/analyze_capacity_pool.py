@@ -1,6 +1,6 @@
 """Capacity pool reads and position check for the tier comparison.
 
-Reads only the files committed next to this script (cw-all.tsv,
+Reads only the files committed next to this script (cw-all.tsv, cw-b-tiering.tsv,
 invocations.jsonl, raw/). Run from any directory:
 python3 analyze_capacity_pool.py
 
@@ -8,6 +8,10 @@ python3 analyze_capacity_pool.py
    sum the per-volume CapacityPoolRead{Operations,Bytes} there. Buckets touched by no
    invocation window are reported separately.
 2. Position check: samples above 3x the invocation's median, excluding first reads of B.
+3. Elapsed time: for each B invocation, the minutes from the end of the last one-minute
+   bucket with CapacityPoolWriteOperations above 0 (cw-b-tiering.tsv) to the invocation's
+   start. This is a lower bound: B's tiering writes ran over 12 buckets and the time at which
+   an individual object was tiered was not recorded. Minutes are rounded down.
 
 The node-level object_store_client_op counter deltas are not computed here; the
 counter dumps are not committed. The derived deltas are in README.md.
@@ -15,6 +19,7 @@ counter dumps are not committed. The derived deltas are in README.md.
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -82,6 +87,33 @@ def main() -> None:
                 print(f"  {i['tag']:20s} GET#{pos:2d} (request #{pos + 1:2d}) {x:8.1f} ms  (median {med:.1f})")
     if not found:
         print("  none")
+
+    print("\n== Elapsed time: B invocation start against the end of the last bucket with tiering writes")
+    tier_writes: dict[tuple, float] = {}
+    with open(os.path.join(HERE, "cw-b-tiering.tsv")) as f:
+        for line in f:
+            vol, metric, ts, val = line.rstrip("\n").split("\t")
+            tier_writes[(vol, metric, parse_ts(ts).replace(second=0, microsecond=0))] = float(val)
+    wops = sorted(t for (v, m, t), x in tier_writes.items() if m == "CapacityPoolWriteOperations" and x > 0)
+    wbytes = sum(x for (v, m, t), x in tier_writes.items() if m == "CapacityPoolWriteBytes")
+    print(f"  cw-b-tiering.tsv: {len(wops)} one-minute buckets with CapacityPoolWriteOperations above 0, "
+          f"first {wops[0].strftime('%H:%MZ')}, last {wops[-1].strftime('%H:%MZ')}; "
+          f"{sum(tier_writes[('b', 'CapacityPoolWriteOperations', t)] for t in wops):.0f} operations, {wbytes:,.0f} bytes")
+    cw_overlap = [t for (v, m, t) in cw if v == "b" and m == "CapacityPoolWriteOperations" and cw[(v, m, t)] > 0]
+    agree = all(cw[("b", "CapacityPoolWriteOperations", t)] == tier_writes.get(("b", "CapacityPoolWriteOperations", t))
+                for t in cw_overlap)
+    print(f"  cw-all.tsv holds {len(cw_overlap)} of those buckets "
+          f"({', '.join(t.strftime('%H:%MZ') for t in sorted(cw_overlap))}); values agree: {agree}")
+    last_end = wops[-1] + timedelta(minutes=1)
+    print(f"  last bucket ends {last_end.strftime('%H:%M:%S')}Z")
+    ops_by_tag = {tag: ops for tag, cond, ops, byt, a_ops in rows if cond == "b"}
+    for i in invs:
+        if i["cond"] != "b":
+            continue
+        minutes = (parse_ts(i["start_utc"]) - last_end).total_seconds() / 60
+        print(f"  {i['tag']:20s} start {parse_ts(i['start_utc']).strftime('%H:%M:%S.%f')[:10]}Z  "
+              f"at least {minutes:.3f} min -> rounded down {math.floor(minutes * 10 + 1e-6) / 10:.1f}  "
+              f"(capacity pool read ops in the windows: {ops_by_tag[i['tag']]:.0f})")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+upload_start	all	2026-10-11T12:05:56Z
+upload_end	all	2026-10-11T12:07:14Z
+switch_request	s2	2026-10-11T12:13:21.802643Z
+switch_request	s3	2026-10-11T12:13:22.326909Z
+switch_request	s4	2026-10-11T12:13:22.692763Z
+api_showed_all	s2,s3,s4	2026-10-11T12:14:29Z

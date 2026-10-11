@@ -23,3 +23,17 @@ tier-r3-b-s5m        ops=   298 bytes=    50151072  (a1+a2 ops in same buckets: 
   tier-r1-a1-s5m       GET#34 (request #35)    416.6 ms  (median 121.3)
   tier-r1-b-s5m        GET#10 (request #11)    364.2 ms  (median 119.3)
   tier-r1-b-s5m        GET#18 (request #19)    390.4 ms  (median 119.3)
+
+== Elapsed time: B invocation start against the end of the last bucket with tiering writes
+  cw-b-tiering.tsv: 12 one-minute buckets with CapacityPoolWriteOperations above 0, first 08:20Z, last 08:31Z; 45 operations, 190,402,560 bytes
+  cw-all.tsv holds 2 of those buckets (08:30Z, 08:31Z); values agree: True
+  last bucket ends 08:32:00Z
+  tier-r1-b-s64k       start 08:40:00.0Z  at least 8.000 min -> rounded down 8.0  (capacity pool read ops in the windows: 0)
+  tier-r1-b-s1m        start 08:43:00.0Z  at least 11.000 min -> rounded down 11.0  (capacity pool read ops in the windows: 56)
+  tier-r1-b-s5m        start 08:46:00.0Z  at least 14.000 min -> rounded down 14.0  (capacity pool read ops in the windows: 332)
+  tier-r2-b-s64k       start 08:57:45.0Z  at least 25.750 min -> rounded down 25.7  (capacity pool read ops in the windows: 0)
+  tier-r2-b-s1m        start 09:00:45.0Z  at least 28.750 min -> rounded down 28.7  (capacity pool read ops in the windows: 56)
+  tier-r2-b-s5m        start 09:03:45.0Z  at least 31.750 min -> rounded down 31.7  (capacity pool read ops in the windows: 323)
+  tier-r3-b-s64k       start 09:15:43.7Z  at least 43.728 min -> rounded down 43.7  (capacity pool read ops in the windows: 0)
+  tier-r3-b-s1m        start 09:18:43.7Z  at least 46.728 min -> rounded down 46.7  (capacity pool read ops in the windows: 54)
+  tier-r3-b-s5m        start 09:21:43.7Z  at least 49.728 min -> rounded down 49.7  (capacity pool read ops in the windows: 298)

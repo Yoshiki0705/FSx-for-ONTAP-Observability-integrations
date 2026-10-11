@@ -1,7 +1,7 @@
 """Capacity pool reads, tiering writes, and tier state for the tiering path experiment.
 
 Reads only the files committed next to this script (cw-all.tsv, cw-storageused.tsv,
-invocations.jsonl, manifest.txt, raw/). Run from any directory:
+invocations.jsonl, manifest.txt, run-log-times.tsv, raw/). Run from any directory:
 python3 analyze_capacity_pool.py
 
 Blocks, in order:
@@ -16,6 +16,11 @@ Blocks, in order:
   5. Totals of the four CapacityPool* metrics over all rows, for the node-counter comparison.
   6. Per-volume DataReadOperations/DataReadBytes against the GetObject samples in raw/.
   7. Tier state from the one-minute StorageUsed points (SSD and StandardCapacityPool).
+  8. Elapsed time between the data entering the capacity pool and the first read. "At least":
+     from the end of the last one-minute bucket with CapacityPoolWriteOperations above 0 to
+     the start of the first read. "At most": from an earlier event in run-log-times.tsv (the
+     start of the writes for K1 and S3p; the first time the Amazon FSx API showed ALL for
+     S2, S3, S4). Minutes are rounded down in "at least" and to the nearest 0.1 in "at most".
 
 cw-all.tsv holds only datapoints whose Sum is above 0. A metric with no row in a window
 therefore means "no positive datapoint", and DataReadOperations in the same window is the
@@ -28,6 +33,7 @@ from __future__ import annotations
 
 import collections
 import json
+import math
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -289,6 +295,51 @@ def main() -> int:
             full = min(t for t, x in sorted(cp.items()) if x == logical[v])
             ends.append((first_read_start[v] - (full + timedelta(minutes=1))).total_seconds() / 60)
         print(f"  {label}: smallest {min(ends):.2f}, largest {max(ends):.2f}")
+
+    # ------------------------------------------------------------------ 8. elapsed time
+    print("\n== 8. elapsed time from the data entering the capacity pool to the first read (minutes)")
+    events: dict[str, dict[str, datetime]] = collections.defaultdict(dict)
+    with open(os.path.join(HERE, "run-log-times.tsv")) as f:
+        for line in f:
+            event, event_vols, t = line.rstrip("\n").split("\t")
+            for v in event_vols.split(","):
+                events[event][v] = datetime.fromisoformat(t.replace("Z", "+00:00"))
+
+    def mins(a: datetime, b: datetime) -> float:
+        return (a - b).total_seconds() / 60
+
+    def down(x: float) -> float:
+        return math.floor(x * 10 + 1e-6) / 10
+
+    def hmsf(t: datetime) -> str:
+        t = t + timedelta(milliseconds=50)  # to the nearest 0.1 s
+        return t.strftime("%H:%M:%S.") + f"{t.microsecond // 100000}"
+
+    first_starts: dict[str, list[datetime]] = collections.defaultdict(list)
+    for i in invs:
+        if i["tag"].startswith("x2-k1first-") or (
+                i["tag"].startswith("x2-cold-") and not i["tag"].startswith("x2-coldre-")):
+            first_starts[i["vol"]].append(ts(i["start_utc"]))
+    upload_start, upload_end = events["upload_start"]["all"], events["upload_end"]["all"]
+    for v in ("k1", "s3p", "s2", "s3", "s4"):
+        buckets = sorted(t for (n, m, t), x in cw.items()
+                         if n == v and m == "CapacityPoolWriteOperations" and x > 0)
+        last_end = buckets[-1] + timedelta(minutes=1)
+        lo, hi = min(first_starts[v]), max(first_starts[v])
+        anchor_name, anchor = (("writes started", upload_start) if v in ("k1", "s3p")
+                               else ("the Amazon FSx API first showed ALL", events["api_showed_all"][v]))
+        print(f"{v:4s} first read starts {hmsf(lo)}Z to {hmsf(hi)}Z ({len(first_starts[v])} invocation(s)); "
+              f"tiering write buckets {', '.join(hm(t) + 'Z' for t in buckets)}; last ends {hms(last_end)}Z")
+        a_lo, a_hi = mins(lo, last_end), mins(hi, last_end)
+        m_lo, m_hi = mins(lo, anchor), mins(hi, anchor)
+        print(f"     at least (from {hms(last_end)}Z): {a_lo:.3f} to {a_hi:.3f}  -> rounded down {down(a_lo):.1f} to {down(a_hi):.1f}")
+        print(f"     at most ({anchor_name} {hms(anchor)}Z): {m_lo:.3f} to {m_hi:.3f}  -> {m_lo:.1f} to {m_hi:.1f}")
+        print(f"     from the end of the writes ({hms(upload_end)}Z, each volume's own end is not recorded): "
+              f"{mins(lo, upload_end):.3f} to {mins(hi, upload_end):.3f}  -> {mins(lo, upload_end):.1f} to {mins(hi, upload_end):.1f}")
+        if v in events["switch_request"]:
+            req = events["switch_request"][v]
+            print(f"     from the switch request ({hmsf(req)}Z): {mins(lo, req):.3f}  -> {mins(lo, req):.1f}"
+                  f"  ({(lo - req).total_seconds():.1f} s)")
     return 0
 
 
