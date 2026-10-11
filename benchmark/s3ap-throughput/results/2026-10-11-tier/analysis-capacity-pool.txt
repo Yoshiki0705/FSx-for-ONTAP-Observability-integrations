@@ -1,0 +1,25 @@
+== B per-invocation capacity pool reads (CloudWatch, 1-min buckets touched by the invocation)
+tier-r1-b-s64k       ops=     0 bytes=           0  (a1+a2 ops in same buckets: 0)
+tier-r1-b-s1m        ops=    56 bytes=     9907200  (a1+a2 ops in same buckets: 0)
+tier-r1-b-s5m        ops=   332 bytes=    52243968  (a1+a2 ops in same buckets: 0)
+tier-r2-b-s64k       ops=     0 bytes=           0  (a1+a2 ops in same buckets: 0)
+tier-r2-b-s1m        ops=    56 bytes=     9907200  (a1+a2 ops in same buckets: 0)
+tier-r2-b-s5m        ops=   323 bytes=    52227456  (a1+a2 ops in same buckets: 0)
+tier-r3-b-s64k       ops=     0 bytes=           0  (a1+a2 ops in same buckets: 0)
+tier-r3-b-s1m        ops=    54 bytes=     9948480  (a1+a2 ops in same buckets: 0)
+tier-r3-b-s5m        ops=   298 bytes=    50151072  (a1+a2 ops in same buckets: 0)
+
+== CloudWatch buckets with non-zero CapacityPoolRead* NOT touched by any invocation window
+  b CapacityPoolReadOperations 08:30Z 2
+  b CapacityPoolReadBytes 08:30Z 8192
+  b CapacityPoolReadOperations 08:31Z 1
+  b CapacityPoolReadBytes 08:31Z 4096
+
+== A volumes: any non-zero CapacityPool* in the whole window?
+  none
+
+== Position check (samples > 3x invocation median; B first reads excluded)
+  tier-r1-a1-s5m       GET#11 (request #12)    381.1 ms  (median 121.3)
+  tier-r1-a1-s5m       GET#34 (request #35)    416.6 ms  (median 121.3)
+  tier-r1-b-s5m        GET#10 (request #11)    364.2 ms  (median 119.3)
+  tier-r1-b-s5m        GET#18 (request #19)    390.4 ms  (median 119.3)

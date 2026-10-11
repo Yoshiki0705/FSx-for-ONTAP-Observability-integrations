@@ -1,0 +1,58 @@
+complete runs: [1, 2, 3]
+
+== medians (ms): run, size, class -> a1 / a2 / b
+r1 s64k  first   n=10     38.75    46.15    40.65   D=   -1.80  N=  7.40
+r2 s64k  first   n=10     43.06    46.29    43.84   D=   -0.84  N=  3.23
+r3 s64k  first   n=10     44.49    45.46    40.66   D=   -4.32  N=  0.97
+r1 s64k  repeat  n=30     37.88    45.79    39.27   D=   -2.57  N=  7.91
+r2 s64k  repeat  n=30     40.79    45.34    43.20   D=   +0.13  N=  4.55
+r3 s64k  repeat  n=30     44.36    43.00    40.51   D=   -3.17  N=  1.35
+r1 s64k  all     n=40     38.42    46.15    39.49   D=   -2.80  N=  7.73
+r2 s64k  all     n=40     41.91    45.74    43.75   D=   -0.08  N=  3.82
+r3 s64k  all     n=40     44.49    43.12    40.54   D=   -3.27  N=  1.37
+r1 s64k  all_x1  n=39     38.42    46.15    39.49   D=   -2.80  N=  7.73
+r2 s64k  all_x1  n=39     41.91    45.74    43.75   D=   -0.08  N=  3.82
+r3 s64k  all_x1  n=39     44.49    43.12    40.54   D=   -3.27  N=  1.37
+r1 s1m   first   n=10     52.61    46.44   121.86   D=  +72.33  N=  6.17
+r2 s1m   first   n=10     46.19    60.20   120.99   D=  +67.80  N= 14.01
+r3 s1m   first   n=10     53.14    44.32   122.70   D=  +73.97  N=  8.82
+r1 s1m   repeat  n=30     51.45    54.92    41.05   D=  -12.14  N=  3.47
+r2 s1m   repeat  n=30     44.41    58.92    59.74   D=   +8.08  N= 14.51
+r3 s1m   repeat  n=30     50.48    42.49    59.79   D=  +13.31  N=  7.99
+r1 s1m   all     n=40     51.73    54.92    41.63   D=  -11.69  N=  3.19
+r2 s1m   all     n=40     44.62    59.60    60.00   D=   +7.89  N= 14.98
+r3 s1m   all     n=40     51.36    43.66    59.92   D=  +12.41  N=  7.70
+r1 s1m   all_x1  n=39     51.73    54.92    41.63   D=  -11.69  N=  3.19
+r2 s1m   all_x1  n=39     44.62    59.60    60.00   D=   +7.89  N= 14.98
+r3 s1m   all_x1  n=39     51.36    43.66    59.92   D=  +12.41  N=  7.70
+r1 s5m   first   n=10    122.72   101.25   277.41   D= +165.43  N= 21.47
+r2 s5m   first   n=10    119.98   101.47   277.82   D= +167.09  N= 18.51
+r3 s5m   first   n=10    118.79   100.95   260.65   D= +150.78  N= 17.83
+r1 s5m   repeat  n=30    120.23   103.35   118.07   D=   +6.28  N= 16.89
+r2 s5m   repeat  n=30    101.37   117.23   119.72   D=  +10.42  N= 15.86
+r3 s5m   repeat  n=30    101.01   101.45   118.83   D=  +17.60  N=  0.44
+r1 s5m   all     n=40    121.29   101.73   119.03   D=   +7.52  N= 19.56
+r2 s5m   all     n=40    115.43   103.11   120.09   D=  +10.82  N= 12.32
+r3 s5m   all     n=40    101.85   101.45   119.55   D=  +17.90  N=  0.39
+r1 s5m   all_x1  n=39    121.29   101.73   119.03   D=   +7.52  N= 19.56
+r2 s5m   all_x1  n=39    115.43   103.11   120.09   D=  +10.82  N= 12.32
+r3 s5m   all_x1  n=39    101.85   101.45   119.55   D=  +17.90  N=  0.39
+
+== decision rule
+s64k  first  D=[-1.8, -0.84, -4.32] N_largest=7.40 -> no difference established (open)
+s64k  all    D=[-2.8, -0.08, -3.27] N_largest=7.73 -> no difference established (open)
+s1m   first  D=[72.33, 67.8, 73.97] N_largest=14.01 -> B slower (rule met)
+s1m   all    D=[-11.69, 7.89, 12.41] N_largest=14.98 -> no difference established (open)
+s5m   first  D=[165.43, 167.09, 150.78] N_largest=21.47 -> B slower (rule met)
+s5m   all    D=[7.52, 10.82, 17.9] N_largest=19.56 -> no difference established (open)
+
+== pooled across the 3 runs (descriptive only; A = A1+A2 pooled)
+s64k  first   A n= 60 p50=  45.46 p90=  51.19 | B n= 30 p50=  41.08 p90=  47.49 | p50 diff=  -4.39
+s64k  repeat  A n=180 p50=  43.35 p90=  47.17 | B n= 90 p50=  40.81 p90=  44.83 | p50 diff=  -2.54
+s64k  all     A n=240 p50=  43.72 p90=  48.31 | B n=120 p50=  40.87 p90=  45.39 | p50 diff=  -2.85
+s1m   first   A n= 60 p50=  53.70 p90=  66.48 | B n= 30 p50= 122.70 p90= 163.98 | p50 diff= +69.00
+s1m   repeat  A n=180 p50=  52.00 p90=  60.02 | B n= 90 p50=  54.65 p90=  60.26 | p50 diff=  +2.65
+s1m   all     A n=240 p50=  52.61 p90=  60.51 | B n=120 p50=  59.79 p90= 135.38 | p50 diff=  +7.18
+s5m   first   A n= 60 p50= 118.15 p90= 140.90 | B n= 30 p50= 277.82 p90= 363.60 | p50 diff=+159.66
+s5m   repeat  A n=180 p50= 103.02 p90= 138.66 | B n= 90 p50= 118.73 p90= 137.57 | p50 diff= +15.71
+s5m   all     A n=240 p50= 116.69 p90= 139.26 | B n=120 p50= 119.78 p90= 296.62 | p50 diff=  +3.09
