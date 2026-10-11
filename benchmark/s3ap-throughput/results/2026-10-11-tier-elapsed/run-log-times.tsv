@@ -1,0 +1,14 @@
+event	volume	time_utc
+volumes_created	sw	2026-10-11T15:45:39Z
+volumes_created	dir	2026-10-11T15:45:40Z
+stack_deployed	all	2026-10-11T15:46:53Z
+access_points_available	all	2026-10-11T15:54:29Z
+upload_start	all	2026-10-11T15:54:51Z
+upload_end	dir	2026-10-11T15:55:26Z
+upload_end	sw	2026-10-11T15:55:25Z
+listings_verified	all	2026-10-11T15:55:36Z
+switch_request	sw	2026-10-11T15:55:36.1Z
+api_showed_all_first_poll	sw	2026-10-11T15:56:30Z
+sw_capacity_pool_full_first_poll	sw	2026-10-11T15:57:31Z
+warm_up_start	sw,dir	2026-10-11T15:56:11.3Z
+teardown_done	all	2026-10-11T16:36:54Z

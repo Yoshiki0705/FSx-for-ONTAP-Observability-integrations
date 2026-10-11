@@ -6,9 +6,13 @@ tables, the interpretation fixed before the first invocation, and the limits of
 this experiment, is the section "Tiering path: direct ALL and NONE-then-ALL
 (2026-10-11)" in
 [docs/en/s3ap-throughput-benchmark.md](../../../../docs/en/s3ap-throughput-benchmark.md)
-([日本語](../../../../docs/ja/s3ap-throughput-benchmark.md)). The earlier
+([日本語](../../../../docs/ja/s3ap-throughput-benchmark.md)). The write-up calls
+this directory experiment 2. A third experiment of the same day, on two other
+volumes, is in [`../2026-10-11-tier-elapsed/`](../2026-10-11-tier-elapsed/README.md)
+(experiment 3; its write-up is in the same section, under the headings that
+start with "Experiment 3"). The earlier
 directories are [`../2026-10-11-tier/`](../2026-10-11-tier/README.md) (the tier
-comparison, on three other volumes of the same file system),
+comparison, experiment 1, on three other volumes of the same file system),
 [`../2026-10-10/`](../2026-10-10/README.md),
 [`../2026-10-10-pooled/`](../2026-10-10-pooled/README.md), and
 [`../2026-10-10-position/`](../2026-10-10-position/README.md). Like the tier
@@ -225,3 +229,22 @@ experiment". Three deviations from the plan are not visible in the files alone:
 - Duplicate rows in an analysis pull briefly doubled the operation counts. They
   were removed by de-duplication, and `DataReadOperations` returned to 30 per
   window. `cw-all.tsv` is the de-duplicated file.
+
+## Experiment 3 and what it changes for these volumes
+
+The files in this directory are unchanged. They describe five volumes in which
+the way a volume reached ALL (direct, or switched from NONE) and the elapsed
+time before the first read varied together; among these five volumes and B of
+experiment 1, the way a volume reached ALL was the only one of the five setup
+factors that separated the volumes with capacity pool reads from those without,
+a division found after the results (see "Factors by volume" in the write-up).
+Experiment 3 (`../2026-10-11-tier-elapsed/`) was run afterwards to read a directly
+written volume at the elapsed time of the switched volumes and a switched volume
+at the elapsed time of the directly written volumes. The directly written volume
+(DIR) caused no capacity pool read operations at 5.4 to 6.5 minutes and at 14.4
+to 15.5 minutes after tiering, and the switched volume (SW) caused none at 15.6
+to 16.7 minutes and at 30.6 to 31.7 minutes. So the statement that the way a
+volume reached ALL separated the volumes with capacity pool reads from those
+without holds for the first six volumes of experiments 1 and 2 only; it does not
+hold for the eight volumes of experiments 1 to 3. The write-up under
+"Experiment 3" states what is and is not shown.
