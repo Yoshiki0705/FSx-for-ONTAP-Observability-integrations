@@ -144,11 +144,21 @@ invocation reads the ten 1 MiB objects, then the ten 5 MiB objects, then the ten
 
 The window rule is that of experiment 2: for an invocation,
 `analyze_capacity_pool.py` takes the one-minute CloudWatch buckets from its
-start minute through the minute after its end. CloudWatch can label the
-operations of an invocation that runs late in a minute with the next minute;
-here the 30 reads of `dir` cohort 1 (started 16:02:26) are in the 16:03 bucket,
-and the four warm-up reads of each volume are in the 15:57 bucket although the
-warm-up ran at 15:56:11 to 15:56:14.
+start minute through the minute after its end. In this experiment the
+operations of all six invocations are in the bucket one minute after their
+start minute: the 30 reads of `dir` cohort 1 (started 16:02:26) are in the 16:03
+bucket, and the four warm-up reads of each volume are in the 15:57 bucket
+although the warm-ups ran at 15:56:11 to 15:56:14. The cause was not examined.
+The window rule includes the minute after the end, so the operations of each
+invocation are inside its window.
+
+`analyze_cross_experiment.py` sums with the labels as recorded. The 0.3 MB that
+the other volume read before the first read of `dir` is the four warm-up reads
+of `sw` (262,144 B). The script counts them only because their bucket is
+labelled 15:57, the first bucket it counts for `dir` (the last bucket with
+tiering writes of `dir` is 15:56); labelled 15:56, they would not be counted
+and the figure would be 0. The comparison of 0.3 MB with the 89.7 MB of the
+smallest read of B with capacity pool reads is unaffected.
 
 - `f`, the capacity pool read ratio: `CapacityPoolReadBytes` of the volume in the
   window divided by the logical size of the objects the invocation read
