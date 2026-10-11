@@ -201,7 +201,10 @@ what gets run.
 ### Measured result
 
 Driving PUT, GET and DELETE for two objects on behalf of two different users, on
-2026-08-30 against ONTAP 9.18.1P3D1:
+2026-08-30 against ONTAP 9.18.1P3D1. The audit side is the XML ONTAP produced for
+those operations; the application side was emitted by this module but injected by a
+test driver, not by a running portal handler. So this verifies the join mechanism,
+not a live portal's adoption of it (see [What is not verified](#what-is-not-verified)):
 
 ```
 join key                         audit  app  principal
@@ -246,7 +249,8 @@ Stating this explicitly because the rest of the page reads as though it works.
 | Item | Status |
 |---|---|
 | Unit tests, cfn-lint, cfn-guard | Passing |
-| End-to-end correlation against a live portal | **Not yet run** |
+| The join mechanism, end to end | **Verified**, 6 of 6 operations, two users — see [Measured result](#measured-result) |
+| Application signal emitted from inside a live portal | **Not yet run** — the measured result injected the application half with a test driver, not a running portal handler |
 | Latency between an operation and its correlated pair | **Not measured** |
 | Cost of a real verification run | **Not measured** — estimated only |
 | ONTAP `EventName` for an S3 GET | **Unknown.** The captured set covers create, write, list and unlink. `ONTAP_EVENT_TO_S3_VERB` has no GET row, and an unrecognised name is normalized rather than guessed, so a GET correlates only if both sides spell it identically. `UnmappedOperations` exists to make this visible |
