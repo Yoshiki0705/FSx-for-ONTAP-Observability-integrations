@@ -1602,7 +1602,7 @@ module "fsx_ontap_custom_metrics" {
 | P1 | T2 のハートビートのアラーム | `verified` | ✅ 合格。`qtree-heartbeat` は 07:36:10 に ALARM、07:40:10 に OK。`snapmirror-heartbeat` は 07:34:55 に ALARM、07:40:55 に OK | 2026-10-12 07:34:55 → 07:40:55 |
 | P2 | T2 の既定の 5 分のポーリング | `verified` | ✅ 合格。ポーリングの開始は 07:39:44、07:44:44、07:49:43 で、間隔は 299–300 秒 | 2026-10-12 07:39:44 → 07:49:43 |
 | P3 | 実際のクォータでの T2 の `qtree-quota-high` | `verified` | ✅ 合格。ハードリミット 100 MiB に NFS で 90 MiB を書き込み、`QtreeQuotaUsedPercentMax` は 85 に対して 90.36、10 分以内に 2 データポイント。OK → ALARM となり、ファイルを削除した後に ALARM → OK | 2026-10-12 08:00:02、08:05:02 |
-| P4 | 関係が無い状態での T2 の SnapMirror コレクター | `verified` | ✅ 合格。コレクターは毎回のポーリングで動き、`0 relationship(s)` とログに出した。`snapmirror-unhealthy` と `snapmirror-lag-high` は動かしていない（F8） | 2026-10-12 07:39:44 から |
+| P4 | 関係が無い状態での T2 の SnapMirror コレクター | `verified` | ✅ 合格。コレクターは、TLS 検証に失敗した 08:44:44 のポーリング（P5）を除く毎回のポーリングで `0 relationship(s)` とログに出した。08:44:44 はログを出す前にコレクターが失敗した。`snapmirror-unhealthy` と `snapmirror-lag-high` は動かしていない（F8） | 2026-10-12 07:39:44 から |
 | P5 | ファイルシステムに発行された証明書チェーンに対する T2 の CA 検証付き TLS | `verified` | ❌ 期待値は成り立たなかった（検証済みの否定結果で、この環境での自己測定）。ポーリングは "IP address mismatch" で失敗した（F1） | 2026-10-12 08:41:12 → 08:49:44 |
 | T1 | 既定値での T3 の `failed-access`（閾値 10、3 期間中 3 期間） | `verified` | ✅ 合格。OK → ALARM → OK。期間ごとの合計は 31 / 14 / 14 | 2026-10-12 07:52:09、07:56:09 |
 | T2 | 既定値での T3 の `bulk-delete`（閾値 50、3 期間中 2 期間） | `verified` | ✅ 合格。OK → ALARM → OK。期間ごとの合計は 116 / 56 / 56 | 2026-10-12 07:48:11、08:01:11 |
@@ -1682,7 +1682,7 @@ T3 の検知は、07:41:46 から 4 ラウンドで動かしました。1 ラウ
 
 ### EMS 通知先の定義（2026-10-12 の実行）
 
-syslog 経路の監査ログの転送先が運ぶのはコマンド履歴だけなので、`wafl.vol.autoSize.fail` がロググループに届くのは、別に作る EMS の通知先を通した場合だけです。2026-10-12 には、そのような通知先 1 つが実際のイベントを届け、`autosize-fail` がそれで発報しました。通知先の種類 `syslog` の既定値はポート 514 と `udp_unencrypted` です。エンドポイントには TCP の 1514 か 6514 で届くため（[セットアップガイド](syslog-vpce-setup-guide.md)）、動いた定義ではポート 1514 と `tcp_unencrypted` を明示しています。既定値そのものはエンドポイントに送っていません。先にフィルターを `POST /api/support/ems/filters` で作り、通知先はその名前を参照して `POST /api/support/ems/destinations` で作ります（通知先は HTTP 201 で、読み直しも一致した）。
+この環境では、syslog 経路の監査ログの転送先が届けたのは監査ログの行で、`wafl.vol.autoSize.fail` は別に作った EMS の通知先を通してロググループに届きました。監査ログの転送先だけでこの種のイベントが届くかどうかは試していません（1 つの環境での自己測定）。2026-10-12 には、その EMS の通知先が実際のイベントを届け、`autosize-fail` がそれで発報しました。通知先の種類 `syslog` の既定値はポート 514 と `udp_unencrypted` です。エンドポイントには TCP の 1514 か 6514 で届くため（[セットアップガイド](syslog-vpce-setup-guide.md)）、動いた定義ではポート 1514 と `tcp_unencrypted` を明示しています。既定値そのものはエンドポイントに送っていません。先にフィルターを `POST /api/support/ems/filters` で作り、通知先はその名前を参照して `POST /api/support/ems/destinations` で作ります（通知先は HTTP 201 で、読み直しも一致した）。
 
 ```json
 {"name":"<filter-name>","rules":[{"type":"include","message_criteria":{"name_pattern":"wafl.vol.autoSize.*","severities":"*"}}]}
@@ -1815,7 +1815,7 @@ T3 の既定の `unauthorized-access` のパターンは、ファイルのパス
 | F5 | ONTAP の監査ログの転送先は、`?force=true` なしでは拒否された（HTTP 400、コード 9240603、"Cannot contact destination host"）が、テスト用の踏み台ホストはエンドポイントの TCP 1514 と 6514 を開けた | ONTAP の応答で、1 回観測。踏み台ホストは ONTAP のノードではないため、ノードから届くかどうかは示さない | セットアップガイドはすでに `force=true` を記載している |
 | F6 | 本番の設定と異なる T4 の入力: 上限 1,127 GiB、トリガー 1%、アーカイブの最小保持 1 日（モジュールの既定値は 365）。`?ref=<commit-sha>&depth=1` は失敗する | テスト用の設定。Terraform の挙動で、1 回観測 | この 3 つの入力を本番のルートにコピーしない。T4 のタグができるまでは、`depth` を付けずに `?ref=<commit-sha>` を使う |
 | F7 | `terraform destroy` は `aws_security_group.lambda` で 22 分 13 秒待った。そのセキュリティグループに ingress ルールを追加したことは一度も無い | 2 回観測（2026-10-08 は 22 分 3 秒） | この待ちの原因は revoke の手順ではない。Lambda のネットワークインターフェースがまだ一覧に出ていたかどうかは確認していない |
-| F8 | SnapMirror のコレクターは、毎回のポーリングで関係を 0 件と見た。`snapmirror-unhealthy` と `snapmirror-lag-high` は動かしていない | テストの構成で、観測 | SnapMirror のアラームの検証は、2026-10-08 の同一ファイルシステムでの実行のまま |
+| F8 | SnapMirror のコレクターは、TLS 検証に失敗した 08:44:44 のポーリング（F1）を除く毎回のポーリングで、関係を 0 件とログに出した。`snapmirror-unhealthy` と `snapmirror-lag-high` は動かしていない | テストの構成で、観測 | SnapMirror のアラームの検証は、2026-10-08 の同一ファイルシステムでの実行のまま |
 | F9 | SVM の監査設定が存在する間は、監査ログ用のボリュームを削除できなかった。ONTAP REST はその設定の無効化と削除の要求に 202 を返し、最初の削除ジョブは失敗した（"Final consolidation is in progress"）。シークレット名に ARN の接尾辞を付けた `delete-secret` は、成功を返したのに何も削除しなかった | 後片付けの順序で、1 回観測。202 や成功の終了コードは完了ではない | 各手順の後に読み直した（[後片付け](#後片付け2026-10-12-の実行)を参照） |
 
 ### 後片付け（2026-10-12 の実行）
@@ -1842,7 +1842,7 @@ T3 の既定の `unauthorized-access` のパターンは、ファイルのパス
 |------|------|------|
 | 第 2 世代と HA ペアが 2 つ以上のファイルシステム | `open` | ファイルシステムは第 1 世代で HA ペアは 1 つだった |
 | SVM 間とファイルシステム間の SnapMirror | `open` | この実行では関係が存在しなかった（F8） |
-| この実行での `snapmirror-unhealthy` と `snapmirror-lag-high` | `open` | 毎回のポーリングで関係は 0 件。2026-10-08 の実行で動かした |
+| この実行での `snapmirror-unhealthy` と `snapmirror-lag-high` | `open` | TLS 検証に失敗した 08:44:44 のポーリング（F1）を除く毎回のポーリングで関係は 0 件。2026-10-08 の実行で動かした |
 | T2〜T4 の最小権限の IAM ポリシー | `open` | サンプルのポリシーに限定したロールを使った実行は無い |
 | T2 の手順「ファイルシステムのセキュリティグループに inbound ルールを追加する」 | `open` | デフォルトのセキュリティグループが、VPC の CIDR からの TCP 443 をすでに許可していた |
 | T1・T2・T4 のメール | `open` | T1 のサブスクリプションは確認が遅れ、T1 のアラームのメールは観測していない。T2 のサブスクリプションは確認済みだが、T2 のアラームのメールの報告は無い。T4 の notify トピックのメールは確認していない |
