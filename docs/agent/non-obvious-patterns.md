@@ -1,8 +1,9 @@
 # Non-Obvious Patterns
 
 FSx for ONTAP S3 Access Point network constraints, AD-joined SVM data-operation
-requirements, unsupported S3 features, audit log formats, and the credential
-caching and bilingual-sync patterns.
+requirements, unsupported S3 features, audit log formats, the credential
+caching and bilingual-sync patterns, console screenshot masking, and git
+worktrees without a `.venv`.
 
 > Extracted from AGENTS.md so it is not loaded into every agent turn.
 > AGENTS.md keeps a one-line index entry pointing here, and
@@ -171,6 +172,28 @@ block's language tag, because block indices would no longer describe the same
 content and it would copy the wrong text. Those cases are reported for a human.
 
 Run `bash shared/scripts/check-bilingual-sync.sh` to verify heading-structure sync. This is also checked in CI.
+
+### Console screenshots: masking, and the check that proves it
+
+`docs/screenshots/mask_screenshots.py` paints fixed regions of screenshots that are registered by file name inside the script, and strips PNG metadata. It needs Pillow, which `requirements-dev.txt` does not list. For a file it does not know it processes nothing, prints "all masking complete" and exits 0. Run on the eight 2026-10-12 images it changed no byte (observed once). A clean run is therefore not evidence that a new screenshot is masked.
+
+Word-level OCR painting is unreliable on monospaced log lines: on the 2026-10-12 log views it painted over the event name and missed identifiers (observed on those views). What worked:
+
+1. Replace the text in the page with placeholders before capturing (`fs-0123456789abcdef0`, `123456789012`, `198.51.100.x`). Do not attach a `MutationObserver` to the FSx console: it rendered a blank page. The S3 object page needs about 8 seconds to render, and the CloudWatch log-events view needs a time range (for example 12 hours) to show older events.
+2. Crop the console chrome (the navigation bar carries the account menu), and save without PNG metadata.
+3. OCR every final PNG and grep for identifier shapes. Run the same check on a raw capture first as a negative control: it must hit, or a result of 0 on the published set proves nothing.
+
+```bash
+tesseract <png> - -l eng+jpn 2>/dev/null \
+  | grep -nE '[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}|(fs|fsvol|svm|vpc|subnet|sg|vpce|eni|i)-0?[0-9a-f]{8,}|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+|10\.[0-9]+\.[0-9]+\.[0-9]+|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.' \
+  | grep -vE '123456789012|1234-5678-9012|0123456789abcdef|0000-0000-0000'
+```
+
+On 2026-10-12 (tesseract 5.5.3) four of the 14 raw captures gave 3 to 4 lines each, and the eight published images gave 0. The all-zero KMS key placeholder matches the 12-digit pattern, hence the last `grep -v`. CI has no image check, so this is a manual step before committing a screenshot.
+
+### Git worktrees have no `.venv`
+
+`.venv` is gitignored, so a worktree starts without one. The Makefile then falls back to the system `python3` (`PY`) and to `ruff`, `bandit` and `cfn-lint` from `PATH`. `make test-py` in a worktree failed on a missing `hypothesis` (observed in a review step); the linters resolving from `PATH` is inferred from the Makefile, not observed. Point the Makefile at the main clone's environment: `make test-py VENV=<main clone>/.venv`.
 
 ### AgentCore MCP Gateway — Integration Knowledge (verified 2026-07)
 
