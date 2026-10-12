@@ -4,7 +4,7 @@
 
 ## Overview
 
-This page records eight runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08). On 2026-10-09 the Terraform log-alarm module (phase T3) was applied to a log group fed by the syslog VPC endpoint path, and its alarms were driven with real ONTAP audit lines: [Terraform Log-Alarm Module Run on 2026-10-09](#terraform-log-alarm-module-run-on-2026-10-09). Later on 2026-10-09 the Terraform SSD auto-increase module (phase T4) was applied in `notify_only`, `approve` and `auto`, with `auto` kept behind an explicit IAM deny so that no storage capacity changed: [Terraform SSD Auto-Increase Module Run on 2026-10-09](#terraform-ssd-auto-increase-module-run-on-2026-10-09). On 2026-10-11 the qtree quota monitor template ran with a read-only ONTAP account (role `fsxadmin-readonly`), the first live run of the template's current revision: [Qtree Quota Monitor Run with a Read-Only ONTAP Account on 2026-10-11](#qtree-quota-monitor-run-with-a-read-only-ontap-account-on-2026-10-11). That section sits with the other qtree quota monitor runs, after the re-run of 2026-10-06, and not in date order.
+This page records nine runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08). On 2026-10-09 the Terraform log-alarm module (phase T3) was applied to a log group fed by the syslog VPC endpoint path, and its alarms were driven with real ONTAP audit lines: [Terraform Log-Alarm Module Run on 2026-10-09](#terraform-log-alarm-module-run-on-2026-10-09). Later on 2026-10-09 the Terraform SSD auto-increase module (phase T4) was applied in `notify_only`, `approve` and `auto`, with `auto` kept behind an explicit IAM deny so that no storage capacity changed: [Terraform SSD Auto-Increase Module Run on 2026-10-09](#terraform-ssd-auto-increase-module-run-on-2026-10-09). On 2026-10-11 the qtree quota monitor template ran with a read-only ONTAP account (role `fsxadmin-readonly`), the first live run of the template's current revision: [Qtree Quota Monitor Run with a Read-Only ONTAP Account on 2026-10-11](#qtree-quota-monitor-run-with-a-read-only-ontap-account-on-2026-10-11). That section sits with the other qtree quota monitor runs, after the re-run of 2026-10-06, and not in date order. On 2026-10-12 the Terraform modules T1 to T3 were applied from their tags in one root module on a throwaway file system, the T3 detections were driven at their default period, the EMS and file-access paths and the T2 CA-verified TLS setting were tried, and T4 made one real SSD increase: [Terraform Monitoring Modules Live Run on 2026-10-12](#terraform-monitoring-modules-live-run-on-2026-10-12). That section is last, in date order, after the SNS section.
 
 On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module in this run. A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
 
@@ -1048,6 +1048,8 @@ No export policy, IAM outside the module, or security group outside the module w
 | Throttling under reserved concurrency 1 | Not observed | Throttles 0 |
 | Release of the 2 recovery-queue entries when they expire | Not observed | The entries were left in place |
 
+> **Later run note**: The [2026-10-12 run](#terraform-monitoring-modules-live-run-on-2026-10-12) closed two rows above on a different file system (ONTAP 9.19.1P3, first-generation `SINGLE_AZ_1`, one HA pair, throwaway): the `qtree-quota-high` ALARM transition (90.36 against 85, OK → ALARM → OK) and the default 5-minute poll (the default 10800-second lag threshold was not exercised). It changed one row: TLS verification with a CA certificate was tried and failed against the certificate chain issued for that file system, because the poller connects by IP address ([TLS section](#tls-verification-against-the-fsx-certificate-chain-2026-10-12-run)). `CollectorSucceeded` was 0 for one period during that attempt, and the heartbeat alarm did not fire for it. The ingress-rule step was still not exercised, T2 alarm e-mail was not observed, and the 22-minute `aws_security_group.lambda` wait in F3 was seen again (22 minutes 13 seconds, with no ingress rule added).
+
 ### Judgment (T2 Run)
 
 | Item | Value |
@@ -1301,6 +1303,8 @@ An older log group and its syslog configuration, both from before this run, were
 | Why ONTAP held 2 stale destinations before the run | Not determined | They were recorded and deleted |
 | Second-generation and multi-HA-pair file systems | Not run | The test file system is first generation with one HA pair |
 
+> **Later run note**: The [2026-10-12 run](#terraform-monitoring-modules-live-run-on-2026-10-12) closed these rows on a different file system (ONTAP 9.19.1P3, first-generation `SINGLE_AZ_1`, one HA pair, throwaway): `autosize-fail` on a real EMS event through an EMS destination (the recipe is in the [EMS section](#ems-destination-recipe-2026-10-12-run); the delivered header carries the event name in brackets, as the constructed line assumed), the default 300-second period with the default thresholds, the new `bulk-delete` default on a live alarm, and SNS e-mail for three notifications. It changed two statements. `unauthorized-access` was run with a positive control in place and did not fire (verified negative, own measurement in that environment). For F7, the ONTAP 9.19.1P3 catalog and the delivered line show severity `notice`. The shared syslog template was also deployed as it stands now, without the F1 workaround. Port 6514 with TLS was not retried.
+
 ### Judgment (T3 Run)
 
 | Item | Value |
@@ -1490,6 +1494,8 @@ One item remains: the archive bucket, with 12 object versions and 0 delete marke
 | Invocation by the EventBridge schedule rule, and the alarm's return to OK | Not observed | See [Alarm State Transitions](#alarm-state-transitions-t4-run) |
 | `USER_PROVISIONED` IOPS, `ceiling_exceeds_service_maximum`, `iops_exceeds_maximum` | Unit tests only | The file system uses `AUTOMATIC` IOPS |
 
+> **Later run note**: The [2026-10-12 run](#terraform-monitoring-modules-live-run-on-2026-10-12) made the real increase once, on a different throwaway file system (ONTAP 9.19.1P3, first-generation `SINGLE_AZ_1`, one HA pair): exactly one `UpdateFileSystem` call, 1,024 → 1,127 GiB, with `1-decision`, `2-accepted` and `3-capacity_available` archived ([Real SSD Increase](#real-ssd-increase-2026-10-12-run)). Still open after that run: the `terminal` state and the matching of the request ID to CloudTrail, the cooldown (`hypothesis`), report e-mail, archive control identities A and B, and archiving of latched runs.
+
 ### Judgment (T4 Run)
 
 | Item | Value |
@@ -1524,6 +1530,342 @@ Scope and limits (evidence-discipline):
 - Not changed: the per-module metric-evaluation results recorded above stand as-is.
 - Not proven: email-protocol rendering specifically (SQS was used), SNS delivery-status logging / DLQ-on-SNS, and anything about real metric-driven transitions (the state was artificial).
 - Confidence tier: `verified`, scoped to the delivery path, forced state, a single run, `ap-northeast-1`, 2026-10-10.
+
+> **Later run note**: E-mail rendering, listed above as not proven, was observed on 2026-10-12 for three notifications of the T3 topic ([Check Results](#check-results-2026-10-12-run), row N1). Arrival times were not recorded. E-mail for T1, T2 and T4 stays open.
+
+---
+
+## Terraform Monitoring Modules Live Run on 2026-10-12
+
+On 2026-10-12 (UTC), the Terraform modules T1 (`terraform/fsxn-monitoring-dashboard/`), T2 (`terraform/fsxn-ontap-custom-metrics/`) and T3 (`terraform/fsxn-log-alarm/`) were applied together from their release tags in one root module (44 resources), and T4 (`terraform/fsxn-ssd-auto-increase/`) was applied from a commit and made one real SSD increase. All four ran against one throwaway FSx for ONTAP file system, first generation `SINGLE_AZ_1` with one HA pair, which was deleted at the end. This is a sample run, not a production estimate.
+
+T2 polled at its default 5 minutes, and its `qtree-quota-high` alarm went OK → ALARM → OK on a real quota (90.36 against a threshold of 85). The T3 detections `failed-access`, `bulk-delete` and `privileged-operations` went OK → ALARM → OK at the default 300-second period with the default thresholds. `autosize-fail` fired on a real `wafl.vol.autoSize.fail` event delivered through an EMS notification destination, and three notifications from the T3 topic arrived by e-mail. Two results are negative, and both are own measurements in this environment: `unauthorized-access` did not fire although a positive control was in place, because no file-access audit record reached the log group, and the T2 poller could not verify the certificate chain issued for the file system, because it connects by IP address. T4 raised the file system from 1,024 to 1,127 GiB through exactly one `UpdateFileSystem` call, and the file system was then deleted.
+
+| Item | Value |
+|------|-------|
+| Verification date | 2026-10-12 (UTC): file system created 06:37Z, first apply 07:34:33Z, last evaluation 09:11:56Z, deletion confirmed 10:36Z |
+| Verification environment | 2026-10-12, ap-northeast-1, ONTAP 9.19.1P3, first-generation SINGLE_AZ_1 with one HA pair, 128 MBps. One throwaway file system, since deleted; a sample run, not a production estimate. All times UTC |
+| Scope | Root-module apply of T1 to T3 from their tags; T2 polling, quota alarm and CA-verified TLS; T3 at the default 300-second period; EMS delivery and `autosize-fail`; SNS e-mail; file-access audit; T4 real increase; cleanup |
+| Result | 17 of 23 checks passed. 2 passed with a deviation (R3, E2). 2 expectations not met, both verified negatives: `unauthorized-access` (U1) and CA-verified TLS (P5). 1 not run (H5, a `hypothesis`). Cleanup done with 2 items left by design (M1) |
+
+Tier words in this section: `verified` means observed in this run, `documented` means stated in vendor documentation and not observed here, `hypothesis` means expected from the design or unit tests and not observed, and `open` means not attempted or not shown.
+
+These results do not show second-generation or multi-HA-pair file systems, SnapMirror between SVMs or file systems, SnapMirror alarms in this run (no relationship existed), least-privilege IAM policies for T2 to T4, e-mail for T1, T2 and T4, the T4 cooldown, or TLS verification by DNS name.
+
+### Environment and Deployment (2026-10-12 Run)
+
+| Item | Value |
+|------|-------|
+| AWS Region | `ap-northeast-1` |
+| File system | `fs-0123456789abcdef0` (placeholder), `SINGLE_AZ_1` (first generation), 1 HA pair, 128 MBps, SSD 1,024 GiB at creation and 1,127 GiB after the T4 step, ONTAP 9.19.1P3. One SVM `<svm-name>` (placeholder), created for the run |
+| Modules | T1 `terraform-fsxn-monitoring-dashboard-v0.1.1`, T2 `terraform-fsxn-ontap-custom-metrics-v0.1.0` and T3 `terraform-fsxn-log-alarm-v0.1.0`, each as `github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/<module>?ref=<tag>&depth=1`; T1 also got `volume_ids`. T4 at commit `fcec6ef` with `?ref=<commit-sha>` and no `depth`, because no T4 tag exists (see [Real SSD Increase](#real-ssd-increase-2026-10-12-run)) |
+| Terraform / providers | Terraform v1.15.8 (from the state file), `hashicorp/aws` 6.67.0 and `hashicorp/archive` 2.8.1 (lock file) |
+| T2 network | The subnet has no NAT gateway, so the T2 call differs from the [guide's example](terraform-monitoring-guide.md#minimal-root-module): `create_monitoring_endpoint = true`, `create_secretsmanager_endpoint = false` (a Secrets Manager endpoint already existed) and `aws_api_egress_cidr_blocks` set to the VPC CIDR. The README step "add an inbound rule to the file system security group" was not exercised, because the default security group already allowed TCP 443 from the VPC CIDR (`open`) |
+| Syslog path | The current `shared/templates/syslog-vpce-cloudwatch.yaml`, unchanged, one interface endpoint, log retention 1 day. ONTAP audit destination on port 1514, `tcp_unencrypted`, facility `local7`, created with `?force=true` (R3) |
+| ONTAP read-only user | Role `fsxadmin-readonly`, application `http`, password authentication. Used by T2 and to send the rejected requests (HTTP 403) |
+| Test objects | A 20 GiB test volume holding a qtree under a 100 MiB hard-limit tree quota, a volume for the SVM audit log, an NFS data volume, and a 100 MiB volume with an autosize growth maximum of 120 MiB |
+| Notifications | `notification_email` set on all three modules: three SNS topics and three confirmation e-mails |
+| Deployer | AWS IAM Identity Center session; its permission scope was not recorded for this run |
+| Screenshots | Eight images from the Japanese-language console, masked by replacing text in the page before capture. OCR and visual checks followed. `docs/screenshots/mask_screenshots.py` was not run on them |
+
+The T2 call as applied is below; the T1 and T3 calls are as in the guide's example.
+
+```hcl
+module "fsx_ontap_custom_metrics" {
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
+
+  file_system_id               = "fs-0123456789abcdef0"
+  ontap_management_ip          = "198.51.100.10"
+  ontap_credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ontap-monitor-XXXXXX"
+  vpc_id                       = "vpc-0123456789abcdef0"
+  subnet_ids                   = ["subnet-0123456789abcdef0"]
+  qtree_svm_name               = "<svm-name>"
+  notification_email           = "ops@example.com"
+
+  # Deviation for a subnet without NAT
+  create_monitoring_endpoint     = true
+  create_secretsmanager_endpoint = false # an endpoint already existed
+  aws_api_egress_cidr_blocks     = ["198.51.100.0/24"] # the VPC CIDR
+}
+```
+
+### Check Results (2026-10-12 Run)
+
+Each `verified` row was observed on 2026-10-12, ap-northeast-1, ONTAP 9.19.1P3, first-generation SINGLE_AZ_1 with one HA pair, 128 MBps; row H5 (`hypothesis`) was not observed. Times are UTC.
+
+| # | Check | Tier | Result | Time (UTC) |
+|---|-------|------|--------|------------|
+| R1 | Root module apply of T1 v0.1.1, T2 v0.1.0 and T3 v0.1.0 from their tags | `verified` | ✅ PASS. 44 added, exit 0, with the three T2 network deviations | 2026-10-12 07:34:33 → 07:37:21 |
+| R2 | Syslog stack from the current `shared/templates/syslog-vpce-cloudwatch.yaml`, no workaround | `verified` | ✅ PASS. The stack was created as shipped; the `GroupDescription` defect of 2026-10-09 (F1 of the T3 run) did not occur, and the template now uses `>-` | 2026-10-12, before 07:34:33 |
+| R3 | ONTAP audit destination, port 1514, `tcp_unencrypted` | `verified` | ⚠️ Passed with `?force=true`. Without it ONTAP returned HTTP 400, code 9240603, "Cannot contact destination host", although the test bastion could open TCP 1514 and 6514 on the endpoint (the bastion is not the ONTAP node, so this does not show what the node could reach). The first audit line arrived (F5) | 2026-10-12, before 07:34:33 |
+| R4 | Alarms leave INSUFFICIENT_DATA | `verified` | ✅ PASS. T1 and T3 alarms between 07:35:09 and 07:36:20, T2 alarms between 07:34:55 and 07:40:26. `snapmirror-lag-high` stayed INSUFFICIENT_DATA: no relationship existed, so no lag datum was published (F8) | 2026-10-12 07:34:55 → 07:40:26 |
+| P1 | T2 heartbeat alarms | `verified` | ✅ PASS. `qtree-heartbeat` ALARM 07:36:10, OK 07:40:10; `snapmirror-heartbeat` ALARM 07:34:55, OK 07:40:55 | 2026-10-12 07:34:55 → 07:40:55 |
+| P2 | T2 default 5-minute poll | `verified` | ✅ PASS. Polls started 07:39:44, 07:44:44 and 07:49:43, 299–300 s apart | 2026-10-12 07:39:44 → 07:49:43 |
+| P3 | T2 `qtree-quota-high` on a real quota | `verified` | ✅ PASS. Hard limit 100 MiB, 90 MiB written over NFS: `QtreeQuotaUsedPercentMax` 90.36 against 85, 2 datapoints in 10 minutes. OK → ALARM, then ALARM → OK after the file was deleted | 2026-10-12 08:00:02, 08:05:02 |
+| P4 | T2 SnapMirror collector with no relationship | `verified` | ✅ PASS. The collector logged `0 relationship(s)` on every poll except 08:44:44, the poll that failed TLS verification (P5), where it failed before it could log. `snapmirror-unhealthy` and `snapmirror-lag-high` were not driven (F8) | 2026-10-12 from 07:39:44 |
+| P5 | T2 CA-verified TLS against the certificate chain issued for the file system | `verified` | ❌ Not met (verified negative, own measurement in this environment). The poll failed with "IP address mismatch" (F1) | 2026-10-12 08:41:12 → 08:49:44 |
+| T1 | T3 `failed-access` at the defaults (threshold 10, 3 of 3 periods) | `verified` | ✅ PASS. OK → ALARM → OK; sums per period 31 / 14 / 14 | 2026-10-12 07:52:09, 07:56:09 |
+| T2 | T3 `bulk-delete` at the defaults (threshold 50, 2 of 3 periods) | `verified` | ✅ PASS. OK → ALARM → OK; sums per period 116 / 56 / 56 | 2026-10-12 07:48:11, 08:01:11 |
+| T3 | T3 `privileged-operations` at the defaults (threshold 0, 1 of 3 periods) | `verified` | ✅ PASS. Two OK → ALARM → OK cycles; sums per period 234 / 112 / 112 | 2026-10-12 07:41:20, 08:09:20, 08:19:20, 09:07:20 |
+| T4 | New `bulk-delete` default counts 1 line per completed delete | `verified` | ✅ PASS. 56 deletes gave 56 lines, a dry run of 6 gave 6, and a `failed-access` dry run of 3 rejections gave 3 | 2026-10-12 07:41:20 → 08:01:11 |
+| E1 | `autosize-fail` on a real `wafl.vol.autoSize.fail` event | `verified` | ✅ PASS. Event 08:23:58; OK → ALARM at 08:24:40 (42 s later); ALARM → OK at 08:29:40 | 2026-10-12 08:23:58, 08:24:40, 08:29:40 |
+| E2 | EMS destination | `verified` | ⚠️ The destination type defaults to port 514 and `udp_unencrypted`, which do not match the endpoint's TCP ports, so the definition sets TCP 1514 explicitly; the defaults were not sent. The explicit definition delivered | 2026-10-12, before 08:23:58 |
+| U1 | T3 `unauthorized-access` with a positive control | `verified` | ❌ Not met (verified negative, own measurement in this environment). 16 events in the SVM audit log, 0 lines in the log group; the alarm stayed OK (F2) | 2026-10-12 08:36:30 → 08:39:06 |
+| N1 | SNS e-mail for three notifications | `verified` | ✅ PASS. The three e-mails arrived and were read by the operator: `privileged-operations` ALARM, `autosize-fail` ALARM, `autosize-fail` OK. Arrival times were not recorded, so no latency is claimed. T1 and T2 alarm e-mail was not observed | 2026-10-12 08:19:20, 08:24:40, 08:29:40 |
+| H1 | T4 `notify_only` on a real alarm transition | `verified` | ✅ PASS. `{decision: notify_only, target_gib: 1127}`, one archive object | 2026-10-12 08:55:51 |
+| H2 | T4 `auto`: the real increase | `verified` | ✅ PASS. `submitted`; exactly one `UpdateFileSystem` in CloudTrail; 1,024 → 1,127 GiB; provisioned IOPS 3,072 → 3,381 | 2026-10-12 08:59:07 → 09:00:51 |
+| H3 | T4 re-evaluation after the change | `verified` | ✅ PASS. `capacity_available` (state `optimizing`); no second `UpdateFileSystem` | 2026-10-12 09:11:56 |
+| H4 | T4 decision archive for the `auto` run | `verified` | ✅ PASS. Three objects (`1-decision`, `2-accepted`, `3-capacity_available`) in COMPLIANCE mode | 2026-10-12 08:59:11 → 09:12:00 |
+| H5 | T4 6-hour cooldown lock | `hypothesis` | ⏭️ Not observed. The second evaluation ended `capacity_available`, not `cooldown_active` | None |
+| M1 | Cleanup, with read-back | `verified` | ⚠️ Done with two items left by design (see [Cleanup](#cleanup-2026-10-12-run)) | 2026-10-12 09:43:59 → 10:36:16 |
+
+### Alarm State Transitions (2026-10-12 Run)
+
+The T3 detections were driven from 07:41:46 in four rounds. Each round sent 14 requests by the read-only user, all rejected with HTTP 403, and 56 qtree creates and 56 qtree deletes by `fsxadmin`. `privileged-operations` first went to ALARM at 07:41:20, on dry-run traffic before the first round. The first alarm was created at 07:34:35.
+
+From the alarm history, UTC, all on 2026-10-12. The `<volume-id>` in two alarm names stands for the test volume's ID. `fsxn-ontap-metrics-snapmirror-lag-high` had no transition.
+
+| Alarm | Transition | Time | Cause |
+|-------|-----------|------|-------|
+| `fsxn-ontap-metrics-snapmirror-heartbeat` | INSUFFICIENT_DATA → ALARM | 07:34:55 | No heartbeat datapoint yet; missing data counts as breaching |
+| `fsxn-log-alarm-failed-access` | INSUFFICIENT_DATA → OK | 07:35:09 | First evaluation, no match |
+| `fsxn-monitoring-throughput-high` | INSUFFICIENT_DATA → OK | 07:35:19 | First evaluation |
+| `fsxn-ontap-metrics-dlq-depth` | INSUFFICIENT_DATA → OK | 07:35:34 | First evaluation |
+| `fsxn-log-alarm-autosize-fail` | INSUFFICIENT_DATA → OK | 07:35:40 | First evaluation, no match |
+| `fsxn-log-alarm-unauthorized-access` | INSUFFICIENT_DATA → OK | 07:35:43 | First evaluation, no match. No later transition (U1) |
+| `fsxn-monitoring-capacity-high` | INSUFFICIENT_DATA → OK | 07:35:50 | First evaluation |
+| `fsxn-monitoring-<volume-id>-inode-high` | INSUFFICIENT_DATA → OK | 07:36:04 | First evaluation |
+| `fsxn-ontap-metrics-qtree-heartbeat` | INSUFFICIENT_DATA → ALARM | 07:36:10 | No heartbeat datapoint yet; missing data counts as breaching |
+| `fsxn-monitoring-<volume-id>-capacity-high` | INSUFFICIENT_DATA → OK | 07:36:10 | First evaluation |
+| `fsxn-log-alarm-bulk-delete` | INSUFFICIENT_DATA → OK | 07:36:11 | First evaluation, no match |
+| `fsxn-log-alarm-privileged-operations` | INSUFFICIENT_DATA → OK | 07:36:20 | First evaluation, no match |
+| `fsxn-ontap-metrics-lambda-errors` | INSUFFICIENT_DATA → OK | 07:38:18 | First evaluation |
+| `fsxn-ontap-metrics-qtree-quota-high` | INSUFFICIENT_DATA → OK | 07:40:02 | After the first poll (07:39:44) |
+| `fsxn-ontap-metrics-qtree-heartbeat` | ALARM → OK | 07:40:10 | After the first poll |
+| `fsxn-ontap-metrics-snapmirror-unhealthy` | INSUFFICIENT_DATA → OK | 07:40:26 | After the first poll; no relationship |
+| `fsxn-ontap-metrics-snapmirror-heartbeat` | ALARM → OK | 07:40:55 | After the first poll |
+| `fsxn-log-alarm-privileged-operations` | OK → ALARM | 07:41:20 | Dry-run traffic |
+| `fsxn-log-alarm-bulk-delete` | OK → ALARM | 07:48:11 | Above 50 in 2 of 3 periods (116, 56) |
+| `fsxn-log-alarm-failed-access` | OK → ALARM | 07:52:09 | Above 10 in 3 of 3 periods (31, 14, 14) |
+| `fsxn-log-alarm-failed-access` | ALARM → OK | 07:56:09 | After the last round |
+| `fsxn-ontap-metrics-qtree-quota-high` | OK → ALARM | 08:00:02 | 90.36 against 85, 2 datapoints |
+| `fsxn-log-alarm-bulk-delete` | ALARM → OK | 08:01:11 | After the last round |
+| `fsxn-ontap-metrics-qtree-quota-high` | ALARM → OK | 08:05:02 | After the 90 MiB file was deleted |
+| `fsxn-log-alarm-privileged-operations` | ALARM → OK | 08:09:20 | No match in the last 3 periods |
+| `fsxn-log-alarm-privileged-operations` | OK → ALARM | 08:19:20 | One `fsxadmin` qtree create at 08:18:45, sent to test the e-mail |
+| `fsxn-log-alarm-autosize-fail` | OK → ALARM | 08:24:40 | The real EMS event at 08:23:58 |
+| `fsxn-log-alarm-autosize-fail` | ALARM → OK | 08:29:40 | No match in the next period |
+| `fsxn-t4-tfv-ssd-utilization` | INSUFFICIENT_DATA → ALARM | 08:55:51 | Trigger threshold 1% against SSD utilization of 1.4–2.2% |
+| `fsxn-log-alarm-privileged-operations` | ALARM → OK | 09:07:20 | No match in the last 3 periods. The alarm stayed in ALARM for 48 minutes after the e-mail test. The matching lines in that span were not traced; the shipped pattern counts every completed `fsxadmin` change operation, and the EMS, audit and test-volume steps used `fsxadmin` |
+
+Sums per 300-second period recorded in the run, in time order. The last two values of each row equal one round (14 rejected requests, 56 deletes, 112 `fsxadmin` operations); the first period is larger, and its composition was not broken down.
+
+| Metric | Sum per 300 seconds |
+|--------|---------------------|
+| `fsxn-log-alarm-failed-access` | 31 / 14 / 14 |
+| `fsxn-log-alarm-bulk-delete` | 116 / 56 / 56 |
+| `fsxn-log-alarm-privileged-operations` | 234 / 112 / 112 |
+
+The 56 and 14 per round show one line per completed delete (the new `bulk-delete` default) and one line per rejected request (`failed-access`); see row T4 of the Check Results table.
+
+![CloudWatch alarm list in the Japanese-language console with the five fsxn-log-alarm alarms, all OK with actions enabled. Conditions are the module defaults: privileged-operations above 0 (1 datapoint within 15 minutes), autosize-fail above 0 (1 within 5 minutes), bulk-delete above 50 (2 within 15 minutes), failed-access above 10 (3 within 15 minutes), unauthorized-access above 0 (1 within 15 minutes). Last state updates in UTC: 09:07:20, 08:29:40, 08:01:11, 07:56:09 and 07:35:43](../screenshots/terraform-monitoring/01-t3-alarms-default-conditions.png)
+
+The alarm list was captured after the last transition. The conditions column shows the module defaults, and `unauthorized-access` has not left its first OK since 07:35:43.
+
+![Alarm detail of fsxn-log-alarm-bulk-delete, 3-hour range in UTC. The Count graph peaks at 116 and then stays near 56, above the dashed threshold line at 50; the state timeline shows grey, OK, a red ALARM band from about 07:48 to 08:01, then OK. The history tab lists ALARM to OK at 08:01:11, OK to ALARM at 07:48:11 and INSUFFICIENT_DATA to OK at 07:36:11. The action rows are blacked out](../screenshots/terraform-monitoring/02-t3-bulk-delete-ok-alarm-ok.png)
+
+The graph matches the sums above: 116 in the first period and 56 in the next, against a threshold of 50.
+
+![Alarm detail of fsxn-ontap-metrics-qtree-quota-high, 3-hour range in UTC. QtreeQuotaUsedPercentMax stays at 90.36% for several minutes around 07:50 to 07:55, above the dashed threshold line at 85, then drops to 0%; the state timeline shows a red ALARM band from about 08:00 to 08:05. The history tab lists ALARM to OK at 08:05:02, OK to ALARM at 08:00:02 and INSUFFICIENT_DATA to OK at 07:40:02. The condition reads above 85 for 2 datapoints within 10 minutes. The action rows are blacked out](../screenshots/terraform-monitoring/04-t2-qtree-quota-ok-alarm-ok.png)
+
+The condition is 2 datapoints above 85 within 10 minutes. The alarm entered ALARM at 08:00:02 and returned to OK at 08:05:02 after the file was deleted.
+
+### EMS Destination Recipe (2026-10-12 Run)
+
+In this environment the audit destination of the syslog path delivered audit lines, and `wafl.vol.autoSize.fail` reached the log group through a separate EMS notification destination; whether the audit destination alone would carry such an event was not tested (own measurement in one environment). On 2026-10-12 that EMS destination delivered a real event, and `autosize-fail` fired on it. The destination type `syslog` defaults to port 514 and `udp_unencrypted`; the endpoint is reached on TCP 1514 or 6514 ([setup guide](syslog-vpce-setup-guide.md)), so the working definition sets port 1514 and `tcp_unencrypted` explicitly. The defaults themselves were not sent to the endpoint. The filter is created first with `POST /api/support/ems/filters`, and the destination refers to it by name with `POST /api/support/ems/destinations` (HTTP 201 for the destination, and a read-back matched).
+
+```json
+{"name":"<filter-name>","rules":[{"type":"include","message_criteria":{"name_pattern":"wafl.vol.autoSize.*","severities":"*"}}]}
+```
+
+```json
+{"name":"<destination-name>","type":"syslog","destination":"<endpoint ENI IP>","filters":[{"name":"<filter-name>"}],"syslog":{"port":1514,"transport":"tcp_unencrypted","format":{"message":"legacy_netapp"}}}
+```
+
+To raise the event, a 100 MiB volume with an autosize growth maximum of 120 MiB received a 220 MiB write. ONTAP raised `wafl.vol.autoSize.fail` at 08:23:58, and the line below reached the log group in the same second. The header carries the event name in brackets, as the line built from the EMS reference on 2026-10-09 assumed.
+
+```text
+<5>Oct 12 08:23:58 [<node>:wafl.vol.autoSize.fail:notice]: Unable to grow volume '<volume>@vserver:<svm-uuid>' to recover space: Volume cannot be grown beyond maximum growth limit.
+```
+
+![CloudWatch Logs events of the syslog log group filtered with "wafl.vol.autoSize": two audit lines at 08:21:37 for the creation of the EMS filter, two wafl.vol.autoSize.done lines and one wafl.vol.autoSize.fail line at 08:23:58, each EMS line starting with priority 5 and carrying the event name and the severity notice in brackets. The node and endpoint names are placeholders](../screenshots/terraform-monitoring/05-ems-autosize-fail-line-in-logs.png)
+
+The `wafl.vol.autoSize` family arrived as three lines in the same second: two `wafl.vol.autoSize.done:notice` lines and the `.fail` line. Only the `.fail` line matches the shipped `"wafl.vol.autoSize.fail"` pattern. The two audit lines of the filter creation at 08:21:37 (priority `<190>`) contain `wafl.vol.autoSize.*` and do not match it either. `autosize-fail` went OK → ALARM 42 seconds after the event and ALARM → OK at 08:29:40.
+
+![Alarm detail of fsxn-log-alarm-autosize-fail, 3-hour range in UTC. The Count graph shows a single datapoint of 1 near 08:20 above the threshold line at 0; the state timeline shows a red ALARM band between about 08:24 and 08:29, then OK. The history tab lists ALARM to OK at 08:29:40, OK to ALARM at 08:24:40 and INSUFFICIENT_DATA to OK at 07:35:40. The action rows are blacked out](../screenshots/terraform-monitoring/03-t3-autosize-fail-real-ems.png)
+
+Severity is `notice` in the ONTAP 9.19.1P3 EMS catalog and in the delivered line (`verified`). The ONTAP 9.18.1 EMS reference lists NOTICE as well (`documented`). The operator noted that the `force` parameter is accepted by the audit destination call and was not accepted for EMS destinations; the error text was not retained. EMS delivery over TLS (`tcp_encrypted`) was not tried (`open`).
+
+### TLS Verification Against the FSx Certificate Chain (2026-10-12 Run)
+
+The T2 documentation advises setting `ca_cert_path` and `ca_cert_layer_arn` for production. This run tried that on the management endpoint of the file system. The chain presented by the endpoint:
+
+| Certificate | Subject | Issued by | Subject alternative names |
+|-------------|---------|-----------|---------------------------|
+| Leaf | `management.fs-*.fsx.<region>.amazonaws.com` | "FSx CA for ONTAP-1 in `<region>`" | DNS names only: the node names, `*.fs-*.fsx.<region>…` and `management.fs-*.fsx.<region>…`. No IP address |
+| Intermediate | "FSx CA for ONTAP-1 in `<region>`" | "Amazon FSx Root CA 1 for `<region>`" | Not recorded |
+| Root | "Amazon FSx Root CA 1 for `<region>`" | Itself (self-signed) | Not recorded |
+
+Three client-side experiments with the Python `ssl` module:
+
+| CA bundle given to the client | Connect by | Result |
+|-------------------------------|-----------|--------|
+| The intermediate and root certificates (2,140 bytes) | DNS name | Verifies (TLS 1.3) |
+| The same bundle | IP address | Fails with "IP address mismatch" |
+| The leaf certificate alone | DNS name or IP address | Fails with "self-signed certificate in certificate chain" |
+
+Then the module was applied with `ca_cert_path = "/opt/certs/ontap-ca.pem"` and a Lambda layer holding the two certificates as `ca_cert_layer_arn`:
+
+| Time (UTC) | Event |
+|------------|-------|
+| 08:41:12 → 08:41:23 | Apply with both inputs set |
+| 08:44:44 | The poll logged `SSLCertVerificationError` ("IP address mismatch") and retried: Retrying warnings at 08:44:44, 08:44:46 and 08:44:50 (waits of 2 and 4 seconds) |
+| 08:44:50 | "Collector qtree failed" |
+| 08:44:56 | "Collector snapmirror failed" (the same retry pattern) |
+| 08:44 period | `CollectorSucceeded` went 1 → 0 for both collectors |
+| 08:46:25 | Revert started (CA path empty, layers removed) |
+| 08:49:44 | The poll recovered. The heartbeat alarms did not fire for the one missed period; why was not investigated |
+
+![Poller log events of the T2 Lambda function filtered with "IP address mismatch", 12-hour range: three Retrying warnings at 08:44:44, 08:44:46 and 08:44:50, then the expanded ERROR "Collector qtree failed" with a traceback ending in SSLCertVerificationError, certificate verify failed: IP address mismatch, certificate is not valid for a placeholder IP address](../screenshots/terraform-monitoring/06-t2-tls-ip-address-mismatch.png)
+
+The cause is in three places. The poller URL is `https://<ONTAP_MGMT_IP>`, and urllib3 runs with `CERT_REQUIRED` and no `assert_hostname`, so the certificate's names are matched against an IP address. The certificate lists DNS names only. The module input `ontap_management_ip` accepts only a dotted-quad IPv4 address (the validation is the same at tag v0.1.0 and on `main`), and the Lambda security group egress is a `/32` to that address. The advice to set both inputs for production therefore cannot verify against this certificate today. This is a module limitation observed once, and the module was not changed here. DNS-name input support stays `open`. The CloudFormation template `shared/templates/qtree-quota-monitor.yaml` carries the same `PoolManager` code inline; it was not run with a CA in this run.
+
+### Real SSD Increase (2026-10-12 Run)
+
+The operator approved one irreversible increase on the throwaway file system. No `terraform-fsxn-ssd*` tag existed locally or on `origin` at the time of writing, so the module was referenced by commit `fcec6ef`. The call as applied, first in `notify_only` and then with `mode = "auto"`:
+
+```hcl
+module "ssd_auto_increase" {
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
+
+  name_prefix                         = "fsxn-t4-tfv"
+  file_system_id                      = "fs-0123456789abcdef0"
+  max_storage_capacity_gib            = 1127
+  increase_percent                    = 10
+  mode                                = "notify_only" # "auto" in the second apply
+  trigger_threshold_percent           = 1
+  decision_archive_bucket             = "<archive-bucket-name>"
+  decision_archive_min_retention_days = 1
+}
+```
+
+| Input | Value | Why |
+|-------|-------|-----|
+| `max_storage_capacity_gib` | `1127` | `ceil(1024 × 1.10)` = 1,127. A ceiling of 1,126 is below the 10% minimum increase |
+| `trigger_threshold_percent` | `1` | The validation minimum (module default 80). SSD utilization was raised to 1.4–2.2% by writing 12 GiB so that the alarm fired |
+| `decision_archive_min_retention_days` | `1` | Module default 365. The value 1 matched the disposable archive bucket reused from the 2026-10-09 run, whose default retention is 1 day in COMPLIANCE mode. Not a production setting |
+| `?ref=<commit-sha>&depth=1` | Failed | Terraform reported "setting depth requires ref to be a branch or tag name"; use `?ref=<commit-sha>` without `depth` |
+
+| Time (UTC) | Event |
+|------------|-------|
+| 08:53:57 → 08:54:40 | Apply in `notify_only` (16 resources) |
+| 08:55:51 | Trigger alarm INSUFFICIENT_DATA → ALARM; the evaluator returned `{decision: notify_only, target_gib: 1127}` and archived one decision object |
+| 08:58:51 → 08:58:58 | Apply with `mode = "auto"` (1 changed) |
+| 08:59:07 | Manual invoke with an empty payload, the same entry as the EventBridge schedule; the evaluator returned `{decision: submitted}` |
+| 08:59:11 | CloudTrail: exactly one `UpdateFileSystem`, by the evaluator's role session |
+| 08:59:20 | File system: update PENDING, target 1127 GiB |
+| 09:00:05 | IN_PROGRESS |
+| 09:00:51 | `StorageCapacity` 1127 (`UPDATED_OPTIMIZING`); provisioned IOPS 3,072 → 3,381 (`AUTOMATIC`). The administrative action later reached COMPLETED; storage optimization was still in progress at 09:10:45 |
+| 09:11:56 | Re-invoke: `{decision: capacity_available, state: optimizing}`; no second `UpdateFileSystem` |
+
+![FSx console overview of the file system after the Terraform-driven increase: lifecycle Available, SSD storage capacity 1127 GiB, throughput capacity 128 MB/s, provisioned IOPS 3381, 1 HA pair, deployment type Single-AZ 1. File system ID, VPC, subnet, key and IP addresses are placeholders](../screenshots/terraform-monitoring/07-fsx-ssd-capacity-1127gib.png)
+
+The overview confirms the capacity, the IOPS that followed it (3 IOPS per GiB, 3,381) and the unchanged throughput.
+
+![S3 console page of the decision object 1-decision.json of the auto run under the T4 archive prefix: legal hold off, Object Lock retention mode compliance, retain-until 2026/10/13 05:59:10 PM JST (08:59:10 UTC), retention type fixed. Bucket, file system and correlation ID are placeholders](../screenshots/terraform-monitoring/08-s3-object-lock-compliance-retention.png)
+
+The `auto` run archived three objects (`1-decision`, `2-accepted`, `3-capacity_available`), and the `notify_only` run archived one `1-decision`. All four are in COMPLIANCE mode with a retain-until date about one day after creation; the latest is 2026-10-13T09:11:59Z. CloudTrail showed one `UpdateFileSystem` event; only its time and the role session were kept, and its request parameters were not read, so whether CloudTrail shows `ClientRequestToken` for an accepted call stays `open` (it is `open` in the 2026-10-09 T4 record, F4). Not observed: the 6-hour cooldown lock, because the second evaluation ended `capacity_available` and not `cooldown_active` (`hypothesis`); the `terminal` state, because no evaluation ran after the optimization finished (`open`); and the notify-topic e-mail (`open`).
+
+### File-Access Audit on the Syslog Path (2026-10-12 Run)
+
+The T3 default `unauthorized-access` pattern looks for file paths. To test it, a positive control was set up and the same accesses were counted in two places:
+
+| Item | Value |
+|------|-------|
+| SVM file-access audit | On (`file_operations`, XML log in a dedicated volume) |
+| Protocol | NFSv4.1 with ACL support enabled |
+| Audit entry | An audit ACE (`nfs4_setfacl`, `U:fdSF:EVERYONE@:rwaDdxtT`) on a directory. A file that existed before the ACE did not inherit it, so it was recreated |
+| Accesses | 08:36:30 and 08:38:05–08:38:10 |
+| SVM audit XML (file name stamped 08:39:06) | 16 events: Open Object 7, Close Object 7, Write Object 1, Unlink Object 1. All Audit Success, source NFSv4. Object name spelled `(<volume>);/confidential/secret.txt` |
+| Admin-audit syslog log group | 0 lines matching `confidential`, `secret.txt`, `Open Object` or `NFSv4` since 08:30 |
+| `unauthorized-access` alarm | Stayed OK |
+
+In this environment, NAS audit records did not travel the admin-audit syslog path. The default pattern `"/vol/data/confidential"` also does not match the real spelling `(<volume>);/confidential/…`. Side observations: 3 refused reads by an unprivileged uid left no Audit Failure record (the cause was not investigated), and the SVM audit log held 0 Audit Failure events.
+
+This is an own measurement in one environment; it does not describe what ONTAP can or cannot send to syslog. A NetApp KB article on the subject could not be read and is not used.
+
+### Findings (2026-10-12 Run)
+
+| # | Finding | Kind | Effect on this record |
+|---|---------|------|-----------------------|
+| F1 | T2 CA-verified TLS cannot pass with the certificate chain issued for the file system. The poller connects to `https://<management IP>` with `CERT_REQUIRED` and no `assert_hostname`; the certificate's names are DNS names only; `ontap_management_ip` accepts only a dotted-quad IPv4 address; the Lambda security group egress is a `/32` to that address | Module limitation, observed once. The documented production advice (set both inputs) cannot be satisfied with this certificate today | Recorded; the module was not changed. DNS-name input support is `open`. The same collector code is inline in `shared/templates/qtree-quota-monitor.yaml` |
+| F2 | `unauthorized-access` did not fire with a positive control in place: 16 NAS audit events were in the SVM audit log and the admin-audit syslog log group held 0 matching lines. The default path `/vol/data/confidential` does not match the real spelling `(<volume>);/confidential/…` | Verified negative, own measurement in one environment (NFSv4.1, XML audit log) | NAS audit records did not travel the admin-audit syslog path here. Whether any ONTAP setting would send them was not investigated. The module and template defaults are unchanged |
+| F3 | The EMS destination type `syslog` defaults to port 514 and `udp_unencrypted`; the endpoint is reached on TCP 1514 or 6514. The working definition sets port 1514 and `tcp_unencrypted` | Setup mismatch, observed once; the defaults were not sent to the endpoint | The recipe is in [EMS Destination Recipe](#ems-destination-recipe-2026-10-12-run). The setup guide has no EMS step |
+| F4 | The severity of `wafl.vol.autoSize.fail` is `notice` in the ONTAP 9.19.1P3 catalog and in the delivered line. `docs/en/ems-detection-capabilities.md`, the comment in `terraform/fsxn-log-alarm/variables.tf` and, before this change, the T3 module README say `error` | Documentation. `verified` on 9.19.1P3; `documented` as NOTICE in the ONTAP 9.18.1 EMS reference | The T3 README sentence is corrected in the same change. The other two files are outside this change |
+| F5 | The ONTAP audit destination was rejected without `?force=true` (HTTP 400, code 9240603, "Cannot contact destination host") although the test bastion could open TCP 1514 and 6514 on the endpoint | ONTAP response, observed once. The bastion is not the ONTAP node, so reachability from the node is not shown | The setup guide already documents `force=true` |
+| F6 | T4 inputs that differ from a production setup: ceiling 1,127 GiB, trigger 1%, archive minimum retention 1 day against the module default 365. `?ref=<commit-sha>&depth=1` fails | Test settings; Terraform behavior, observed once | Do not copy the three inputs to a production root. Use `?ref=<commit-sha>` without `depth` until a T4 tag exists |
+| F7 | `terraform destroy` waited 22 minutes 13 seconds on `aws_security_group.lambda`. No ingress rule had ever been added for it | Observed twice (22 minutes 3 seconds on 2026-10-08) | The revoke step is not the cause of this wait. Whether Lambda network interfaces were still listed was not checked |
+| F8 | The SnapMirror collector logged 0 relationships on every poll except 08:44:44 (the poll that failed TLS verification, F1), so `snapmirror-unhealthy` and `snapmirror-lag-high` were not driven | Test setup, observed | SnapMirror alarm verification remains the 2026-10-08 same-file-system run |
+| F9 | The audit-log volume could not be deleted while the SVM audit configuration existed. ONTAP REST returned 202 for the disable and delete requests of that configuration, and the first delete job failed ("Final consolidation is in progress"). `delete-secret` called with the secret name plus an ARN suffix returned success and deleted nothing | Cleanup order, observed once. A 202 or a success exit is not completion | Read back after each step (see [Cleanup](#cleanup-2026-10-12-run)) |
+
+### Cleanup (2026-10-12 Run)
+
+Times are UTC on 2026-10-12.
+
+| Step | Result | Time (UTC) |
+|------|--------|------------|
+| T4 `terraform destroy` | 16 resources destroyed | 09:43:59 → 09:44:54 |
+| Root `terraform destroy` | 44 resources destroyed. `aws_security_group.lambda` took 22 minutes 13 seconds and the `monitoring` VPC endpoint 2 minutes 21 seconds (F7) | 09:46:12 → 10:08:36 |
+| Syslog path | The syslog configuration for the run's endpoint was deleted (an older, pre-existing configuration was left untouched), the stack was deleted, and the stack-retained log group was deleted by hand | After 10:08:36 |
+| ONTAP volumes | The test, data and autosize volumes were deleted. The audit-log volume refused deletion ("configured to hold audit logs for Vserver"), so the SVM audit configuration was disabled (REST 202) and deleted (202; the job failed once with "Final consolidation is in progress", the retry succeeded, then GET returned 404). The volume could then be deleted (F9) | After 10:08:36 |
+| SVM | Deleted. `DeleteFileSystem` is rejected while an SVM exists | 10:26:38 |
+| File system | DELETING at 10:27; not found by 10:36:16 | 10:27 → 10:36:16 |
+| Secrets | Two secrets. `delete-secret` called with the name plus an ARN suffix returned success and deleted nothing; the read-back showed both alive, and the second call by exact name set the deletion date | After 10:08:36 |
+| Temporary changes | A change to the test bastion's network-interface security groups and to its role's inline policy was reverted from saved copies and read back. The CA-bundle Lambda layer version was deleted | After 10:08:36 |
+| Read-back sweep | No alarm, function, SNS topic, DynamoDB table, log group, IAM role or EventBridge rule with the four modules' name prefixes remains | After 10:08:36 |
+
+Two items remain by design. The archive objects are COMPLIANCE-locked until about 2026-10-13T09:12Z, so they, and the disposable bucket reused from the 2026-10-09 run that holds them, cannot be deleted before then. The CloudWatch custom metrics cannot be deleted and expire by age.
+
+### What Remains Unverified (2026-10-12 Run)
+
+| Item | Status | Reason |
+|------|--------|--------|
+| Second-generation and multi-HA-pair file systems | `open` | The file system was first generation with one HA pair |
+| SnapMirror between SVMs and between file systems | `open` | No relationship existed in this run (F8) |
+| `snapmirror-unhealthy` and `snapmirror-lag-high` in this run | `open` | 0 relationships on every poll except 08:44:44 (the poll that failed TLS verification, F1); the 2026-10-08 run drove them |
+| Least-privilege IAM policies for T2 to T4 | `open` | No run used a role limited to the example policies |
+| T2 step "add an inbound rule to the file system security group" | `open` | The default security group already allowed TCP 443 from the VPC CIDR |
+| E-mail for T1, T2 and T4 | `open` | The T1 subscription was confirmed late and no T1 alarm e-mail was observed. The T2 subscription was confirmed and no T2 alarm e-mail was reported. The T4 notify-topic e-mail was not confirmed |
+| T4 6-hour cooldown lock | `hypothesis` | The guard exists in the design and in unit tests; the one evaluation after the change ended `capacity_available` |
+| T4 `terminal` state and the release of the lock after it | `open` | The last evaluation saw `optimizing`, and none ran afterwards |
+| `ClientRequestToken` in CloudTrail for an accepted call | `open` | Only the time and the role session of the event were kept |
+| TLS verification by DNS name | `open` | Blocked by F1 |
+| EMS destination over TLS (`tcp_encrypted`) | `open` | Not tried |
+| Decision-archive control identities A and B, and archiving of latched runs | `open` | Not part of this run; unchanged from the 2026-10-09 T4 record |
+| Rows of the earlier records that this run did not attempt | `open` | See the unverified tables of the earlier runs |
+
+### Judgment (2026-10-12 Run)
+
+| Item | Value |
+|------|-------|
+| Judgment | ⚠️ Within the scope of this sample run, on one throwaway first-generation, single-HA-pair file system: the root-module apply of T1 to T3 from their tags, the T2 default poll and `qtree-quota-high` path, the T3 detections `failed-access`, `bulk-delete` and `privileged-operations` at the default 300-second period, `autosize-fail` on a real EMS event, e-mail for three T3 notifications, and one real T4 increase are verified. Two checks are verified negatives, both own measurements in this environment: `unauthorized-access` did not fire with a positive control in place (U1), and T2 could not verify the certificate chain issued for the file system (P5). This is not a production estimate |
+| Passing checks | 17 of 23 (R1, R2, R4, P1–P4, T1–T4, E1, N1, H1–H4) |
+| Passed with a deviation | 2 of 23 (R3, E2) |
+| Expectation not met | 2 of 23 (P5 from F1, U1 from F2) |
+| Not run | 1 of 23 (H5, a `hypothesis`) |
+| Done with remaining items | 1 of 23 (M1): the COMPLIANCE-locked archive objects with their bucket, and the custom metrics |
+| Module defects | Resource creation and alarm wiring: none found. One module limitation (F1). The T3 default `unauthorized-access` pattern cannot match the real spelling, and no record reached the group (F2) |
+| Documentation corrected after this run | This record, the Terraform monitoring guide, the monitoring design page and the READMEs of the log-alarm, custom-metrics and SSD auto-increase modules, each in English and Japanese |
 
 ---
 
