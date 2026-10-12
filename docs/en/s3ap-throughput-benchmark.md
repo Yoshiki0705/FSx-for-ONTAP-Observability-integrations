@@ -1575,7 +1575,7 @@ These are the limits of experiment 2 and of the statements about the first six v
 
 ## Reference Results
 
-> **Where these numbers come from**: the ListObjectsV2 (100 keys) and GetObject by Size values below are transcribed from measurements recorded in sibling repositories. They were not measured in this repository, and no raw data for them is committed here. For this repository's own measurements, see "Measured in this repository (2026-10-10)", "Pooled re-measurement (2026-10-10)", "Tier comparison: SSD and capacity pool (2026-10-11)", and "Tiering path: direct ALL and NONE-then-ALL (2026-10-11)". "Effective Processing Rate" remains an unverified estimate with no measurement record. None of these is a service limit or guarantee.
+> **Where these numbers come from**: the ListObjectsV2 (100 keys) and GetObject by Size values below are transcribed from measurements recorded in sibling repositories. They were not measured in this repository, and no raw data for them is committed here. For this repository's own measurements, see "Measured in this repository (2026-10-10)", "Pooled re-measurement (2026-10-10)", "Tier comparison: SSD and capacity pool (2026-10-11)", and "Tiering path: direct ALL and NONE-then-ALL (2026-10-11)". For "Effective Processing Rate", the read leg and the parse leg are measured in this environment on this day (raw data committed), and delivery to a vendor is modelled, not measured. None of these is a service limit or guarantee.
 
 ### Environment Differences
 
@@ -1616,18 +1616,26 @@ Source: the GetObject table in [S3 Access Points benchmark results](https://gith
 
 ### Effective Processing Rate
 
-> **Unverified estimate** — the table below is an order-of-magnitude sizing figure with no measurement record.
+> **Read + parse is measured; delivery is modelled.** The read leg and the parse leg were measured in this environment on this day (tier `verified`), raw data under `benchmark/s3ap-throughput/results/2026-10-11-processing-rate/`. Delivery to a vendor was **not** measured and is modelled (tier `hypothesis`); it is not included in the durations below.
 
-The GetObject latencies measured on 2026-10-10 cover only the S3 read part of these durations. They do not include parsing or delivery to a vendor, and this table was not re-derived from them.
+The GetObject latencies measured on 2026-10-10 cover only the S3 read part of this work. On 2026-10-11 the read leg (GetObject) and the parse leg (`parse_audit_log`) were each timed per object, so the durations below are the measured read+parse p50 times the file count, at concurrency 1 (sequential). They do not include delivery to a vendor.
 
-For the audit log poller Lambda (256 MB, outside VPC):
+For the audit log poller Lambda (256 MB, outside VPC), read+parse only:
 
-| Scenario | Files/Invocation | Duration | Notes |
-|----------|-----------------|----------|-------|
-| 10 small files (5 KB each) | 10 | ~3-5 s | Well within 5-min timeout |
-| 50 medium files (200 KB each) | 50 | ~15-30 s | Comfortable |
-| 100 medium files (200 KB each) | 100 | ~30-60 s | MAX_KEYS_PER_RUN default |
-| 100 large files (2 MB each) | 100 | ~60-120 s | May need timeout increase |
+| Scenario | Files/Invocation | Duration (read+parse) | Notes |
+|----------|-----------------|-----------------------|-------|
+| 10 small files (5 KB each) | 10 | about 0.4 s | Well within the 5-min timeout |
+| 50 medium files (200 KB each) | 50 | about 7.9 s | Comfortable |
+| 100 medium files (200 KB each) | 100 | about 15.7 s | The key limit default |
+| 100 large files (2 MB each) | 100 | about 172 s | Parse-dominated; see the note below |
+
+The 100 x 2 MB case is about 172 s, parse-dominated and larger than the old `~60-120 s` guess. It is within the 300 s timeout but with little margin.
+
+> **2 MB row deviation**: the 2 MB class was measured on 10 files x 3 iterations, not 100 x 5, because 100 x 5 exceeded the 290 s client read timeout. Read and parse are per object, so the file count does not change their p50; the 100-file duration above is read+parse p50 x 100, not timed end to end.
+
+**Read vs parse.** Parse time scales with the number of audit events in the file: 11 events -> 0.4 ms, 412 events -> about 100 ms, 4,212 events -> about 1,619 ms. Read scales weakly with size: 39 -> 56 -> 103 ms. These are per-file p50, Lambda 256 MB, no VPC, internet origin, concurrency 1, ONTAP 9.19.1P2, 2026-10-11.
+
+**Delivery leg (hypothesis, modelled).** There is no committed per-request delivery latency in this repository, so delivery is **not** included in the measured figures above. The model shape only: delivery time is roughly `ceil(payload / vendor batch limit)` HTTPS round trips times a per-round-trip latency that is **not measured**. The one committed input is the per-vendor batch limit from [docs/agent/vendor-api-reference.md](../agent/vendor-api-reference.md): Datadog 5 MB / 1000 items, New Relic / Dynatrace / Sumo Logic 1 MB, Grafana/Loki about 4 MB, Elastic about 10 MB, Honeycomb 5 MB, Splunk no hard limit. The per-round-trip latency and the one-round-trip-per-batch assumption are unmeasured; no latency number is given here.
 
 ## Factors Affecting Throughput
 
