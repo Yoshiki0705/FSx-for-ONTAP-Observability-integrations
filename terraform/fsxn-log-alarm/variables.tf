@@ -69,8 +69,8 @@ variable "sns_kms_master_key_id" {
 variable "detections" {
   description = <<-EOT
     Map of detections. Each key names a metric filter plus a metric alarm. The
-    default ships five recipes: autosize-fail (EMS wafl.vol.autoSize.fail),
-    failed-access, bulk-delete, privileged-operations, unauthorized-access.
+    default ships four recipes: autosize-fail (EMS wafl.vol.autoSize.fail),
+    failed-access, bulk-delete, privileged-operations.
     Add a key with a `pattern` to cover the template's `custom` type. `pattern`
     is CloudWatch Logs filter-pattern syntax, not Logs Insights.
   EOT
@@ -138,14 +138,6 @@ variable "detections" {
       evaluation_periods  = 3
       datapoints_to_alarm = 1
       alarm_description   = "FSx for ONTAP: activity by a monitored privileged user. Review the operation context."
-    }
-    # Template sensitive-file-access. Replace the term with the protected path.
-    unauthorized-access = {
-      pattern             = "\"/vol/data/confidential\""
-      threshold           = 0
-      evaluation_periods  = 3
-      datapoints_to_alarm = 1
-      alarm_description   = "FSx for ONTAP: access to a protected path. Investigate the user and operation context."
     }
   }
 

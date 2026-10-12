@@ -14,9 +14,8 @@
 - `failed-access`: `50f1f18` での既定値は、実際の REST の認可の失敗 5 件のどれにも一致しませんでした。その行は `Error: not authorized for that command` で終わります。既定値はいま `"Error: not authorized"` です。5 件すべてに、拒否された要求 1 回につき 1 行で一致し、実行では実際のアラームを遷移させました。数えるのは認可による拒否だけです。誤ったパスワードによる REST の要求 1 回（HTTP 401）では、観測した 40 秒の間に監査ログの行は書かれなかったため、どちらのパターンもログインの失敗を検知できるとは確認できていません。
 - `bulk-delete`: `50f1f18` での既定値は、閾値 2 で REST の削除 4 回に対して想定どおり発報しましたが、変更の操作は 1 回ごとに 2 回（`Pending` と、続いて結果）記録されるため、操作 1 回につき約 2 行を数えていました。既定値はいま、同じ 3 つの語に結果の行（`:: Success` か `:: Error`）でだけ一致し、完了した削除 1 回につき 1 行（5,156 行中 5 行）なので、閾値は操作の回数を数えます。2026-10-09 に `aws logs test-metric-filter` で確かめ、既定の期間 300 秒の実際のアラームでも動かしました（`verified`。2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）。完了した削除 56 回で 56 行に一致し、アラームは OK から ALARM に遷移して OK に戻りました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#確認項目の結果2026-10-12-の実行)）。取り込んだ削除は REST のものだけです。
 - `autosize-fail`: 2026-10-09 には、実際の `wafl.vol.autoSize.fail` イベントでは発報させていません。パターンは、ONTAP 9.18.1 の EMS リファレンスから組み立てた、ヘッダーの形を仮定した行に一致しました。syslog のセットアップガイドが転送するのは監査ログだけで、EMS イベントがロググループに届くのは別の EMS 通知の転送先を通したときだけです。そのような転送先（TCP ポート 1514）を通した実際のイベントでは、アラームはイベントの 42 秒後に OK から ALARM に遷移して OK に戻り、届いたヘッダーには想定どおり角括弧の中にイベント名が入っていました（`verified`。2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録内の定義](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#ems-通知先の定義2026-10-12-の実行)）。
-- `unauthorized-access`: 陽性対照を置いて実行し（SVM のファイルアクセス監査を有効、NFSv4.1、ディレクトリに監査 ACE、SVM の監査ログに 16 イベント）、発報しませんでした。ファイルアクセスの記録はロググループに届かず、既定のパス `/vol/data/confidential` は実際のイベントの表記と一致しません。これは 1 つの環境での自己測定による検証済みの否定結果です（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）。原因は調べていません（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#syslog-経路でのファイルアクセス監査記録の不着2026-10-12-の実行)）。
 
-新しい既定値は、2026-10-09 に `aws logs test-metric-filter` で、記録にあるマスク済みのサンプル行と、取り込んだ 5,156 行すべてに対して確かめました。件数は[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#実際のログ行に対するフィルターパターンの一致t3-の実行)にあります。2 回目のサンプル実行では、タグ `terraform-fsxn-log-alarm-v0.1.0` を 3 つのモジュールを含むルートで適用し、既定の期間 300 秒・閾値・N/M の値を使いました（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-12-の-terraform-監視モジュールの実環境での実行)）。5 つのレシピのうち 4 つ（`failed-access`、`bulk-delete`、`privileged-operations`、`autosize-fail`）が OK から ALARM に遷移して OK に戻りました。モジュールが作ったトピックの 3 通のメール通知が届き、オペレーターが読みました。到着時刻は記録していません。`unauthorized-access` は発報しませんでした（検証済みの否定結果。上を参照）。まだ `unverified` なのは、デプロイ用の IAM ポリシー、第 2 世代や HA ペアが 2 つ以上のファイルシステム、そして観測した 3 通を超えるメールです。配送経路では、ノードの接続が約 4–5 分無通信だった後の最初の操作が、2026-10-09 の実行中に 3 回失われました（[セットアップガイド](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/syslog-vpce-setup-guide.md#無通信の接続の後の最初の操作の欠落)）。1 行に依存する検知は、その操作を見逃すことがあります。
+新しい既定値は、2026-10-09 に `aws logs test-metric-filter` で、記録にあるマスク済みのサンプル行と、取り込んだ 5,156 行すべてに対して確かめました。件数は[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#実際のログ行に対するフィルターパターンの一致t3-の実行)にあります。2 回目のサンプル実行では、タグ `terraform-fsxn-log-alarm-v0.1.0` を 3 つのモジュールを含むルートで適用し、既定の期間 300 秒・閾値・N/M の値を使いました（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#2026-10-12-の-terraform-監視モジュールの実環境での実行)）。この実行では、`failed-access`、`bulk-delete`、`privileged-operations`、`autosize-fail` が OK から ALARM に遷移して OK に戻りました。モジュールが作ったトピックの 3 通のメール通知が届き、オペレーターが読みました。到着時刻は記録していません。`terraform-fsxn-log-alarm-v0.1.1` は `v0.1.0` と比べて、既定値に `unauthorized-access` を同梱しない点だけが異なり、実環境では実行していません。まだ `unverified` なのは、デプロイ用の IAM ポリシー、第 2 世代や HA ペアが 2 つ以上のファイルシステム、そして観測した 3 通を超えるメールです。配送経路では、ノードの接続が約 4–5 分無通信だった後の最初の操作が、2026-10-09 の実行中に 3 回失われました（[セットアップガイド](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/syslog-vpce-setup-guide.md#無通信の接続の後の最初の操作の欠落)）。1 行に依存する検知は、その操作を見逃すことがあります。
 
 ## 作成されるリソース
 
@@ -28,7 +27,7 @@
 
 ## 検知のレシピ
 
-`detections` はマップで、各キーが 1 つのメトリクスフィルターと 1 つのアラームに対応します。既定では 5 つのレシピを同梱します。呼び出し側はレシピを上書きしたり、減らしたり、テンプレートの `custom` タイプのためにキーを追加したりできます。パターンは [CloudWatch Logs のフィルターパターン](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)の文字列（イベントのどこかに一致する引用符付きの部分文字列。`?"a" ?"b"` は OR）で、Logs Insights のクエリではありません。
+`detections` はマップで、各キーが 1 つのメトリクスフィルターと 1 つのアラームに対応します。既定では 4 つのレシピを同梱します。呼び出し側はレシピを上書きしたり、減らしたり、テンプレートの `custom` タイプのためにキーを追加したりできます。パターンは [CloudWatch Logs のフィルターパターン](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)の文字列（イベントのどこかに一致する引用符付きの部分文字列。`?"a" ?"b"` は OR）で、Logs Insights のクエリではありません。
 
 | キー | テンプレートの `DetectionType` との対応 | フィルターパターン | 閾値 / N / M |
 |---|---|---|---|
@@ -36,7 +35,6 @@
 | `failed-access` | `failed-access-attempts` | `"Error: not authorized"` | 10 / 3 / 3（変更なし。2026-10-12 に既定の期間で実行。下を参照） |
 | `bulk-delete` | `bulk-delete-operations` | `%DELETE.*::\sSuccess\|DELETE.*::\sError\|delete.*::\sSuccess\|delete.*::\sError\|remove.*::\sSuccess\|remove.*::\sError%` | 50 / 3 / 2（変更なし。2026-10-12 に既定の期間で実行。下を参照） |
 | `privileged-operations` | `specific-user-activity` | `"fsxadmin:fsxadmin" -"Pending"`（監視する `<user>:<role>` に置き換える） | 0 / 3 / 1 |
-| `unauthorized-access` | `sensitive-file-access` | `"/vol/data/confidential"`（パスに置き換える。2026-10-12 にファイルアクセスの記録は届かなかった。[検証状況](#検証状況)を参照） | 0 / 3 / 1 |
 
 監査される ONTAP の変更の操作は、1 回ごとに 2 行を書きます。`:: Pending` で終わる行と、結果（`:: Success:` か `:: Error: ...`）で終わる行です。`failed-access`・`privileged-operations`・`bulk-delete` の既定値は結果の行にだけ一致するので、閾値は操作の回数を数えます。これらは 2026-10-09 の実行の後に、`?"Failure" ?"denied" ?"DENIED"`、`"admin"`、`?"DELETE" ?"delete" ?"remove"` を置き換えたものです（[検証状況](#検証状況)）。閾値と N/M の値はパターンと一緒には変えていません。2026-10-09 の実行では、期間 60 秒、1 のうち 1 を使いました。2026-10-12 の実行では、`failed-access`・`bulk-delete`・`privileged-operations`・`autosize-fail` について、表の既定値と期間 300 秒を使いました（[検証状況](#検証状況)）。以前の `bulk-delete` のパターンは削除 1 回ごとに両方の行を数えていたため、閾値 50 には REST の削除約 25 回で達していました。新しいパターンでは、同じ 50 が完了した削除 50 回を意味します。`failed-access` が数えるのは、そのコマンドの権限がないとして ONTAP が拒否した要求で、ログインの失敗ではありません。フィルターパターンの OR の語は除外と組み合わせられないため、`bulk-delete` は正規表現のパターンです。CloudWatch Logs では、正規表現のパターンを持つメトリクスフィルターとサブスクリプションフィルターは、ロググループごとに 5 本までです（[フィルターパターンの構文](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html)）。`"delete"` と `"remove"` は部分文字列なので、その語を含む完了したコマンドはどれも数えられます。
 
@@ -44,11 +42,11 @@
 
 ## モジュールの取得方法
 
-このモジュールは `terraform-fsxn-log-alarm-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-log-alarm-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-log-alarm-v0.1.0) として公開しています。タグは版を固定するもので、検証を主張するものではありません。実環境での検証は、[検証状況](#検証状況)に記した 2026-10-09 と 2026-10-12 の記録の範囲に限られたままです。タグには、2026-10-09 の実行の後に置き換えた既定のパターンが入っており、2026-10-12 の実行はこのタグを適用しました。5 つの検知のうち 4 つが既定値で OK から ALARM に遷移して OK に戻り、`unauthorized-access` は発報せず（その環境での検証済みの否定結果）、デプロイ用の IAM ポリシーは `unverified` です。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。コードブロック内のコメントは英語のままで、上から順に「タグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
+このモジュールは `terraform-fsxn-log-alarm-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-log-alarm-v0.1.1` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-log-alarm-v0.1.1) として公開しています。タグは版を固定するもので、検証を主張するものではありません。実環境での検証は、[検証状況](#検証状況)に記した 2026-10-09 と 2026-10-12 の記録の範囲に限られたままで、2026-10-12 の実行が適用したのは `terraform-fsxn-log-alarm-v0.1.0` です。タグには、2026-10-09 の実行の後に置き換えた既定のパターンが入っており、デプロイ用の IAM ポリシーは `unverified` です。モジュールは大きなリポジトリのサブディレクトリなので、Terraform Registry には登録されていません。このモジュールについてはダウンロード量を測っていません。同じリポジトリでの実測は [ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) にあります。コードブロック内のコメントは英語のままで、上から順に「タグに固定した git ソース（浅い clone）」「コミットに固定した git ソース」「コミットに固定したアーカイブ URL（git 不要）」という意味です。
 
 ```hcl
 # Git source pinned to a tag (shallow clone)
-source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1"
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.1&depth=1"
 
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=<commit-sha>"
@@ -63,13 +61,13 @@ source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integration
 git init fsx-ontap-log-alarm && cd fsx-ontap-log-alarm
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-log-alarm
-git fetch --depth 1 --filter=blob:none origin terraform-fsxn-log-alarm-v0.1.0
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-log-alarm-v0.1.1
 git checkout FETCH_HEAD
 ```
 
 > **取得手順に関する補足**
 >
-> タグを作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。sparse checkout の手順はタグを指定して実行していませんが、タグに固定した git ソース（`?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1`）は、2026-10-12 のルートモジュールの apply で `terraform init` が取得しました（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#環境とデプロイした構成2026-10-12-の実行)）。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
+> `terraform-fsxn-log-alarm-v0.1.0` を作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。sparse checkout の手順はタグを指定して実行していませんが、`terraform-fsxn-log-alarm-v0.1.0` に固定した git ソース（`?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1`）は、2026-10-12 のルートモジュールの apply で `terraform init` が取得しました（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#環境とデプロイした構成2026-10-12-の実行)）。`terraform-fsxn-log-alarm-v0.1.1` のタグはこの変更のマージ後に作成します。この手順はそのタグでは実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
 
 ## 使い方
 
@@ -111,12 +109,12 @@ terraform apply
 
 ```hcl
 module "fsx_ontap_log_alarm" {
-  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1"
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-log-alarm?ref=terraform-fsxn-log-alarm-v0.1.1&depth=1"
 
   log_group_name     = "/syslog/fsxn-admin-audit"
   notification_email = "ops@example.com"
 
-  # Omit detections to use the five shipped recipes, or override and extend:
+  # Omit detections to use the four shipped recipes, or override and extend:
   detections = {
     autosize-fail = { pattern = "\"wafl.vol.autoSize.fail\"" }
     my-custom     = { pattern = "\"ERROR\"", threshold = 0 }
@@ -135,7 +133,7 @@ aws logs describe-metric-filters --log-group-name /syslog/fsxn-admin-audit \
   --query 'metricFilters[].{Name:filterName,Pattern:filterPattern}' --output table
 ```
 
-アラームは、評価期間に必要なデータポイントがそろうまで INSUFFICIENT_DATA のままです。`treat_missing_data = "notBreaching"` により、一致のないウィンドウは not breaching として数えます。2026-10-09 の実行では、期間 60 秒で、すべてのアラームが `apply` から約 2 分以内に INSUFFICIENT_DATA を抜けました。2026-10-12 の実行（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）では、既定の期間 300 秒で、5 つのアラームが 07:35:09 から 07:36:20（UTC）の間に INSUFFICIENT_DATA を抜けました。最初のアラームが作られた 07:34:35 から約 2 分後です。ログの行がまったく届かないウィンドウにはデータポイントがありません。`default_value` が出るのは、届いて一致しなかった行に対してだけだからです。`notification_email` を指定した場合、メールのサブスクリプションは受信者が承認するまで保留のままです。
+アラームは、評価期間に必要なデータポイントがそろうまで INSUFFICIENT_DATA のままです。`treat_missing_data = "notBreaching"` により、一致のないウィンドウは not breaching として数えます。2026-10-09 の実行では、期間 60 秒で、すべてのアラームが `apply` から約 2 分以内に INSUFFICIENT_DATA を抜けました。2026-10-12 の実行（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）では、既定の期間 300 秒で、モジュールのアラーム（`v0.1.0`）が 07:35:09 から 07:36:20（UTC）の間に INSUFFICIENT_DATA を抜けました。最初のアラームが作られた 07:34:35 から約 2 分後です。ログの行がまったく届かないウィンドウにはデータポイントがありません。`default_value` が出るのは、届いて一致しなかった行に対してだけだからです。`notification_email` を指定した場合、メールのサブスクリプションは受信者が承認するまで保留のままです。
 
 ### 削除手順
 
@@ -157,7 +155,7 @@ aws cloudwatch describe-alarms --alarm-name-prefix fsxn-log-alarm \
 | `notification_email` | string | `""` | 設定し `alarm_sns_topic_arn` が空のとき、モジュールがトピックを作り登録する |
 | `alarm_sns_topic_arn` | string | `""` | 既存の呼び出し側所有のトピック（テンプレートの `AlarmSnsTopicArn`）。設定するとトピックを作らない |
 | `sns_kms_master_key_id` | string | `""` | モジュールが作るトピックの KMS キー。空なら暗号化しない |
-| `detections` | map(object) | 5 つのレシピ | キーごとに 1 本のフィルターと 1 本のアラーム。[検知のレシピ](#検知のレシピ)を参照 |
+| `detections` | map(object) | 4 つのレシピ | キーごとに 1 本のフィルターと 1 本のアラーム。[検知のレシピ](#検知のレシピ)を参照 |
 | `tags` | map(string) | `{}` | アラームと SNS トピック。メトリクスフィルターはタグを取らない |
 
 各 `detections` の値はオブジェクトです。`pattern`（必須）、`threshold`（0）、`comparison_operator`（`GreaterThanThreshold`）、`evaluation_periods`（1）、`datapoints_to_alarm`（1）、`period_seconds`（300）、`metric_value`（`"1"`）、`alarm_description`（`""`。空なら生成）。`period_seconds` は 60、300、600、900、1800、3600 のいずれか（テンプレートの `EvaluationFrequencyMinutes` の集合を秒にしたもの）です。`evaluation_periods`（N）と `datapoints_to_alarm`（M）はそれぞれ 1 から 100 の整数で（API の最小値は 1、テンプレートは両方を 100 で上限）、M は N 以下です。`name_prefix-detectionkey` を連結した名前は、CloudWatch のアラーム名とメトリクス名の上限である 255 文字以内に収める必要があります。

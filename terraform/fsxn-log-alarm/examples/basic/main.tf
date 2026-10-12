@@ -19,10 +19,10 @@ module "fsx_ontap_log_alarm" {
   alarm_sns_topic_arn   = var.alarm_sns_topic_arn
   sns_kms_master_key_id = var.sns_kms_master_key_id
 
-  # `detections` is not set here, so the module's five shipped recipes apply
-  # (autosize-fail, failed-access, bulk-delete, privileged-operations,
-  # unauthorized-access). To override or extend them, including the template's
-  # `custom` type as an extra key, add a `detections = { ... }` argument.
+  # `detections` is not set here, so the module's four shipped recipes apply
+  # (autosize-fail, failed-access, bulk-delete, privileged-operations). To
+  # override or extend them, including the template's `custom` type as an extra
+  # key, add a `detections = { ... }` argument.
 
   tags = var.tags
 }

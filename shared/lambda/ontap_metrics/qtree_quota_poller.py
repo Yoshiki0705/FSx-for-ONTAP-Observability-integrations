@@ -54,13 +54,9 @@ def _build_http() -> urllib3.PoolManager:
     if ca_cert_path:
         return urllib3.PoolManager(cert_reqs="CERT_REQUIRED", ca_certs=ca_cert_path)
     logger.warning(
-        "TLS certificate verification DISABLED (cert_reqs=CERT_NONE). "
-        "Acceptable for a PoC only. For production, set the CaCertPath "
-        "(and CaCertLayerArn) stack parameters to the FSx for ONTAP CA "
-        "certificate. Retrieve it via: security certificate show -type "
-        "root-ca -vserver <svm> (ONTAP CLI), or in the AWS Management "
-        "Console open the FSx for ONTAP file system, then "
-        "Administration > Certificate."
+        "TLS server certificate is not verified (cert_reqs=CERT_NONE) "
+        "because CA_CERT_PATH is empty. Set CA_CERT_PATH (CaCertPath) "
+        "together with a CA bundle layer (CaCertLayerArn) to verify it."
     )
     return urllib3.PoolManager(cert_reqs="CERT_NONE")
 

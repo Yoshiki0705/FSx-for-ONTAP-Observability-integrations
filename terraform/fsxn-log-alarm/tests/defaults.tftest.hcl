@@ -17,13 +17,21 @@ run "defaults" {
   command = plan
 
   assert {
-    condition     = length(aws_cloudwatch_log_metric_filter.this) == 5
-    error_message = "Expected one metric filter per shipped detection (5)."
+    condition     = length(aws_cloudwatch_log_metric_filter.this) == 4
+    error_message = "Expected one metric filter per shipped detection (4)."
   }
 
   assert {
-    condition     = length(aws_cloudwatch_metric_alarm.this) == 5
-    error_message = "Expected one metric alarm per shipped detection (5)."
+    condition     = length(aws_cloudwatch_metric_alarm.this) == 4
+    error_message = "Expected one metric alarm per shipped detection (4)."
+  }
+
+  assert {
+    condition = (
+      toset(keys(aws_cloudwatch_log_metric_filter.this)) == toset(["autosize-fail", "failed-access", "bulk-delete", "privileged-operations"]) &&
+      toset(keys(aws_cloudwatch_metric_alarm.this)) == toset(["autosize-fail", "failed-access", "bulk-delete", "privileged-operations"])
+    )
+    error_message = "The shipped detections must be exactly autosize-fail, failed-access, bulk-delete and privileged-operations."
   }
 
   assert {

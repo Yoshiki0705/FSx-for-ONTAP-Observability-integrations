@@ -180,7 +180,7 @@ variable "snapmirror_max_relationships" {
 }
 
 variable "ca_cert_path" {
-  description = "Path of the ONTAP CA certificate inside ca_cert_layer_arn, for example /opt/certs/ontap-ca.pem. Empty disables TLS verification (CERT_NONE, with a warning in the log), which is acceptable for a PoC only."
+  description = "Optional. Path of the CA certificate bundle inside ca_cert_layer_arn, for example /opt/certs/ontap-ca.pem. Set together with ca_cert_layer_arn, or leave both empty. When set, the poller verifies the management endpoint's server certificate against the bundle. When empty (the default), it does not verify the server certificate and logs a warning that names CA_CERT_PATH. Verification against the certificate issued for the file system does not currently succeed, because the poller connects by IP address (see Issue #166)."
   type        = string
   default     = ""
   validation {
@@ -190,7 +190,7 @@ variable "ca_cert_path" {
 }
 
 variable "ca_cert_layer_arn" {
-  description = "ARN (with version) of a Lambda layer that contains the CA certificate at ca_cert_path."
+  description = "Optional. ARN (with version) of a Lambda layer that contains the CA certificate bundle at ca_cert_path. Set together with ca_cert_path, or leave both empty."
   type        = string
   default     = ""
   validation {
