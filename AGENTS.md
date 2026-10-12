@@ -12,16 +12,15 @@ Serverless observability integrations shipping Amazon FSx for NetApp ONTAP audit
 # Install dependencies
 npm install
 
-# TypeScript typecheck. The repository tracks no .ts files today, so this
-# exits 2 with TS18003 ("No inputs were found"). That is the current expected
-# result, not a failure to report or fix -- and not a reason to start treating
-# a nonzero exit as noise. CI does not run this; it runs `npm run lint` only
-# when a .ts file exists (see the TypeScript lint step in ci.yaml).
+# TypeScript typecheck. No .ts files are tracked today, so this exits 2 with
+# TS18003 ("No inputs were found"): the expected result, not a failure to fix
+# and not a reason to treat nonzero exits as noise. CI does not run it; it runs
+# `npm run lint` only when a .ts file exists (see ci.yaml).
 npx tsc --noEmit
 
 # Lint. Exits 0 with nothing to lint while there are no .ts files. eslint.config.js
-# is present and verified to fail on an unused variable and unreachable code, so
-# this becomes a real gate the moment a .ts file is added.
+# is verified to fail on an unused variable and unreachable code, so this becomes
+# a real gate once a .ts file is added.
 npm run lint
 
 # Run all TypeScript tests. `jest --passWithNoTests`, so it exits 0 reporting
@@ -31,13 +30,13 @@ npm test
 # Install pinned dev + gate tooling (ruff, bandit, cfn-lint, pytest)
 make install
 
-# Run ALL Python tests. Do not hand-write the directory list here again:
-# this block used to enumerate 10 directories while 16 existed, and the two
-# it omitted (scripts/verification/tests, 172 tests, and
-# shared/lambda-layers/log-parser/tests, 12 tests) therefore ran nowhere.
-# The list lives in the Makefile as PYTEST_DIRS, CI calls this same target,
-# and scripts/tests/test_test_dir_coverage.py fails if a tests/ directory on
-# disk is missing from it.
+# Run ALL Python tests. Do not hand-write the directory list here again: it
+# once named 10 of 16 directories, so 184 tests ran nowhere. The list is
+# PYTEST_DIRS in the Makefile, CI calls this target, and
+# scripts/tests/test_test_dir_coverage.py fails if a tests/ directory is
+# missing from it.
+# In a git worktree there is no .venv, so pytest runs on the system python and
+# fails on `hypothesis`: use make test-py VENV=<main clone>/.venv
 make test-py
 
 # See which directories that covers
@@ -215,7 +214,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 ## Non-Obvious Patterns
 
-S3 Access Point network constraints, AD-joined SVM data-operation requirements, unsupported S3 features, audit log formats, credential caching, bilingual sync: [docs/agent/non-obvious-patterns.md](docs/agent/non-obvious-patterns.md)
+S3 Access Point network constraints, AD-joined SVM data-operation requirements, unsupported S3 features, audit log formats, credential caching, bilingual sync, screenshot masking: [docs/agent/non-obvious-patterns.md](docs/agent/non-obvious-patterns.md)
 
 ## Vendor API Reference (Quick Lookup)
 
@@ -357,7 +356,7 @@ When alarms fire, reference these runbooks:
 - Use `requests` library in Lambda (not in runtime, use `urllib3`)
 - Store secrets in Lambda environment variables (use Secrets Manager ARN only)
 - Commit real AWS account IDs, resource IDs, or IP addresses (use placeholders)
-- Commit screenshots without running `mask_screenshots.py`
+- Commit unmasked screenshots (method: docs/agent/non-obvious-patterns.md)
 
 ## Security & Privacy (Public Repository)
 
@@ -399,8 +398,8 @@ git ls-files docs/blog/ | wc -l  # Should be 0
 # 6. Check bilingual sync
 bash shared/scripts/check-bilingual-sync.sh
 
-# 7. Mask screenshots before committing
-python3 docs/screenshots/mask_screenshots.py
+# 7. Mask screenshots (new images: docs/agent/non-obvious-patterns.md)
+python3 docs/screenshots/mask_screenshots.py  # registered images only
 ```
 
 ### .gitignore Protected Paths
@@ -463,7 +462,7 @@ All scripts use environment variables with sensible defaults:
 - `shared/fpolicy-server/build-and-push.sh` — ECR image build (multi-platform manifest: amd64 for Fargate, arm64 for EC2 mode)
 - `shared/scripts/deploy-log-alarm.sh` — Deploy CloudWatch Log Alarm (env-var driven; CLI has no `put-log-alarm` yet, use CFN)
 - `shared/scripts/cleanup-log-alarm.sh` — Delete Log Alarm stacks (`--all`, `--delete-sns`, `-y`)
-- `docs/screenshots/mask_screenshots.py` — Screenshot masking (PII removal)
+- `docs/screenshots/mask_screenshots.py` — Fixed-region masks for registered screenshots
 - `shared/scripts/automated-response-cli.sh` — CLI helper for automated response (block/unblock/contain/test)
 
 ### Documentation (key docs for understanding the project)
