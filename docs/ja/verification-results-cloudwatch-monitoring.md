@@ -1591,7 +1591,7 @@ module "fsx_ontap_custom_metrics" {
 
 ### 確認項目の結果（2026-10-12 の実行）
 
-各行は、2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps で観測しました。時刻は UTC です。
+`verified` の各行は、2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps で観測しました。H5（`hypothesis`）は観測していません。時刻は UTC です。
 
 | # | 確認項目 | 確信度 | 結果 | 時刻（UTC） |
 |---|----------|--------|------|-------------|

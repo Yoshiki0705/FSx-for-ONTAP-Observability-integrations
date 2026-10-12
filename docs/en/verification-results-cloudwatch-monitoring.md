@@ -1591,7 +1591,7 @@ module "fsx_ontap_custom_metrics" {
 
 ### Check Results (2026-10-12 Run)
 
-Each row was observed on 2026-10-12, ap-northeast-1, ONTAP 9.19.1P3, first-generation SINGLE_AZ_1 with one HA pair, 128 MBps; times are UTC.
+Each `verified` row was observed on 2026-10-12, ap-northeast-1, ONTAP 9.19.1P3, first-generation SINGLE_AZ_1 with one HA pair, 128 MBps; row H5 (`hypothesis`) was not observed. Times are UTC.
 
 | # | Check | Tier | Result | Time (UTC) |
 |---|-------|------|--------|------------|
