@@ -4,7 +4,7 @@
 
 ## 実施概要
 
-このページは 8 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。2026-10-08 には、Terraform のカスタムメトリクスモジュール（フェーズ T2、Qtree と SnapMirror）を適用し、1 つの SVM の中の関係で SnapMirror のアラームを動かしました: [2026-10-08 の Terraform カスタムメトリクスモジュールの実行](#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。2026-10-09 には、Terraform のログアラームモジュール（フェーズ T3）を syslog VPC エンドポイント経路のロググループに適用し、実際の ONTAP の監査ログの行でアラームを動かしました。記録は [2026-10-09 の Terraform ログアラームモジュールの実行](#2026-10-09-の-terraform-ログアラームモジュールの実行)にあります。同じ 2026-10-09 の後刻に、Terraform の SSD 自動拡張モジュール（フェーズ T4）を `notify_only`・`approve`・`auto` で適用しました。`auto` は明示的な IAM の拒否の後ろで動かしたので、ストレージ容量は変わっていません。記録は [2026-10-09 の Terraform SSD 自動拡張モジュールの実行](#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)にあります。2026-10-11 には、Qtree クォータ監視のテンプレートを、読み取り専用の ONTAP アカウント（ロール `fsxadmin-readonly`）で実行しました。テンプレートの現行リビジョンの初回の実機実行で、記録は [2026-10-11 の読み取り専用 ONTAP アカウントによる Qtree クォータ監視の実行](#2026-10-11-の読み取り専用-ontap-アカウントによる-qtree-クォータ監視の実行)にあります。この節は、日付順ではなく、他の Qtree クォータ監視の実行と並べて、2026-10-06 の再実行の後に置いています。
+このページは 9 回の実行を記録しています。先にダッシュボードテンプレートと Terraform モジュールの 2026-10-05 の実行を記載します。Qtree クォータ監視の 2026-10-06 の最初の実行は、1 回のポーリングに成功した後に停止しており、経緯として [2026-10-06 の Qtree クォータ監視の実行](#2026-10-06-の-qtree-クォータ監視の実行)に残しています。同じ日の後刻の再実行は 4 回のポーリングを完了し、`QtreeQuotaAlarm` を OK から ALARM へ遷移させて OK に戻しました: [2026-10-06 の Qtree クォータ監視の再実行](#2026-10-06-の-qtree-クォータ監視の再実行)。2026-10-06 の夜に始めた実行では、テスト用ボリュームに実データを書き込み、テンプレートとモジュールの両方のファイルシステム容量アラームを OK から ALARM へ遷移させて OK に戻しました。これで F1 が残した ALARM 経路の空白が埋まります: [2026-10-06 の容量アラームの実データによる実行](#2026-10-06-の容量アラームの実データによる実行)。2026-10-07 に、ダッシュボードの表示を修正した後のモジュールをデプロイして撮影したダッシュボードとアラーム一覧の画面は、[2026-10-07 のダッシュボードとアラームの画面](#2026-10-07-のダッシュボードとアラームの画面)にあります。2026-10-08 には、Terraform のカスタムメトリクスモジュール（フェーズ T2、Qtree と SnapMirror）を適用し、1 つの SVM の中の関係で SnapMirror のアラームを動かしました: [2026-10-08 の Terraform カスタムメトリクスモジュールの実行](#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。2026-10-09 には、Terraform のログアラームモジュール（フェーズ T3）を syslog VPC エンドポイント経路のロググループに適用し、実際の ONTAP の監査ログの行でアラームを動かしました。記録は [2026-10-09 の Terraform ログアラームモジュールの実行](#2026-10-09-の-terraform-ログアラームモジュールの実行)にあります。同じ 2026-10-09 の後刻に、Terraform の SSD 自動拡張モジュール（フェーズ T4）を `notify_only`・`approve`・`auto` で適用しました。`auto` は明示的な IAM の拒否の後ろで動かしたので、ストレージ容量は変わっていません。記録は [2026-10-09 の Terraform SSD 自動拡張モジュールの実行](#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)にあります。2026-10-11 には、Qtree クォータ監視のテンプレートを、読み取り専用の ONTAP アカウント（ロール `fsxadmin-readonly`）で実行しました。テンプレートの現行リビジョンの初回の実機実行で、記録は [2026-10-11 の読み取り専用 ONTAP アカウントによる Qtree クォータ監視の実行](#2026-10-11-の読み取り専用-ontap-アカウントによる-qtree-クォータ監視の実行)にあります。この節は、日付順ではなく、他の Qtree クォータ監視の実行と並べて、2026-10-06 の再実行の後に置いています。2026-10-12 には、Terraform モジュールの T1〜T3 をタグから 1 つのルートモジュールにまとめて使い捨てのファイルシステムに適用し、T3 の検知を既定の期間で動かし、EMS とファイルアクセスの経路および T2 の CA 検証付き TLS の設定を試し、T4 で実際に SSD を 1 回拡張しました: [2026-10-12 の Terraform 監視モジュールの実環境での実行](#2026-10-12-の-terraform-監視モジュールの実環境での実行)。この節は日付順で最後にあり、SNS の節の後に置いています。
 
 2026-10-05（UTC）に、CloudFormation のダッシュボードテンプレート `shared/templates/fsxn-monitoring-dashboard.yaml` と Terraform モジュール `terraform/fsxn-monitoring-dashboard/` を、実在する Amazon FSx for NetApp ONTAP ファイルシステム 1 つに対してデプロイしました。対象は第 1 世代、`SINGLE_AZ_1`、HA ペア 1 つです。ダッシュボードのすべての系列がデータを返し、すべてのアラームが INSUFFICIENT_DATA を抜けて OK に達しました。Terraform のボリューム単位のアラーム 2 つは、ALARM に遷移させてから OK に戻すところまで確認しました。ファイルシステムの容量アラーム（CloudFormation と Terraform）は ALARM に遷移させられませんでした。閾値の下限（50%）が、観測した利用率（約 3.5%）を上回るためです（[F1](#所見) を参照）。この実行では、テンプレートとモジュールに欠陥は見つかっていません。2026-10-07 に見つかったダッシュボードの表示の欠陥は、[所見](#所見) の補足に記載しています。
 
@@ -1048,6 +1048,8 @@ tags                             = { Purpose = "t2-live-verification" }
 | 予約済み同時実行数 1 の下でのスロットリング | 未観測 | Throttles は 0 |
 | recovery queue のエントリ 2 つが期限切れになったときの解放 | 未観測 | エントリは残したまま |
 
+> **後の実行に関する補足**: [2026-10-12 の実行](#2026-10-12-の-terraform-監視モジュールの実環境での実行)は、別のファイルシステム（ONTAP 9.19.1P3、第 1 世代 `SINGLE_AZ_1`、HA ペア 1 つ、使い捨て）で、上の表の 2 行を閉じました。`qtree-quota-high` の ALARM への遷移（85 に対して 90.36、OK → ALARM → OK）と、既定の 5 分のポーリングです（既定の 10800 秒のラグ閾値は実行していません）。1 行は結果が変わりました。CA 証明書による TLS 検証を試したところ、ポーラーが IP アドレスで接続するため、そのファイルシステムに発行された証明書チェーンに対して失敗しました（[TLS の節](#fsx-の証明書チェーンに対する-tls-検証2026-10-12-の実行)）。この試行の間、`CollectorSucceeded` は 1 つの期間で 0 になり、ハートビートのアラームはそれに対して発報しませんでした。ingress ルールの手順は引き続き実行しておらず、T2 のアラームのメールは観測しておらず、F3 の 22 分間の `aws_security_group.lambda` の待ちは再び観測しました（22 分 13 秒。ingress ルールは追加していない）。
+
 ### 判定（T2 の実行）
 
 | 項目 | 値 |
@@ -1301,6 +1303,8 @@ privileged-operations のグラフの 04:47 の 1 は、届いた `t3_qt7` の P
 | 実行前の ONTAP に古い転送先が 2 つあった理由 | 特定していない | 記録したうえで削除した |
 | 第 2 世代のファイルシステムと、HA ペアが 2 つ以上のファイルシステム | 未実施 | 検証対象は第 1 世代で HA ペアは 1 つ |
 
+> **後の実行に関する補足**: [2026-10-12 の実行](#2026-10-12-の-terraform-監視モジュールの実環境での実行)は、別のファイルシステム（ONTAP 9.19.1P3、第 1 世代 `SINGLE_AZ_1`、HA ペア 1 つ、使い捨て）で、これらの行を閉じました。EMS の通知先を通した実際の EMS イベントでの `autosize-fail`（定義は[EMS の節](#ems-通知先の定義2026-10-12-の実行)にあり、届いたヘッダーは、組み立てた行が想定したとおり、角括弧の中にイベント名を持つ）、既定の期間 300 秒と既定の閾値、実際のアラームでの新しい `bulk-delete` の既定値、SNS のメール 3 件です。2 つの記述が変わりました。`unauthorized-access` は陽性対照を置いて実行したが発報しませんでした（検証済みの否定結果で、その環境での自己測定）。F7 については、ONTAP 9.19.1P3 のカタログと届いた行は severity を `notice` としています。共有の syslog テンプレートは現在の内容のまま、F1 の回避策なしでデプロイしました。TLS のポート 6514 は再試行していません。
+
 ### 判定（T3 の実行）
 
 | 項目 | 値 |
@@ -1490,6 +1494,8 @@ module "ssd_auto_increase" {
 | EventBridge のスケジュールのルールによる呼び出しと、アラームの OK への復帰 | 観測していない | [アラームの状態遷移](#アラームの状態遷移t4-の実行)を参照 |
 | `USER_PROVISIONED` の IOPS、`ceiling_exceeds_service_maximum`、`iops_exceeds_maximum` | 単体テストのみ | ファイルシステムの IOPS は `AUTOMATIC` |
 
+> **後の実行に関する補足**: [2026-10-12 の実行](#2026-10-12-の-terraform-監視モジュールの実環境での実行)は、別の使い捨てのファイルシステム（ONTAP 9.19.1P3、第 1 世代 `SINGLE_AZ_1`、HA ペア 1 つ）で、実際の拡張を 1 回行いました。`UpdateFileSystem` の呼び出しはちょうど 1 回で、1,024 → 1,127 GiB に拡張し、`1-decision`、`2-accepted`、`3-capacity_available` をアーカイブしました（[SSD 容量の実際の拡張](#ssd-容量の実際の拡張2026-10-12-の実行)）。その実行の後も未確認のままなのは、`terminal` の状態とリクエスト ID の CloudTrail との照合、クールダウン（`hypothesis`）、レポートのメール、アーカイブの対照の主体 A と B、ラッチが掛かった実行のアーカイブです。
+
 ### 判定（T4 の実行）
 
 | 項目 | 値 |
@@ -1524,6 +1530,342 @@ module "ssd_auto_increase" {
 - 変更なし: 上に記録した各モジュールのメトリクス評価の結果はそのままです。
 - 未証明: メール protocol の描画そのもの（SQS を使った）、SNS の配信ステータスのロギング / SNS の DLQ、実際のメトリクスで駆動する遷移に関する事項（状態は人工的でした）。
 - 確信度の階層: `verified`。範囲は配信経路、強制した状態、1 回の実行、`ap-northeast-1`、2026-10-10 に限定します。
+
+> **後の実行に関する補足**: 上で未証明としたメールの描画は、2026-10-12 に T3 のトピックの通知 3 件で観測しました（[確認項目の結果](#確認項目の結果2026-10-12-の実行)の行 N1）。到着時刻は記録していません。T1・T2・T4 のメールは未確認のままです。
+
+---
+
+## 2026-10-12 の Terraform 監視モジュールの実環境での実行
+
+2026-10-12（UTC）に、Terraform モジュールの T1（`terraform/fsxn-monitoring-dashboard/`）、T2（`terraform/fsxn-ontap-custom-metrics/`）、T3（`terraform/fsxn-log-alarm/`）をリリースタグから 1 つのルートモジュールにまとめて適用し（44 リソース）、T4（`terraform/fsxn-ssd-auto-increase/`）はコミットから適用して、実際に SSD を 1 回拡張しました。4 つとも、使い捨ての FSx for ONTAP ファイルシステム 1 つ（第 1 世代 `SINGLE_AZ_1`、HA ペア 1 つ）に対して実行し、最後にそのファイルシステムを削除しました。これはサンプル実行で、本番の見積りではありません。
+
+T2 は既定の 5 分でポーリングし、`qtree-quota-high` アラームは実際のクォータで OK → ALARM → OK と遷移しました（閾値 85 に対して 90.36）。T3 の検知 `failed-access`、`bulk-delete`、`privileged-operations` は、既定の期間 300 秒と既定の閾値で OK → ALARM → OK と遷移しました。`autosize-fail` は、EMS の通知先を通して届いた実際の `wafl.vol.autoSize.fail` イベントで発報し、T3 のトピックの通知 3 件がメールで届きました。否定の結果が 2 つあり、どちらもこの環境での自己測定です。1 つは `unauthorized-access` で、陽性対照を置いたのに発報しませんでした。ファイルアクセスの監査記録がロググループに届かなかったためです。もう 1 つは、T2 のポーラーが、ファイルシステムに発行された証明書チェーンを検証できなかったことで、ポーラーが IP アドレスで接続するためです。T4 は `UpdateFileSystem` をちょうど 1 回呼び、ファイルシステムを 1,024 GiB から 1,127 GiB に拡張しました。その後、ファイルシステムを削除しました。
+
+| 項目 | 値 |
+|------|-----|
+| 検証日時 | 2026-10-12（UTC）。ファイルシステムの作成 06:37Z、最初の apply 07:34:33Z、最後の評価 09:11:56Z、削除の確認 10:36Z |
+| 検証環境 | 2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。使い捨てのファイルシステム 1 つ（削除済み）でのサンプル実行で、本番の見積りではない。時刻はすべて UTC |
+| 範囲 | タグからの T1〜T3 のルートモジュールの適用、T2 のポーリング・クォータアラーム・CA 検証付き TLS、既定の期間 300 秒での T3、EMS の配送と `autosize-fail`、SNS のメール、ファイルアクセスの監査、T4 の実際の拡張、後片付け |
+| 結果 | 確認項目 23 件中 17 件が合格。2 件が想定と違う形で合格（R3、E2）。期待値が成り立たなかったものが 2 件で、どちらも検証済みの否定結果（`unauthorized-access` の U1 と、CA 検証付き TLS の P5）。未実施が 1 件（H5、`hypothesis`）。2 つの項目を意図して残して後片付けを終えたものが 1 件（M1） |
+
+この節の確信度の語は次のとおりです。`verified` はこの実行で観測したこと、`documented` はベンダーのドキュメントにあり、ここでは観測していないこと、`hypothesis` は設計や単体テストから期待できるが観測していないこと、`open` は試していない、または示していないことを指します。
+
+これらの結果が示さないのは、第 2 世代や HA ペアが 2 つ以上のファイルシステム、SVM 間やファイルシステム間の SnapMirror、この実行での SnapMirror のアラーム（関係が存在しなかった）、T2〜T4 の最小権限の IAM ポリシー、T1・T2・T4 のメール、T4 のクールダウン、DNS 名による TLS 検証です。
+
+### 環境とデプロイした構成（2026-10-12 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| AWS リージョン | `ap-northeast-1` |
+| ファイルシステム | `fs-0123456789abcdef0`（プレースホルダー）、`SINGLE_AZ_1`（第 1 世代）、HA ペア 1 つ、128 MBps、SSD は作成時 1,024 GiB で T4 の手順の後は 1,127 GiB、ONTAP 9.19.1P3。SVM は `<svm-name>`（プレースホルダー）1 つで、この実行のために作成 |
+| モジュール | T1 `terraform-fsxn-monitoring-dashboard-v0.1.1`、T2 `terraform-fsxn-ontap-custom-metrics-v0.1.0`、T3 `terraform-fsxn-log-alarm-v0.1.0`。いずれも `github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/<module>?ref=<tag>&depth=1` の形で指定し、T1 には `volume_ids` も渡した。T4 はコミット `fcec6ef` を `?ref=<commit-sha>` で指定し、`depth` は付けていない。T4 のタグが存在しないため（[SSD 容量の実際の拡張](#ssd-容量の実際の拡張2026-10-12-の実行)を参照） |
+| Terraform / プロバイダー | Terraform v1.15.8（state ファイルより）、`hashicorp/aws` 6.67.0、`hashicorp/archive` 2.8.1（ロックファイルより） |
+| T2 のネットワーク | サブネットに NAT ゲートウェイが無いため、T2 の呼び出しは[ガイドの例](terraform-monitoring-guide.md#最小のルートモジュールの例)と異なる。`create_monitoring_endpoint = true`、`create_secretsmanager_endpoint = false`（Secrets Manager のエンドポイントがすでにあった）、`aws_api_egress_cidr_blocks` は VPC の CIDR。README の手順「ファイルシステムのセキュリティグループに inbound ルールを追加する」は実行していない。デフォルトのセキュリティグループが、VPC の CIDR からの TCP 443 をすでに許可していたため（`open`） |
+| syslog の経路 | 現在の `shared/templates/syslog-vpce-cloudwatch.yaml` を変更せずに使用。interface エンドポイント 1 つ、ログの保持 1 日。ONTAP の監査ログの転送先はポート 1514、`tcp_unencrypted`、facility `local7` で、`?force=true` を付けて作成（R3） |
+| ONTAP の読み取り専用ユーザー | ロール `fsxadmin-readonly`、アプリケーション `http`、パスワード認証。T2 が使い、拒否される要求（HTTP 403）の送信にも使った |
+| テスト用のオブジェクト | Qtree を 1 つ持つ 20 GiB のテスト用ボリューム（Qtree には 100 MiB のハードリミットのツリークォータ）、SVM の監査ログ用のボリューム、NFS のデータ用ボリューム、autosize の増加上限 120 MiB の 100 MiB のボリューム |
+| 通知 | 3 つのモジュールすべてに `notification_email` を指定。SNS トピック 3 つと確認メール 3 通 |
+| デプロイした主体 | AWS IAM Identity Center のセッション。この実行では権限の範囲を記録していない |
+| 画面 | 日本語コンソールの画像 8 枚。撮影前にページ内のテキストを置き換えてマスクし、その後 OCR と目視で確認した。`docs/screenshots/mask_screenshots.py` は実行していない |
+
+適用した T2 の呼び出しは次のとおりです。T1 と T3 の呼び出しはガイドの例のとおりです。
+
+```hcl
+module "fsx_ontap_custom_metrics" {
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ontap-custom-metrics?ref=terraform-fsxn-ontap-custom-metrics-v0.1.0&depth=1"
+
+  file_system_id               = "fs-0123456789abcdef0"
+  ontap_management_ip          = "198.51.100.10"
+  ontap_credentials_secret_arn = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:ontap-monitor-XXXXXX"
+  vpc_id                       = "vpc-0123456789abcdef0"
+  subnet_ids                   = ["subnet-0123456789abcdef0"]
+  qtree_svm_name               = "<svm-name>"
+  notification_email           = "ops@example.com"
+
+  # Deviation for a subnet without NAT
+  create_monitoring_endpoint     = true
+  create_secretsmanager_endpoint = false # an endpoint already existed
+  aws_api_egress_cidr_blocks     = ["198.51.100.0/24"] # the VPC CIDR
+}
+```
+
+### 確認項目の結果（2026-10-12 の実行）
+
+各行は、2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps で観測しました。時刻は UTC です。
+
+| # | 確認項目 | 確信度 | 結果 | 時刻（UTC） |
+|---|----------|--------|------|-------------|
+| R1 | タグ指定の T1 v0.1.1、T2 v0.1.0、T3 v0.1.0 のルートモジュールの apply | `verified` | ✅ 合格。44 件追加、exit 0。T2 のネットワークの変更点は 3 つ | 2026-10-12 07:34:33 → 07:37:21 |
+| R2 | 現在の `shared/templates/syslog-vpce-cloudwatch.yaml` による syslog スタック。回避策なし | `verified` | ✅ 合格。スタックは同梱のままで作成できた。2026-10-09 の `GroupDescription` の欠陥（T3 の実行の F1）は起きず、テンプレートはいま `>-` を使っている | 2026-10-12、07:34:33 より前 |
+| R3 | ポート 1514・`tcp_unencrypted` の ONTAP の監査ログの転送先 | `verified` | ⚠️ `?force=true` を付けて合格。付けないと ONTAP は HTTP 400、コード 9240603、"Cannot contact destination host" を返したが、テスト用の踏み台ホストはエンドポイントの TCP 1514 と 6514 を開けた（踏み台ホストは ONTAP のノードではないため、ノードから届くかどうかは示さない）。最初の監査ログの行は届いた（F5） | 2026-10-12、07:34:33 より前 |
+| R4 | アラームが INSUFFICIENT_DATA を抜ける | `verified` | ✅ 合格。T1 と T3 のアラームは 07:35:09 から 07:36:20 の間、T2 のアラームは 07:34:55 から 07:40:26 の間に抜けた。`snapmirror-lag-high` は INSUFFICIENT_DATA のままだった。関係が存在せず、ラグのデータが発行されなかったため（F8） | 2026-10-12 07:34:55 → 07:40:26 |
+| P1 | T2 のハートビートのアラーム | `verified` | ✅ 合格。`qtree-heartbeat` は 07:36:10 に ALARM、07:40:10 に OK。`snapmirror-heartbeat` は 07:34:55 に ALARM、07:40:55 に OK | 2026-10-12 07:34:55 → 07:40:55 |
+| P2 | T2 の既定の 5 分のポーリング | `verified` | ✅ 合格。ポーリングの開始は 07:39:44、07:44:44、07:49:43 で、間隔は 299–300 秒 | 2026-10-12 07:39:44 → 07:49:43 |
+| P3 | 実際のクォータでの T2 の `qtree-quota-high` | `verified` | ✅ 合格。ハードリミット 100 MiB に NFS で 90 MiB を書き込み、`QtreeQuotaUsedPercentMax` は 85 に対して 90.36、10 分以内に 2 データポイント。OK → ALARM となり、ファイルを削除した後に ALARM → OK | 2026-10-12 08:00:02、08:05:02 |
+| P4 | 関係が無い状態での T2 の SnapMirror コレクター | `verified` | ✅ 合格。コレクターは毎回のポーリングで動き、`0 relationship(s)` とログに出した。`snapmirror-unhealthy` と `snapmirror-lag-high` は動かしていない（F8） | 2026-10-12 07:39:44 から |
+| P5 | ファイルシステムに発行された証明書チェーンに対する T2 の CA 検証付き TLS | `verified` | ❌ 期待値は成り立たなかった（検証済みの否定結果で、この環境での自己測定）。ポーリングは "IP address mismatch" で失敗した（F1） | 2026-10-12 08:41:12 → 08:49:44 |
+| T1 | 既定値での T3 の `failed-access`（閾値 10、3 期間中 3 期間） | `verified` | ✅ 合格。OK → ALARM → OK。期間ごとの合計は 31 / 14 / 14 | 2026-10-12 07:52:09、07:56:09 |
+| T2 | 既定値での T3 の `bulk-delete`（閾値 50、3 期間中 2 期間） | `verified` | ✅ 合格。OK → ALARM → OK。期間ごとの合計は 116 / 56 / 56 | 2026-10-12 07:48:11、08:01:11 |
+| T3 | 既定値での T3 の `privileged-operations`（閾値 0、3 期間中 1 期間） | `verified` | ✅ 合格。OK → ALARM → OK が 2 回。期間ごとの合計は 234 / 112 / 112 | 2026-10-12 07:41:20、08:09:20、08:19:20、09:07:20 |
+| T4 | 新しい `bulk-delete` の既定値が、完了した削除 1 回につき 1 行を数える | `verified` | ✅ 合格。削除 56 回で 56 行、ドライランの 6 回で 6 行、`failed-access` のドライランの拒否 3 回で 3 行 | 2026-10-12 07:41:20 → 08:01:11 |
+| E1 | 実際の `wafl.vol.autoSize.fail` イベントでの `autosize-fail` | `verified` | ✅ 合格。イベントは 08:23:58。08:24:40（42 秒後）に OK → ALARM、08:29:40 に ALARM → OK | 2026-10-12 08:23:58、08:24:40、08:29:40 |
+| E2 | EMS の通知先 | `verified` | ⚠️ この種類の通知先の既定値（ポート 514、`udp_unencrypted`）はエンドポイントの TCP のポートと合わないため、定義では TCP 1514 を明示した。既定値は送っていない。明示した定義で届いた | 2026-10-12、08:23:58 より前 |
+| U1 | 陽性対照を置いた T3 の `unauthorized-access` | `verified` | ❌ 期待値は成り立たなかった（検証済みの否定結果で、この環境での自己測定）。SVM の監査ログに 16 件のイベントがあり、ロググループには 0 行。アラームは OK のまま（F2） | 2026-10-12 08:36:30 → 08:39:06 |
+| N1 | SNS のメール 3 件 | `verified` | ✅ 合格。3 通のメールが届き、オペレーターが読んだ。`privileged-operations` の ALARM、`autosize-fail` の ALARM、`autosize-fail` の OK。到着時刻は記録していないため、遅延は主張しない。T1 と T2 のアラームのメールは観測していない | 2026-10-12 08:19:20、08:24:40、08:29:40 |
+| H1 | 実際のアラームの遷移での T4 の `notify_only` | `verified` | ✅ 合格。`{decision: notify_only, target_gib: 1127}`、アーカイブのオブジェクト 1 つ | 2026-10-12 08:55:51 |
+| H2 | T4 の `auto`: 実際の拡張 | `verified` | ✅ 合格。`submitted`。CloudTrail の `UpdateFileSystem` はちょうど 1 回。1,024 → 1,127 GiB。プロビジョンド IOPS は 3,072 → 3,381 | 2026-10-12 08:59:07 → 09:00:51 |
+| H3 | 変更後の T4 の再評価 | `verified` | ✅ 合格。`capacity_available`（状態は `optimizing`）。2 回目の `UpdateFileSystem` は無し | 2026-10-12 09:11:56 |
+| H4 | `auto` の実行の T4 の判断アーカイブ | `verified` | ✅ 合格。オブジェクト 3 つ（`1-decision`、`2-accepted`、`3-capacity_available`）が COMPLIANCE モード | 2026-10-12 08:59:11 → 09:12:00 |
+| H5 | T4 の 6 時間のクールダウンのロック | `hypothesis` | ⏭️ 未観測。2 回目の評価は `cooldown_active` ではなく `capacity_available` で終わった | なし |
+| M1 | 後片付けと再読み取り | `verified` | ⚠️ 2 つの項目を意図して残して完了（[後片付け](#後片付け2026-10-12-の実行)を参照） | 2026-10-12 09:43:59 → 10:36:16 |
+
+### アラームの状態遷移（2026-10-12 の実行）
+
+T3 の検知は、07:41:46 から 4 ラウンドで動かしました。1 ラウンドごとに、読み取り専用ユーザーによる 14 件の要求（すべて HTTP 403 で拒否）と、`fsxadmin` による Qtree の作成 56 回と削除 56 回を送りました。`privileged-operations` が最初に ALARM になったのは 07:41:20 で、最初のラウンドの前のドライランの通信によるものです。最初のアラームの作成は 07:34:35 です。
+
+アラームの履歴より、UTC、すべて 2026-10-12 です。アラーム名 2 つに含まれる `<volume-id>` は、テスト用ボリュームの ID を表します。`fsxn-ontap-metrics-snapmirror-lag-high` には遷移がありませんでした。
+
+| アラーム | 遷移 | 時刻 | 原因 |
+|----------|------|------|------|
+| `fsxn-ontap-metrics-snapmirror-heartbeat` | INSUFFICIENT_DATA → ALARM | 07:34:55 | ハートビートのデータポイントがまだ無い。欠測は閾値超過として扱う |
+| `fsxn-log-alarm-failed-access` | INSUFFICIENT_DATA → OK | 07:35:09 | 初回の評価、一致無し |
+| `fsxn-monitoring-throughput-high` | INSUFFICIENT_DATA → OK | 07:35:19 | 初回の評価 |
+| `fsxn-ontap-metrics-dlq-depth` | INSUFFICIENT_DATA → OK | 07:35:34 | 初回の評価 |
+| `fsxn-log-alarm-autosize-fail` | INSUFFICIENT_DATA → OK | 07:35:40 | 初回の評価、一致無し |
+| `fsxn-log-alarm-unauthorized-access` | INSUFFICIENT_DATA → OK | 07:35:43 | 初回の評価、一致無し。以後の遷移は無し（U1） |
+| `fsxn-monitoring-capacity-high` | INSUFFICIENT_DATA → OK | 07:35:50 | 初回の評価 |
+| `fsxn-monitoring-<volume-id>-inode-high` | INSUFFICIENT_DATA → OK | 07:36:04 | 初回の評価 |
+| `fsxn-ontap-metrics-qtree-heartbeat` | INSUFFICIENT_DATA → ALARM | 07:36:10 | ハートビートのデータポイントがまだ無い。欠測は閾値超過として扱う |
+| `fsxn-monitoring-<volume-id>-capacity-high` | INSUFFICIENT_DATA → OK | 07:36:10 | 初回の評価 |
+| `fsxn-log-alarm-bulk-delete` | INSUFFICIENT_DATA → OK | 07:36:11 | 初回の評価、一致無し |
+| `fsxn-log-alarm-privileged-operations` | INSUFFICIENT_DATA → OK | 07:36:20 | 初回の評価、一致無し |
+| `fsxn-ontap-metrics-lambda-errors` | INSUFFICIENT_DATA → OK | 07:38:18 | 初回の評価 |
+| `fsxn-ontap-metrics-qtree-quota-high` | INSUFFICIENT_DATA → OK | 07:40:02 | 最初のポーリング（07:39:44）の後 |
+| `fsxn-ontap-metrics-qtree-heartbeat` | ALARM → OK | 07:40:10 | 最初のポーリングの後 |
+| `fsxn-ontap-metrics-snapmirror-unhealthy` | INSUFFICIENT_DATA → OK | 07:40:26 | 最初のポーリングの後。関係は無し |
+| `fsxn-ontap-metrics-snapmirror-heartbeat` | ALARM → OK | 07:40:55 | 最初のポーリングの後 |
+| `fsxn-log-alarm-privileged-operations` | OK → ALARM | 07:41:20 | ドライランの通信 |
+| `fsxn-log-alarm-bulk-delete` | OK → ALARM | 07:48:11 | 3 期間中 2 期間で 50 超（116、56） |
+| `fsxn-log-alarm-failed-access` | OK → ALARM | 07:52:09 | 3 期間中 3 期間で 10 超（31、14、14） |
+| `fsxn-log-alarm-failed-access` | ALARM → OK | 07:56:09 | 最後のラウンドの後 |
+| `fsxn-ontap-metrics-qtree-quota-high` | OK → ALARM | 08:00:02 | 85 に対して 90.36、2 データポイント |
+| `fsxn-log-alarm-bulk-delete` | ALARM → OK | 08:01:11 | 最後のラウンドの後 |
+| `fsxn-ontap-metrics-qtree-quota-high` | ALARM → OK | 08:05:02 | 90 MiB のファイルを削除した後 |
+| `fsxn-log-alarm-privileged-operations` | ALARM → OK | 08:09:20 | 直近 3 期間に一致無し |
+| `fsxn-log-alarm-privileged-operations` | OK → ALARM | 08:19:20 | 08:18:45 に `fsxadmin` で Qtree を 1 つ作成（メールの確認のため） |
+| `fsxn-log-alarm-autosize-fail` | OK → ALARM | 08:24:40 | 08:23:58 の実際の EMS イベント |
+| `fsxn-log-alarm-autosize-fail` | ALARM → OK | 08:29:40 | 次の期間に一致無し |
+| `fsxn-t4-tfv-ssd-utilization` | INSUFFICIENT_DATA → ALARM | 08:55:51 | トリガーの閾値 1% に対して SSD 利用率 1.4–2.2% |
+| `fsxn-log-alarm-privileged-operations` | ALARM → OK | 09:07:20 | 直近 3 期間に一致無し。メールの確認の後、ALARM のまま 48 分間続いた。その間の一致した行は追跡していない。同梱のパターンは `fsxadmin` の完了した変更の操作をすべて数え、EMS・監査・テスト用ボリュームの手順は `fsxadmin` を使った |
+
+実行中に記録した 300 秒の期間ごとの合計を、時間順に示します。各行の後ろの 2 つの値は 1 ラウンド分（拒否された要求 14 件、削除 56 回、`fsxadmin` の操作 112 回）に等しく、最初の期間はそれより大きく、その内訳は分けていません。
+
+| メトリクス | 300 秒ごとの合計 |
+|------------|------------------|
+| `fsxn-log-alarm-failed-access` | 31 / 14 / 14 |
+| `fsxn-log-alarm-bulk-delete` | 116 / 56 / 56 |
+| `fsxn-log-alarm-privileged-operations` | 234 / 112 / 112 |
+
+ラウンドごとの 56 と 14 は、完了した削除 1 回につき 1 行（新しい `bulk-delete` の既定値）と、拒否された要求 1 件につき 1 行（`failed-access`）を示します。確認項目の結果の表の行 T4 を参照してください。
+
+![日本語コンソールの CloudWatch アラーム一覧。fsxn-log-alarm の 5 つのアラームがすべて OK で、アクションは有効。条件はモジュールの既定値で、privileged-operations は 0 超（15 分以内に 1 データポイント）、autosize-fail は 0 超（5 分以内に 1）、bulk-delete は 50 超（15 分以内に 2）、failed-access は 10 超（15 分以内に 3）、unauthorized-access は 0 超（15 分以内に 1）。最終状態更新（UTC）は 09:07:20、08:29:40、08:01:11、07:56:09、07:35:43](../screenshots/terraform-monitoring/01-t3-alarms-default-conditions.png)
+
+アラーム一覧は最後の遷移の後に撮影しました。条件の列はモジュールの既定値を示し、`unauthorized-access` は 07:35:43 の最初の OK から変わっていません。
+
+![fsxn-log-alarm-bulk-delete のアラーム詳細（UTC、3 時間）。Count のグラフは 116 まで上がった後 56 付近で推移し、点線の閾値 50 を上回る。状態の帯は灰色、OK、約 07:48 から 08:01 までの赤い ALARM、その後 OK。履歴タブには 08:01:11 の ALARM から OK、07:48:11 の OK から ALARM、07:36:11 の INSUFFICIENT_DATA から OK がある。アクションの行は黒塗り](../screenshots/terraform-monitoring/02-t3-bulk-delete-ok-alarm-ok.png)
+
+グラフは上の合計と合っています。最初の期間が 116、次の期間が 56 で、閾値は 50 です。
+
+![fsxn-ontap-metrics-qtree-quota-high のアラーム詳細（UTC、3 時間）。QtreeQuotaUsedPercentMax は 07:50 から 07:55 付近の数分間 90.36% で、点線の閾値 85 を上回り、その後 0% に戻る。状態の帯は約 08:00 から 08:05 まで赤い ALARM。履歴タブには 08:05:02 の ALARM から OK、08:00:02 の OK から ALARM、07:40:02 の INSUFFICIENT_DATA から OK がある。条件は 10 分以内の 2 データポイントで 85 超。アクションの行は黒塗り](../screenshots/terraform-monitoring/04-t2-qtree-quota-ok-alarm-ok.png)
+
+条件は、10 分以内の 2 データポイントで 85 超です。アラームは 08:00:02 に ALARM になり、ファイルを削除した後の 08:05:02 に OK に戻りました。
+
+### EMS 通知先の定義（2026-10-12 の実行）
+
+syslog 経路の監査ログの転送先が運ぶのはコマンド履歴だけなので、`wafl.vol.autoSize.fail` がロググループに届くのは、別に作る EMS の通知先を通した場合だけです。2026-10-12 には、そのような通知先 1 つが実際のイベントを届け、`autosize-fail` がそれで発報しました。通知先の種類 `syslog` の既定値はポート 514 と `udp_unencrypted` です。エンドポイントには TCP の 1514 か 6514 で届くため（[セットアップガイド](syslog-vpce-setup-guide.md)）、動いた定義ではポート 1514 と `tcp_unencrypted` を明示しています。既定値そのものはエンドポイントに送っていません。先にフィルターを `POST /api/support/ems/filters` で作り、通知先はその名前を参照して `POST /api/support/ems/destinations` で作ります（通知先は HTTP 201 で、読み直しも一致した）。
+
+```json
+{"name":"<filter-name>","rules":[{"type":"include","message_criteria":{"name_pattern":"wafl.vol.autoSize.*","severities":"*"}}]}
+```
+
+```json
+{"name":"<destination-name>","type":"syslog","destination":"<endpoint ENI IP>","filters":[{"name":"<filter-name>"}],"syslog":{"port":1514,"transport":"tcp_unencrypted","format":{"message":"legacy_netapp"}}}
+```
+
+イベントを起こすために、autosize の増加上限が 120 MiB の 100 MiB のボリュームに 220 MiB を書き込みました。ONTAP は 08:23:58 に `wafl.vol.autoSize.fail` を発生させ、次の行が同じ秒にロググループに届きました。ヘッダーは、2026-10-09 に EMS リファレンスから組み立てた行が想定したとおり、角括弧の中にイベント名を持ちます。
+
+```text
+<5>Oct 12 08:23:58 [<node>:wafl.vol.autoSize.fail:notice]: Unable to grow volume '<volume>@vserver:<svm-uuid>' to recover space: Volume cannot be grown beyond maximum growth limit.
+```
+
+![wafl.vol.autoSize で絞り込んだ syslog ロググループのログイベント。08:21:37 の EMS フィルター作成の監査ログ 2 行と、08:23:58 の wafl.vol.autoSize.done 2 行および wafl.vol.autoSize.fail 1 行。EMS の各行は優先度 5 で始まり、角括弧内にイベント名と重大度 notice がある。ノード名とエンドポイント名はプレースホルダー](../screenshots/terraform-monitoring/05-ems-autosize-fail-line-in-logs.png)
+
+`wafl.vol.autoSize` の系列は同じ秒に 3 行届きました。`wafl.vol.autoSize.done:notice` が 2 行と、`.fail` の行です。同梱の `"wafl.vol.autoSize.fail"` のパターンに一致するのは `.fail` の行だけです。08:21:37 のフィルター作成の監査ログ 2 行（優先度 `<190>`）は `wafl.vol.autoSize.*` を含みますが、このパターンにも一致しません。`autosize-fail` は、イベントの 42 秒後に OK → ALARM となり、08:29:40 に ALARM → OK となりました。
+
+![fsxn-log-alarm-autosize-fail のアラーム詳細（UTC、3 時間）。Count のグラフは 08:20 付近に 1 のデータポイントが 1 つあり、閾値 0 を上回る。状態の帯は約 08:24 から 08:29 まで赤い ALARM、その後 OK。履歴タブには 08:29:40 の ALARM から OK、08:24:40 の OK から ALARM、07:35:40 の INSUFFICIENT_DATA から OK がある。アクションの行は黒塗り](../screenshots/terraform-monitoring/03-t3-autosize-fail-real-ems.png)
+
+severity は、ONTAP 9.19.1P3 の EMS カタログと届いた行のどちらでも `notice` です（`verified`）。ONTAP 9.18.1 の EMS リファレンスも NOTICE としています（`documented`）。`force` パラメーターは、監査ログの転送先の呼び出しでは受け付けられ、EMS の通知先では受け付けられなかったと、オペレーターが記録しています。エラーの文面は残していません。TLS（`tcp_encrypted`）での EMS の配送は試していません（`open`）。
+
+### FSx の証明書チェーンに対する TLS 検証（2026-10-12 の実行）
+
+T2 のドキュメントは、本番では `ca_cert_path` と `ca_cert_layer_arn` を設定するよう案内しています。この実行では、ファイルシステムの管理エンドポイントでそれを試しました。エンドポイントが提示するチェーンは次のとおりです。
+
+| 証明書 | サブジェクト | 発行者 | サブジェクト代替名 |
+|--------|--------------|--------|--------------------|
+| リーフ | `management.fs-*.fsx.<region>.amazonaws.com` | 「FSx CA for ONTAP-1 in `<region>`」 | DNS 名のみ。ノード名、`*.fs-*.fsx.<region>…`、`management.fs-*.fsx.<region>…`。IP アドレスは無し |
+| 中間 | 「FSx CA for ONTAP-1 in `<region>`」 | 「Amazon FSx Root CA 1 for `<region>`」 | 記録していない |
+| ルート | 「Amazon FSx Root CA 1 for `<region>`」 | 自分自身（自己署名） | 記録していない |
+
+Python の `ssl` モジュールによる、クライアント側の 3 つの実験です。
+
+| クライアントに渡した CA バンドル | 接続の指定 | 結果 |
+|----------------------------------|------------|------|
+| 中間証明書とルート証明書（2,140 バイト） | DNS 名 | 検証に成功（TLS 1.3） |
+| 同じバンドル | IP アドレス | "IP address mismatch" で失敗 |
+| リーフ証明書だけ | DNS 名または IP アドレス | "self-signed certificate in certificate chain" で失敗 |
+
+次に、`ca_cert_path = "/opt/certs/ontap-ca.pem"` と、2 つの証明書を入れた Lambda レイヤーを `ca_cert_layer_arn` に指定して、モジュールを適用しました。
+
+| 時刻（UTC） | 出来事 |
+|-------------|--------|
+| 08:41:12 → 08:41:23 | 2 つの入力を指定して apply |
+| 08:44:44 | ポーリングが `SSLCertVerificationError`（"IP address mismatch"）をログに出して再試行した。Retrying の警告は 08:44:44、08:44:46、08:44:50（待ちは 2 秒と 4 秒） |
+| 08:44:50 | "Collector qtree failed" |
+| 08:44:56 | "Collector snapmirror failed"（同じ再試行の流れ） |
+| 08:44 の期間 | 2 つのコレクターの `CollectorSucceeded` が 1 → 0 |
+| 08:46:25 | 元に戻す作業を開始（CA のパスを空に、レイヤーを外す） |
+| 08:49:44 | ポーリングが回復。ハートビートのアラームは、欠けた 1 期間に対して発報しなかった。理由は調べていない |
+
+![T2 の Lambda 関数のポーラーのログイベントを "IP address mismatch" で絞り込んだ画面（12 時間）。08:44:44、08:44:46、08:44:50 の Retrying の警告 3 件と、展開した ERROR "Collector qtree failed"。トレースバックは SSLCertVerificationError で終わり、certificate verify failed: IP address mismatch と、プレースホルダーの IP アドレスに対して証明書が有効でないことを示す](../screenshots/terraform-monitoring/06-t2-tls-ip-address-mismatch.png)
+
+原因は 3 か所にあります。ポーラーの URL は `https://<ONTAP_MGMT_IP>` で、urllib3 は `CERT_REQUIRED` かつ `assert_hostname` なしで動くため、証明書の名前が IP アドレスと照合されます。証明書が持つ名前は DNS 名だけです。モジュールの入力 `ontap_management_ip` はドット区切りの IPv4 アドレスしか受け付けず（検証はタグ v0.1.0 でも `main` でも同じ）、Lambda のセキュリティグループの egress はそのアドレスへの `/32` です。したがって、本番では 2 つの入力を両方設定するという案内は、この証明書に対しては現在検証できません。これは 1 回観測したモジュールの制約で、ここではモジュールを変更していません。DNS 名の入力への対応は `open` のままです。CloudFormation テンプレート `shared/templates/qtree-quota-monitor.yaml` は同じ `PoolManager` のコードをインラインで持っており、この実行では CA を付けて動かしていません。
+
+### SSD 容量の実際の拡張（2026-10-12 の実行）
+
+オペレーターは、使い捨てのファイルシステムでの元に戻せない拡張を 1 回承認しました。`terraform-fsxn-ssd*` のタグは、記録の時点でローカルにも `origin` にも存在しなかったため、モジュールはコミット `fcec6ef` で参照しました。適用した呼び出しは次のとおりで、最初は `notify_only`、その後 `mode = "auto"` にしました。
+
+```hcl
+module "ssd_auto_increase" {
+  source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
+
+  name_prefix                         = "fsxn-t4-tfv"
+  file_system_id                      = "fs-0123456789abcdef0"
+  max_storage_capacity_gib            = 1127
+  increase_percent                    = 10
+  mode                                = "notify_only" # "auto" in the second apply
+  trigger_threshold_percent           = 1
+  decision_archive_bucket             = "<archive-bucket-name>"
+  decision_archive_min_retention_days = 1
+}
+```
+
+| 入力 | 値 | 理由 |
+|------|-----|------|
+| `max_storage_capacity_gib` | `1127` | `ceil(1024 × 1.10)` = 1,127。上限 1,126 は 10% の最小増加を下回る |
+| `trigger_threshold_percent` | `1` | 検証の最小値（モジュールの既定値は 80）。12 GiB を書き込んで SSD 利用率を 1.4–2.2% に上げ、アラームを発報させた |
+| `decision_archive_min_retention_days` | `1` | モジュールの既定値は 365。1 にしたのは、2026-10-09 の実行から再利用した使い捨てのアーカイブバケットの既定の保持が COMPLIANCE モードの 1 日だったため。本番の設定ではない |
+| `?ref=<commit-sha>&depth=1` | 失敗 | Terraform は "setting depth requires ref to be a branch or tag name" と報告した。`depth` を付けずに `?ref=<commit-sha>` を使う |
+
+| 時刻（UTC） | 出来事 |
+|-------------|--------|
+| 08:53:57 → 08:54:40 | `notify_only` で apply（16 リソース） |
+| 08:55:51 | トリガーのアラームが INSUFFICIENT_DATA → ALARM。評価関数は `{decision: notify_only, target_gib: 1127}` を返し、判断のオブジェクトを 1 つアーカイブした |
+| 08:58:51 → 08:58:58 | `mode = "auto"` で apply（変更 1 件） |
+| 08:59:07 | 空のペイロードで手動の呼び出し。EventBridge のスケジュールと同じ入口。評価関数は `{decision: submitted}` を返した |
+| 08:59:11 | CloudTrail: `UpdateFileSystem` はちょうど 1 回で、評価関数のロールセッションによる |
+| 08:59:20 | ファイルシステム: 更新が PENDING、目標は 1127 GiB |
+| 09:00:05 | IN_PROGRESS |
+| 09:00:51 | `StorageCapacity` 1127（`UPDATED_OPTIMIZING`）。プロビジョンド IOPS は 3,072 → 3,381（`AUTOMATIC`）。管理アクションは後に COMPLETED になった。ストレージの最適化は 09:10:45 の時点でも進行中だった |
+| 09:11:56 | 再呼び出し: `{decision: capacity_available, state: optimizing}`。2 回目の `UpdateFileSystem` は無し |
+
+![Terraform による拡張の後の FSx コンソールの概要。ライフサイクルは利用可能、SSD ストレージ容量 1127 GiB、スループットキャパシティ 128 MB/秒、プロビジョンド IOPS 3381、HA ペア 1 つ、デプロイタイプはシングル AZ 1。ファイルシステム ID、VPC、サブネット、キー、IP アドレスはプレースホルダー](../screenshots/terraform-monitoring/07-fsx-ssd-capacity-1127gib.png)
+
+概要は、容量、それに続く IOPS（1 GiB あたり 3 の 3,381）、変わっていないスループットを示しています。
+
+![auto の実行の判断オブジェクト 1-decision.json の S3 コンソールのページ。T4 のアーカイブのプレフィックス配下で、リーガルホールドは無効、オブジェクトロックの保持モードはコンプライアンス、保持期限は 2026/10/13 05:59:10 PM JST（08:59:10 UTC）、保持タイプは固定保持。バケット、ファイルシステム、相関 ID はプレースホルダー](../screenshots/terraform-monitoring/08-s3-object-lock-compliance-retention.png)
+
+`auto` の実行は 3 つのオブジェクト（`1-decision`、`2-accepted`、`3-capacity_available`）を、`notify_only` の実行は `1-decision` を 1 つアーカイブしました。4 つとも COMPLIANCE モードで、保持期限は作成から約 1 日後です。最も遅いのは 2026-10-13T09:11:59Z です。CloudTrail には `UpdateFileSystem` のイベントが 1 件ありました。残したのはその時刻とロールセッションだけで、リクエストのパラメーターは読んでいないため、受け付けられた呼び出しで CloudTrail が `ClientRequestToken` を表示するかどうかは `open` のままです（2026-10-09 の T4 の記録の F4 でも `open`）。観測していないものは次のとおりです。6 時間のクールダウンのロックは、2 回目の評価が `cooldown_active` ではなく `capacity_available` で終わったため観測していません（`hypothesis`）。`terminal` の状態は、最適化が終わった後に評価を実行しなかったため観測していません（`open`）。notify トピックのメールも観測していません（`open`）。
+
+### syslog 経路でのファイルアクセス監査記録の不着（2026-10-12 の実行）
+
+T3 の既定の `unauthorized-access` のパターンは、ファイルのパスを探します。それを試すために陽性対照を用意し、同じアクセスを 2 か所で数えました。
+
+| 項目 | 値 |
+|------|-----|
+| SVM のファイルアクセス監査 | 有効（`file_operations`、専用のボリュームに XML のログ） |
+| プロトコル | ACL を有効にした NFSv4.1 |
+| 監査エントリ | ディレクトリに監査 ACE（`nfs4_setfacl`、`U:fdSF:EVERYONE@:rwaDdxtT`）。ACE を付ける前からあったファイルは ACE を継承しなかったため、作り直した |
+| アクセス | 08:36:30 と 08:38:05–08:38:10 |
+| SVM の監査 XML（ファイル名の時刻は 08:39:06） | 16 件のイベント。Open Object 7、Close Object 7、Write Object 1、Unlink Object 1。すべて Audit Success で、送信元は NFSv4。オブジェクト名の綴りは `(<volume>);/confidential/secret.txt` |
+| 管理監査の syslog ロググループ | `confidential`、`secret.txt`、`Open Object`、`NFSv4` に一致する行は 08:30 以降 0 行 |
+| `unauthorized-access` アラーム | OK のまま |
+
+この環境では、NAS の監査記録は管理監査の syslog 経路を通りませんでした。既定のパターン `"/vol/data/confidential"` も、実際の綴り `(<volume>);/confidential/…` に一致しません。付随して観測したのは次の 2 点です。権限のない uid による 3 回の拒否された読み取りは Audit Failure の記録を残さず（原因は調べていない）、SVM の監査ログの Audit Failure のイベントは 0 件でした。
+
+これは 1 つの環境での自己測定であり、ONTAP が syslog に何を送れる、あるいは送れないかを述べるものではありません。この件に関する NetApp の KB 記事は読めなかったため、使っていません。
+
+### 所見（2026-10-12 の実行）
+
+| # | 所見 | 種別 | この記録への影響 |
+|---|------|------|------------------|
+| F1 | T2 の CA 検証付き TLS は、ファイルシステムに発行された証明書チェーンでは通らない。ポーラーは `https://<management IP>` に `CERT_REQUIRED` かつ `assert_hostname` なしで接続し、証明書の名前は DNS 名のみで、`ontap_management_ip` はドット区切りの IPv4 アドレスしか受け付けず、Lambda のセキュリティグループの egress はそのアドレスへの `/32` である | モジュールの制約で、1 回観測。本番向けとして文書化した案内（2 つの入力を両方設定する）は、この証明書では現在満たせない | 記録した。モジュールは変更していない。DNS 名の入力への対応は `open`。同じコレクターのコードは `shared/templates/qtree-quota-monitor.yaml` にインラインである |
+| F2 | `unauthorized-access` は、陽性対照を置いても発報しなかった。SVM の監査ログには NAS の監査イベントが 16 件あり、管理監査の syslog ロググループには一致する行が 0 行だった。既定のパス `/vol/data/confidential` は、実際の綴り `(<volume>);/confidential/…` に一致しない | 検証済みの否定結果で、1 つの環境（NFSv4.1、XML の監査ログ）での自己測定 | ここでは、NAS の監査記録は管理監査の syslog 経路を通らなかった。ONTAP のどの設定でそれを送れるかは調べていない。モジュールとテンプレートの既定値は変更していない |
+| F3 | EMS の通知先の種類 `syslog` の既定値はポート 514 と `udp_unencrypted` で、エンドポイントには TCP の 1514 か 6514 で届く。動いた定義はポート 1514 と `tcp_unencrypted` を設定する | 設定の不一致で、1 回観測。既定値はエンドポイントに送っていない | 定義は[EMS 通知先の定義](#ems-通知先の定義2026-10-12-の実行)にある。セットアップガイドに EMS の手順は無い |
+| F4 | `wafl.vol.autoSize.fail` の severity は、ONTAP 9.19.1P3 のカタログと届いた行のどちらでも `notice`。`docs/en/ems-detection-capabilities.md`、`terraform/fsxn-log-alarm/variables.tf` のコメント、およびこの変更の前の T3 モジュールの README は `error` としている | ドキュメント。9.19.1P3 では `verified`。ONTAP 9.18.1 の EMS リファレンスでは NOTICE として `documented` | T3 の README の記述は同じ変更で直す。ほかの 2 つのファイルはこの変更の対象外 |
+| F5 | ONTAP の監査ログの転送先は、`?force=true` なしでは拒否された（HTTP 400、コード 9240603、"Cannot contact destination host"）が、テスト用の踏み台ホストはエンドポイントの TCP 1514 と 6514 を開けた | ONTAP の応答で、1 回観測。踏み台ホストは ONTAP のノードではないため、ノードから届くかどうかは示さない | セットアップガイドはすでに `force=true` を記載している |
+| F6 | 本番の設定と異なる T4 の入力: 上限 1,127 GiB、トリガー 1%、アーカイブの最小保持 1 日（モジュールの既定値は 365）。`?ref=<commit-sha>&depth=1` は失敗する | テスト用の設定。Terraform の挙動で、1 回観測 | この 3 つの入力を本番のルートにコピーしない。T4 のタグができるまでは、`depth` を付けずに `?ref=<commit-sha>` を使う |
+| F7 | `terraform destroy` は `aws_security_group.lambda` で 22 分 13 秒待った。そのセキュリティグループに ingress ルールを追加したことは一度も無い | 2 回観測（2026-10-08 は 22 分 3 秒） | この待ちの原因は revoke の手順ではない。Lambda のネットワークインターフェースがまだ一覧に出ていたかどうかは確認していない |
+| F8 | SnapMirror のコレクターは、毎回のポーリングで関係を 0 件と見た。`snapmirror-unhealthy` と `snapmirror-lag-high` は動かしていない | テストの構成で、観測 | SnapMirror のアラームの検証は、2026-10-08 の同一ファイルシステムでの実行のまま |
+| F9 | SVM の監査設定が存在する間は、監査ログ用のボリュームを削除できなかった。ONTAP REST はその設定の無効化と削除の要求に 202 を返し、最初の削除ジョブは失敗した（"Final consolidation is in progress"）。シークレット名に ARN の接尾辞を付けた `delete-secret` は、成功を返したのに何も削除しなかった | 後片付けの順序で、1 回観測。202 や成功の終了コードは完了ではない | 各手順の後に読み直した（[後片付け](#後片付け2026-10-12-の実行)を参照） |
+
+### 後片付け（2026-10-12 の実行）
+
+時刻は 2026-10-12 の UTC です。
+
+| 手順 | 結果 | 時刻（UTC） |
+|------|------|-------------|
+| T4 の `terraform destroy` | 16 リソースを削除 | 09:43:59 → 09:44:54 |
+| ルートの `terraform destroy` | 44 リソースを削除。`aws_security_group.lambda` に 22 分 13 秒、`monitoring` VPC エンドポイントに 2 分 21 秒かかった（F7） | 09:46:12 → 10:08:36 |
+| syslog の経路 | この実行のエンドポイントの syslog configuration を削除（実行前からあった古い設定には触れていない）、スタックを削除、スタックが保持するロググループは手で削除した | 10:08:36 の後 |
+| ONTAP のボリューム | テスト用・データ用・autosize 用のボリュームを削除。監査ログ用のボリュームは削除を拒否された（"configured to hold audit logs for Vserver"）ため、SVM の監査設定を無効化（REST 202）して削除した（202。ジョブは 1 回 "Final consolidation is in progress" で失敗し、再試行で成功し、GET は 404 を返した）。その後にボリュームを削除できた（F9） | 10:08:36 の後 |
+| SVM | 削除済み。SVM が存在する間、`DeleteFileSystem` は拒否される | 10:26:38 |
+| ファイルシステム | 10:27 に DELETING、10:36:16 までに見つからなくなった | 10:27 → 10:36:16 |
+| シークレット | 2 つ。名前に ARN の接尾辞を付けた `delete-secret` は成功を返したが何も削除せず、読み直すと 2 つとも残っていた。正確な名前での 2 回目の呼び出しで削除日が設定された | 10:08:36 の後 |
+| 一時的な変更 | テスト用の踏み台ホストのネットワークインターフェースのセキュリティグループと、そのロールのインラインポリシーに加えた変更を、保存しておいたコピーから元に戻して読み直した。CA バンドルの Lambda レイヤーのバージョンを削除した | 10:08:36 の後 |
+| 読み直しによる確認 | 4 つのモジュールの名前の接頭辞を持つアラーム、関数、SNS トピック、DynamoDB テーブル、ロググループ、IAM ロール、EventBridge ルールは残っていない | 10:08:36 の後 |
+
+意図して残した項目が 2 つあります。アーカイブのオブジェクトは約 2026-10-13T09:12Z まで COMPLIANCE でロックされているため、それらと、それを保持している 2026-10-09 の実行から再利用した使い捨てのバケットは、それまで削除できません。CloudWatch のカスタムメトリクスは削除できず、期間の経過で期限切れになります。
+
+### 未検証の範囲（2026-10-12 の実行）
+
+| 項目 | 状態 | 理由 |
+|------|------|------|
+| 第 2 世代と HA ペアが 2 つ以上のファイルシステム | `open` | ファイルシステムは第 1 世代で HA ペアは 1 つだった |
+| SVM 間とファイルシステム間の SnapMirror | `open` | この実行では関係が存在しなかった（F8） |
+| この実行での `snapmirror-unhealthy` と `snapmirror-lag-high` | `open` | 毎回のポーリングで関係は 0 件。2026-10-08 の実行で動かした |
+| T2〜T4 の最小権限の IAM ポリシー | `open` | サンプルのポリシーに限定したロールを使った実行は無い |
+| T2 の手順「ファイルシステムのセキュリティグループに inbound ルールを追加する」 | `open` | デフォルトのセキュリティグループが、VPC の CIDR からの TCP 443 をすでに許可していた |
+| T1・T2・T4 のメール | `open` | T1 のサブスクリプションは確認が遅れ、T1 のアラームのメールは観測していない。T2 のサブスクリプションは確認済みだが、T2 のアラームのメールの報告は無い。T4 の notify トピックのメールは確認していない |
+| T4 の 6 時間のクールダウンのロック | `hypothesis` | ガードは設計と単体テストにある。変更後の評価 1 回は `capacity_available` で終わった |
+| T4 の `terminal` の状態と、その後のロックの解放 | `open` | 最後の評価は `optimizing` を見ており、その後は評価を実行していない |
+| 受け付けられた呼び出しでの CloudTrail の `ClientRequestToken` | `open` | イベントの時刻とロールセッションだけを残した |
+| DNS 名による TLS 検証 | `open` | F1 により阻まれている |
+| TLS（`tcp_encrypted`）での EMS の通知先 | `open` | 試していない |
+| 判断アーカイブの対照の主体 A と B、およびラッチが掛かった実行のアーカイブ | `open` | この実行の対象外。2026-10-09 の T4 の記録から変わらない |
+| 前の記録の行のうち、この実行で試していないもの | `open` | 前の実行の未検証の表を参照 |
+
+### 判定（2026-10-12 の実行）
+
+| 項目 | 値 |
+|------|-----|
+| 判定 | ⚠️ このサンプル実行の範囲、つまり使い捨ての第 1 世代・HA ペア 1 つのファイルシステム 1 つで、タグからの T1〜T3 のルートモジュールの apply、T2 の既定のポーリングと `qtree-quota-high` の経路、既定の期間 300 秒での T3 の検知 `failed-access`・`bulk-delete`・`privileged-operations`、実際の EMS イベントでの `autosize-fail`、T3 の通知 3 件のメール、T4 の実際の拡張を検証した。検証済みの否定結果が 2 つあり、どちらもこの環境での自己測定である。`unauthorized-access` は陽性対照を置いても発報せず（U1）、T2 はファイルシステムに発行された証明書チェーンを検証できなかった（P5）。本番の見積りではない |
+| 合格 | 23 件中 17 件（R1、R2、R4、P1–P4、T1–T4、E1、N1、H1–H4） |
+| 想定と違う形で合格 | 23 件中 2 件（R3、E2） |
+| 期待値が成り立たなかったもの | 23 件中 2 件（P5 は F1、U1 は F2 による） |
+| 未実施 | 23 件中 1 件（H5、`hypothesis`） |
+| 残った項目付きで完了 | 23 件中 1 件（M1）: COMPLIANCE でロックされたアーカイブのオブジェクトとそのバケット、およびカスタムメトリクス |
+| モジュールの欠陥 | リソースの作成とアラームの配線: 見つかっていない。モジュールの制約が 1 つ（F1）。T3 の既定の `unauthorized-access` のパターンは実際の綴りに一致せず、記録はロググループに届かなかった（F2） |
+| この実行の後に直したドキュメント | この記録、Terraform 監視ガイド、監視設計のページ、およびログアラーム・カスタムメトリクス・SSD 自動拡張の各モジュールの README。いずれも英語版と日本語版 |
 
 ---
 
