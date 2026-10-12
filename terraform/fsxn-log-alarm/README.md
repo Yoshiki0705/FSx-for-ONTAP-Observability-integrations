@@ -69,7 +69,7 @@ git checkout FETCH_HEAD
 
 > **Fetch note**
 >
-> Before the tag was created, these steps were run with a commit SHA in place of the tag name, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. The fetch of the tag itself has not been run for this module. With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module).
+> Before the tag was created, these steps were run with a commit SHA in place of the tag name, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. The sparse-checkout steps were not run with the tag, but `terraform init` fetched the git source pinned to the tag (`?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1`) in the 2026-10-12 root-module apply (2026-10-12, ap-northeast-1, ONTAP 9.19.1P3, first-generation SINGLE_AZ_1 with one HA pair, 128 MBps; [record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#environment-and-deployment-2026-10-12-run)). With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module).
 
 ## Usage
 

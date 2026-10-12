@@ -69,7 +69,7 @@ git checkout FETCH_HEAD
 
 > **取得手順に関する補足**
 >
-> タグを作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。タグそのものの取得は、このモジュールでは実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
+> タグを作る前に、タグ名の代わりにコミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。sparse checkout の手順はタグを指定して実行していませんが、タグに固定した git ソース（`?ref=terraform-fsxn-log-alarm-v0.1.0&depth=1`）は、2026-10-12 のルートモジュールの apply で `terraform init` が取得しました（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#環境とデプロイした構成2026-10-12-の実行)）。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。
 
 ## 使い方
 
