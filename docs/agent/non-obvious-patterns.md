@@ -175,13 +175,51 @@ Run `bash shared/scripts/check-bilingual-sync.sh` to verify heading-structure sy
 
 ### Console screenshots: masking, and the check that proves it
 
-`docs/screenshots/mask_screenshots.py` paints fixed regions of screenshots that are registered by file name inside the script, and strips PNG metadata. It needs Pillow, which `requirements-dev.txt` does not list. For a file it does not know it processes nothing, prints "all masking complete" and exits 0. Run on the eight 2026-10-12 images it changed no byte (observed once). A clean run is therefore not evidence that a new screenshot is masked.
+`docs/screenshots/mask_screenshots.py` paints fixed regions of screenshots that are registered by file name inside the script, and strips PNG metadata. It needs Pillow, which `requirements-dev.txt` pins. For a file it does not know it processes nothing, prints "all masking complete" and exits 0. Run on the eight 2026-10-12 images it changed no byte (observed once). A clean run is therefore not evidence that a new screenshot is masked.
 
 Word-level OCR painting is unreliable on monospaced log lines: on the 2026-10-12 log views it painted over the event name and missed identifiers (observed on those views). What worked:
 
 1. Replace the text in the page with placeholders before capturing (`fs-0123456789abcdef0`, `123456789012`, `198.51.100.x`). Do not attach a `MutationObserver` to the FSx console: it rendered a blank page. The S3 object page needs about 8 seconds to render, and the CloudWatch log-events view needs a time range (for example 12 hours) to show older events.
 2. Crop the console chrome (the navigation bar carries the account menu), and save without PNG metadata.
-3. OCR every final PNG and grep for identifier shapes. Run the same check on a raw capture first as a negative control: it must hit, or a result of 0 on the published set proves nothing.
+3. Run `make screenshots` (below). To fix a finding in an image that cannot be recaptured, find the glyph bounds of the digits (tesseract `-c hocr_char_boxes=1 hocr` gives per-character boxes, but its last box can end short of the glyph: measure the ink between the two surrounding colons), paint solid gray (215, 215, 215) over exactly that span, and save with no PNG metadata. Check by eye that no digit edge is left, and that no pixel outside the boxes changed.
+
+#### The screenshot leak gate
+
+`make screenshots` runs `scripts/check_screenshot_leaks.py` over every tracked image on every run (not only the diff), after a self-test that renders planted leaks and requires each to be found. CI runs the same target as the `screenshot-leak-gate` job on every push and pull request. It fails on:
+
+- AWS account IDs in an ARN (`aws:<service>:<region>:<12 digits>`, tolerant to OCR spaces), as `dddd-dddd-dddd`, or after an Account / Account ID / アカウント label. Rule id `aws-account-id-suspicious`.
+- AWS resource IDs with 17 hex characters (`fs-`, `fsvol-`, `svm-`, `vpc-`, `vpce-`, `subnet-`, `sg-`, `eni-`, `i-`). Rule id `aws-resource-id`.
+- E-mail addresses, except reserved and synthetic domains. Rule id `email-address`.
+- PNG text chunks (`tEXt`, `zTXt`, `iTXt`) whose value holds one of the above or a home-directory path (`/Users/`, `C:\Users`), and any `eXIf` chunk. The key `Software` alone is not a finding (12 tracked files carry it). Rule id `image-metadata`.
+
+The two shared rule ids and their placeholders (`123456789012`, `000000000000`, the `0123456789abcdef0` family) match `.gitleaks.toml`, and a test fails if the two lists drift. Output is redacted: a finding prints the path, rule, position and the matched text with digits and hex replaced by `*`, because CI logs of a public repository are permanent.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | every image scanned, nothing found |
+| 1 | a finding, or a stale allowlist entry (errors are printed too, so a retry-on-2 habit cannot hide a confirmed leak) |
+| 2 | tool or usage error: tesseract, the `eng` or `jpn` data or Pillow missing (the message carries an install hint), an unreadable image, a path that matches no image, a broken allowlist, a failed self-test. Nothing is reported as clean. |
+
+What the gate does not check:
+
+- IP addresses of any kind. Private addresses are allowed in screenshots. Public-address detection is deferred, because OCR false positives on dotted numbers (versions, timestamps) have not been measured. The manual one-liner below is still the way to look at IP addresses.
+- User names, request IDs and other UUIDs.
+- Text OCR cannot read. Recall depends on the engine: rendered ARNs at 11 px and above were found, at 9 to 10 px they were not, and the CI runner's tesseract build can differ from the one measured here. The self-test runs on the runner and fails closed when it cannot read its own samples, but a clean scan is evidence that the patterns were not found, not that the image is safe.
+- Account IDs with no ARN, dashed or label context. A bare 12-digit number is not a finding: in the corpus, two passes returned 17 bare 12-digit tokens (counted per pass): 10 inside the ARNs of the four images masked in this change, 6 as the all-zero placeholder, and 1 a button label misread as digits (confidence 54.6). Legacy 8-hex resource IDs (`vpc-1a2b3c4d`) are not checked either: 0 hits in the corpus, and `.gitleaks.toml` does not list them.
+- The Japanese label rule (アカウント) is proven on text in pytest only; the self-test's default font cannot render kana. The Japanese console page is covered by appending a planted ARN under a real Japanese screenshot.
+- Only the first frame of a multi-frame image.
+
+Measurements (tesseract 5.5.3 and Pillow 12.3.0 on macOS arm64, 2026-10-12, 131 tracked PNGs, 6 workers, `-l eng+jpn`): three passes are used, the original image, a grayscale 2x upscale with a 10 px border, and the same inverted. One pass took 22.5, 32.1 and 41.7 seconds; all three took 77 to 96 seconds, so a 4-vCPU runner should need roughly 2 to 2.5 minutes (an estimate until the CI job reports its own time). Each single pass missed 6 or 7 of the 29 planted leaks (4 of them the 9 and 10 px samples; besides those the original pass misses `dashed`, `vpce` and `subnet`, the 2x pass `vpc` and `vpce`, the inverted pass `dashed`, `fs` and `vpc`), and the union of the three missed only the 9 and 10 px samples. Page segmentation mode 3 is used: mode 11 added nothing on the samples and lost 2 of 8 ARN findings on the original pass. A 3x upscale added no recall. An earlier single-pass measurement had found one leaking image; the multi-pass scan found four, and all four were masked in the same change. Git history still holds the earlier unmasked versions, which this change does not rewrite. The first CI run, on the runner's tesseract 5.3.4 (Ubuntu 24.04), failed the self-test on `vpc` and `vpce`: that build returns `vpc- <hex>` with a space after the hyphen, where 5.5.3 returns it whole. The resource-ID pattern now accepts one space there. The same self-test and the 131-image scan, re-run in an Ubuntu 24.04 `linux/amd64` container with tesseract 5.3.4, passed (21 planted cases detected, 8 clean cases passed, no findings). The `vpce` prefix is also misread as `VDce` on the 2x passes under 5.3.4, so only the original pass catches it there.
+
+Why not an existing secret scanner: the gitleaks README describes scanning git repositories, directories and files, and stdin, with optional decoding of percent, hex and Base64 text and extraction of archives, and the TruffleHog post on encoded and archived data lists text decodings (UTF-8, UTF-16, Base64, escaped Unicode) and archive formats. Neither page, read in full on 2026-10-12, mentions images or OCR. The preprocessing follows the Tesseract quality guide: rescale small text toward 300 DPI, use dark text on light background for 4.x and later (hence the inverted pass), add a border of about 10 px, blend transparency onto white, and check the page segmentation mode.
+
+- gitleaks: https://github.com/gitleaks/gitleaks
+- TruffleHog: https://trufflesecurity.com/blog/secret-scanning-encoded-and-archived-data
+- Tesseract: https://tesseract-ocr.github.io/tessdoc/ImproveQuality
+
+Allowlist. `scripts/screenshot-leak-allowlist.json` ships as `{"entries": []}`. An entry has exactly three keys: `path` (one tracked file, no wildcard), `rule` (one of the four ids) and `reason` (at least 20 characters, saying why masking is impossible). `EXPECTED_COUNT` in `scripts/tests/test_screenshot_leak_gate.py` pins the number of entries at 0, so adding one is a visible edit to a test. An entry that suppressed nothing on a full scan fails the run as stale. Prefer zero: every entry is a screenshot the gate no longer protects for that rule, and masking the pixels is almost always possible.
+
+The manual check, kept for IP addresses and for looking at a raw capture:
 
 ```bash
 tesseract <png> - -l eng+jpn 2>/dev/null \
@@ -189,8 +227,7 @@ tesseract <png> - -l eng+jpn 2>/dev/null \
   | grep -vE '123456789012|1234-5678-9012|0123456789abcdef|0000-0000-0000'
 ```
 
-On 2026-10-12 (tesseract 5.5.3) four of the 14 raw captures gave 3 to 4 lines each, and the eight published images gave 0. The all-zero KMS key placeholder matches the 12-digit pattern, hence the last `grep -v`. CI has no image check, so this is a manual step before committing a screenshot.
-
+On 2026-10-12 (tesseract 5.5.3) four of the 14 raw captures gave 3 to 4 lines each, and the eight published images gave 0. The all-zero KMS key placeholder matches the 12-digit pattern, hence the last `grep -v`. Run it on a raw capture first as a negative control: it must hit, or a result of 0 on the published set proves nothing.
 ### Git worktrees have no `.venv`
 
 `.venv` is gitignored, so a worktree starts without one. The Makefile then falls back to the system `python3` (`PY`) and to `ruff`, `bandit` and `cfn-lint` from `PATH`. `make test-py` in a worktree failed on a missing `hypothesis` (observed in a review step); the linters resolving from `PATH` is inferred from the Makefile, not observed. Point the Makefile at the main clone's environment: `make test-py VENV=<main clone>/.venv`.

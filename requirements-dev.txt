@@ -34,3 +34,10 @@ cfn-lint==1.56.3
 # transitive resolution that a future cfn-lint could drop. Matches the version already
 # resolved in .venv, so adopting this pin does not change local behavior.
 pyyaml==6.0.3
+# --- Screenshot gate ------------------------------------------------------
+# scripts/check_screenshot_leaks.py uses Pillow to pre-process images for OCR
+# and to render its self-test samples; docs/screenshots/mask_screenshots.py
+# imports it too, and this file did not list it. Exact pin per the policy at
+# the top of this file; 12.3.0 ships cp312 wheels for macOS arm64 and Linux
+# x86_64, the two platforms this gate runs on.
+pillow==12.3.0

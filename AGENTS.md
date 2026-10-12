@@ -12,10 +12,9 @@ Serverless observability integrations shipping Amazon FSx for NetApp ONTAP audit
 # Install dependencies
 npm install
 
-# TypeScript typecheck. No .ts files are tracked today, so this exits 2 with
-# TS18003 ("No inputs were found"): the expected result, not a failure to fix
-# and not a reason to treat nonzero exits as noise. CI does not run it; it runs
-# `npm run lint` only when a .ts file exists (see ci.yaml).
+# TypeScript typecheck. With no tracked .ts files it exits 2 (TS18003): expected,
+# not a reason to treat nonzero exits as noise. CI runs `npm run lint` only when
+# a .ts file exists (see ci.yaml).
 npx tsc --noEmit
 
 # Lint. Exits 0 with nothing to lint while there are no .ts files. eslint.config.js
@@ -400,6 +399,9 @@ bash shared/scripts/check-bilingual-sync.sh
 
 # 7. Mask screenshots (new images: docs/agent/non-obvious-patterns.md)
 python3 docs/screenshots/mask_screenshots.py  # registered images only
+
+# 8. OCR-scan tracked screenshots (needs tesseract; exit 2 if absent)
+make screenshots
 ```
 
 ### .gitignore Protected Paths

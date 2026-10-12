@@ -269,6 +269,55 @@ jobs:
       - name: Terraform fmt, validate, and offline tests
         run: make terraform
 
+  # OCR every tracked screenshot for account IDs, resource IDs, e-mail addresses
+  # and identifying PNG metadata. gitleaks reads text, not pixels, so a
+  # screenshot that still shows an account ID passed every other job here.
+  #
+  # No `paths:` filter anywhere in this workflow, so an image-only change runs
+  # this job too, and it scans every tracked image on every run (not just the
+  # diff): a rule change can flag a file nobody touched.
+  #
+  # `make screenshots` runs the self-test first. It renders planted leaks and
+  # requires each to be found, so a runner whose tesseract reads nothing fails
+  # closed (exit 2) instead of reporting a clean scan of text it never read.
+  screenshot-leak-gate:
+    # Same as the job id, so the required-check name stays `screenshot-leak-gate`.
+    name: screenshot-leak-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      # The apt packages are not hash-pinned, and the runner image decides which
+      # tesseract build arrives. That is acceptable here because the gate
+      # matches patterns on the text OCR returns and never compares that text
+      # with a stored snapshot: a different build can change recall, not
+      # produce snapshot drift. The self-test in the next step measures recall
+      # on this runner and fails closed if it cannot read the planted samples.
+      # The two prints put the engine build and language list in the log.
+      - name: Install OCR engine
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-jpn
+          tesseract --version
+          tesseract --list-langs
+      # Only Pillow, at the exact version requirements-dev.txt pins. The full
+      # file installs moto, boto3 and the linters, none of which this job uses.
+      - name: Install Pillow (pin from requirements-dev.txt)
+        run: |
+          pin="$(grep -E '^pillow==' requirements-dev.txt)"
+          test -n "$pin"
+          python -m pip install "$pin"
+      - name: Screenshot leak gate (self-test, then every tracked image)
+        run: make screenshots
+
   security-scan:
     runs-on: ubuntu-latest
     steps:
