@@ -1,0 +1,4 @@
+{"tag": "proc-5KB", "prefix": "c5kb", "max_keys": 10, "iterations": 5, "start_utc": "2026-10-11T21:54:15.842112+00:00", "elapsed_s": 4.43, "cli_rc": 0, "cli_out": "200\tNone", "cli_err": ""}
+{"tag": "proc-200KB-50", "prefix": "c200-50", "max_keys": 50, "iterations": 5, "start_utc": "2026-10-11T21:54:20.273160+00:00", "elapsed_s": 42.03, "cli_rc": 0, "cli_out": "200\tNone", "cli_err": ""}
+{"tag": "proc-200KB-100", "prefix": "c200-100", "max_keys": 100, "iterations": 5, "start_utc": "2026-10-11T21:55:02.299284+00:00", "elapsed_s": 86.54, "cli_rc": 0, "cli_out": "200\tNone", "cli_err": ""}
+{"tag": "proc-2MB", "prefix": "c2mb", "max_keys": 10, "iterations": 3, "start_utc": "2026-10-11T22:10:19.422285+00:00", "elapsed_s": 55.71, "cli_rc": 0, "cli_out": "200\tNone", "cli_err": ""}

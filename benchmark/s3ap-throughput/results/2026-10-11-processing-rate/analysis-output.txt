@@ -1,0 +1,19 @@
+Read+parse p50 recomputed from pooled samples in raw/
+(read and parse are per-object; file count does not change them)
+
+cell                       bytes  events   read p50   parse p50    r+p p50  samples
+-----------------------------------------------------------------------------------
+5 KB                        5536      11     39.3ms       0.4ms     39.7ms       50
+200 KB (50 files)         205234     412     55.3ms     101.9ms    157.2ms      250
+200 KB (100 files)        205234     412     58.2ms      98.6ms    156.7ms      500
+2 MB                     2097634    4212    103.0ms    1619.0ms   1722.1ms       30
+
+Per-invocation duration = read+parse p50 x file count, concurrency 1
+(delivery to a vendor is modelled, not measured, and excluded here)
+
+scenario                        files    r+p p50    duration
+------------------------------------------------------------
+10 small files (5 KB)              10     39.7ms       0.4 s
+50 medium files (200 KB)           50    157.2ms       7.9 s
+100 medium files (200 KB)         100    156.7ms      15.7 s
+100 large files (2 MB)            100   1722.1ms     172.2 s
