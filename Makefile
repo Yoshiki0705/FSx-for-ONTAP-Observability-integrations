@@ -127,10 +127,11 @@ help:
 	@echo "  cfn            cfn-lint + cfn-guard over CFN_TEMPLATES"
 	@echo "  terraform      fmt + validate + offline tests (mock provider) for terraform/*, validate for examples"
 	@echo "  gitleaks       Secret scan, including the vendor-credential rules"
+	@echo "  screenshots    OCR-scan every tracked screenshot for account IDs, resource IDs, e-mail, metadata (needs tesseract)"
 	@echo "  drift          Guards that fail when config and reality diverge"
 	@echo "  repo-names     Resolve linked repository names (network; weekly in CI)"
 	@echo "  hooks          Enable the tracked pre-commit hook (once per clone)"
-	@echo "  all            test + lint + security + cfn + drift + terraform"
+	@echo "  all            test + lint + security + cfn + drift + terraform + screenshots"
 	@echo ""
 	@echo "Each gate whose failure mode is silence has a test that breaks it"
 	@echo "deliberately and requires a failure; those live in scripts/tests/."
@@ -142,7 +143,7 @@ help:
 print-%:
 	@echo "$($*)"
 
-all: test lint security cfn drift terraform
+all: test lint security cfn drift terraform screenshots
 
 # The venv is uv-created and has no pip module, so `python -m pip` fails here.
 # Prefer uv when present and fall back to pip for environments without it.
@@ -237,6 +238,27 @@ ai-style: ai-style-selftest
 	$(PY) scripts/ai_style_rules.py docs/ja docs/en README.md terraform --summary --fail --exclude 'blog/*'
 ai-style-selftest:
 	@$(PY) scripts/ai_style_rules.py --selftest >/dev/null
+# OCR every tracked screenshot for account IDs, resource IDs, e-mail addresses
+# and identifying PNG metadata. gitleaks reads text, not pixels, and
+# docs/screenshots/mask_screenshots.py reports success for any file it does not
+# know, so a screenshot that still shows an account ID passed every other gate.
+#
+# The self-test runs first and is blocking, for the same reason as headings: a
+# scan whose OCR reads nothing exits 0 exactly like a clean one. It renders
+# planted leaks (light, dark and small text, a Japanese console page, every
+# resource-ID prefix, e-mail, metadata) and requires each to be found, and
+# requires placeholders and a bare 12-digit number to pass. A missing tesseract
+# or language pack fails with exit 2 and an install hint; it does not skip.
+#
+# In `all` because CI runs it ("anything CI runs is one local command"), and
+# last because it is the slowest gate. NOT in `drift` or `lint`: those run in
+# the lint-and-test job, which has no tesseract. The pure logic (rules, metadata
+# parser, allowlist, exit codes, CI wiring) is covered there by
+# scripts/tests/test_screenshot_leak_*.py without OCR.
+screenshots: screenshots-selftest
+	$(PY) scripts/check_screenshot_leaks.py
+screenshots-selftest:
+	@$(PY) scripts/check_screenshot_leaks.py --selftest >/dev/null
 
 # Repository names that only still resolve because GitHub redirects them.
 #
@@ -403,6 +425,7 @@ clean:
 # is up to date, and runs nothing while exiting 0.
 .PHONY: help all install test test-py test-ts lint lint-py lint-py-full \
         lint-ts headings headings-selftest ai-style ai-style-selftest \
+        screenshots screenshots-selftest \
         security security-full \
         cfn cfn-lint cfn-guard terraform \
         cfn-guard-selftest gitleaks drift agent-config bilingual \
