@@ -223,6 +223,16 @@ def test_resource_id_with_an_ocr_confusion_is_found(chk) -> None:
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
+def test_resource_id_with_an_ocr_space_after_the_hyphen_is_found(chk, prefix: str) -> None:
+    # tesseract 5.3.4 emits "vpc- <hex>" for a rendered "vpc-<hex>".
+    assert rules(chk, f"Resource: {prefix}- {HEX}") == [chk.RULE_RESOURCE]
+
+
+def test_placeholder_with_an_ocr_space_after_the_hyphen_is_still_a_placeholder(chk) -> None:
+    assert rules(chk, "vpc- 0123456789abcdef2") == []
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
 @pytest.mark.parametrize("suffix", ["0123456789abcdef0", "0123456789abcdef9", "0fedcba9876543210",
                                     "0abcdef123456789a", "aaaa1111aaaa1111a", "bbbb2222bbbb2222b",
                                     "cccc3333cccc3333c", "dddd4444dddd4444d"])
@@ -236,8 +246,26 @@ def test_placeholder_with_ocr_confusions_is_still_a_placeholder(chk) -> None:
 
 @pytest.mark.parametrize(
     "text",
-    [f"fs-{HEX[:-1]}", f"fs-{HEX}0", f"xfs-{HEX}", f"fs-{HEX}-1", "fs-1a2b3c4d", "fsx-" + HEX],
-    ids=["sixteen-hex", "eighteen-hex", "boundary-before", "boundary-after", "legacy-eight-hex", "other-prefix"],
+    [
+        f"fs-{HEX[:-1]}",
+        f"fs-{HEX}0",
+        f"xfs-{HEX}",
+        f"fs-{HEX}-1",
+        "fs-1a2b3c4d",
+        "fsx-" + HEX,
+        f"fs-  {HEX}",
+        f"fs-\n{HEX}",
+    ],
+    ids=[
+        "sixteen-hex",
+        "eighteen-hex",
+        "boundary-before",
+        "boundary-after",
+        "legacy-eight-hex",
+        "other-prefix",
+        "two-spaces-after-hyphen",
+        "line-break-after-hyphen",
+    ],
 )
 def test_resource_id_negatives(chk, text: str) -> None:
     assert rules(chk, text) == []

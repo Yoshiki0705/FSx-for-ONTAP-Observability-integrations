@@ -173,9 +173,12 @@ _LABEL_JA_RE = re.compile(
 )
 # Resource IDs: the prefixes .gitleaks.toml lists plus vpce and eni. The body is
 # 17 hex characters; O/o/I/l are accepted as the usual OCR confusions for 0/1
-# and mapped back before the placeholder check.
+# and mapped back before the placeholder check. One space after the hyphen is
+# tolerated: tesseract 5.3.4 (Ubuntu 24.04, the CI runner) reads the rendered
+# "vpc-<hex>" as "vpc- <hex>", while 5.5.3 keeps it whole. The 17-hex body is
+# what keeps this precise, as with the space tolerance in the ARN pattern above.
 _RESOURCE_RE = re.compile(
-    r"(?<![A-Za-z0-9-])(?P<prefix>fsvol|fs|svm|vpce|vpc|subnet|sg|eni|i)-"
+    r"(?<![A-Za-z0-9-])(?P<prefix>fsvol|fs|svm|vpce|vpc|subnet|sg|eni|i)-[ ]?"
     r"(?P<id>[0-9a-foil]{17})(?![A-Za-z0-9-])",
     re.IGNORECASE,
 )
