@@ -72,17 +72,20 @@ Parameters:
     Type: String
     Default: ''
     Description: >-
-      (Optional) Path to the ONTAP CA certificate inside an attached Lambda
-      Layer, e.g. /opt/certs/ontap-ca.pem. When empty the poller falls back to
-      CERT_NONE, which is acceptable for a PoC but should be set for
-      production.
+      (Optional) Path to the CA certificate bundle inside an attached Lambda
+      Layer, e.g. /opt/certs/ontap-ca.pem. Set together with CaCertLayerArn,
+      or leave both empty. When set, the poller verifies the server
+      certificate against the bundle. When empty (the default), it does not
+      verify the server certificate and logs a warning that names
+      CA_CERT_PATH.
 
   CaCertLayerArn:
     Type: String
     Default: ''
     Description: >-
-      (Optional) Lambda Layer ARN containing the CA certificate referenced by
-      CaCertPath.
+      (Optional) Lambda Layer ARN containing the CA certificate bundle
+      referenced by CaCertPath. Set together with CaCertPath, or leave both
+      empty.
 
 Conditions:
   HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, '']]
@@ -283,13 +286,9 @@ Resources:
               if ca_cert_path:
                   return urllib3.PoolManager(cert_reqs="CERT_REQUIRED", ca_certs=ca_cert_path)
               logger.warning(
-                  "TLS certificate verification DISABLED (cert_reqs=CERT_NONE). "
-                  "Acceptable for a PoC only. For production, set the CaCertPath "
-                  "(and CaCertLayerArn) stack parameters to the FSx for ONTAP CA "
-                  "certificate. Retrieve it via: security certificate show -type "
-                  "root-ca -vserver <svm> (ONTAP CLI), or in the AWS Management "
-                  "Console open the FSx for ONTAP file system, then "
-                  "Administration > Certificate."
+                  "TLS server certificate is not verified (cert_reqs=CERT_NONE) "
+                  "because CA_CERT_PATH is empty. Set CA_CERT_PATH (CaCertPath) "
+                  "together with a CA bundle layer (CaCertLayerArn) to verify it."
               )
               return urllib3.PoolManager(cert_reqs="CERT_NONE")
 

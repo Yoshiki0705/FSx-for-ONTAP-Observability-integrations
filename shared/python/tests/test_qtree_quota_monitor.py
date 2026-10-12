@@ -345,7 +345,8 @@ def test_no_ca_cert_path_falls_back_to_cert_none_with_warning(load_lambda, caplo
         lam = load_lambda(_pages([_page(SAMPLE)]))
     lam.pool.assert_called_once_with(cert_reqs="CERT_NONE")
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-    assert any("CERT_NONE" in w and "PoC" in w for w in warnings), warnings
+    assert any("CERT_NONE" in w and "CA_CERT_PATH" in w for w in warnings), warnings
+    assert not any("PoC" in w or "production" in w for w in warnings), warnings
 
 
 # --------------------------------------------------------------------------

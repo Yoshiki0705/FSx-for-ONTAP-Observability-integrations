@@ -105,13 +105,13 @@ variable "snapmirror_max_relationships" {
 }
 
 variable "ca_cert_path" {
-  description = "ONTAP CA certificate path inside ca_cert_layer_arn. Empty disables TLS verification."
+  description = "Optional. CA certificate bundle path inside ca_cert_layer_arn. Set together with ca_cert_layer_arn, or leave both empty. Empty means the server certificate is not verified and a warning is logged."
   type        = string
   default     = ""
 }
 
 variable "ca_cert_layer_arn" {
-  description = "Lambda layer version ARN containing the CA certificate."
+  description = "Optional. Lambda layer version ARN containing the CA certificate bundle. Set together with ca_cert_path, or leave both empty."
   type        = string
   default     = ""
 }
