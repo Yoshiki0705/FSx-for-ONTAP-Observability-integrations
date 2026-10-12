@@ -304,7 +304,7 @@ English and Japanese indexes always list the same set.
 #### Choosing an Approach
 
 - [Amazon FSx for NetApp ONTAP Monitoring Design](monitoring-design.md)
-- [CloudWatch Monitoring for Amazon FSx for NetApp ONTAP with Terraform: Three Modules Applied in Order, Plus an Optional Fourth for SSD Auto-Increase](terraform-monitoring-guide.md)
+- [Configure CloudWatch Monitoring for FSx for ONTAP with Terraform](terraform-monitoring-guide.md)
 - [Sizing and Headroom for Amazon FSx for NetApp ONTAP Monitoring](sizing-and-headroom.md)
 - [Monitoring-Driven Capacity Automation for Amazon FSx for NetApp ONTAP](capacity-automation.md)
 - [T4 Guarded SSD Auto-Increase for Amazon FSx for NetApp ONTAP: Implementation Design](capacity-automation-t4-design.md)

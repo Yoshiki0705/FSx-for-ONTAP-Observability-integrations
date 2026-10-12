@@ -4,9 +4,36 @@
 
 ## Overview
 
-This page records nine runs. The 2026-10-05 run of the dashboard template and the Terraform module is described first. The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06). The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06). A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06). Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07). On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08). On 2026-10-09 the Terraform log-alarm module (phase T3) was applied to a log group fed by the syslog VPC endpoint path, and its alarms were driven with real ONTAP audit lines: [Terraform Log-Alarm Module Run on 2026-10-09](#terraform-log-alarm-module-run-on-2026-10-09). Later on 2026-10-09 the Terraform SSD auto-increase module (phase T4) was applied in `notify_only`, `approve` and `auto`, with `auto` kept behind an explicit IAM deny so that no storage capacity changed: [Terraform SSD Auto-Increase Module Run on 2026-10-09](#terraform-ssd-auto-increase-module-run-on-2026-10-09). On 2026-10-11 the qtree quota monitor template ran with a read-only ONTAP account (role `fsxadmin-readonly`), the first live run of the template's current revision: [Qtree Quota Monitor Run with a Read-Only ONTAP Account on 2026-10-11](#qtree-quota-monitor-run-with-a-read-only-ontap-account-on-2026-10-11). That section sits with the other qtree quota monitor runs, after the re-run of 2026-10-06, and not in date order. On 2026-10-12 the Terraform modules T1 to T3 were applied from their tags in one root module on a throwaway file system, the T3 detections were driven at their default period, the EMS and file-access paths and the T2 CA-verified TLS setting were tried, and T4 made one real SSD increase: [Terraform Monitoring Modules Live Run on 2026-10-12](#terraform-monitoring-modules-live-run-on-2026-10-12). That section is last, in date order, after the SNS section.
+This page records nine runs.
 
-On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system: first generation, `SINGLE_AZ_1`, one HA pair. Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK. The two Terraform per-volume alarms were also driven to ALARM and back to OK. The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings). No defect was found in the template or the module in this run. A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
+- The 2026-10-05 run of the dashboard template and the Terraform module is described first.
+- The first 2026-10-06 run of the qtree quota monitor stopped after one successful poll and is kept as history in [Qtree Quota Monitor Run on 2026-10-06](#qtree-quota-monitor-run-on-2026-10-06).
+- The re-run later that day completed 4 polls and drove `QtreeQuotaAlarm` from OK to ALARM and back to OK: [Qtree Quota Monitor Re-run on 2026-10-06](#qtree-quota-monitor-re-run-on-2026-10-06).
+- A run starting late on 2026-10-06 wrote real data to a test volume and drove the file-system capacity alarm of both the template and the module from OK to ALARM and back to OK, which closes the ALARM-path gap left by F1: [Capacity Alarm Real-Data Run on 2026-10-06](#capacity-alarm-real-data-run-on-2026-10-06).
+- Screenshots of the module's dashboard and alarm list from a deployment on 2026-10-07, after the dashboard display fix, are in [Dashboard and Alarm Screenshots on 2026-10-07](#dashboard-and-alarm-screenshots-on-2026-10-07).
+- On 2026-10-08 the Terraform custom-metrics module (phase T2, qtree and SnapMirror) was applied and its SnapMirror alarms were driven on a relationship inside one SVM: [Terraform Custom-Metrics Module Run on 2026-10-08](#terraform-custom-metrics-module-run-on-2026-10-08).
+- On 2026-10-09 the Terraform log-alarm module (phase T3) was applied to a log group fed by the syslog VPC endpoint path, and its alarms were driven with real ONTAP audit lines: [Terraform Log-Alarm Module Run on 2026-10-09](#terraform-log-alarm-module-run-on-2026-10-09).
+- Later on 2026-10-09 the Terraform SSD auto-increase module (phase T4) was applied in `notify_only`, `approve` and `auto`.
+  - `auto` was kept behind an explicit IAM deny so that no storage capacity changed.
+  - Record: [Terraform SSD Auto-Increase Module Run on 2026-10-09](#terraform-ssd-auto-increase-module-run-on-2026-10-09).
+- On 2026-10-11 the qtree quota monitor template ran with a read-only ONTAP account (role `fsxadmin-readonly`).
+  - This was the first live run of the template's current revision: [Qtree Quota Monitor Run with a Read-Only ONTAP Account on 2026-10-11](#qtree-quota-monitor-run-with-a-read-only-ontap-account-on-2026-10-11).
+  - That section sits with the other qtree quota monitor runs, after the re-run of 2026-10-06, and not in date order.
+- On 2026-10-12 the Terraform modules T1 to T3 were applied from their tags in one root module on a throwaway file system.
+  - The T3 detections were driven at their default period.
+  - The EMS and file-access paths and the T2 CA-verified TLS setting were tried.
+  - T4 made one real SSD increase.
+  - Record: [Terraform Monitoring Modules Live Run on 2026-10-12](#terraform-monitoring-modules-live-run-on-2026-10-12).
+  - That section is last, in date order, after the SNS section.
+
+On 2026-10-05 (UTC), the CloudFormation dashboard template `shared/templates/fsxn-monitoring-dashboard.yaml` and the Terraform module `terraform/fsxn-monitoring-dashboard/` were deployed against one real Amazon FSx for NetApp ONTAP file system:
+
+- First generation, `SINGLE_AZ_1`, one HA pair.
+- Every dashboard series returned data and every alarm left INSUFFICIENT_DATA and reached OK.
+- The two Terraform per-volume alarms were also driven to ALARM and back to OK.
+- The file-system capacity alarm (CloudFormation and Terraform) could not be driven to ALARM, because its lowest allowed threshold (50%) is above the file system's observed utilization (about 3.5%); see [F1](#findings).
+- No defect was found in the template or the module in this run.
+- A dashboard display defect found on 2026-10-07 is described in the note under [Findings](#findings).
 
 | Item | Value |
 |------|-------|

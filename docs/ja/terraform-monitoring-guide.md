@@ -1,12 +1,60 @@
-# Terraform による Amazon FSx for NetApp ONTAP の CloudWatch 監視は 3 つのモジュールを順に適用して構成し、SSD 自動拡張は任意の 4 つ目として加える
+# Terraform で FSx for ONTAP の CloudWatch 監視を構成する
 
 🌐 **日本語**（本ページ）| [English](../en/terraform-monitoring-guide.md)
 
 ## エグゼクティブサマリ
 
-Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開するには、`terraform/` にある監視用の 3 つのモジュールを次の順に適用します。T1 の `fsxn-monitoring-dashboard` は、ネイティブの `AWS/FSx` メトリクスに対するダッシュボードとアラームを作り、呼び出すのは AWS API だけです。T2 の `fsxn-ontap-custom-metrics` は、CloudWatch がネイティブでは公開しない Qtree のクォータ使用量と SnapMirror の健全性・遅延を公開します。T2 には、ファイルシステムの管理エンドポイントへ TCP 443 で届くサブネット、`fsxadmin-readonly` ロールを持つ ONTAP ユーザーとその認証情報を収めた Secrets Manager のシークレット、NAT ゲートウェイかインターフェイスエンドポイント経由で CloudWatch と Secrets Manager へ出る経路が要ります。T3 の `fsxn-log-alarm` は管理操作の監査イベントにアラームを掛けます。前提は、syslog VPC エンドポイント経路で監査ログを受け取っている CloudWatch Logs のロググループで、この経路は本リポジトリでは CloudFormation テンプレートとして提供しています。この経路が運ぶのは監査ログだけです。`wafl.vol.autoSize.fail` などの EMS イベントを同じロググループに届けるには EMS 通知先を別に設定する必要があります。実際の `wafl.vol.autoSize.fail` イベントを届け、アラームを発報させた定義が [2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#ems-通知先の定義2026-10-12-の実行) にあります（`検証済み`、2026-10-12、第 1 世代で HA ペア 1 つのファイルシステム）。閾値は T1 より前に決めます。4 つ目の T4 `fsxn-ssd-auto-increase` は、SSD 容量アラームを受けて容量を上げるガード付きのサンプルで、監視には要りません。使う場合は容量アラームの後に、既定の `notify_only` で追加します。第 1 世代のファイルシステムでは SSD 容量の拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まります。T1 と T2 には日付付きの実環境での実行記録があり、T3 は [2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行) で監査の検出 3 つを試験用の設定で確認しました。[2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#2026-10-12-の-terraform-監視モジュールの実環境での実行) では、T1〜T3 をタグから 1 つのルートモジュールで適用し（44 リソース。T3 は `v0.1.0`）、T3 の既定の検出 4 つ（`failed-access`、`bulk-delete`、`privileged-operations`、`autosize-fail`）を既定の 300 秒の期間で動かしました。T4 は実装済みでオフラインの検証まで済んでおり、[2026-10-09 の T4 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行) で元に戻せる経路を確認し、容量は変わっていません。2026-10-12 の記録では、使い捨てのファイルシステムで実際の拡張を 1 回行っています（`検証済み`、1 回）。実環境の結果はいずれも第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムでのもので、2026-10-12 のファイルシステム（`ap-northeast-1`、ONTAP 9.19.1P3、128 MBps）は使い捨てで、削除済みです。日付付きの記録へのリンクは [モジュールの一覧](#モジュールの一覧) にあります。
+Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開するには、`terraform/` にある監視用の 3 つのモジュールを次の順に適用します。
 
-`shared/templates/` に CloudFormation テンプレートがあるのは、T1（`fsxn-monitoring-dashboard.yaml`）、T2 の Qtree の部分（`qtree-quota-monitor.yaml`）、T3（`cloudwatch-log-alarm.yaml`）です。T3 のテンプレートの検出クエリは、2026-10-09 の実行の後に T3 で置き換えたパターンから後で書き換えたもので、LogAlarm のクエリとしては実行していません（`unverified`。[組み込みの検知クエリ](cloudwatch-log-alarm.md#組み込みの検知クエリ)）。SnapMirror のコレクターと T4 は Terraform にしかありません。どちらを使うかは監視の内容ではなく、その環境がインフラをどう管理しているかで決まります。FAQ の「CloudFormation テンプレートとの関係」（[FAQ とよくある誤解](#faq-とよくある誤解)）を参照してください。
+- 閾値は T1 より前に決めます。
+- T1 の `fsxn-monitoring-dashboard` は、ネイティブの `AWS/FSx` メトリクスに対するダッシュボードとアラームを作り、呼び出すのは AWS API だけです。
+- T2 の `fsxn-ontap-custom-metrics` は、CloudWatch がネイティブでは公開しない Qtree のクォータ使用量と SnapMirror の健全性・遅延を公開します。
+- T3 の `fsxn-log-alarm` は管理操作の監査イベントにアラームを掛けます。
+- 4 つ目の T4 `fsxn-ssd-auto-increase` は、SSD 容量アラームを受けて容量を上げるガード付きのサンプルで、監視には要りません。
+
+モジュールごとの前提条件です。
+
+- T2 には次が要ります。
+  - ファイルシステムの管理エンドポイントへ TCP 443 で届くサブネット
+  - `fsxadmin-readonly` ロールを持つ ONTAP ユーザーとその認証情報を収めた Secrets Manager のシークレット
+  - NAT ゲートウェイかインターフェイスエンドポイント経由で CloudWatch と Secrets Manager へ出る経路
+- T3 の前提は、syslog VPC エンドポイント経路で監査ログを受け取っている CloudWatch Logs のロググループで、この経路は本リポジトリでは CloudFormation テンプレートとして提供しています。
+  - この経路が運ぶのは監査ログだけです。
+  - `wafl.vol.autoSize.fail` などの EMS イベントを同じロググループに届けるには EMS 通知先を別に設定する必要があります。
+
+SSD 自動拡張モジュールを使う場合：
+
+- 容量アラームの後に、既定の `notify_only` で追加します。
+- 第 1 世代のファイルシステムでは SSD 容量の拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まります。
+
+実環境での検証の状況です。
+
+- T1 と T2 には日付付きの実環境での実行記録があります。
+- T3 は [2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行) で監査の検出 3 つを試験用の設定で確認しました。
+- T4 は実装済みでオフラインの検証まで済んでいます。
+- [2026-10-09 の T4 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行) で元に戻せる経路を確認し、容量は変わっていません。
+- [2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#2026-10-12-の-terraform-監視モジュールの実環境での実行) では、T1〜T3 をタグから 1 つのルートモジュールで適用しました（44 リソース。T3 は `v0.1.0`）。
+  - T3 の既定の検出 4 つ（`failed-access`、`bulk-delete`、`privileged-operations`、`autosize-fail`）を既定の 300 秒の期間で動かしました。
+- 実際の `wafl.vol.autoSize.fail` イベントを届け、アラームを発報させた EMS 通知先の定義が [2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#ems-通知先の定義2026-10-12-の実行) にあります（`検証済み`、2026-10-12、第 1 世代で HA ペア 1 つのファイルシステム）。
+- 2026-10-12 の記録では、使い捨てのファイルシステムで実際の拡張を 1 回行っています（`検証済み`、1 回）。
+- 日付付きの記録へのリンクは [モジュールの一覧](#モジュールの一覧) にあります。
+
+検証環境です。
+
+- 実環境の結果はいずれも第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムでのものです。
+- 2026-10-12 のファイルシステム（`ap-northeast-1`、ONTAP 9.19.1P3、128 MBps）は使い捨てで、削除済みです。
+
+`shared/templates/` に CloudFormation テンプレートがあるのは次のものです。
+
+- T1（`fsxn-monitoring-dashboard.yaml`）
+- T2 の Qtree の部分（`qtree-quota-monitor.yaml`）
+- T3（`cloudwatch-log-alarm.yaml`）
+  - T3 のテンプレートの検出クエリは、2026-10-09 の実行の後に T3 で置き換えたパターンから後で書き換えたもので、LogAlarm のクエリとしては実行していません（`unverified`。[組み込みの検知クエリ](cloudwatch-log-alarm.md#組み込みの検知クエリ)）。
+
+Terraform と CloudFormation の使い分けです。
+
+- SnapMirror のコレクターと T4 は Terraform にしかありません。
+- どちらを使うかは監視の内容ではなく、その環境がインフラをどう管理しているかで決まります。FAQ の「CloudFormation テンプレートとの関係」（[FAQ とよくある誤解](#faq-とよくある誤解)）を参照してください。
 
 > **範囲に関する補足**
 >
