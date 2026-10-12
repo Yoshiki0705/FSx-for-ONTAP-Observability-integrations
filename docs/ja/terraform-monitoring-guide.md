@@ -4,7 +4,7 @@
 
 ## エグゼクティブサマリ
 
-Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開するには、`terraform/` にある監視用の 3 つのモジュールを次の順に適用します。T1 の `fsxn-monitoring-dashboard` は、ネイティブの `AWS/FSx` メトリクスに対するダッシュボードとアラームを作り、呼び出すのは AWS API だけです。T2 の `fsxn-ontap-custom-metrics` は、CloudWatch がネイティブでは公開しない Qtree のクォータ使用量と SnapMirror の健全性・遅延を公開します。T2 には、ファイルシステムの管理エンドポイントへ TCP 443 で届くサブネット、`fsxadmin-readonly` ロールを持つ ONTAP ユーザーとその認証情報を収めた Secrets Manager のシークレット、NAT ゲートウェイかインターフェイスエンドポイント経由で CloudWatch と Secrets Manager へ出る経路が要ります。T3 の `fsxn-log-alarm` は管理操作の監査イベントにアラームを掛けます。前提は、syslog VPC エンドポイント経路で監査ログを受け取っている CloudWatch Logs のロググループで、この経路は本リポジトリでは CloudFormation テンプレートとして提供しています。この経路が運ぶのは監査ログだけです。`wafl.vol.autoSize.fail` などの EMS イベントを同じロググループに届けるには EMS 通知先を別に設定する必要があり、その手順は文書化も検証もしていません（`未確認`）。閾値は T1 より前に決めます。4 つ目の T4 `fsxn-ssd-auto-increase` は、SSD 容量アラームを受けて容量を上げるガード付きのサンプルで、監視には要りません。使う場合は容量アラームの後に、既定の `notify_only` で追加します。第 1 世代のファイルシステムでは SSD 容量の拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まります。T1 と T2 には日付付きの実環境での実行記録があり、T3 は [2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行) で監査の検出 3 つを試験用の設定で確認しました。T4 は実装済みでオフラインの検証まで済んでおり、[2026-10-09 の T4 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行) で元に戻せる経路を確認し、容量は変わっていません。実際の拡張は `未確認` です。実環境の結果はいずれも第 1 世代・HA ペア 1 つのファイルシステム 1 台でのもので、日付付きの記録へのリンクは [モジュールの一覧](#モジュールの一覧) にあります。
+Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開するには、`terraform/` にある監視用の 3 つのモジュールを次の順に適用します。T1 の `fsxn-monitoring-dashboard` は、ネイティブの `AWS/FSx` メトリクスに対するダッシュボードとアラームを作り、呼び出すのは AWS API だけです。T2 の `fsxn-ontap-custom-metrics` は、CloudWatch がネイティブでは公開しない Qtree のクォータ使用量と SnapMirror の健全性・遅延を公開します。T2 には、ファイルシステムの管理エンドポイントへ TCP 443 で届くサブネット、`fsxadmin-readonly` ロールを持つ ONTAP ユーザーとその認証情報を収めた Secrets Manager のシークレット、NAT ゲートウェイかインターフェイスエンドポイント経由で CloudWatch と Secrets Manager へ出る経路が要ります。T3 の `fsxn-log-alarm` は管理操作の監査イベントにアラームを掛けます。前提は、syslog VPC エンドポイント経路で監査ログを受け取っている CloudWatch Logs のロググループで、この経路は本リポジトリでは CloudFormation テンプレートとして提供しています。この経路が運ぶのは監査ログだけです。`wafl.vol.autoSize.fail` などの EMS イベントを同じロググループに届けるには EMS 通知先を別に設定する必要があります。実際の `wafl.vol.autoSize.fail` イベントを届け、アラームを発報させた定義が [2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#ems-通知先の定義2026-10-12-の実行) にあります（`検証済み`、2026-10-12、第 1 世代で HA ペア 1 つのファイルシステム）。閾値は T1 より前に決めます。4 つ目の T4 `fsxn-ssd-auto-increase` は、SSD 容量アラームを受けて容量を上げるガード付きのサンプルで、監視には要りません。使う場合は容量アラームの後に、既定の `notify_only` で追加します。第 1 世代のファイルシステムでは SSD 容量の拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まります。T1 と T2 には日付付きの実環境での実行記録があり、T3 は [2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行) で監査の検出 3 つを試験用の設定で確認しました。[2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#2026-10-12-の-terraform-監視モジュールの実環境での実行) では、T1〜T3 をタグから 1 つのルートモジュールで適用し（44 リソース）、T3 の既定の検出 5 つのうち 4 つを既定の 300 秒の期間で動かしました。残る `unauthorized-access` は、その環境ではファイルアクセスの記録がロググループに届かず、発報しませんでした（検証済みの否定結果で、この環境での自己測定）。同じ実行で、T2 の CA 証明書による TLS 検証は、モジュールが IP アドレスで接続するため、ファイルシステム向けに発行された証明書では通せませんでした（検証済みの否定結果で、この環境での自己測定）。T4 は実装済みでオフラインの検証まで済んでおり、[2026-10-09 の T4 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行) で元に戻せる経路を確認し、容量は変わっていません。2026-10-12 の記録では、使い捨てのファイルシステムで実際の拡張を 1 回行っています（`検証済み`、1 回）。実環境の結果はいずれも第 1 世代 `SINGLE_AZ_1`・HA ペア 1 つのファイルシステムでのもので、2026-10-12 のファイルシステム（`ap-northeast-1`、ONTAP 9.19.1P3、128 MBps）は使い捨てで、削除済みです。日付付きの記録へのリンクは [モジュールの一覧](#モジュールの一覧) にあります。
 
 `shared/templates/` に CloudFormation テンプレートがあるのは、T1（`fsxn-monitoring-dashboard.yaml`）、T2 の Qtree の部分（`qtree-quota-monitor.yaml`）、T3（`cloudwatch-log-alarm.yaml`）です。T3 のテンプレートの検出クエリは、2026-10-09 の実行の後に T3 で置き換えたパターンから後で書き換えたもので、LogAlarm のクエリとしては実行していません（`unverified`。[組み込みの検知クエリ](cloudwatch-log-alarm.md#組み込みの検知クエリ)）。SnapMirror のコレクターと T4 は Terraform にしかありません。どちらを使うかは監視の内容ではなく、その環境がインフラをどう管理しているかで決まります。FAQ の「CloudFormation テンプレートとの関係」（[FAQ とよくある誤解](#faq-とよくある誤解)）を参照してください。
 
@@ -35,10 +35,10 @@ Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開�
 
 | フェーズ | 目的 | モジュールのパス | 作るもの | 前提条件 | 実環境での検証 | 固定の方法 |
 |---|---|---|---|---|---|---|
-| T1 | ネイティブメトリクスのダッシュボードとアラーム | [`terraform/fsxn-monitoring-dashboard`](../../terraform/fsxn-monitoring-dashboard/README.ja.md) | ダッシュボード（ウィジェット 7 つ）、ファイルシステム容量とネットワークスループット使用率のアラーム、任意で有効にする CPU・ディスク・ボリューム単位のアラーム、任意の SNS トピック | AWS API のみ。ファイルシステム ID | `検証済み`。[2026-10-05](verification-results-cloudwatch-monitoring.md#テスト結果サマリー)、[2026-10-06〜07](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)（実データでの容量アラーム）、[2026-10-07](verification-results-cloudwatch-monitoring.md#2026-10-07-のダッシュボードとアラームの画面)（最小の IAM ポリシー）。第 1 世代、HA ペア 1 つ | タグ `terraform-fsxn-monitoring-dashboard-v0.1.1`（`v0.1.0` にはダッシュボード表示の不具合あり）。[モジュールの取得方法](../../terraform/fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) |
-| T2 | Qtree のクォータと SnapMirror の健全性・遅延 | [`terraform/fsxn-ontap-custom-metrics`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md) | VPC Lambda、スケジュール、デッドレターキュー、ロググループ、IAM ロール、Lambda のセキュリティグループ、任意のインターフェイスエンドポイント、最大 7 つのアラーム | 管理エンドポイントへ TCP 443 で届くサブネット。ファイルシステムのセキュリティグループへのインバウンドルール。`fsxadmin-readonly` のユーザーと Secrets Manager のシークレット。NAT ゲートウェイ、または `monitoring` と `secretsmanager` のエンドポイント | `検証済み`。[2026-10-08](verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。1 つの SVM 内の 2 ボリューム間の SnapMirror | タグ `terraform-fsxn-ontap-custom-metrics-v0.1.0`。[モジュールの取得方法](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#モジュールの取得方法) |
-| T3 | 管理操作の監査イベントのアラーム（EMS イベントには別の転送の設定が要る） | [`terraform/fsxn-log-alarm`](../../terraform/fsxn-log-alarm/README.ja.md) | 検出ごとにメトリクスフィルター 1 つとメトリクスアラーム 1 つ（既定のレシピは 5 つ）、任意の SNS トピック | syslog VPC エンドポイント経路から監査ログが書き込まれる既存のロググループ。`autosize-fail` には、同じロググループへの EMS 通知先が別に要る（`未確認`） | 監査の検出 3 つを `検証済み`。[2026-10-09](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)。60 秒の試験用の期間と試験用の閾値で、`bulk-delete`、`privileged-operations`、REST の 403 を数える失敗アクセスの検出が OK → ALARM → OK。既定の 300 秒の期間、`autosize-fail`、`unauthorized-access` は `未確認`（[確認済みの範囲と未確認の範囲](#確認済みの範囲と未確認の範囲)） | タグ `terraform-fsxn-log-alarm-v0.1.0`。[モジュールの取得方法](../../terraform/fsxn-log-alarm/README.ja.md#モジュールの取得方法) |
-| T4 | ガード付き SSD 自動拡張（任意。監視には不要） | [`terraform/fsxn-ssd-auto-increase`](../../terraform/fsxn-ssd-auto-increase/README.ja.md) | VPC の外の Lambda、SSD 使用率のトリガーアラーム（第 2 世代では `aggregate_names` の要素ごとに 1 つ追加）、トリガー用と通知用の SNS トピック、1 時間ごとの再評価スケジュール、デッドレターキュー、DynamoDB のロックテーブル、判断ログと関数のロググループ、IAM ロール | T4 自身の判断の記録を置く、モジュールの外で管理する S3 Object Lock のバケット（`auto` にはコンプライアンスモード。ファイルシステムのデータではなく、T1〜T3 は使わない。[SnapLock ではなく S3 Object Lock を使う理由](capacity-automation-t4-design.md#faq)）。必須の絶対上限 `max_storage_capacity_gib`。Terraform で管理するファイルシステムでは `storage_capacity` の `ignore_changes`。第 1 世代では拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まる | 実装済みで、オフラインの検証（ユニットテスト、`make terraform`、`terraform test`）済み。2026-10-09 の実環境（[記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)）: `notify_only`、`approve`、明示的な IAM の拒否の後ろでの `auto` を検証し、容量は変わっていない。実際の拡張は `未確認` | コミット SHA。タグ `terraform-fsxn-ssd-auto-increase-v0.1.0` はまだ作成しておらず、T4 の完了条件のうち未完了の判断アーカイブの項目を記録した後に作る計画。[モジュールの取得方法](../../terraform/fsxn-ssd-auto-increase/README.ja.md#モジュールの取得方法)。設計は [capacity-automation-t4-design.md](capacity-automation-t4-design.md) |
+| T1 | ネイティブメトリクスのダッシュボードとアラーム | [`terraform/fsxn-monitoring-dashboard`](../../terraform/fsxn-monitoring-dashboard/README.ja.md) | ダッシュボード（ウィジェット 7 つ）、ファイルシステム容量とネットワークスループット使用率のアラーム、任意で有効にする CPU・ディスク・ボリューム単位のアラーム、任意の SNS トピック | AWS API のみ。ファイルシステム ID | `検証済み`。[2026-10-05](verification-results-cloudwatch-monitoring.md#テスト結果サマリー)、[2026-10-06〜07](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)（実データでの容量アラーム）、[2026-10-07](verification-results-cloudwatch-monitoring.md#2026-10-07-のダッシュボードとアラームの画面)（最小の IAM ポリシー）。第 1 世代、HA ペア 1 つ。2026-10-12 にも `検証済み`（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](verification-results-cloudwatch-monitoring.md#確認項目の結果2026-10-12-の実行)）。3 つのモジュールを含むルートでタグから適用し、その実行で作られた T1 のアラームはすべて INSUFFICIENT_DATA を抜けた。T1 のアラーム通知メールの配信は `未確認` | タグ `terraform-fsxn-monitoring-dashboard-v0.1.1`（`v0.1.0` にはダッシュボード表示の不具合あり）。[モジュールの取得方法](../../terraform/fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) |
+| T2 | Qtree のクォータと SnapMirror の健全性・遅延 | [`terraform/fsxn-ontap-custom-metrics`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md) | VPC Lambda、スケジュール、デッドレターキュー、ロググループ、IAM ロール、Lambda のセキュリティグループ、任意のインターフェイスエンドポイント、最大 7 つのアラーム | 管理エンドポイントへ TCP 443 で届くサブネット。ファイルシステムのセキュリティグループへのインバウンドルール。`fsxadmin-readonly` のユーザーと Secrets Manager のシークレット。NAT ゲートウェイ、または `monitoring` と `secretsmanager` のエンドポイント | `検証済み`。[2026-10-08](verification-results-cloudwatch-monitoring.md#2026-10-08-の-terraform-カスタムメトリクスモジュールの実行)。1 つの SVM 内の 2 ボリューム間の SnapMirror。2026-10-12 にも `検証済み`（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](verification-results-cloudwatch-monitoring.md#確認項目の結果2026-10-12-の実行)）。ハートビートアラーム（適用後に ALARM、最初のポーリングの後に OK）、既定の 5 分間隔のポーリング（299〜300 秒）、実際のクォータでの `qtree-quota-high` の OK → ALARM → OK（85 に対して 90.36）。この実行には SnapMirror 関係がなかったため、SnapMirror のアラームは動かしていない。CA 証明書による TLS 検証はファイルシステム向けに発行された証明書では通らなかった（[TLS の節](verification-results-cloudwatch-monitoring.md#fsx-の証明書チェーンに対する-tls-検証2026-10-12-の実行)）。インバウンドルールの手順は試していない | タグ `terraform-fsxn-ontap-custom-metrics-v0.1.0`。[モジュールの取得方法](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#モジュールの取得方法) |
+| T3 | 管理操作の監査イベントのアラーム（EMS イベントには別の転送の設定が要る） | [`terraform/fsxn-log-alarm`](../../terraform/fsxn-log-alarm/README.ja.md) | 検出ごとにメトリクスフィルター 1 つとメトリクスアラーム 1 つ（既定のレシピは 5 つ）、任意の SNS トピック | syslog VPC エンドポイント経路から監査ログが書き込まれる既存のロググループ。`autosize-fail` には、同じロググループへの EMS 通知先が別に要る（定義は 2026-10-12 に `検証済み`: [EMS 通知先の定義](verification-results-cloudwatch-monitoring.md#ems-通知先の定義2026-10-12-の実行)） | 監査の検出 3 つを `検証済み`。[2026-10-09](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)。60 秒の試験用の期間と試験用の閾値で、`bulk-delete`、`privileged-operations`、REST の 403 を数える失敗アクセスの検出が OK → ALARM → OK。2026-10-12 にも `検証済み`（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](verification-results-cloudwatch-monitoring.md#確認項目の結果2026-10-12-の実行)）。既定の 300 秒の期間と既定の閾値で、`failed-access`、`bulk-delete`、`privileged-operations`、`autosize-fail`（EMS 通知先を通した実際の EMS イベントによる）が OK → ALARM → OK になり、3 件の通知のメールが届いた。`unauthorized-access` は、陽性対照を置いても発報しなかった（検証済みの否定結果で、この環境での自己測定）。詳しくは [確認済みの範囲と未確認の範囲](#確認済みの範囲と未確認の範囲) | タグ `terraform-fsxn-log-alarm-v0.1.0`。[モジュールの取得方法](../../terraform/fsxn-log-alarm/README.ja.md#モジュールの取得方法) |
+| T4 | ガード付き SSD 自動拡張（任意。監視には不要） | [`terraform/fsxn-ssd-auto-increase`](../../terraform/fsxn-ssd-auto-increase/README.ja.md) | VPC の外の Lambda、SSD 使用率のトリガーアラーム（第 2 世代では `aggregate_names` の要素ごとに 1 つ追加）、トリガー用と通知用の SNS トピック、1 時間ごとの再評価スケジュール、デッドレターキュー、DynamoDB のロックテーブル、判断ログと関数のロググループ、IAM ロール | T4 自身の判断の記録を置く、モジュールの外で管理する S3 Object Lock のバケット（`auto` にはコンプライアンスモード。ファイルシステムのデータではなく、T1〜T3 は使わない。[SnapLock ではなく S3 Object Lock を使う理由](capacity-automation-t4-design.md#faq)）。必須の絶対上限 `max_storage_capacity_gib`。Terraform で管理するファイルシステムでは `storage_capacity` の `ignore_changes`。第 1 世代では拡張を元に戻せず、変更のたびに 6 時間のクールダウンが始まる | 実装済みで、オフラインの検証（ユニットテスト、`make terraform`、`terraform test`）済み。2026-10-09 の実環境（[記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)）: `notify_only`、`approve`、明示的な IAM の拒否の後ろでの `auto` を検証し、容量は変わっていない。実際の拡張は 2026-10-12 に 1 回 `検証済み`（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）: 1,024 → 1,127 GiB、`UpdateFileSystem` はちょうど 1 回（[記録](verification-results-cloudwatch-monitoring.md#ssd-容量の実際の拡張2026-10-12-の実行)）。その後のクールダウンと通知トピックのメールは `未確認` | コミット SHA。タグ `terraform-fsxn-ssd-auto-increase-v0.1.0` はまだ作成しておらず、T4 の完了条件のうち未完了の判断アーカイブの項目を記録した後に作る計画（本ページの更新時点では T4 のタグはなかった）。`?ref=<commit-sha>&depth=1` は 2026-10-12 に "setting depth requires ref to be a branch or tag name" で失敗したので、コミット SHA では `depth` を付けない。[モジュールの取得方法](../../terraform/fsxn-ssd-auto-increase/README.ja.md#モジュールの取得方法)。設計は [capacity-automation-t4-design.md](capacity-automation-t4-design.md) |
 
 > **記録に関する補足**
 >
@@ -46,14 +46,14 @@ Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開�
 
 > **検証範囲に関する補足**
 >
-> どの実行も、1 つのリージョンのファイルシステム 1 台でのサンプル実行で、本番環境の見積りではありません。形の違うファイルシステム（第 2 世代、HA ペアが 2 つ以上、別のリージョン）では、まず本番ではないアカウントで適用してください。
+> どの実行も、1 つのリージョンのファイルシステム 1 台でのサンプル実行で、本番環境の見積りではありません。2026-10-12 の実行では、使い捨てのファイルシステム 1 台を使い、削除済みです。形の違うファイルシステム（第 2 世代、HA ペアが 2 つ以上、別のリージョン）では、まず本番ではないアカウントで適用してください。
 
 ## 推奨する展開の順序
 
 1. サイジングのページの [閾値の決め方](sizing-and-headroom.md#閾値の決め方) を読み、閾値を決めます。ここで止まりやすいのは、T1 の `capacity_threshold_percent` が 50〜95 しか受け付けない点です。
 2. T1 を適用します（[`fsxn-monitoring-dashboard`](../../terraform/fsxn-monitoring-dashboard/README.ja.md#前提条件)）。ここで止まりやすいのはプロバイダーの版です。制約はモジュール側と呼び出し側で重なり合う範囲になるため、ルートで `hashicorp/aws` を 6.67.0 より下（たとえば `~> 6.60.0`）に固定していると、`terraform init` が "no available releases match the given constraints" で失敗します。
-3. T2 を適用します（[`fsxn-ontap-custom-metrics`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#前提条件)）。ここで止まりやすいのは、Lambda のサブネットから管理エンドポイントへの TCP 443 の到達性です。ファイルシステムのセキュリティグループへのインバウンドルールは、適用後に Terraform の外で追加します。
-4. [syslog VPC エンドポイントのセットアップガイド](syslog-vpce-setup-guide.md) と CloudFormation テンプレート `shared/templates/syslog-vpce-cloudwatch.yaml` で、T3 に監査ログを届ける経路を作ります。現在のテンプレートを使ってください。セキュリティグループの説明は `GroupDescription: >-` で書かれています。修正前に取ったコピーは `GroupDescription: >` で、この折り畳みスカラーが末尾に改行を残すため、EC2 が "Invalid security group description" で拒否し、スタックが `ROLLBACK_COMPLETE` になります（2026-10-09 に観測）。そのようなコピーをデプロイする場合は、先にこの 1 行を `>-` に変えます。失敗したスタックが残すロググループの削除は、[Step 1](syslog-vpce-setup-guide.md#step-1-cloudformation-スタックのデプロイ) の補足にあります。スタックができた後は、ONTAP の監査ログの転送先を syslog エンドポイントに向けるまでイベントは届きません（[Step 3](syslog-vpce-setup-guide.md#step-3-ontap-log-forwarding-の設定)）。この手順で届くのは監査ログだけで、EMS イベントは届きません。
+3. T2 を適用します（[`fsxn-ontap-custom-metrics`](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#前提条件)）。ここで止まりやすいのは、Lambda のサブネットから管理エンドポイントへの TCP 443 の到達性です。ファイルシステムのセキュリティグループへのインバウンドルールは、適用後に Terraform の外で追加します。この手順は 2026-10-12 には試せませんでした。ファイルシステムの既定のセキュリティグループが、VPC の CIDR からの TCP 443 を既に許可していたためです。
+4. [syslog VPC エンドポイントのセットアップガイド](syslog-vpce-setup-guide.md) と CloudFormation テンプレート `shared/templates/syslog-vpce-cloudwatch.yaml` で、T3 に監査ログを届ける経路を作ります。現在のテンプレートを使ってください。セキュリティグループの説明は `GroupDescription: >-` で書かれています。修正前に取ったコピーは `GroupDescription: >` で、この折り畳みスカラーが末尾に改行を残すため、EC2 が "Invalid security group description" で拒否し、スタックが `ROLLBACK_COMPLETE` になります（2026-10-09 に観測）。そのようなコピーをデプロイする場合は、先にこの 1 行を `>-` に変えます。失敗したスタックが残すロググループの削除は、[Step 1](syslog-vpce-setup-guide.md#step-1-cloudformation-スタックのデプロイ) の補足にあります。スタックができた後は、ONTAP の監査ログの転送先を syslog エンドポイントに向けるまでイベントは届きません（[Step 3](syslog-vpce-setup-guide.md#step-3-ontap-log-forwarding-の設定)）。この手順で届くのは監査ログだけで、EMS イベントは届きません。EMS イベントには専用の通知先が要ります。[EMS イベントに関する補足](#推奨する展開の順序) を参照してください。
 5. T3 を適用します（[`fsxn-log-alarm`](../../terraform/fsxn-log-alarm/README.ja.md#前提条件)）。ここで止まりやすいのはロググループ名で、`log_group_name` を配信経路が書き込むロググループと同じ名前にする必要があります（テンプレートの既定値は `/syslog/fsxn-admin-audit`）。適用の前に、`privileged-operations` が監視するユーザーを確かめます。既定値 `"fsxadmin:fsxadmin" -"Pending"` は `fsxadmin` の完了した操作を数えます（[検出に関する補足](#最小のルートモジュールの例)）。
 6. 任意で、T1 の容量アラームを運用した後に T4 を追加します（[`fsxn-ssd-auto-increase`](../../terraform/fsxn-ssd-auto-increase/README.ja.md#前提)）。監視には要りません。既定の `notify_only` は判断を報告するだけで、ファイルシステムを変更しません。ここで止まりやすいのは 2 つの前提で、T4 の判断の記録を置く S3 Object Lock のバケットをモジュールの外で用意しておくことと、Terraform で管理しているファイルシステムでは先にストレージ容量へ `ignore_changes` を入れておくことです（[Terraform で管理するファイルシステムの扱い](capacity-automation.md#terraform-で管理するファイルシステムの扱い)）。
 
@@ -63,11 +63,11 @@ Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開�
 
 > **ネットワークに関する補足**
 >
-> T2 のためにファイルシステムのセキュリティグループへ入れるインバウンドルールは、Terraform の state の外にあります。`terraform destroy` の前に取り消してください。取り消さないと、Lambda のセキュリティグループの削除が `DependencyViolation` で失敗します（[削除手順](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#削除手順)）。2026-10-08 の実行では、destroy が Lambda のセキュリティグループで 22 分待ちました（1 回観測）。
+> T2 のためにファイルシステムのセキュリティグループへ入れるインバウンドルールは、Terraform の state の外にあります。`terraform destroy` の前に取り消してください。取り消さないと、Lambda のセキュリティグループの削除が `DependencyViolation` で失敗します（[削除手順](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#削除手順)）。destroy は Lambda のセキュリティグループで約 22 分待ちました（2 回観測。2026-10-08 の実行で 22 分、2026-10-12 には 22 分 13 秒で、このときはインバウンドルールを追加していませんでした）。
 
 > **VPC エンドポイントの競合に関する補足**
 >
-> プライベート DNS を有効にした同じサービスのインターフェイスエンドポイントは、1 つの VPC に 2 つ置けません。VPC に `monitoring` か `secretsmanager` のインターフェイスエンドポイントが既にあるなら、`create_monitoring_endpoint` と `create_secretsmanager_endpoint` は `false` のままにし、`aws_api_egress_cidr_blocks` に VPC の CIDR を設定します（[ネットワークの選択肢](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#ネットワークの選択肢)）。
+> プライベート DNS を有効にした同じサービスのインターフェイスエンドポイントは、1 つの VPC に 2 つ置けません。VPC に `monitoring` か `secretsmanager` のインターフェイスエンドポイントが既にあるなら、`create_monitoring_endpoint` と `create_secretsmanager_endpoint` は `false` のままにし、`aws_api_egress_cidr_blocks` に VPC の CIDR を設定します（[ネットワークの選択肢](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#ネットワークの選択肢)）。2026-10-12（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）には、NAT のないサブネットで、`create_monitoring_endpoint = true`、`create_secretsmanager_endpoint = false`（エンドポイントが既にあった）、`aws_api_egress_cidr_blocks` に VPC の CIDR という設定で、適用とポーリングが通りました（`検証済み`、[記録](verification-results-cloudwatch-monitoring.md#環境とデプロイした構成2026-10-12-の実行)）。
 
 > **ONTAP ユーザーのロールに関する補足**
 >
@@ -79,7 +79,7 @@ Amazon FSx for NetApp ONTAP の CloudWatch 監視設計を Terraform で展開�
 
 > **EMS イベントに関する補足**
 >
-> `autosize-fail` のレシピが一致するのは EMS イベント `wafl.vol.autoSize.fail` の行で、監査ログの転送先はこれを運びません。EMS の行を同じロググループに届けるには、同じ syslog エンドポイントへ送る ONTAP の EMS 通知先を別に作る必要があります。本リポジトリにはその手順がなく、2026-10-09 の実行でも作っていません。`autosize-fail` のパターンは、NetApp の EMS リファレンスから組み立てた行に対して `aws logs test-metric-filter` で一致を確かめただけです（`未確認`）。
+> `autosize-fail` のレシピが一致するのは EMS イベント `wafl.vol.autoSize.fail` の行で、監査ログの転送先はこれを運びません。EMS の行を同じロググループに届けるには、同じ syslog エンドポイントへ送る ONTAP の EMS 通知先を別に作る必要があります。2026-10-12（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）には、ある定義で実際の `wafl.vol.autoSize.fail` イベントが届き、`autosize-fail` はイベントの 42 秒後に OK → ALARM になりました（`検証済み`）。通知先のタイプの既定値はポート 514 と `udp_unencrypted` で、syslog エンドポイントの TCP ポートと合わないため、この定義ではポート 1514 と `tcp_unencrypted` を明示し、`wafl.vol.autoSize.*` を含む EMS フィルターを参照しています。届いた行はイベント名を角括弧の中に持つので、同梱のパターンは変更なしで一致しました。重大度は、届いた行でも ONTAP 9.19.1P3 の EMS カタログでも `notice` です。定義、届いた行、アラームの画面は [EMS 通知先の定義](verification-results-cloudwatch-monitoring.md#ems-通知先の定義2026-10-12-の実行) にあります。本リポジトリには、これを設定する手順がまだありません。セットアップガイドが扱うのは監査ログの転送先だけです。
 
 > **不可逆性に関する補足**
 >
@@ -101,7 +101,7 @@ flowchart TD
     F --> S["監査ログの syslog 配信経路（CloudFormation テンプレート）"]
     S --> T3["T3 fsxn-log-alarm"]
     B --> E2["wafl.vol.autoSize.fail などの EMS イベント"]
-    E2 --> EMS["同じロググループへの EMS 通知先の別の設定（手順なし、未確認）"]
+    E2 --> EMS["同じロググループへの EMS 通知先の別の設定（2026-10-12 に検証した定義あり）"]
     EMS --> T3
     B --> G["SSD 容量アラームを受けて動かす"]
     G --> CA["capacity-automation.md で選択肢を比べる（AWS のサンプル、T4、ランブック）"]
@@ -110,7 +110,7 @@ flowchart TD
 
 ## 最小のルートモジュールの例
 
-値はすべてプレースホルダーです。使う前に置き換えてください。監視用の T1〜T3 だけを呼び、任意の T4 は含めません（T4 の呼び出し方は [T4 の README](../../terraform/fsxn-ssd-auto-increase/README.ja.md#examplesbasic-からのデプロイ) にあります）。T2 のネットワークの既定値は NAT ゲートウェイがある前提です。この例は PoC 向けの構成です。このままでは T2 が管理エンドポイントの TLS 証明書を検証せず、3 つの SNS トピックも暗号化されません。本番環境で変える箇所は、例の後の TLS に関する補足と通知に関する補足にあります。
+値はすべてプレースホルダーです。使う前に置き換えてください。監視用の T1〜T3 だけを呼び、任意の T4 は含めません（T4 の呼び出し方は [T4 の README](../../terraform/fsxn-ssd-auto-increase/README.ja.md#examplesbasic-からのデプロイ) にあります）。T2 のネットワークの既定値は NAT ゲートウェイがある前提です。この形のルートモジュールは、2026-10-12 に同じタグから実際に適用しました（`検証済み`、2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](verification-results-cloudwatch-monitoring.md#環境とデプロイした構成2026-10-12-の実行)）。サブネットに NAT がなかったため、VPC エンドポイントの競合に関する補足にある T2 のネットワークの入力 3 つを加えています。この例は PoC 向けの構成です。このままでは T2 が管理エンドポイントの TLS 証明書を検証せず、3 つの SNS トピックも暗号化されません。本番環境で変える箇所は、例の後の TLS に関する補足と通知に関する補足にあります。
 
 ```hcl
 terraform {
@@ -156,7 +156,9 @@ module "fsx_ontap_custom_metrics" {
   notification_email           = "ops@example.com"
 
   # PoC only: with these two empty, the poller does not verify the TLS
-  # certificate (CERT_NONE). For production, set both.
+  # certificate (CERT_NONE). Setting both turns verification on; with the
+  # certificate issued for the file system and the IP-based management
+  # address it fails today (see the TLS note).
   # ca_cert_path      = "/opt/certs/ontap-ca.pem"
   # ca_cert_layer_arn = "arn:aws:lambda:ap-northeast-1:123456789012:layer:ontap-ca:1"
 }
@@ -182,15 +184,15 @@ T2 のためのファイルシステムのセキュリティグループへの�
 
 > **TLS に関する補足**
 >
-> 例のように `ca_cert_path` と `ca_cert_layer_arn` を空にすると、T2 のポーラーは管理エンドポイントの TLS 証明書を検証せず、ログに警告を出します。これが許されるのは PoC だけです。本番環境では、管理エンドポイントの証明書に署名した CA 証明書を Lambda レイヤーに入れ、2 つの入力を両方とも設定してください（例のコメント行。T2 の README の [TLS とトピックの暗号化に関する補足](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#前提条件)）。
+> 例のように `ca_cert_path` と `ca_cert_layer_arn` を空にすると、T2 のポーラーは管理エンドポイントの TLS 証明書を検証せず、ログに警告を出します。これが許されるのは PoC だけです。2 つの入力を両方とも設定すると検証が有効になります（例のコメント行。T2 の README の [TLS とトピックの暗号化に関する補足](../../terraform/fsxn-ontap-custom-metrics/README.ja.md#前提条件)）。2026-10-12（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）には、ファイルシステム向けに発行された証明書チェーンに対して、この検証が通りませんでした。リーフ証明書のサブジェクト代替名は DNS 名だけで、ポーラーは `https://<管理 IP>` に接続し、`ontap_management_ip` はドット区切りの IPv4 アドレスしか受け付けません。そのため、2 つの入力を設定して行った 1 回のポーリングは "IP address mismatch" で失敗しました（その期間は 2 つのコレクターとも `CollectorSucceeded` が 0 で、1 期間分の欠落にハートビートアラームは発報しませんでした）。元に戻した後の次のポーリングで回復しています。検証を通せるモジュールの入力は今のところなく、DNS 名での入力は実装されていません（`未確認`）。これは検証済みの否定結果で、1 つの環境での自己測定であり、モジュールは変更していません。本ページは回避策を示しません。検証をいつまで無効にしておくか、その間ネットワーク経路に残る危険をどう扱うかは、利用者が判断してください。詳しくは [記録の TLS の節](verification-results-cloudwatch-monitoring.md#fsx-の証明書チェーンに対する-tls-検証2026-10-12-の実行) を参照してください。
 
 > **通知に関する補足**
 >
-> この例では SNS トピックが 3 つ作られ、確認メールが 3 通届きます。3 つとも保存時に暗号化されません。T1 と T2 は KMS キーも既存トピックの ARN も受け取りません。すべてのトピックの暗号化が求められる環境では、T1 と T2 の `notification_email` を空にし、アラームの状態の変化を自分の構成で暗号化したトピックへ送ります（T2 の README の記載と同じ方法）。T3 は、`sns_kms_master_key_id` を設定すると自分で作るトピックを暗号化し、`alarm_sns_topic_arn` を設定すると手持ちのトピックを使ってトピックを作りません。AWS マネージドキー `alias/aws/sns` で暗号化したトピックには CloudWatch アラームから発行できないため、CloudWatch による利用をキーポリシーで許可したカスタマーマネージドキーを使います（[AWS re:Post ナレッジセンター](https://repost.aws/ja/knowledge-center/cloudwatch-configure-alarm-sns)）。T2 のハートビートアラームは、適用直後に ALARM になり、最初のポーリングの後に OK に戻ります（2026-10-08 に観測）。
+> この例では SNS トピックが 3 つ作られ、確認メールが 3 通届きます。3 つとも保存時に暗号化されません。T1 と T2 は KMS キーも既存トピックの ARN も受け取りません。すべてのトピックの暗号化が求められる環境では、T1 と T2 の `notification_email` を空にし、アラームの状態の変化を自分の構成で暗号化したトピックへ送ります（T2 の README の記載と同じ方法）。T3 は、`sns_kms_master_key_id` を設定すると自分で作るトピックを暗号化し、`alarm_sns_topic_arn` を設定すると手持ちのトピックを使ってトピックを作りません。AWS マネージドキー `alias/aws/sns` で暗号化したトピックには CloudWatch アラームから発行できないため、CloudWatch による利用をキーポリシーで許可したカスタマーマネージドキーを使います（[AWS re:Post ナレッジセンター](https://repost.aws/ja/knowledge-center/cloudwatch-configure-alarm-sns)）。T2 のハートビートアラームは、適用直後に ALARM になり、最初のポーリングの後に OK に戻ります（2026-10-08 と 2026-10-12 に観測）。T3 のトピックからのメールは、2026-10-12（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）に 3 件の通知分が届きました（到着時刻は記録していません）。T1、T2、T4 のトピックからの配信は `未確認` です。
 
 > **検出に関する補足**
 >
-> 例は `detections` を省いているので、既定の 5 つのレシピが使われます。監査の 3 つの既定のパターンは 2026-10-09 の実行の後に置き換わりました。`failed-access` は `"Error: not authorized"` で、ONTAP が認可で拒否した要求を数え、ログインの失敗は数えません。`privileged-operations` は `"fsxadmin:fsxadmin" -"Pending"` で、`fsxadmin` の完了した操作を 1 件につき 1 行ずつ数えます。別のユーザーを監視するなら、`fsxadmin:fsxadmin` をそのユーザーの `<user>:<role>` に置き換えます。`bulk-delete` は、3 つの語を結果の行（`:: Success` か `:: Error`）だけで数える正規表現です。前の 2 つのパターンは 2026-10-09 に実環境のアラームを動かしました。`bulk-delete` の新しいパターンは `aws logs test-metric-filter` で確かめただけで、実環境のアラームでは動かしていません。3 つとも閾値と評価期間は置き換え前の値のままで、その値では実行していません。監査ログだけが届くロググループでは、`autosize-fail` には EMS の行が、`unauthorized-access` にはファイルアクセスの行が届かないので、この 2 つのアラームは上がりません。`detections` を設定すると 5 つは丸ごと置き換わるので、残すレシピの値は [検知のレシピ](../../terraform/fsxn-log-alarm/README.ja.md#検知のレシピ) から写します。
+> 例は `detections` を省いているので、既定の 5 つのレシピが使われます。監査の 3 つの既定のパターンは 2026-10-09 の実行の後に置き換わりました。`failed-access` は `"Error: not authorized"` で、ONTAP が認可で拒否した要求を数え、ログインの失敗は数えません。`privileged-operations` は `"fsxadmin:fsxadmin" -"Pending"` で、`fsxadmin` の完了した操作を 1 件につき 1 行ずつ数えます。別のユーザーを監視するなら、`fsxadmin:fsxadmin` をそのユーザーの `<user>:<role>` に置き換えます。`bulk-delete` は、3 つの語を結果の行（`:: Success` か `:: Error`）だけで数える正規表現です。3 つのパターンはすべて、2026-10-12 に既定の 300 秒の期間、既定の閾値、既定の評価期間で実環境のアラームを動かしました（`検証済み`、2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps。[記録](verification-results-cloudwatch-monitoring.md#確認項目の結果2026-10-12-の実行)）。`bulk-delete` の新しいパターンは、完了した削除 1 件につき 1 行を数えました（削除 56 件で 56 行）。`autosize-fail` には、EMS の通知先を追加するまで EMS の行が届きません（[EMS イベントに関する補足](#推奨する展開の順序) を参照）。`unauthorized-access` は、2026-10-12 に SVM の監査ログへ監査 ACE 由来のファイルアクセスのイベントが 16 件あったのに発報しませんでした。ロググループには 1 件も届かなかったためで、既定のパス `/vol/data/confidential` は実際の表記 `(<volume>);/confidential/…` とも一致しません（検証済みの否定結果で、この環境での自己測定。原因は調べていません。[記録](verification-results-cloudwatch-monitoring.md#syslog-経路でのファイルアクセス監査記録の不着2026-10-12-の実行)）。`detections` を設定すると 5 つは丸ごと置き換わるので、残すレシピの値は [検知のレシピ](../../terraform/fsxn-log-alarm/README.ja.md#検知のレシピ) から写します。
 
 > **命名に関する補足**
 >
@@ -209,21 +211,31 @@ T2 のためのファイルシステムのセキュリティグループへの�
 - T3 のデプロイ、すべてのアラームが INSUFFICIENT_DATA を抜けること、60 秒の試験用の期間と試験用の閾値で `bulk-delete`、`privileged-operations`、REST の 403 を数える失敗アクセスの検出が実際の監査ログの行で OK → ALARM → OK になること（[2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行)）。このとき `privileged-operations` と失敗アクセスの検出に使ったのは現在の既定のパターンで、`bulk-delete` に使ったのは置き換え前のパターン
 - T4 の、実際のアラームの遷移での `notify_only`、`approve`、アラームが OK のときの分岐、`fsx:UpdateFileSystem` への明示的な IAM の拒否の後ろでの `auto`（`blocked` のラッチ、オペレーターによる解除、評価 1 回あたり最大 1 回の呼び出し、ロックのリースの競合）、デプロイ時と実行時の fail-closed の確認、読んだアーカイブのバージョンのコンプライアンスモードでの保持。容量は変わっていない（[2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)）
 
+2026-10-12（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）に、使い捨てのファイルシステム 1 台（削除済み）で `検証済み` の項目です。時刻はすべて UTC です（[記録](verification-results-cloudwatch-monitoring.md#2026-10-12-の-terraform-監視モジュールの実環境での実行)）。
+
+- 本ページのルートモジュールをタグから適用（44 リソース）。NAT のないサブネット向けの T2 のネットワークの入力を含む
+- T2 のハートビートアラーム、既定の 5 分間隔のポーリング、実際のクォータでの `qtree-quota-high` の OK → ALARM → OK
+- T3 の `failed-access`、`bulk-delete`、`privileged-operations` が、既定の 300 秒の期間・既定の閾値・既定の評価期間で OK → ALARM → OK になること、`bulk-delete` の新しい既定のパターンが完了した削除 1 件につき 1 行を数えること
+- T3 の `autosize-fail` が、EMS 通知先から同じロググループに届いた実際の EMS イベントで発報すること
+- T3 の 3 件の通知の SNS メール（到着時刻は記録していない）
+- T4 の実際の拡張（1,024 → 1,127 GiB、`UpdateFileSystem` はちょうど 1 回）と、`auto` の実行で作られた判断アーカイブの 3 つのオブジェクトのコンプライアンスモードでの保持
+
+2026-10-12（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）に確認した検証済みの否定結果です。いずれもこの環境での自己測定です（[所見](verification-results-cloudwatch-monitoring.md#所見2026-10-12-の実行)）。
+
+- syslog 経路での T3 の `unauthorized-access`。監査 ACE を設定した状態で、SVM の監査ログにはファイルアクセスのイベントが 16 件あり、ロググループには 1 件もなかった
+- ファイルシステム向けに発行された証明書に対する T2 の CA 証明書による TLS 検証。ポーラーが IP アドレスで接続するため、"IP address mismatch" で失敗する
+
 次の項目は `未確認` です。
 
 - 第 2 世代のファイルシステム（どのモジュールも）
 - HA ペアが 2 つ以上のファイルシステム
-- 2 つの SVM 間、または 2 つのファイルシステム間の SnapMirror
+- 2 つの SVM 間、または 2 つのファイルシステム間の SnapMirror（2026-10-12 の実行には SnapMirror 関係がなく、SnapMirror のアラームは動かしていない）
 - T2〜T4 の最小の IAM ポリシー（検証したのは T1 だけで、T2〜T4 のポリシーは見積り）
-- SNS のメール配信
-- T2 の Qtree クォータアラームの ALARM への遷移と、T2 のインバウンドルールの追加・destroy 前の取り消しの手順（試験環境のセキュリティグループが既に通信を許可していたため）
-- T2 の CA 証明書による TLS 検証と、既定の 5 分間隔でのポーリング
-- T3 の既定の 300 秒の期間と、既定の閾値・評価期間
-- T3 の `bulk-delete` の新しい既定のパターンでの実環境のアラーム
-- T3 の `unauthorized-access`
-- T3 の `autosize-fail` の実際の EMS イベントでの発火と、EMS 通知先から同じロググループへの配信
-- 本ページのルートモジュール（モジュールのローカルコピーに対して `terraform validate` で確認しただけで、適用はしていない）
-- T4 の実際の 1 回の拡張とその後のクールダウン、判断アーカイブのテストの陽性対照、レポートのメール配信
+- T1、T2、T4 のトピックからの SNS のメール配信
+- T2 のインバウンドルールの追加・destroy 前の取り消しの手順（どちらの実行でも、試験環境のセキュリティグループが既に通信を許可していたため）
+- T2 の DNS 名による TLS 検証（未実装。`ontap_management_ip` は IPv4 アドレスしか受け付けない）
+- TLS による EMS の配信（`tcp_encrypted`）
+- T4 の変更後のクールダウン（未観測。拡張の後の 1 回の評価は `capacity_available` で終わった）、判断アーカイブのテストの陽性対照、レポートのメール配信
 
 > **SnapMirror の監視範囲に関する補足**
 >
@@ -253,7 +265,7 @@ T2 のためのファイルシステムのセキュリティグループへの�
 
 **Q** SSD の自動拡張は推奨ですか?
 
-**A** 既定としては推奨しません。T4 は実装済みでオフラインの検証まで済んでおり、元に戻せる経路は 2026-10-09 に実環境で検証しました。実際の拡張は `未確認` です。既定の `notify_only` から始め、判断を観察してから `approve`、`auto` に進めます。アラームとランブックの組み合わせも引き続き選択肢です。選択肢の比較は [capacity-automation.md](capacity-automation.md) にあります。
+**A** 既定としては推奨しません。T4 は実装済みでオフラインの検証まで済んでおり、元に戻せる経路は 2026-10-09 に実環境で検証しました。2026-10-12（2026-10-12、ap-northeast-1、ONTAP 9.19.1P3、第 1 世代 SINGLE_AZ_1・HA ペア 1 つ、128 MBps）には、使い捨てのファイルシステムで実際の拡張を 1 回行い、1,024 GiB から 1,127 GiB へ `UpdateFileSystem` 1 回で拡張しました。その後のクールダウンは観測していません（[記録](verification-results-cloudwatch-monitoring.md#ssd-容量の実際の拡張2026-10-12-の実行)）。既定の `notify_only` から始め、判断を観察してから `approve`、`auto` に進めます。アラームとランブックの組み合わせも引き続き選択肢です。選択肢の比較は [capacity-automation.md](capacity-automation.md) にあります。
 
 **Q** ファイルシステム自体を Terraform で管理しています。何か変わりますか?
 
