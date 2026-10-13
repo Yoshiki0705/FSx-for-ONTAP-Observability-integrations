@@ -46,11 +46,14 @@ It does **not** create the decision-archive S3 bucket. That is an existing Objec
 
 ## Obtaining the module
 
-The planned tag is `terraform-fsxn-ssd-auto-increase-v0.1.0`. It is **not yet created**. The 2026-10-09 live run in [Verification status](#verification-status) left the decision-archive row of the T4 completion criteria open, so the tag is planned after that row is recorded. The 2026-10-12 run did not close that row either. Until then, pin a commit SHA with the git source or the archive URL below. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository.
+The module is versioned with git tags of the form `terraform-fsxn-ssd-auto-increase-vX.Y.Z`. The current version is `terraform-fsxn-ssd-auto-increase-v0.1.0`, published as a [GitHub Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-ssd-auto-increase-v0.1.0). A tag pins a version; it is not a verification claim. Live verification stays limited to the scope of the 2026-10-09 and 2026-10-12 records in [Verification status](#verification-status); the 2026-10-12 run used a commit SHA, and the module code at `terraform-fsxn-ssd-auto-increase-v0.1.0` is the same as at that commit (only README files differ). The decision-archive row of the T4 completion criteria stayed open in both runs, and the tag does not close it. The module is not on the Terraform Registry, because it is a subdirectory of a larger repository.
 
 The Lambda source is outside the module directory, in `shared/lambda/ssd_auto_increase/`. With a `//subdirectory` source, Terraform downloads and extracts the whole package and then reads the module from the subdirectory ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)), so `../../shared` resolves for the sources below.
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=terraform-fsxn-ssd-auto-increase-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
 
@@ -58,19 +61,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ssd-auto-increase"
 ```
 
-The steps below check out the module directory at a commit with a sparse checkout. Then set `source` to the local path of `terraform/fsxn-ssd-auto-increase` in this copy. The sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ssd_auto_increase` does not exist:
+The steps below check out the module directory at the tag with a sparse checkout. To pin a commit instead, replace the tag name with a commit SHA. Then set `source` to the local path of `terraform/fsxn-ssd-auto-increase` in this copy. The sparse checkout must include both directories, or `archive_file` fails at plan time because `shared/lambda/ssd_auto_increase` does not exist:
 
 ```bash
 git init fsx-ssd-auto-increase && cd fsx-ssd-auto-increase
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-ssd-auto-increase shared/lambda/ssd_auto_increase
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-ssd-auto-increase-v0.1.0
 git checkout FETCH_HEAD
 ```
 
 > **Fetch note**
 >
-> These steps were run with a commit SHA, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. A git source with `?ref=main&depth=1` also placed `shared/lambda/ssd_auto_increase/` next to the module in the copy that `terraform init` downloaded; `plan` was not run from it. With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module). On 2026-10-12 the same happened for this module: `?ref=<commit-sha>&depth=1` failed with "setting depth requires ref to be a branch or tag name", and `?ref=<commit-sha>` without `depth` worked ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#real-ssd-increase-2026-10-12-run)). No `terraform-fsxn-ssd*` tag existed locally or on `origin` that day.
+> These steps were run with a commit SHA, and `terraform init -backend=false` and `terraform validate` passed in `examples/basic/` of that checkout. A git source with `?ref=main&depth=1` also placed `shared/lambda/ssd_auto_increase/` next to the module in the copy that `terraform init` downloaded; `plan` was not run from it. With the git source in `source`, `depth=1` cannot be combined with a SHA, as recorded in the [dashboard module README](../fsxn-monitoring-dashboard/README.md#obtaining-the-module). On 2026-10-12 the same happened for this module: `?ref=<commit-sha>&depth=1` failed with "setting depth requires ref to be a branch or tag name", and `?ref=<commit-sha>` without `depth` worked ([record](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/en/verification-results-cloudwatch-monitoring.md#real-ssd-increase-2026-10-12-run)). No `terraform-fsxn-ssd*` tag existed locally or on `origin` that day; `terraform-fsxn-ssd-auto-increase-v0.1.0` was created afterwards, and a tag name works with `depth=1` like the other modules' tags.
 
 ## Usage
 

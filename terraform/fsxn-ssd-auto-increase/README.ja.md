@@ -46,11 +46,14 @@
 
 ## モジュールの取得方法
 
-計画中のタグは `terraform-fsxn-ssd-auto-increase-v0.1.0` です。**まだ作成されていません**。[検証状況](#検証状況)の 2026-10-09 のライブ実行では T4 の完了条件のうち判断アーカイブの行が未完了のまま残ったので、その行を記録した後に作る計画です。2026-10-12 の実行でもその行は完了しませんでした。それまではコミット SHA で git ソースか下のアーカイブ URL をピン留めしてください。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
+このモジュールは `terraform-fsxn-ssd-auto-increase-vX.Y.Z` の形式の git タグで版を付けています。現在の版は `terraform-fsxn-ssd-auto-increase-v0.1.0` で、[GitHub の Release](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/releases/tag/terraform-fsxn-ssd-auto-increase-v0.1.0) として公開しています。タグは版を固定するもので、検証を主張するものではありません。実環境での検証は、[検証状況](#検証状況)に記した 2026-10-09 と 2026-10-12 の記録の範囲に限られたままです。2026-10-12 の実行はコミット SHA を使い、`terraform-fsxn-ssd-auto-increase-v0.1.0` のモジュールのコードはそのコミットと同じです（違うのは README だけです）。T4 の完了条件のうち判断アーカイブの行は、どちらの実行でも未完了のままで、タグはそれを完了させるものではありません。モジュールは大きなリポジトリのサブディレクトリなので Terraform Registry にはありません。
 
 Lambda ソースはモジュールディレクトリの外、`shared/lambda/ssd_auto_increase/` にあります。`//subdirectory` ソースでは Terraform がパッケージ全体をダウンロードして展開し、サブディレクトリからモジュールを読む ([module block reference](https://developer.hashicorp.com/terraform/language/block/module)) ため、下のどのソースでも `../../shared` が解決します。
 
 ```hcl
+# Git source pinned to a tag (shallow clone)
+source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=terraform-fsxn-ssd-auto-increase-v0.1.0&depth=1"
+
 # Git source pinned to a commit
 source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terraform/fsxn-ssd-auto-increase?ref=<commit-sha>"
 
@@ -58,19 +61,19 @@ source = "github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations//terra
 source = "https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/archive/<commit-sha>.tar.gz//FSx-for-ONTAP-Observability-integrations-<commit-sha>/terraform/fsxn-ssd-auto-increase"
 ```
 
-次の手順はスパースチェックアウトで、コミットの時点のモジュールのディレクトリを取り出します。その後、このコピーの `terraform/fsxn-ssd-auto-increase` のローカルパスを `source` に指定します。スパースチェックアウトは両方のディレクトリを含める必要があります。さもないと `shared/lambda/ssd_auto_increase` が存在せず `archive_file` がプラン時に失敗します。
+次の手順はスパースチェックアウトで、タグの時点のモジュールのディレクトリを取り出します。コミットで固定する場合は、タグ名をコミット SHA に置き換えてください。その後、このコピーの `terraform/fsxn-ssd-auto-increase` のローカルパスを `source` に指定します。スパースチェックアウトは両方のディレクトリを含める必要があります。さもないと `shared/lambda/ssd_auto_increase` が存在せず `archive_file` がプラン時に失敗します。
 
 ```bash
 git init fsx-ssd-auto-increase && cd fsx-ssd-auto-increase
 git remote add origin https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations.git
 git sparse-checkout set terraform/fsxn-ssd-auto-increase shared/lambda/ssd_auto_increase
-git fetch --depth 1 --filter=blob:none origin <commit-sha>
+git fetch --depth 1 --filter=blob:none origin terraform-fsxn-ssd-auto-increase-v0.1.0
 git checkout FETCH_HEAD
 ```
 
 > **取得手順に関する補足**
 >
-> コミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。`?ref=main&depth=1` を指定した git ソースでも、`terraform init` がダウンロードしたコピーにはモジュールの隣に `shared/lambda/ssd_auto_increase/` がありました。そのコピーから `plan` は実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。2026-10-12 にこのモジュールでも同じことが起きました。`?ref=<commit-sha>&depth=1` は "setting depth requires ref to be a branch or tag name" で失敗し、`depth` なしの `?ref=<commit-sha>` は動きました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#ssd-容量の実際の拡張2026-10-12-の実行)）。その日、`terraform-fsxn-ssd*` のタグはローカルにも `origin` にもありませんでした。
+> コミット SHA を指定してこの手順を実行し、取り出したコピーの `examples/basic/` で `terraform init -backend=false` と `terraform validate` が成功しました。`?ref=main&depth=1` を指定した git ソースでも、`terraform init` がダウンロードしたコピーにはモジュールの隣に `shared/lambda/ssd_auto_increase/` がありました。そのコピーから `plan` は実行していません。`source` に git ソースを書く場合、[ダッシュボードのモジュールの README](../fsxn-monitoring-dashboard/README.ja.md#モジュールの取得方法) に記録したとおり、SHA と `depth=1` は組み合わせられません。2026-10-12 にこのモジュールでも同じことが起きました。`?ref=<commit-sha>&depth=1` は "setting depth requires ref to be a branch or tag name" で失敗し、`depth` なしの `?ref=<commit-sha>` は動きました（[記録](https://github.com/Yoshiki0705/FSx-for-ONTAP-Observability-integrations/blob/main/docs/ja/verification-results-cloudwatch-monitoring.md#ssd-容量の実際の拡張2026-10-12-の実行)）。その日、`terraform-fsxn-ssd*` のタグはローカルにも `origin` にもありませんでした。`terraform-fsxn-ssd-auto-increase-v0.1.0` はその後に作成しました。タグ名は、ほかのモジュールのタグと同じく `depth=1` と組み合わせられます。
 
 ## 使い方
 
