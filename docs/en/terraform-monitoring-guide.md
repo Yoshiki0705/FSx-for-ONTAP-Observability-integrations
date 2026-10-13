@@ -1,12 +1,60 @@
-# CloudWatch Monitoring for Amazon FSx for NetApp ONTAP with Terraform: Three Modules Applied in Order, Plus an Optional Fourth for SSD Auto-Increase
+# Configure CloudWatch Monitoring for FSx for ONTAP with Terraform
 
 🌐 [日本語](../ja/terraform-monitoring-guide.md) | **English** (this page)
 
 ## Executive summary
 
-To deploy the CloudWatch monitoring design for Amazon FSx for NetApp ONTAP with Terraform, apply the three monitoring modules from `terraform/` in this order. T1 `fsxn-monitoring-dashboard` creates a dashboard and alarms on the native `AWS/FSx` metrics and calls AWS APIs only. T2 `fsxn-ontap-custom-metrics` publishes qtree quota usage and SnapMirror health and lag, which CloudWatch does not publish natively; it needs a subnet that reaches the file system's management endpoint on TCP 443, an ONTAP user with the `fsxadmin-readonly` role whose credentials are in a Secrets Manager secret, and a path to CloudWatch and Secrets Manager through a NAT gateway or interface endpoints. T3 `fsxn-log-alarm` raises alarms on admin audit events; it needs a CloudWatch Logs log group that receives the audit log through the syslog VPC endpoint path, which this repository provides as a CloudFormation template. That path carries the audit log only. EMS events such as `wafl.vol.autoSize.fail` reach the same log group only through a separately configured EMS notification destination; one definition that delivered a real `wafl.vol.autoSize.fail` event and fired the alarm is in the [2026-10-12 record](verification-results-cloudwatch-monitoring.md#ems-destination-recipe-2026-10-12-run) (`verified`, 2026-10-12, first-generation file system with one HA pair). Pick your thresholds before T1. The fourth module, T4 `fsxn-ssd-auto-increase`, is a guarded sample that raises SSD capacity in response to an SSD capacity alarm; monitoring does not need it. If you use it, add it after the capacity alarms, in the default `notify_only` mode. On a first-generation file system an SSD increase cannot be undone, and each change starts a 6-hour cooldown. T1 and T2 have dated live runs, and the [2026-10-09 record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09) verified three T3 audit detections with test settings. The [2026-10-12 record](verification-results-cloudwatch-monitoring.md#terraform-monitoring-modules-live-run-on-2026-10-12) applied T1 to T3 from their tags in one root module (44 resources; T3 at `v0.1.0`) and drove the four default T3 detections, `failed-access`, `bulk-delete`, `privileged-operations` and `autosize-fail`, at the default 300-second period. T4 is implemented and offline-verified; the [2026-10-09 T4 record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09) verified its reversible paths with no capacity change, and the 2026-10-12 record adds one real increase on a throwaway file system (`verified`, once). Every live result comes from first-generation, single-HA-pair `SINGLE_AZ_1` file systems; the 2026-10-12 file system (`ap-northeast-1`, ONTAP 9.19.1P3, 128 MBps) was a throwaway, since deleted. The [module map](#module-map) links each dated record.
+To deploy the CloudWatch monitoring design for Amazon FSx for NetApp ONTAP with Terraform, apply the three monitoring modules from `terraform/` in this order.
 
-CloudFormation templates in `shared/templates/` exist for T1 (`fsxn-monitoring-dashboard.yaml`), the qtree part of T2 (`qtree-quota-monitor.yaml`), and T3 (`cloudwatch-log-alarm.yaml`). The T3 template's detection queries were later translated from the patterns T3 replaced after the 2026-10-09 run, and have not been run as LogAlarm queries (`unverified`; [Built-in Detection Queries](cloudwatch-log-alarm.md#built-in-detection-queries)). The SnapMirror collector and T4 exist only in Terraform. Which one to use depends on how your environment already manages infrastructure, not on the monitoring itself; see [Relation to the CloudFormation templates](#faq-and-common-misconceptions) in the FAQ.
+- Pick your thresholds before T1.
+- T1 `fsxn-monitoring-dashboard` creates a dashboard and alarms on the native `AWS/FSx` metrics and calls AWS APIs only.
+- T2 `fsxn-ontap-custom-metrics` publishes qtree quota usage and SnapMirror health and lag, which CloudWatch does not publish natively.
+- T3 `fsxn-log-alarm` raises alarms on admin audit events.
+- The fourth module, T4 `fsxn-ssd-auto-increase`, is a guarded sample that raises SSD capacity in response to an SSD capacity alarm; monitoring does not need it.
+
+Prerequisites per module.
+
+- T2 needs:
+  - a subnet that reaches the file system's management endpoint on TCP 443
+  - an ONTAP user with the `fsxadmin-readonly` role whose credentials are in a Secrets Manager secret
+  - a path to CloudWatch and Secrets Manager through a NAT gateway or interface endpoints
+- T3 needs a CloudWatch Logs log group that receives the audit log through the syslog VPC endpoint path, which this repository provides as a CloudFormation template.
+  - That path carries the audit log only.
+  - EMS events such as `wafl.vol.autoSize.fail` reach the same log group only through a separately configured EMS notification destination.
+
+If you use the SSD auto-increase module:
+
+- Add it after the capacity alarms, in the default `notify_only` mode.
+- On a first-generation file system an SSD increase cannot be undone, and each change starts a 6-hour cooldown.
+
+Live verification status.
+
+- T1 and T2 have dated live runs.
+- The [2026-10-09 record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09) verified three T3 audit detections with test settings.
+- T4 is implemented and offline-verified.
+  - The [2026-10-09 T4 record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09) verified its reversible paths with no capacity change.
+- The [2026-10-12 record](verification-results-cloudwatch-monitoring.md#terraform-monitoring-modules-live-run-on-2026-10-12) applied T1 to T3 from their tags in one root module (44 resources; T3 at `v0.1.0`).
+  - The four default T3 detections, `failed-access`, `bulk-delete`, `privileged-operations` and `autosize-fail`, ran at the default 300-second period.
+- One EMS notification destination definition that delivered a real `wafl.vol.autoSize.fail` event and fired the alarm is in the [2026-10-12 record](verification-results-cloudwatch-monitoring.md#ems-destination-recipe-2026-10-12-run) (`verified`, 2026-10-12, first-generation file system with one HA pair).
+- T4 made one real increase, on a throwaway file system, in the 2026-10-12 record (`verified`, once).
+- The [module map](#module-map) links each dated record.
+
+Verification environment.
+
+- Every live result comes from first-generation, single-HA-pair `SINGLE_AZ_1` file systems.
+- The 2026-10-12 file system (`ap-northeast-1`, ONTAP 9.19.1P3, 128 MBps) was a throwaway, since deleted.
+
+CloudFormation templates in `shared/templates/` exist for:
+
+- T1 (`fsxn-monitoring-dashboard.yaml`)
+- the qtree part of T2 (`qtree-quota-monitor.yaml`)
+- T3 (`cloudwatch-log-alarm.yaml`)
+  - The T3 template's detection queries were later translated from the patterns T3 replaced after the 2026-10-09 run, and have not been run as LogAlarm queries (`unverified`; [Built-in Detection Queries](cloudwatch-log-alarm.md#built-in-detection-queries)).
+
+Choosing between Terraform and CloudFormation.
+
+- The SnapMirror collector and T4 exist only in Terraform.
+- Which one to use depends on how your environment already manages infrastructure, not on the monitoring itself; see [Relation to the CloudFormation templates](#faq-and-common-misconceptions) in the FAQ.
 
 > **Scope note**
 >
