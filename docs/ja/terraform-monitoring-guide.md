@@ -31,12 +31,12 @@ SSD 自動拡張モジュールを使う場合：
 
 - T1 と T2 には日付付きの実環境での実行記録があります。
 - T3 は [2026-10-09 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ログアラームモジュールの実行) で監査の検出 3 つを試験用の設定で確認しました。
-- T4 は実装済みでオフラインの検証まで済んでいます。
-- [2026-10-09 の T4 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行) で元に戻せる経路を確認し、容量は変わっていません。
+- T4 は実装済みで、オフラインの検証まで済んでいます。
+  - [2026-10-09 の T4 の記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行) で、元に戻せる経路を確認しました。容量は変わっていません。
 - [2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#2026-10-12-の-terraform-監視モジュールの実環境での実行) では、T1〜T3 をタグから 1 つのルートモジュールで適用しました（44 リソース。T3 は `v0.1.0`）。
   - T3 の既定の検出 4 つ（`failed-access`、`bulk-delete`、`privileged-operations`、`autosize-fail`）を既定の 300 秒の期間で動かしました。
 - 実際の `wafl.vol.autoSize.fail` イベントを届け、アラームを発報させた EMS 通知先の定義が [2026-10-12 の記録](verification-results-cloudwatch-monitoring.md#ems-通知先の定義2026-10-12-の実行) にあります（`検証済み`、2026-10-12、第 1 世代で HA ペア 1 つのファイルシステム）。
-- 2026-10-12 の記録では、使い捨てのファイルシステムで実際の拡張を 1 回行っています（`検証済み`、1 回）。
+- T4 の実際の拡張は、2026-10-12 の記録で、使い捨てのファイルシステムに 1 回行いました（`検証済み`、1 回）。
 - 日付付きの記録へのリンクは [モジュールの一覧](#モジュールの一覧) にあります。
 
 検証環境です。

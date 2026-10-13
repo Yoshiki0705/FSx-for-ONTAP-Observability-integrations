@@ -32,11 +32,11 @@ Live verification status.
 - T1 and T2 have dated live runs.
 - The [2026-10-09 record](verification-results-cloudwatch-monitoring.md#terraform-log-alarm-module-run-on-2026-10-09) verified three T3 audit detections with test settings.
 - T4 is implemented and offline-verified.
-- The [2026-10-09 T4 record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09) verified its reversible paths with no capacity change.
+  - The [2026-10-09 T4 record](verification-results-cloudwatch-monitoring.md#terraform-ssd-auto-increase-module-run-on-2026-10-09) verified its reversible paths with no capacity change.
 - The [2026-10-12 record](verification-results-cloudwatch-monitoring.md#terraform-monitoring-modules-live-run-on-2026-10-12) applied T1 to T3 from their tags in one root module (44 resources; T3 at `v0.1.0`).
-  - It drove the four default T3 detections, `failed-access`, `bulk-delete`, `privileged-operations` and `autosize-fail`, at the default 300-second period.
+  - The four default T3 detections, `failed-access`, `bulk-delete`, `privileged-operations` and `autosize-fail`, ran at the default 300-second period.
 - One EMS notification destination definition that delivered a real `wafl.vol.autoSize.fail` event and fired the alarm is in the [2026-10-12 record](verification-results-cloudwatch-monitoring.md#ems-destination-recipe-2026-10-12-run) (`verified`, 2026-10-12, first-generation file system with one HA pair).
-- The 2026-10-12 record adds one real increase on a throwaway file system (`verified`, once).
+- T4 made one real increase, on a throwaway file system, in the 2026-10-12 record (`verified`, once).
 - The [module map](#module-map) links each dated record.
 
 Verification environment.
