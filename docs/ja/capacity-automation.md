@@ -188,6 +188,34 @@ resource "aws_fsx_ontap_volume" "data_in_bytes" {
 >
 > autosize でボリュームが大きくなると、ボリュームの `StorageCapacity` は増え、`StorageCapacityUtilization` は下がるはずです。そのため grow 閾値より上に設定したボリュームのアラームは、autosize が最大に達したか失敗したときにしか鳴りません。早期の警告ではなく「autosize を使い切った」というシグナルになります（`仮説`、観測していない）。早期のシグナルには EMS の失敗アラームを残してください。
 
+## autosize の継承とボリュームサイズの扱い
+
+SnapMirror で移行してきたボリュームは、break の前後で autosize の扱いが変わります。この節は、移行元の設定が宛先へ引き継がれないことと、ボリュームサイズそのものの扱いを整理します。移行と切り替えの全体の手順は [snapmirror-migration-tiering.md](snapmirror-migration-tiering.md) にあります。
+
+### DP ボリュームと RW ボリュームでの autosize の違い
+
+SnapMirror 受信中のボリュームは DP（データ保護）ボリュームとして動き、拡張は DP ボリュームの動作に従います。`snapmirror break` で RW にしたあとは、各ボリュームの autosize 設定に従います（[enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html)、`文書化済み`）。
+
+### 移行元と宛先で独立する autosize 設定
+
+autosize の設定は移行元のボリュームと宛先のボリュームで独立しており、SnapMirror では引き継がれません（[NetApp KB: Why are changes to the source volume size not applied to the destination](https://kb.netapp.com/on-prem/ontap/DP/SnapMirror/SnapMirror-KBs/Why_are_changes_to_the_source_volume_size_not_applied_to_the_destination)、`文書化済み`）。移行元で autosize を設定していても、宛先では別途設定する必要があります。
+
+### FSx for ONTAP コンソールで autosize を設定できない制約
+
+autosize は FSx for ONTAP コンソールでは設定できず、ONTAP CLI または REST API で設定します。設定時に最大サイズを指定しない場合の既定の最大はボリュームサイズの 120% です（[enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html)、`文書化済み`）。設定の具体的な手順は上の [ボリューム autosize の手順](#ボリューム-autosize-の手順) にあります。本節は「引き継がれない」文脈での補足です。
+
+### ボリュームサイズ非課金と最大サイズ付き autosize の保険運用
+
+ボリュームサイズ自体は課金されません。課金されるのは SSD ストレージと容量プールに実際に置いたデータです（[enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html)、[managing-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-storage-capacity.html)、`文書化済み`）。そのため、ボリュームを余裕のあるサイズにしておき、最大サイズ付きの autosize を保険にする運用も選択肢になります。
+
+### ボリューム拡張が SSD 容量を増やさない点
+
+ボリュームを拡張しても SSD 容量は増えません。SSD はファイルシステムの資源で、ボリュームの論理サイズとは別です。SSD 階層が満杯であれば、ボリュームに空きがあっても書き込みは失敗します（[low-volume-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/low-volume-capacity.html)、`文書化済み`）。
+
+> **未確認に関する補足**
+>
+> FSx for ONTAP コンソール/API で作ったボリューム、および SnapMirror 宛先から break したボリュームで、autosize がそもそも有効か・作成直後の既定の最大値が何かは、本ブランチに実行記録がありません（`未確認`）。上記の既定 120% は「autosize を有効化したときに最大サイズを指定しなかった場合の既定」であり、「console/API 作成ボリュームや break 後ボリュームで autosize が初めから有効か」は別問です。断定せず、検証計画の該当項目で観測します。
+
 ## スループットキャパシティ変更の手順
 
 トリガーは、持続するネットワークまたはディスクの使用率アラームです（閾値は [sizing-and-headroom.md](sizing-and-headroom.md#閾値の表)）。自動化は計画していません。変更のたびにファイルサーバーがフェイルオーバーし、ブロックプロトコルではクライアントのマルチパスに依存し、後の SSD 拡張を止めるクールダウンが始まるためです。
@@ -255,6 +283,9 @@ A: いいえ。autosize が大きくするのはボリュームの論理サイ�
 
 **Q: `-mode off` にすると、autosize で大きくなったボリュームは元のサイズに戻りますか**？
 A: いいえ。以後の自動変更が止まり、現在のサイズが残ります。以前のサイズに戻すのは別のボリュームのサイズ変更で、新しいサイズはボリュームにすでにあるデータを収められる大きさが必要です（正確な下限はここではテストしていません）。
+
+**Q: 移行元で設定した autosize は SnapMirror の宛先に引き継がれますか**？
+A: いいえ。autosize の設定は移行元と宛先で独立しており、SnapMirror では引き継がれません（[NetApp KB: Why are changes to the source volume size not applied to the destination](https://kb.netapp.com/on-prem/ontap/DP/SnapMirror/SnapMirror-KBs/Why_are_changes_to_the_source_volume_size_not_applied_to_the_destination)、`文書化済み`）。宛先では別途設定してください。詳細は [autosize の継承とボリュームサイズの扱い](#autosize-の継承とボリュームサイズの扱い) にあります。
 
 **Q: スループットキャパシティを自動化しないのはなぜですか**？
 A: 変更のたびにファイルサーバーがフェイルオーバーし、ブロックプロトコルでの透過性はクライアントのマルチパスに依存し、SSD 拡張を止める 6 時間のクールダウンが始まるためです（[managing-throughput-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-throughput-capacity.html)、`文書化済み`）。

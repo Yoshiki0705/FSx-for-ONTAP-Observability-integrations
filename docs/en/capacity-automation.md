@@ -188,6 +188,34 @@ Without these lines, on a first-generation file system the next apply would requ
 >
 > After an autosize grow, the volume's `StorageCapacity` should grow and `StorageCapacityUtilization` should drop, so a volume alarm set above the grow threshold fires only once autosize has reached its maximum or failed. That makes it an "autosize exhausted" signal rather than an early warning (`hypothesis`, not observed). Keep the EMS failure alarm for the early signal.
 
+## autosize inheritance and volume size
+
+A volume migrated in with SnapMirror behaves differently for autosize before and after break. This section covers how the source setting does not carry to the destination and how volume size itself is handled. The full migration and cutover procedure is in [snapmirror-migration-tiering.md](snapmirror-migration-tiering.md).
+
+### autosize behavior on DP vs RW volumes
+
+A volume receiving SnapMirror acts as a DP (data-protection) volume, and growth follows DP-volume behavior. After you make it RW with `snapmirror break`, it follows each volume's own autosize setting ([enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html), `documented`).
+
+### autosize settings are independent between source and destination
+
+The autosize setting is independent between the source volume and the destination volume and is not carried over by SnapMirror ([NetApp KB: Why are changes to the source volume size not applied to the destination](https://kb.netapp.com/on-prem/ontap/DP/SnapMirror/SnapMirror-KBs/Why_are_changes_to_the_source_volume_size_not_applied_to_the_destination), `documented`). Even if autosize was set on the source, you have to set it separately on the destination.
+
+### The FSx for ONTAP console cannot set autosize
+
+autosize cannot be set in the FSx for ONTAP console; it is set with the ONTAP CLI or REST API. When no maximum size is specified at setup, the default maximum is 120% of the volume size ([enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html), `documented`). The concrete steps are in the [Volume autosize runbook](#volume-autosize-runbook) above; this section is a note in the "not inherited" context.
+
+### Volume size is not billed; oversize plus max-capped autosize as insurance
+
+Volume size itself is not billed. What is billed is SSD storage and the data actually placed in the capacity pool ([enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html), [managing-storage-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-storage-capacity.html), `documented`). So one option is to give a volume generous size and keep a max-capped autosize as insurance.
+
+### Expanding a volume does not add SSD capacity
+
+Expanding a volume does not add SSD capacity. SSD is a file-system resource, separate from a volume's logical size. If the SSD tier is full, writes fail even if the volume has room ([low-volume-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/low-volume-capacity.html), `documented`).
+
+> **Unconfirmed note**
+>
+> Whether autosize is enabled at all, and what the default maximum is at creation, for a volume created in the FSx for ONTAP console/API and for a volume broken off from a SnapMirror destination, have no run record on this branch (`unverified`). The 120% default above is "the default when no maximum is specified while enabling autosize"; "whether autosize is enabled from the start on a console/API-created or broken-off volume" is a separate question. Do not assert it; observe it in the matching verification-plan item.
+
 ## Throughput capacity change runbook
 
 Trigger: a sustained network or disk utilization alarm (thresholds in [sizing-and-headroom.md](sizing-and-headroom.md#threshold-table)). No automation is planned, because each change fails over the file server, depends on client multipathing for block protocols, and starts the cooldown that would block a later SSD increase.
@@ -255,6 +283,9 @@ A: No. Autosize grows the volume's logical size. SSD space is a file-system reso
 
 **Q: Does `-mode off` shrink a volume back after autosize grew it**?
 A: No. It stops future resizing and keeps the current size. Returning to an earlier size is a separate volume resize, and the new size has to hold the data already in the volume (the exact lower bound was not tested here).
+
+**Q: Does an autosize setting on the source carry to the SnapMirror destination**?
+A: No. The autosize setting is independent between source and destination and is not carried over by SnapMirror ([NetApp KB: Why are changes to the source volume size not applied to the destination](https://kb.netapp.com/on-prem/ontap/DP/SnapMirror/SnapMirror-KBs/Why_are_changes_to_the_source_volume_size_not_applied_to_the_destination), `documented`). Set it separately on the destination. The detail is in [autosize inheritance and volume size](#autosize-inheritance-and-volume-size).
 
 **Q: Why is throughput capacity not automated**?
 A: Each change fails over the file server, block-protocol transparency depends on client multipathing, and the change starts the 6-hour cooldown that would block an SSD increase ([managing-throughput-capacity](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/managing-throughput-capacity.html), `documented`).
