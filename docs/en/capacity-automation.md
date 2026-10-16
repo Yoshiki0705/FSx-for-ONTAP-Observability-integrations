@@ -200,9 +200,9 @@ A volume receiving SnapMirror acts as a DP (data-protection) volume, and growth 
 
 The autosize setting is independent between the source volume and the destination volume and is not carried over by SnapMirror ([NetApp KB: Why are changes to the source volume size not applied to the destination](https://kb.netapp.com/on-prem/ontap/DP/SnapMirror/SnapMirror-KBs/Why_are_changes_to_the_source_volume_size_not_applied_to_the_destination), `documented`). Even if autosize was set on the source, you have to set it separately on the destination.
 
-### The FSx console cannot set autosize
+### The FSx for ONTAP console cannot set autosize
 
-autosize cannot be set in the FSx console; it is set with the ONTAP CLI or REST API. When no maximum size is specified at setup, the default maximum is 120% of the volume size ([enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html), `documented`). The concrete steps are in the [Volume autosize runbook](#volume-autosize-runbook) above; this section is a note in the "not inherited" context.
+autosize cannot be set in the FSx for ONTAP console; it is set with the ONTAP CLI or REST API. When no maximum size is specified at setup, the default maximum is 120% of the volume size ([enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html), `documented`). The concrete steps are in the [Volume autosize runbook](#volume-autosize-runbook) above; this section is a note in the "not inherited" context.
 
 ### Volume size is not billed; oversize plus max-capped autosize as insurance
 
@@ -214,7 +214,7 @@ Expanding a volume does not add SSD capacity. SSD is a file-system resource, sep
 
 > **Unconfirmed note**
 >
-> Whether autosize is enabled at all, and what the default maximum is at creation, for a volume created in the FSx console/API and for a volume broken off from a SnapMirror destination, have no run record on this branch (`unverified`). The 120% default above is "the default when no maximum is specified while enabling autosize"; "whether autosize is enabled from the start on a console/API-created or broken-off volume" is a separate question. Do not assert it; observe it in the matching verification-plan item.
+> Whether autosize is enabled at all, and what the default maximum is at creation, for a volume created in the FSx for ONTAP console/API and for a volume broken off from a SnapMirror destination, have no run record on this branch (`unverified`). The 120% default above is "the default when no maximum is specified while enabling autosize"; "whether autosize is enabled from the start on a console/API-created or broken-off volume" is a separate question. Do not assert it; observe it in the matching verification-plan item.
 
 ## Throughput capacity change runbook
 

@@ -30,7 +30,7 @@ never does not restore capacity-pool blocks to SSD even when they are read. prom
 
 Because default restores only random reads to SSD, behavior depends on how data is read. A web server often reads files from the beginning in order, in which case the reads may be judged sequential and not restored to SSD. Note that "a web server's reads are always treated as random" does not hold (for the judging mechanism see [modify-cloud-retrieval-policy-task](https://docs.netapp.com/us-en/ontap/fabricpool/modify-cloud-retrieval-policy-task.html); operational consideration).
 
-### Why CDN-fronted reads still reach FSx (cache miss, purge, non-cacheable, bypass)
+### Why CDN-fronted reads still reach FSx for ONTAP (cache miss, purge, non-cacheable, bypass)
 
 Even with a CDN in front, reads to the origin do not disappear entirely. On cache expiry, a manual purge, non-cacheable content, or processing that does not go through the CDN, reads reach FSx for ONTAP. If the read is then judged sequential on a default volume, cold data is not restored to SSD and is read from the capacity pool (an operational consideration based on general CDN behavior, not a measurement of a specific configuration).
 

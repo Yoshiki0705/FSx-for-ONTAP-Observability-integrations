@@ -200,9 +200,9 @@ SnapMirror 受信中のボリュームは DP（データ保護）ボリューム
 
 autosize の設定は移行元のボリュームと宛先のボリュームで独立しており、SnapMirror では引き継がれません（[NetApp KB: Why are changes to the source volume size not applied to the destination](https://kb.netapp.com/on-prem/ontap/DP/SnapMirror/SnapMirror-KBs/Why_are_changes_to_the_source_volume_size_not_applied_to_the_destination)、`文書化済み`）。移行元で autosize を設定していても、宛先では別途設定する必要があります。
 
-### FSx コンソールで autosize を設定できない制約
+### FSx for ONTAP コンソールで autosize を設定できない制約
 
-autosize は FSx コンソールでは設定できず、ONTAP CLI または REST API で設定します。設定時に最大サイズを指定しない場合の既定の最大はボリュームサイズの 120% です（[enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html)、`文書化済み`）。設定の具体的な手順は上の [ボリューム autosize の手順](#ボリューム-autosize-の手順) にあります。本節は「引き継がれない」文脈での補足です。
+autosize は FSx for ONTAP コンソールでは設定できず、ONTAP CLI または REST API で設定します。設定時に最大サイズを指定しない場合の既定の最大はボリュームサイズの 120% です（[enable-volume-autosizing](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/enable-volume-autosizing.html)、`文書化済み`）。設定の具体的な手順は上の [ボリューム autosize の手順](#ボリューム-autosize-の手順) にあります。本節は「引き継がれない」文脈での補足です。
 
 ### ボリュームサイズ非課金と最大サイズ付き autosize の保険運用
 
@@ -214,7 +214,7 @@ autosize は FSx コンソールでは設定できず、ONTAP CLI または REST
 
 > **未確認に関する補足**
 >
-> FSx コンソール/API で作ったボリューム、および SnapMirror 宛先から break したボリュームで、autosize がそもそも有効か・作成直後の既定の最大値が何かは、本ブランチに実行記録がありません（`未確認`）。上記の既定 120% は「autosize を有効化したときに最大サイズを指定しなかった場合の既定」であり、「console/API 作成ボリュームや break 後ボリュームで autosize が初めから有効か」は別問です。断定せず、検証計画の該当項目で観測します。
+> FSx for ONTAP コンソール/API で作ったボリューム、および SnapMirror 宛先から break したボリュームで、autosize がそもそも有効か・作成直後の既定の最大値が何かは、本ブランチに実行記録がありません（`未確認`）。上記の既定 120% は「autosize を有効化したときに最大サイズを指定しなかった場合の既定」であり、「console/API 作成ボリュームや break 後ボリュームで autosize が初めから有効か」は別問です。断定せず、検証計画の該当項目で観測します。
 
 ## スループットキャパシティ変更の手順
 

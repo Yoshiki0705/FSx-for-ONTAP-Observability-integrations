@@ -14,7 +14,7 @@ SnapMirror はブロックの温度（アクセス状況）を宛先へ引き継
 
 - SnapMirror で既存の ONTAP（オンプレミスまたはクラウド）から FSx for ONTAP へデータ保護（DP）関係で移行し、切り替え時に宛先を RW 化するシナリオを対象にします。
 - FSx for ONTAP の容量プール階層化（FabricPool）が宛先で有効であることを前提にします。
-- 管理操作は ONTAP CLI または ONTAP REST API を使います。FSx コンソールと AWS CLI/API では一部の設定（階層化ポリシーの一部挙動、autosize）に手が届かないため、[cloud-retrieval-policy.md](cloud-retrieval-policy.md) と [capacity-automation.md](capacity-automation.md) の該当節を併読してください。
+- 管理操作は ONTAP CLI または ONTAP REST API を使います。FSx for ONTAP コンソールと AWS CLI/API では一部の設定（階層化ポリシーの一部挙動、autosize）に手が届かないため、[cloud-retrieval-policy.md](cloud-retrieval-policy.md) と [capacity-automation.md](capacity-automation.md) の該当節を併読してください。
 - 事前知識として、SnapMirror 宛先を新規作成するときに階層化がどう扱われるかは、S3AP リポジトリの [pitfalls-flexcache-snapmirror](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/docs/agent/pitfalls-flexcache-snapmirror.md) にまとまっています。
 
 ## 移行中の階層化ポリシー

@@ -14,7 +14,7 @@ SnapMirror does not carry block temperature (access history) to the destination.
 
 - The scope is migrating from an existing ONTAP system (on-premises or in the cloud) to FSx for ONTAP over a data-protection (DP) relationship, making the destination RW at cutover.
 - It assumes capacity-pool tiering (FabricPool) is enabled on the destination FSx for ONTAP.
-- Administrative operations use the ONTAP CLI or the ONTAP REST API. The FSx console and the AWS CLI/API cannot reach some settings (parts of tiering-policy behavior, and autosize), so read the relevant sections of [cloud-retrieval-policy.md](cloud-retrieval-policy.md) and [capacity-automation.md](capacity-automation.md) alongside this page.
+- Administrative operations use the ONTAP CLI or the ONTAP REST API. The FSx for ONTAP console and the AWS CLI/API cannot reach some settings (parts of tiering-policy behavior, and autosize), so read the relevant sections of [cloud-retrieval-policy.md](cloud-retrieval-policy.md) and [capacity-automation.md](capacity-automation.md) alongside this page.
 - For prior art on how tiering is handled when a SnapMirror destination is created, see [pitfalls-flexcache-snapmirror](https://github.com/Yoshiki0705/FSx-for-ONTAP-S3AccessPoints-Serverless-Patterns/blob/main/docs/agent/pitfalls-flexcache-snapmirror.md) in the S3AP repository.
 
 ## Tiering policy during migration
