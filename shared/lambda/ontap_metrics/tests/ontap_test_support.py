@@ -213,7 +213,7 @@ def qos_schema_page(
 
 def qos_row(
     policy: str,
-    uuid: str = "00000000-0000-0000-0000-000000000001",
+    uuid: str = "00000000-0000-0000-0000-00000000000a",
     *,
     counters: dict[str, float] | None = None,
     with_uuid_property: bool = True,
