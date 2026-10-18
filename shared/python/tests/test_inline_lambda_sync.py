@@ -70,9 +70,19 @@ def _ids(targets):
 class TestInlineLambdaSync:
     def test_inline_code_matches_source(self, target):
         body = sync.strip_banner(_block(target).body)
-        expected = (REPO_ROOT / target.source).read_text(encoding="utf-8")
+        # For a single-source Target this is the file verbatim; for an ordered
+        # multi-source Target it is the concatenation the generator produces
+        # (sibling imports stripped/rebound, one entry point). Either way the
+        # inline block must equal what concatenate() yields.
+        expected = sync.concatenate(target)
+        if len(target.sources) == 1:
+            file_text = (REPO_ROOT / target.source).read_text(encoding="utf-8")
+            assert expected == file_text, (
+                "single-source concatenate() must be byte-identical to the file"
+            )
         assert body == expected, (
-            f"{target.label} inline code has drifted from {target.source}. "
+            f"{target.label} inline code has drifted from "
+            f"{', '.join(target.sources)}. "
             "Run: python3 shared/scripts/sync-inline-lambda.py"
         )
 
@@ -82,7 +92,37 @@ class TestInlineLambdaSync:
             "Inline code must start with a banner naming its source file, so a "
             "reader editing the template knows the edit will be overwritten."
         )
-        assert target.source in first_line
+        for source in target.sources:
+            assert source in first_line, (
+                f"banner must name {source}; it names only {first_line!r}"
+            )
+
+    def test_concatenated_source_has_exactly_one_entry_point(self, target):
+        body = sync.concatenate(target)
+        count = len(
+            re.findall(rf"^def {re.escape(target.entry)}\(", body, re.M)
+        )
+        assert count == 1, (
+            f"{target.label} concatenated source defines "
+            f"`def {target.entry}(` {count} time(s); exactly one is required "
+            "so CloudFormation's index.<entry> resolves unambiguously."
+        )
+
+    def test_no_sibling_module_import_survives_concatenation(self, target):
+        """A multi-source body must not import a module it already contains."""
+        if len(target.sources) == 1:
+            return
+        body = sync.concatenate(target)
+        stems = {Path(s).stem for s in target.sources}
+        for line in body.splitlines():
+            stripped = line.strip()
+            for stem in stems:
+                assert not stripped.startswith(f"import {stem}"), (
+                    f"{target.label} still imports sibling module {stem}: {line!r}"
+                )
+                assert not stripped.startswith(f"from {stem} import"), (
+                    f"{target.label} still imports from sibling {stem}: {line!r}"
+                )
 
     def test_handler_is_index(self, target):
         handler = _block(target).handler

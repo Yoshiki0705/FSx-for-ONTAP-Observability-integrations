@@ -1,0 +1,1011 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  FSx for ONTAP QoS Policy-Group Monitoring.
+
+  Polls the ONTAP REST API counter manager for live QoS performance
+  (GET /api/cluster/counter/tables/qos/rows, paginated up to 50 pages of 200
+  records) plus the QoS workload -> policy-group mapping, and publishes
+  CloudWatch custom metrics per policy group in namespace FSxONTAP/QoS:
+  QosOps, QosThroughputBytes, QosLatencyMicros, and a QosReadOps/QosWriteOps
+  split where the counters are present. QosPolicyGroupsTruncated signals when
+  the page or per-policy-group cap stopped the read.
+
+  There is no burst-specific counter in the counter manager, so these series
+  show effective throughput/IOPS per policy group ("pinned at the ceiling" is
+  visible; "currently bursting" is inferred, not measured). TLS verification of
+  the ONTAP endpoint is opt-in via CaCertPath.
+
+  Requires VPC access to the ONTAP management endpoint.
+  Stack name pattern: fsxn-qos-monitor
+
+Parameters:
+  OntapMgmtIp:
+    Type: String
+    Description: FSx for ONTAP management endpoint IP address
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+
+  OntapCredentialsSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for ONTAP admin credentials (JSON with username/password)
+    AllowedPattern: '^arn:aws:secretsmanager:.*'
+
+  FileSystemId:
+    Type: String
+    Description: >-
+      FSx for ONTAP file system id, published as the FileSystemId dimension on
+      every QoS metric. SvmName is resolved automatically from the QoS workload
+      map, so it is not a parameter.
+    Default: 'fs-0123456789abcdef0'
+    AllowedPattern: '^fs-[0-9a-f]{8,}$'
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where FSx for ONTAP is deployed
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnet IDs with access to ONTAP management endpoint
+
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security Group ID that allows HTTPS (443) to ONTAP management IP
+
+  PollIntervalMinutes:
+    Type: Number
+    Description: How often to poll ONTAP for QoS counters (minutes)
+    Default: 5
+    MinValue: 1
+    MaxValue: 60
+
+  QosMaxPolicyGroups:
+    Type: Number
+    Description: >-
+      Per-run cap on the number of policy groups that get per-group CloudWatch
+      series. Policy groups beyond the cap are not published and set
+      QosPolicyGroupsTruncated to 1.
+    Default: 200
+    MinValue: 1
+    MaxValue: 500
+
+  NotificationEmail:
+    Type: String
+    Description: Email for DLQ-depth alarm notifications (leave empty to skip)
+    Default: ''
+
+  CreateSecretsManagerEndpoint:
+    Type: String
+    Description: Create Interface VPC Endpoint for Secrets Manager. Set false if already exists.
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+
+  CaCertPath:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Path to the CA certificate bundle inside an attached Lambda
+      Layer, e.g. /opt/certs/ontap-ca.pem. Set together with CaCertLayerArn,
+      or leave both empty. When set, the poller verifies the server
+      certificate against the bundle. When empty (the default), it does not
+      verify the server certificate and logs a warning that names
+      CA_CERT_PATH.
+
+  CaCertLayerArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Lambda Layer ARN containing the CA certificate bundle
+      referenced by CaCertPath. Set together with CaCertPath, or leave both
+      empty.
+
+Conditions:
+  HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, '']]
+  ShouldCreateSmEndpoint: !Equals [!Ref CreateSecretsManagerEndpoint, 'true']
+  HasCaCertLayer: !Not [!Equals [!Ref CaCertLayerArn, '']]
+
+Resources:
+  # ================================================================
+  # VPC Endpoint (optional)
+  # ================================================================
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateSmEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      PrivateDnsEnabled: true
+
+  # ================================================================
+  # SNS Topic (optional) — carries the DLQ-depth alarm
+  # ================================================================
+  QosAlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasNotificationEmail
+    Properties:
+      DisplayName: !Sub 'FSx for ONTAP QoS Monitor Alert (${FileSystemId})'
+
+  QosAlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasNotificationEmail
+    Properties:
+      TopicArn: !Ref QosAlarmTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  # ================================================================
+  # Dead Letter Queue
+  # QosPollSchedule invokes the poller asynchronously, so a failing invocation
+  # is retried twice by Lambda and then discarded. Without this queue the QoS
+  # metrics simply stop updating and nothing reports the gap.
+  # ================================================================
+  QosMonitorDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+
+  # ================================================================
+  # IAM Role
+  # ================================================================
+  QosMonitorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: QosMonitorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SecretsRead
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref OntapCredentialsSecretArn
+              - Sid: CloudWatchPublish
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: FSxONTAP/QoS
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*'
+              - Sid: DeadLetterQueue
+                Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt QosMonitorDeadLetterQueue.Arn
+
+  # ================================================================
+  # Lambda — QoS Policy-Group Poller
+  # ================================================================
+  QosMonitorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-poller'
+      RetentionInDays: 30
+
+  QosMonitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-poller'
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      MemorySize: 256
+      # Worst normal case: up to 50 sequential counter-row pages, 50 workload
+      # pages, plus PutMetricData batches of 20. 60 s cannot finish that for a
+      # cluster with many policy groups; each ONTAP request keeps a 30 s
+      # timeout, so a slow run can still exceed 300 s, fail, be retried twice,
+      # and land in the DLQ (DLQ-depth alarm).
+      Timeout: 300
+      Role: !GetAtt QosMonitorRole.Arn
+      DeadLetterConfig:
+        TargetArn: !GetAtt QosMonitorDeadLetterQueue.Arn
+      Layers: !If
+        - HasCaCertLayer
+        - - !Ref CaCertLayerArn
+        - !Ref AWS::NoValue
+      VpcConfig:
+        SubnetIds: !Ref SubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+      Environment:
+        Variables:
+          ONTAP_MGMT_IP: !Ref OntapMgmtIp
+          ONTAP_CREDENTIALS_SECRET_ARN: !Ref OntapCredentialsSecretArn
+          FILE_SYSTEM_ID: !Ref FileSystemId
+          METRIC_NAMESPACE: FSxONTAP/QoS
+          QOS_MAX_POLICY_GROUPS: !Ref QosMaxPolicyGroups
+          CA_CERT_PATH: !Ref CaCertPath
+      Code:
+        ZipFile: |
+          # Generated from shared/lambda/ontap_metrics/qtree_quota_poller.py, shared/lambda/ontap_metrics/qos_poller.py -- do not edit here.
+          # Regenerate with: python3 shared/scripts/sync-inline-lambda.py
+          # shared/python/tests/test_inline_lambda_sync.py fails if the two drift apart.
+          import sys
+          """Qtree Quota Monitor — polls ONTAP REST API and publishes CloudWatch metrics.
+
+          Per qtree (dimensions SvmName, VolumeName, QtreeName):
+            - QtreeQuotaUsedPercent
+            - QtreeQuotaUsedBytes
+            - QtreeQuotaLimitBytes
+
+          Per SVM, once per run (dimension SvmName only):
+            - QtreeQuotaUsedPercentMax: max QtreeQuotaUsedPercent across the
+              qtrees read this run. QtreeQuotaAlarm reads this series. Not
+              published when no qtree has a usable hard limit (see below).
+            - QtreeQuotaReportTruncated: 1 when the page cap stopped the read
+              before the report ended, else 0.
+
+          This file is also the ONTAP REST client shared with the Terraform handler
+          (ontap_metrics_handler.py in the same directory), because CloudFormation
+          inline code must be a single file. The CloudFormation entry point,
+          lambda_handler below, passes none of the keyword arguments that the
+          Terraform handler uses (retries, credentials_ttl), so its behaviour is the
+          one this template has always had: no urllib3 retries, credentials cached for
+          the container lifetime, and no heartbeat metric.
+          """
+          import json
+          import logging
+          import os
+          import time
+          import urllib.parse
+          from typing import Any
+
+          import boto3
+          import urllib3
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          QTREE_NAMESPACE = "FSxONTAP/Qtree"
+          MAX_RECORDS = 200  # records per ONTAP page
+          MAX_PAGES = 50  # hard cap: 50 x 200 = 10,000 records per run
+          PUT_BATCH_SIZE = 20  # datums per PutMetricData call
+
+
+          class OntapAuthError(RuntimeError):
+              """ONTAP rejected the credentials with HTTP 401 or 403."""
+
+
+          def _build_http() -> urllib3.PoolManager:
+              """Build the connection pool, verifying TLS only when CA_CERT_PATH is set.
+
+              Returns:
+                  A PoolManager with CERT_REQUIRED and the given CA bundle, or with
+                  CERT_NONE (and a warning) when CA_CERT_PATH is empty.
+              """
+              ca_cert_path = os.environ.get("CA_CERT_PATH", "")
+              if ca_cert_path:
+                  return urllib3.PoolManager(cert_reqs="CERT_REQUIRED", ca_certs=ca_cert_path)
+              logger.warning(
+                  "TLS server certificate is not verified (cert_reqs=CERT_NONE) "
+                  "because CA_CERT_PATH is empty. Set CA_CERT_PATH (CaCertPath) "
+                  "together with a CA bundle layer (CaCertLayerArn) to verify it."
+              )
+              return urllib3.PoolManager(cert_reqs="CERT_NONE")
+
+
+          http = _build_http()
+          cw = boto3.client("cloudwatch")
+          _creds_cache: dict[str, Any] | None = None
+          _creds_loaded_at: float = 0.0
+
+
+          def _get_credentials(ttl_seconds: float | None = None) -> dict[str, Any]:
+              """Return the ONTAP credentials from Secrets Manager, cached.
+
+              Args:
+                  ttl_seconds: Seconds after which the cached secret is read again.
+                      None caches it for the lifetime of the container.
+
+              Returns:
+                  The secret JSON, with ``username`` and ``password`` keys.
+              """
+              global _creds_cache, _creds_loaded_at
+              now = time.monotonic()
+              expired = ttl_seconds is not None and now - _creds_loaded_at >= ttl_seconds
+              if _creds_cache is None or expired:
+                  sm = boto3.client("secretsmanager")
+                  secret = sm.get_secret_value(SecretId=os.environ["ONTAP_CREDENTIALS_SECRET_ARN"])
+                  _creds_cache = json.loads(secret["SecretString"])
+                  _creds_loaded_at = now
+              return _creds_cache
+
+
+          def invalidate_credentials() -> None:
+              """Drop the cached credentials so the next request reads the secret again."""
+              global _creds_cache
+              _creds_cache = None
+
+
+          def _ontap_get(
+              api_path: str,
+              *,
+              retries: urllib3.util.Retry | None = None,
+              credentials_ttl: float | None = None,
+          ) -> dict[str, Any]:
+              """GET one ONTAP REST API path from the management endpoint.
+
+              Args:
+                  api_path: Path starting with ``/api/``, including the query string.
+                  retries: urllib3 retry policy. None sends the request without a
+                      ``retries`` argument, as the CloudFormation template always has.
+                  credentials_ttl: Passed to _get_credentials as ttl_seconds.
+
+              Returns:
+                  The decoded JSON body, or an empty dict for an empty body.
+
+              Raises:
+                  RuntimeError: For a path outside ``/api/`` or an HTTP status >= 400.
+                  OntapAuthError: For HTTP 401 or 403 (a RuntimeError subclass).
+              """
+              # Only relative ONTAP API paths are accepted, so a next link can
+              # never redirect the request (and the credentials) to another host.
+              if not api_path.startswith("/api/"):
+                  raise RuntimeError(f"Refusing non-ONTAP API path: {api_path!r}")
+              creds = _get_credentials(credentials_ttl)
+              mgmt_ip = os.environ["ONTAP_MGMT_IP"]
+              auth = urllib3.util.make_headers(
+                  basic_auth=f"{creds['username']}:{creds['password']}"
+              )
+              headers = {**auth, "Accept": "application/json"}
+              url = f"https://{mgmt_ip}{api_path}"
+              if retries is None:
+                  resp = http.request("GET", url, headers=headers, timeout=30.0)
+              else:
+                  resp = http.request("GET", url, headers=headers, timeout=30.0, retries=retries)
+              if resp.status in (401, 403):
+                  raise OntapAuthError(f"ONTAP API GET {api_path}: HTTP {resp.status}")
+              if resp.status >= 400:
+                  raise RuntimeError(f"ONTAP API GET {api_path}: HTTP {resp.status}")
+              return json.loads(resp.data) if resp.data else {}
+
+
+          def _fetch_quota_records(
+              svm_name: str,
+              *,
+              retries: urllib3.util.Retry | None = None,
+              credentials_ttl: float | None = None,
+          ) -> tuple[list[dict[str, Any]], int, bool]:
+              """Read the tree quota report, following _links.next.href.
+
+              Args:
+                  svm_name: SVM whose tree quota report is read.
+                  retries: Passed to _ontap_get.
+                  credentials_ttl: Passed to _ontap_get.
+
+              Returns:
+                  (records, pages_read, truncated). truncated is True only when a
+                  next link is still present after MAX_PAGES pages.
+              """
+              next_href: str | None = (
+                  "/api/storage/quota/reports"
+                  f"?svm.name={urllib.parse.quote(svm_name, safe='')}"
+                  "&type=tree"
+                  "&fields=space.used.total,space.hard_limit,qtree.name,volume.name"
+                  f"&max_records={MAX_RECORDS}"
+              )
+              records: list[dict[str, Any]] = []
+              pages = 0
+              while next_href is not None and pages < MAX_PAGES:
+                  data = _ontap_get(next_href, retries=retries, credentials_ttl=credentials_ttl)
+                  pages += 1
+                  records.extend(data.get("records", []))
+                  next_href = data.get("_links", {}).get("next", {}).get("href")
+              truncated = next_href is not None
+              if truncated:
+                  logger.warning(
+                      "Quota report for SVM %s truncated: stopped after %d pages "
+                      "(%d records) at the %d-page cap; qtrees beyond it are not "
+                      "monitored this run",
+                      svm_name, pages, len(records), MAX_PAGES,
+                  )
+              return records, pages, truncated
+
+
+          def _build_metric_data(
+              records: list[dict[str, Any]], svm_name: str
+          ) -> tuple[list[dict[str, Any]], float | None]:
+              """Build the three per-qtree datums for every qtree with a hard limit.
+
+              Args:
+                  records: Quota report records.
+                  svm_name: Value of the SvmName dimension.
+
+              Returns:
+                  (metric_data, max_percent). max_percent is None when no record has a
+                  qtree name and a hard limit above 0.
+              """
+              metric_data: list[dict[str, Any]] = []
+              max_percent: float | None = None
+              for record in records:
+                  qtree_name = record.get("qtree", {}).get("name", "")
+                  volume_name = record.get("volume", {}).get("name", "")
+                  used = record.get("space", {}).get("used", {}).get("total", 0)
+                  limit = record.get("space", {}).get("hard_limit", 0)
+
+                  if not qtree_name or limit == 0:
+                      continue  # Skip qtrees without quotas or unnamed
+
+                  used_percent = (used / limit * 100) if limit > 0 else 0
+                  if max_percent is None or used_percent > max_percent:
+                      max_percent = used_percent
+
+                  dimensions = [
+                      {"Name": "SvmName", "Value": svm_name},
+                      {"Name": "VolumeName", "Value": volume_name},
+                      {"Name": "QtreeName", "Value": qtree_name},
+                  ]
+
+                  metric_data.extend([
+                      {
+                          "MetricName": "QtreeQuotaUsedPercent",
+                          "Dimensions": dimensions,
+                          "Value": used_percent,
+                          "Unit": "Percent",
+                      },
+                      {
+                          "MetricName": "QtreeQuotaUsedBytes",
+                          "Dimensions": dimensions,
+                          "Value": used,
+                          "Unit": "Bytes",
+                      },
+                      {
+                          "MetricName": "QtreeQuotaLimitBytes",
+                          "Dimensions": dimensions,
+                          "Value": limit,
+                          "Unit": "Bytes",
+                      },
+                  ])
+              return metric_data, max_percent
+
+
+          def _append_svm_summary(
+              metric_data: list[dict[str, Any]],
+              svm_name: str,
+              max_percent: float | None,
+              truncated: bool,
+          ) -> None:
+              """Append the per-SVM QtreeQuotaUsedPercentMax and truncation datums.
+
+              Args:
+                  metric_data: List the datums are appended to.
+                  svm_name: Value of the SvmName dimension.
+                  max_percent: Maximum used percent this run, or None.
+                  truncated: Whether the page cap stopped the read.
+              """
+              svm_dimensions = [{"Name": "SvmName", "Value": svm_name}]
+
+              # With no usable record there is nothing to take the max of. A 0
+              # datum would read as "every quota is healthy" for an SVM this run
+              # could not measure, so publish nothing; QtreeQuotaAlarm then goes
+              # to INSUFFICIENT_DATA (TreatMissingData: missing). A failed run
+              # surfaces through the DLQ-depth alarm instead.
+              if max_percent is not None:
+                  metric_data.append({
+                      "MetricName": "QtreeQuotaUsedPercentMax",
+                      "Dimensions": svm_dimensions,
+                      "Value": max_percent,
+                      "Unit": "Percent",
+                  })
+              metric_data.append({
+                  "MetricName": "QtreeQuotaReportTruncated",
+                  "Dimensions": svm_dimensions,
+                  "Value": 1.0 if truncated else 0.0,
+                  "Unit": "Count",
+              })
+
+
+          def _put_metric_data(namespace: str, metric_data: list[dict[str, Any]]) -> int:
+              """Publish datums in batches of PUT_BATCH_SIZE.
+
+              Args:
+                  namespace: CloudWatch namespace.
+                  metric_data: Datums to publish.
+
+              Returns:
+                  The number of datums published.
+              """
+              published = 0
+              for i in range(0, len(metric_data), PUT_BATCH_SIZE):
+                  batch = metric_data[i:i + PUT_BATCH_SIZE]
+                  cw.put_metric_data(Namespace=namespace, MetricData=batch)
+                  published += len(batch)
+              return published
+
+
+          """QoS policy-group collector for the ONTAP metrics handler.
+
+          Reads live QoS performance from the ONTAP counter manager and the QoS
+          workload -> policy-group mapping, then builds CloudWatch datums in namespace
+          FSxONTAP/QoS. The counter manager is the only REST route to live QoS
+          performance: GET /api/storage/qos/workloads/{uuid} has no ``statistics``
+          field and /api/private/cli/qos/statistics returns 405.
+
+          Per policy group, for at most max_policy_groups of them in counter-manager
+          row order (dimensions FileSystemId, PolicyGroup; SvmName is added only when
+          the workload map resolves one for that policy group):
+            - QosOps                 effective IOPS, from counter ``ops``
+            - QosThroughputBytes     effective throughput, from counter ``total_data``
+            - QosLatencyMicros       from counter ``latency``
+            - QosReadOps/QosWriteOps read/write IOPS split, from ``read_ops``/``write_ops``
+              (emitted only for the counters present on the row)
+
+          Per file system, once per run (dimension FileSystemId):
+            - QosPolicyGroupsTruncated: 1 when the page cap stopped the read with a
+              next link still present, or the per-policy-group cap dropped a group;
+              else 0.
+
+          What this exposes is effective throughput/IOPS per policy group. There is no
+          burst-specific counter in the counter manager, so "pinned at the ceiling" is
+          visible from these series but "currently bursting" is inferred, not measured.
+
+          Counter honesty: the counter manager tags each counter with a ``type``
+          (raw / rate / delta / average). A rate-typed ``ops`` is already an IOPS value;
+          a raw-typed counter is a cumulative point sample, not a per-poll delta. This
+          collector keeps no state between invocations (like the qtree poller), so it
+          never differences raw counters across polls. When a counter it publishes is
+          raw-only for this cluster, it publishes the point sample the table returns and
+          sets ``point_sample`` in the summary so the reader knows the value is not a
+          per-poll rate.
+
+          This module is not part of a CloudFormation template on its own; the QoS CFN
+          template concatenates this source with the shared client.
+          """
+          import logging
+          import os
+          from typing import Any
+
+          import urllib3
+
+          ontap = sys.modules[__name__]
+
+          logger = logging.getLogger()
+
+          # Re-exported so the handler and tests can reach them through this module too.
+          __all__ = [
+              "MAX_PAGES",
+              "MAX_RECORDS",
+              "OntapAuthError",
+              "PUT_BATCH_SIZE",
+              "QOS_NAMESPACE",
+              "build_qos_metric_data",
+              "fetch_counter_rows",
+              "fetch_counter_schemas",
+              "fetch_workloads",
+              "invalidate_credentials",
+              "lambda_handler",
+          ]
+
+          QOS_NAMESPACE = "FSxONTAP/QoS"
+          DEFAULT_MAX_POLICY_GROUPS = 200  # per-run cap on policy groups that get series
+
+          # Counter name -> (metric name, CloudWatch unit). Only these counters are
+          # published; everything else on the row (concurrency, labels) is ignored.
+          _COUNTER_METRICS: dict[str, tuple[str, str]] = {
+              "ops": ("QosOps", "Count/Second"),
+              "total_data": ("QosThroughputBytes", "Bytes/Second"),
+              "latency": ("QosLatencyMicros", "Microseconds"),
+              "read_ops": ("QosReadOps", "Count/Second"),
+              "write_ops": ("QosWriteOps", "Count/Second"),
+          }
+          # Counters whose point-sample publication is honest only when the schema marks
+          # them rate/average; a raw-only value here sets the point_sample summary flag.
+          _RATE_EXPECTED = frozenset({"ops", "total_data", "read_ops", "write_ops"})
+
+
+          def fetch_counter_schemas(
+              *,
+              retries: urllib3.util.Retry | None = None,
+              credentials_ttl: float | None = None,
+          ) -> dict[str, dict[str, str]]:
+              """Read the QoS counter table schema: each counter's type and unit.
+
+              Args:
+                  retries: Passed to qtree_quota_poller._ontap_get.
+                  credentials_ttl: Passed to qtree_quota_poller._ontap_get.
+
+              Returns:
+                  Mapping of counter name to ``{"type": ..., "unit": ...}``. Empty when
+                  the table reports no counter_schemas.
+              """
+              data = ontap._ontap_get(
+                  "/api/cluster/counter/tables/qos?fields=counter_schemas",
+                  retries=retries,
+                  credentials_ttl=credentials_ttl,
+              )
+              schemas: dict[str, dict[str, str]] = {}
+              for record in data.get("records", []):
+                  for schema in record.get("counter_schemas", []):
+                      name = schema.get("name")
+                      if isinstance(name, str):
+                          schemas[name] = {
+                              "type": str(schema.get("type", "")),
+                              "unit": str(schema.get("unit", "")),
+                          }
+              # Tables may return a single record without a records wrapper.
+              for schema in data.get("counter_schemas", []):
+                  name = schema.get("name")
+                  if isinstance(name, str):
+                      schemas[name] = {
+                          "type": str(schema.get("type", "")),
+                          "unit": str(schema.get("unit", "")),
+                      }
+              return schemas
+
+
+          def _paginate(
+              first_href: str,
+              *,
+              retries: urllib3.util.Retry | None,
+              credentials_ttl: float | None,
+          ) -> tuple[list[dict[str, Any]], int, bool]:
+              """Read every record of a collection, following _links.next.href.
+
+              Args:
+                  first_href: First request path (starts with ``/api/``).
+                  retries: Passed to qtree_quota_poller._ontap_get.
+                  credentials_ttl: Passed to qtree_quota_poller._ontap_get.
+
+              Returns:
+                  (records, pages_read, page_truncated). page_truncated is True only
+                  when a next link is still present after MAX_PAGES pages.
+              """
+              next_href: str | None = first_href
+              records: list[dict[str, Any]] = []
+              pages = 0
+              while next_href is not None and pages < MAX_PAGES:
+                  data = ontap._ontap_get(next_href, retries=retries, credentials_ttl=credentials_ttl)
+                  pages += 1
+                  records.extend(data.get("records", []))
+                  next_href = data.get("_links", {}).get("next", {}).get("href")
+              return records, pages, next_href is not None
+
+
+          def fetch_workloads(
+              *,
+              retries: urllib3.util.Retry | None = None,
+              credentials_ttl: float | None = None,
+          ) -> list[dict[str, Any]]:
+              """Read the QoS workload -> policy-group mapping.
+
+              Args:
+                  retries: Passed to qtree_quota_poller._ontap_get.
+                  credentials_ttl: Passed to qtree_quota_poller._ontap_get.
+
+              Returns:
+                  Workload records with ``name``, ``policy.name``, ``svm.name`` and
+                  ``volume`` where present.
+              """
+              records, pages, truncated = _paginate(
+                  f"/api/storage/qos/workloads?fields=*&max_records={MAX_RECORDS}",
+                  retries=retries,
+                  credentials_ttl=credentials_ttl,
+              )
+              if truncated:
+                  logger.warning(
+                      "QoS workload list truncated: stopped after %d pages (%d workloads) "
+                      "at the %d-page cap; some policy groups may not resolve an SvmName",
+                      pages, len(records), MAX_PAGES,
+                  )
+              return records
+
+
+          def fetch_counter_rows(
+              *,
+              retries: urllib3.util.Retry | None = None,
+              credentials_ttl: float | None = None,
+          ) -> tuple[list[dict[str, Any]], int, bool]:
+              """Read the QoS counter-manager rows (live per-policy-group performance).
+
+              Args:
+                  retries: Passed to qtree_quota_poller._ontap_get.
+                  credentials_ttl: Passed to qtree_quota_poller._ontap_get.
+
+              Returns:
+                  (rows, pages_read, page_truncated). Each row has an ``id`` of the form
+                  ``<policy>:<uuid>`` plus ``counters`` and ``properties`` lists.
+              """
+              rows, pages, truncated = _paginate(
+                  f"/api/cluster/counter/tables/qos/rows?max_records={MAX_RECORDS}",
+                  retries=retries,
+                  credentials_ttl=credentials_ttl,
+              )
+              if truncated:
+                  logger.warning(
+                      "QoS counter rows truncated: stopped after %d pages (%d rows) at "
+                      "the %d-page cap; policy groups beyond it are not monitored this run",
+                      pages, len(rows), MAX_PAGES,
+                  )
+              return rows, pages, truncated
+
+
+          def _named_values(items: Any) -> dict[str, Any]:
+              """Collapse a counter-manager ``counters`` or ``properties`` list to a dict.
+
+              Args:
+                  items: A list of ``{"name": ..., "value": ...}`` objects, or anything
+                      else (treated as empty).
+
+              Returns:
+                  Mapping of name to value for every well-formed entry.
+              """
+              out: dict[str, Any] = {}
+              if isinstance(items, list):
+                  for item in items:
+                      if isinstance(item, dict) and isinstance(item.get("name"), str):
+                          out[item["name"]] = item.get("value")
+              return out
+
+
+          def _svm_name_map(workloads: list[dict[str, Any]]) -> dict[str, str]:
+              """Build policy-group name -> SVM name from the workload records.
+
+              Args:
+                  workloads: Records from fetch_workloads.
+
+              Returns:
+                  Mapping of policy-group name to SVM name for every workload that names
+                  both. A policy group spanning SVMs keeps the first SVM seen.
+              """
+              mapping: dict[str, str] = {}
+              for workload in workloads:
+                  policy = workload.get("policy", {})
+                  svm = workload.get("svm", {})
+                  policy_name = policy.get("name") if isinstance(policy, dict) else None
+                  svm_name = svm.get("name") if isinstance(svm, dict) else None
+                  if isinstance(policy_name, str) and isinstance(svm_name, str):
+                      mapping.setdefault(policy_name, svm_name)
+              return mapping
+
+
+          def _policy_group_name(row: dict[str, Any], properties: dict[str, Any]) -> str:
+              """Resolve a row's policy-group name from properties, then the row id.
+
+              Args:
+                  row: A counter-manager row.
+                  properties: The row's collapsed ``properties`` dict.
+
+              Returns:
+                  The policy-group name, or ``""`` when neither source carries one.
+              """
+              name = properties.get("policy_group_name")
+              if isinstance(name, str) and name:
+                  return name
+              row_id = row.get("id")
+              if isinstance(row_id, str) and ":" in row_id:
+                  return row_id.rsplit(":", 1)[0]
+              if isinstance(row_id, str):
+                  return row_id
+              return ""
+
+
+          def build_qos_metric_data(
+              rows: list[dict[str, Any]],
+              workloads: list[dict[str, Any]],
+              schemas: dict[str, dict[str, str]],
+              file_system_id: str,
+              max_policy_groups: int,
+          ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+              """Build the QoS datums described in the module docstring.
+
+              Args:
+                  rows: Counter-manager rows from fetch_counter_rows.
+                  workloads: Workload records from fetch_workloads (SvmName resolution).
+                  schemas: Counter schema map from fetch_counter_schemas.
+                  file_system_id: Value of the FileSystemId dimension.
+                  max_policy_groups: Cap on policy groups that get per-group series.
+
+              Returns:
+                  (metric_data, summary). summary has ``policy_groups``,
+                  ``series_policy_groups``, ``truncated`` and ``point_sample``.
+              """
+              fs_dimensions = [{"Name": "FileSystemId", "Value": file_system_id}]
+              svm_map = _svm_name_map(workloads)
+              metric_data: list[dict[str, Any]] = []
+              series = 0
+              capped = False
+              nameless = 0
+              point_sample = False
+
+              for row in rows:
+                  counters = _named_values(row.get("counters"))
+                  properties = _named_values(row.get("properties"))
+                  policy_group = _policy_group_name(row, properties)
+                  if not policy_group:
+                      nameless += 1
+                      logger.warning(
+                          "QoS counter row %r has no resolvable policy-group name; skipped",
+                          row.get("id"),
+                      )
+                      continue
+                  if series >= max_policy_groups:
+                      capped = True
+                      continue
+
+                  dimensions = [
+                      {"Name": "FileSystemId", "Value": file_system_id},
+                      {"Name": "PolicyGroup", "Value": policy_group},
+                  ]
+                  svm_name = svm_map.get(policy_group)
+                  if isinstance(svm_name, str) and svm_name:
+                      dimensions.append({"Name": "SvmName", "Value": svm_name})
+
+                  row_datums: list[dict[str, Any]] = []
+                  for counter_name, (metric_name, unit) in _COUNTER_METRICS.items():
+                      if counter_name not in counters:
+                          continue
+                      value = counters[counter_name]
+                      if not isinstance(value, (int, float)) or isinstance(value, bool):
+                          continue
+                      counter_type = schemas.get(counter_name, {}).get("type", "")
+                      if counter_name in _RATE_EXPECTED and counter_type not in ("rate", "average"):
+                          # Raw/delta where a rate was expected: the published value is a
+                          # cumulative point sample, not a per-poll rate. Flagged, never
+                          # differenced across polls (stateless per invocation).
+                          point_sample = True
+                      row_datums.append({
+                          "MetricName": metric_name,
+                          "Dimensions": dimensions,
+                          "Value": float(value),
+                          "Unit": unit,
+                      })
+                  if not row_datums:
+                      logger.warning(
+                          "QoS policy group %s has no publishable counters this run", policy_group
+                      )
+                      continue
+                  series += 1
+                  metric_data.extend(row_datums)
+
+              truncated = capped or nameless > 0
+              if capped:
+                  logger.warning(
+                      "QoS per-policy-group series capped at %d of %d rows; aggregates "
+                      "reported as truncated",
+                      max_policy_groups, len(rows),
+                  )
+
+              metric_data.append({
+                  "MetricName": "QosPolicyGroupsTruncated",
+                  "Dimensions": fs_dimensions,
+                  "Value": 1.0 if truncated else 0.0,
+                  "Unit": "Count",
+              })
+
+              summary = {
+                  "policy_groups": len(rows),
+                  "series_policy_groups": series,
+                  "truncated": truncated,
+                  "point_sample": point_sample,
+              }
+              logger.info(
+                  "QoS on %s: %d counter row(s), %d with per-policy-group series, "
+                  "point_sample=%s, truncated=%s",
+                  file_system_id, len(rows), series, point_sample, truncated,
+              )
+              return metric_data, summary
+
+
+          def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+              """CloudFormation entry point (index.lambda_handler): one file system's QoS.
+
+              Mirrors qtree_quota_poller.lambda_handler: no urllib3 retries, credentials
+              cached for the container lifetime, no heartbeat metric. Reads the file
+              system id, namespace and the optional policy-group cap from the environment.
+
+              Args:
+                  event: EventBridge scheduled event (unused).
+                  context: Lambda context (unused).
+
+              Returns:
+                  A run summary.
+              """
+              del event, context
+              file_system_id = os.environ["FILE_SYSTEM_ID"]
+              namespace = os.environ.get("METRIC_NAMESPACE", QOS_NAMESPACE)
+              max_policy_groups = int(
+                  os.environ.get("QOS_MAX_POLICY_GROUPS", str(DEFAULT_MAX_POLICY_GROUPS))
+              )
+
+              schemas = fetch_counter_schemas()
+              workloads = fetch_workloads()
+              rows, pages, _page_truncated = fetch_counter_rows()
+              metric_data, summary = build_qos_metric_data(
+                  rows, workloads, schemas, file_system_id, max_policy_groups
+              )
+              published = ontap._put_metric_data(namespace, metric_data)
+
+              logger.info("Published %d QoS metric data points", published)
+              return {**summary, "pages_read": pages, "metrics_published": published}
+  # ================================================================
+  # EventBridge Schedule
+  # ================================================================
+  QosPollSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-schedule'
+      Description: !Sub 'Poll ONTAP QoS counters every ${PollIntervalMinutes} minutes'
+      ScheduleExpression: !Sub 'rate(${PollIntervalMinutes} minutes)'
+      State: ENABLED
+      Targets:
+        - Id: QosMonitorLambda
+          Arn: !GetAtt QosMonitorFunction.Arn
+
+  QosPollPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref QosMonitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt QosPollSchedule.Arn
+
+  # ================================================================
+  # CloudWatch Alarm — DLQ depth
+  # A message here means the poller failed every retry, so the QoS metrics are
+  # stale. There is no single QoS threshold alarm: these series are
+  # per-policy-group performance, not a pass/fail limit, so an operator builds
+  # alarms on the specific QosOps/QosLatencyMicros series that matter for their
+  # workload (namespace FSxONTAP/QoS, dimensions FileSystemId, PolicyGroup).
+  # ================================================================
+  QosMonitorDlqDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-depth'
+      AlarmDescription: >-
+        The QoS poller failed all retries and the invocation landed in the DLQ.
+        QoS metrics are no longer being published. Check the poller log group
+        for the underlying error (usually ONTAP API reachability or
+        credentials).
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt QosMonitorDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasNotificationEmail
+        - - !Ref QosAlarmTopic
+        - !Ref 'AWS::NoValue'
+
+Outputs:
+  MonitorFunctionArn:
+    Description: Lambda function ARN for the QoS poller
+    Value: !GetAtt QosMonitorFunction.Arn
+
+  DeadLetterQueueUrl:
+    Description: >-
+      DLQ for failed poller invocations. Messages here mean QoS metrics are
+      stale.
+    Value: !Ref QosMonitorDeadLetterQueue
+
+  MetricNamespace:
+    Description: CloudWatch namespace for QoS policy-group metrics
+    Value: FSxONTAP/QoS
+
+  ScheduleArn:
+    Description: EventBridge schedule rule ARN
+    Value: !GetAtt QosPollSchedule.Arn
