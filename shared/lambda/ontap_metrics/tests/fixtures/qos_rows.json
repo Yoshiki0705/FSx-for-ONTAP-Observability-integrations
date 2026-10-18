@@ -1,0 +1,44 @@
+{
+  "_comment": "Shaped like GET /api/cluster/counter/tables/qos/rows on the ONTAP counter manager (verified on ONTAP 9.19.1). Row id is '<policy>:<uuid>'; numeric counters live under counters[] and labels under properties[]. ops/read_ops/write_ops are IOPS (rate), total_data is throughput bytes/sec (rate), latency is microseconds (average). UUIDs and policy-group names are placeholders.",
+  "num_records": 2,
+  "records": [
+    {
+      "id": "pg_oltp:11111111-1111-1111-1111-111111111111",
+      "properties": [
+        {"name": "policy_group_name", "value": "pg_oltp"},
+        {"name": "policy_group_uuid", "value": "11111111-1111-1111-1111-111111111111"},
+        {"name": "name", "value": "pg_oltp:11111111-1111-1111-1111-111111111111"}
+      ],
+      "counters": [
+        {"name": "ops", "value": 1993.0},
+        {"name": "read_ops", "value": 1200.0},
+        {"name": "write_ops", "value": 793.0},
+        {"name": "total_data", "value": 52428800.0},
+        {"name": "read_data", "value": 31457280.0},
+        {"name": "write_data", "value": 20971520.0},
+        {"name": "latency", "value": 845.0},
+        {"name": "concurrency", "value": 4.0},
+        {"name": "total_ops_raw", "value": 198765432.0}
+      ]
+    },
+    {
+      "id": "pg_batch:22222222-2222-2222-2222-222222222222",
+      "properties": [
+        {"name": "policy_group_name", "value": "pg_batch"},
+        {"name": "policy_group_uuid", "value": "22222222-2222-2222-2222-222222222222"},
+        {"name": "name", "value": "pg_batch:22222222-2222-2222-2222-222222222222"}
+      ],
+      "counters": [
+        {"name": "ops", "value": 410.0},
+        {"name": "read_ops", "value": 90.0},
+        {"name": "write_ops", "value": 320.0},
+        {"name": "total_data", "value": 104857600.0},
+        {"name": "read_data", "value": 10485760.0},
+        {"name": "write_data", "value": 94371840.0},
+        {"name": "latency", "value": 2200.0},
+        {"name": "concurrency", "value": 8.0},
+        {"name": "total_ops_raw", "value": 44556677.0}
+      ]
+    }
+  ]
+}

@@ -24,10 +24,19 @@ def _keys(entries: list[dict]) -> set[Key]:
 
 
 def _run_all(load_modules):
-    lam = load_modules(route(
-        quota=[page([quota_record("vol_a", "q1", 50, 100), quota_record("vol_a", "q2", 90, 100)])],
-        snapmirror=[load_fixture("snapmirror_page.json")],
-    ))
+    lam = load_modules(
+        route(
+            quota=[page([
+                quota_record("vol_a", "q1", 50, 100),
+                quota_record("vol_a", "q2", 90, 100),
+            ])],
+            snapmirror=[load_fixture("snapmirror_page.json")],
+            qos_schema=[load_fixture("qos_schema.json")],
+            qos_workloads=[load_fixture("qos_workloads.json")],
+            qos_rows=[load_fixture("qos_rows.json")],
+        ),
+        env={"COLLECTORS": "qtree,snapmirror,qos"},
+    )
     lam.run()
     return lam
 
@@ -52,7 +61,7 @@ def test_units_match_the_contract(load_modules) -> None:
 def test_every_alarm_entry_is_emitted(load_modules) -> None:
     lam = _run_all(load_modules)
     alarm_keys = _keys([e for e in _contract() if e["alarm"]])
-    assert len(alarm_keys) == 5
+    assert len(alarm_keys) == 6
     assert alarm_keys <= lam.emitted()
 
 

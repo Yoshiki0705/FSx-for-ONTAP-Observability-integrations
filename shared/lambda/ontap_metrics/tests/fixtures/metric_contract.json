@@ -10,5 +10,17 @@
   {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorUnhealthyCount", "dimensions": ["FileSystemId"], "unit": "Count", "alarm": true},
   {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorLagSecondsMax", "dimensions": ["FileSystemId"], "unit": "Seconds", "alarm": true},
   {"namespace": "FSxONTAP/SnapMirror", "metric": "SnapMirrorRelationshipsTruncated", "dimensions": ["FileSystemId"], "unit": "Count", "alarm": false},
-  {"namespace": "FSxONTAP/SnapMirror", "metric": "CollectorSucceeded", "dimensions": ["FileSystemId", "Collector"], "unit": "Count", "alarm": true}
+  {"namespace": "FSxONTAP/SnapMirror", "metric": "CollectorSucceeded", "dimensions": ["FileSystemId", "Collector"], "unit": "Count", "alarm": true},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosOps", "dimensions": ["FileSystemId", "PolicyGroup"], "unit": "Count/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosOps", "dimensions": ["FileSystemId", "PolicyGroup", "SvmName"], "unit": "Count/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosThroughputBytes", "dimensions": ["FileSystemId", "PolicyGroup"], "unit": "Bytes/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosThroughputBytes", "dimensions": ["FileSystemId", "PolicyGroup", "SvmName"], "unit": "Bytes/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosLatencyMicros", "dimensions": ["FileSystemId", "PolicyGroup"], "unit": "Microseconds", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosLatencyMicros", "dimensions": ["FileSystemId", "PolicyGroup", "SvmName"], "unit": "Microseconds", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosReadOps", "dimensions": ["FileSystemId", "PolicyGroup"], "unit": "Count/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosReadOps", "dimensions": ["FileSystemId", "PolicyGroup", "SvmName"], "unit": "Count/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosWriteOps", "dimensions": ["FileSystemId", "PolicyGroup"], "unit": "Count/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosWriteOps", "dimensions": ["FileSystemId", "PolicyGroup", "SvmName"], "unit": "Count/Second", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "QosPolicyGroupsTruncated", "dimensions": ["FileSystemId"], "unit": "Count", "alarm": false},
+  {"namespace": "FSxONTAP/QoS", "metric": "CollectorSucceeded", "dimensions": ["FileSystemId", "Collector"], "unit": "Count", "alarm": true}
 ]
