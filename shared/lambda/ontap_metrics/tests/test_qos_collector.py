@@ -37,8 +37,8 @@ from ontap_test_support import (
 
 NS = "FSxONTAP/QoS"
 QOS_ENV = {"COLLECTORS": "qos", "SVM_NAME": None}
-PG_DIMS = ["FileSystemId", "PolicyGroup"]
-PG_SVM_DIMS = ["FileSystemId", "PolicyGroup", "SvmName"]
+PG_DIMS = ["FileSystemId", "PolicyGroup", "Workload"]
+PG_SVM_DIMS = ["FileSystemId", "PolicyGroup", "Workload", "SvmName"]
 
 # The controlled sample window the tests assert against (seconds).
 ELAPSED = 10.0
@@ -140,9 +140,9 @@ def test_rate_counters_are_the_delta_over_elapsed(load_modules, monkeypatch) -> 
 
     summary = result["collectors"]["qos"]
     assert summary["succeeded"] is True
-    assert summary["policy_groups"] == 1
-    assert summary["series_policy_groups"] == 1
-    assert summary["rate_policy_groups"] == 1
+    assert summary["rows_total"] == 1
+    assert summary["rows_internal_excluded"] == 0
+    assert summary["rows_published"] == 1
     assert summary["sample_interval_seconds"] == ELAPSED
     # The stale point_sample flag is gone; every rate is a computed delta.
     assert "point_sample" not in summary
@@ -225,7 +225,7 @@ def test_policy_group_missing_in_second_sample_is_skipped(load_modules, monkeypa
         if dim["Name"] == "PolicyGroup"
     }
     assert groups == {"pg_stay"}
-    assert result["collectors"]["qos"]["rate_policy_groups"] == 1
+    assert result["collectors"]["qos"]["rows_published"] == 1
     assert any("missing in" in r.getMessage() for r in caplog.records)
 
 
@@ -247,7 +247,7 @@ def test_non_positive_elapsed_skips_rate_publication(load_modules, monkeypatch, 
     assert lam.by_name("QosOps", NS) == []
     assert lam.by_name("QosThroughputBytes", NS) == []
     assert lam.by_name("QosLatencyMicros", NS) == []
-    assert result["collectors"]["qos"]["rate_policy_groups"] == 0
+    assert result["collectors"]["qos"]["rows_published"] == 0
     assert any("clock anomaly" in r.getMessage().lower() for r in caplog.records)
 
 
@@ -279,7 +279,7 @@ def test_dimension_lists_and_units(load_modules, monkeypatch) -> None:
         == PG_SVM_DIMS
     assert [x["Name"] for x in _for_group(lam.by_name("QosOps", NS), "pg_batch")["Dimensions"]] \
         == PG_DIMS
-    svm = _for_group(lam.by_name("QosOps", NS), "pg_oltp")["Dimensions"][2]
+    svm = _for_group(lam.by_name("QosOps", NS), "pg_oltp")["Dimensions"][3]
     assert svm == {"Name": "SvmName", "Value": "svm-prod-01"}
 
     for metric, unit in (
@@ -352,10 +352,13 @@ def test_row_without_a_resolvable_policy_group_is_skipped(load_modules, monkeypa
     with caplog.at_level("WARNING"):
         result = lam.run()
     assert len(lam.by_name("QosOps", NS)) == 1
-    assert result["collectors"]["qos"]["series_policy_groups"] == 1
+    assert result["collectors"]["qos"]["rows_published"] == 1
     [trunc] = lam.by_name("QosPolicyGroupsTruncated", NS)
     assert trunc["Value"] == 1.0
-    assert any("no resolvable policy-group name" in r.getMessage() for r in caplog.records)
+    assert any(
+        "no resolvable policy-group or workload name" in r.getMessage()
+        for r in caplog.records
+    )
 
 
 def test_policy_group_name_falls_back_to_the_row_id_prefix(load_modules, monkeypatch) -> None:
@@ -380,6 +383,165 @@ def test_policy_group_name_falls_back_to_the_row_id_prefix(load_modules, monkeyp
     [ops] = lam.by_name("QosOps", NS)
     assert {"Name": "PolicyGroup", "Value": "pg_from_id"} in ops["Dimensions"]
     assert ops["Value"] == (2000.0 - 1000.0) / ELAPSED
+
+
+# --------------------------------------------------------------------------
+# Internal-workload filtering (option B) and the Workload dimension (option C)
+# --------------------------------------------------------------------------
+
+
+def _policy_groups_of(datums: list[dict[str, Any]]) -> set[str]:
+    return {
+        dim["Value"]
+        for d in datums
+        for dim in d["Dimensions"]
+        if dim["Name"] == "PolicyGroup"
+    }
+
+
+def test_internal_policy_groups_are_excluded_by_default(load_modules, monkeypatch) -> None:
+    # Rows on _System-* policy groups are internal and excluded by default;
+    # User-* and user-created non-"_" groups are published.
+    rows = _two_sample_rows(
+        [
+            qos_row("_System-Work", "a1a1a1a1-0000-0000-0000-000000000001",
+                    workload="wl_internal_1", counters={"ops": 1000.0}),
+            qos_row("_System-Best-Effort", "a2a2a2a2-0000-0000-0000-000000000002",
+                    workload="wl_internal_2", counters={"ops": 1000.0}),
+            qos_row("User-Best-Effort", "b1b1b1b1-0000-0000-0000-000000000003",
+                    workload="User-Default", counters={"ops": 1000.0}),
+            qos_row("pg_app", "c1c1c1c1-0000-0000-0000-000000000004",
+                    workload="vol-app-01", counters={"ops": 1000.0}),
+        ],
+        [
+            qos_row("_System-Work", "a1a1a1a1-0000-0000-0000-000000000001",
+                    workload="wl_internal_1", counters={"ops": 3000.0}),
+            qos_row("_System-Best-Effort", "a2a2a2a2-0000-0000-0000-000000000002",
+                    workload="wl_internal_2", counters={"ops": 3000.0}),
+            qos_row("User-Best-Effort", "b1b1b1b1-0000-0000-0000-000000000003",
+                    workload="User-Default", counters={"ops": 3000.0}),
+            qos_row("pg_app", "c1c1c1c1-0000-0000-0000-000000000004",
+                    workload="vol-app-01", counters={"ops": 3000.0}),
+        ],
+    )
+    lam = _load(load_modules, schema=[qos_schema_page()], workloads=[page([])], rows=rows)
+    _patch_clock(monkeypatch, lam)
+    result = lam.run()
+
+    published = _policy_groups_of(lam.by_name("QosOps", NS))
+    assert published == {"User-Best-Effort", "pg_app"}
+    assert "_System-Work" not in published
+    assert "_System-Best-Effort" not in published
+
+    summary = result["collectors"]["qos"]
+    assert summary["rows_total"] == 4
+    assert summary["rows_internal_excluded"] == 2
+    assert summary["rows_published"] == 2
+
+
+def test_include_system_workloads_true_publishes_internal_rows(load_modules, monkeypatch) -> None:
+    rows = _two_sample_rows(
+        [
+            qos_row("_System-Work", "a1a1a1a1-0000-0000-0000-000000000001",
+                    workload="wl_internal_1", counters={"ops": 1000.0}),
+            qos_row("pg_app", "c1c1c1c1-0000-0000-0000-000000000004",
+                    workload="vol-app-01", counters={"ops": 1000.0}),
+        ],
+        [
+            qos_row("_System-Work", "a1a1a1a1-0000-0000-0000-000000000001",
+                    workload="wl_internal_1", counters={"ops": 3000.0}),
+            qos_row("pg_app", "c1c1c1c1-0000-0000-0000-000000000004",
+                    workload="vol-app-01", counters={"ops": 3000.0}),
+        ],
+    )
+    lam = _load(
+        load_modules, schema=[qos_schema_page()], workloads=[page([])], rows=rows,
+        QOS_INCLUDE_SYSTEM_WORKLOADS="true",
+    )
+    _patch_clock(monkeypatch, lam)
+    result = lam.run()
+
+    published = _policy_groups_of(lam.by_name("QosOps", NS))
+    assert published == {"_System-Work", "pg_app"}
+    summary = result["collectors"]["qos"]
+    assert summary["rows_internal_excluded"] == 0
+    assert summary["rows_published"] == 2
+
+
+def test_workload_dimension_distinguishes_rows_sharing_a_policy_group(
+    load_modules, monkeypatch
+) -> None:
+    # Two workloads bound to the SAME user policy group must stay two distinct
+    # CloudWatch streams, differing only by the Workload dimension.
+    rows = _two_sample_rows(
+        [
+            qos_row("pg_shared", "d1d1d1d1-0000-0000-0000-000000000001",
+                    workload="vol-app-01", counters={"ops": 1000.0}),
+            qos_row("pg_shared", "d2d2d2d2-0000-0000-0000-000000000002",
+                    workload="vol-app-02", counters={"ops": 2000.0}),
+        ],
+        [
+            qos_row("pg_shared", "d1d1d1d1-0000-0000-0000-000000000001",
+                    workload="vol-app-01", counters={"ops": 3000.0}),
+            qos_row("pg_shared", "d2d2d2d2-0000-0000-0000-000000000002",
+                    workload="vol-app-02", counters={"ops": 6000.0}),
+        ],
+    )
+    lam = _load(load_modules, schema=[qos_schema_page()], workloads=[page([])], rows=rows)
+    _patch_clock(monkeypatch, lam)
+    result = lam.run()
+
+    ops = lam.by_name("QosOps", NS)
+    assert len(ops) == 2
+    assert _policy_groups_of(ops) == {"pg_shared"}
+    by_workload = {
+        dim["Value"]: d
+        for d in ops
+        for dim in d["Dimensions"]
+        if dim["Name"] == "Workload"
+    }
+    assert set(by_workload) == {"vol-app-01", "vol-app-02"}
+    assert [x["Name"] for x in by_workload["vol-app-01"]["Dimensions"]] == PG_DIMS
+    assert by_workload["vol-app-01"]["Value"] == (3000.0 - 1000.0) / ELAPSED
+    assert by_workload["vol-app-02"]["Value"] == (6000.0 - 2000.0) / ELAPSED
+    assert result["collectors"]["qos"]["rows_published"] == 2
+
+
+def test_missing_policy_group_with_user_workload_name_is_included(
+    load_modules, monkeypatch
+) -> None:
+    # A row with no resolvable policy_group_name but a workload name is treated
+    # as NOT internal, so user data is never dropped. The id is empty, so the
+    # two samples match on policy_group_uuid instead.
+    uuid = "55555555-5555-5555-5555-555555555555"
+    row1 = {
+        "id": "",
+        "counters": [{"name": "ops", "value": 1000.0}],
+        "properties": [
+            {"name": "name", "value": "vol-app-01"},
+            {"name": "policy_group_uuid", "value": uuid},
+        ],
+    }
+    row2 = {
+        "id": "",
+        "counters": [{"name": "ops", "value": 3000.0}],
+        "properties": [
+            {"name": "name", "value": "vol-app-01"},
+            {"name": "policy_group_uuid", "value": uuid},
+        ],
+    }
+    lam = _load(
+        load_modules, schema=[qos_schema_page()], workloads=[page([])],
+        rows=_two_sample_rows([row1], [row2]),
+    )
+    _patch_clock(monkeypatch, lam)
+    result = lam.run()
+    [ops] = lam.by_name("QosOps", NS)
+    assert {"Name": "Workload", "Value": "vol-app-01"} in ops["Dimensions"]
+    assert ops["Value"] == (3000.0 - 1000.0) / ELAPSED
+    summary = result["collectors"]["qos"]
+    assert summary["rows_internal_excluded"] == 0
+    assert summary["rows_published"] == 1
 
 
 # --------------------------------------------------------------------------
@@ -427,12 +589,12 @@ def test_policy_group_cap_limits_series_not_truncation_reporting(load_modules, m
     [trunc] = lam.by_name("QosPolicyGroupsTruncated", NS)
     assert trunc["Value"] == 1.0
     summary = result["collectors"]["qos"]
-    assert summary["series_policy_groups"] == 2
-    assert summary["policy_groups"] == 5
+    assert summary["rows_published"] == 2
+    assert summary["rows_total"] == 5
 
 
 def test_put_metric_data_batches_across_more_than_twenty_datums(load_modules, monkeypatch) -> None:
-    # Six policy groups x five counters each = 30 datums + 1 aggregate,
+    # Six workload rows x five counters each = 30 datums + 1 aggregate,
     # which must cross the 20-datum PutMetricData batch boundary.
     full1 = {"ops": 1000.0, "total_data": 1_000_000.0, "latency": 500_000.0,
              "read_ops": 600.0, "write_ops": 400.0}
@@ -453,7 +615,7 @@ def test_put_metric_data_batches_across_more_than_twenty_datums(load_modules, mo
     ]
     assert len(batch_sizes) >= 2
     assert all(size <= 20 for size in batch_sizes)
-    # 6 policy groups x 5 counters + 1 QosPolicyGroupsTruncated aggregate, plus
+    # 6 workload rows x 5 counters + 1 QosPolicyGroupsTruncated aggregate, plus
     # the CollectorSucceeded heartbeat the handler publishes into this namespace.
     assert sum(batch_sizes) == 6 * 5 + 1 + 1
 
@@ -541,6 +703,8 @@ def test_request_path_hits_the_real_counter_manager_and_workload_routes(load_mod
 def test_recorded_fixtures_build_two_sample_rates(load_modules, monkeypatch) -> None:
     # The checked-in fixtures carry two samples (num_records per page); the
     # second sample's counters are higher, so the published values are deltas.
+    # The fixtures hold three workload rows: one internal (_System-Work,
+    # excluded by default) and two user policy groups (pg_oltp, pg_batch).
     lam = _load(
         load_modules,
         schema=[load_fixture("qos_schema.json")],
@@ -550,9 +714,19 @@ def test_recorded_fixtures_build_two_sample_rates(load_modules, monkeypatch) -> 
     _patch_clock(monkeypatch, lam)
     result = lam.run()
     ops = lam.by_name("QosOps", NS)
-    # pg_oltp: ops 1993 -> 21993 over 10 s = 2000 ops/s.
+    # pg_oltp/vol-app-01: ops 1993 -> 21993 over 10 s = 2000 ops/s.
     assert _for_group(ops, "pg_oltp")["Value"] == 2000.0
-    assert result["collectors"]["qos"]["rate_policy_groups"] == 2
+    # The internal _System-Work row is excluded by default.
+    assert "_System-Work" not in {
+        dim["Value"]
+        for d in ops
+        for dim in d["Dimensions"]
+        if dim["Name"] == "PolicyGroup"
+    }
+    summary = result["collectors"]["qos"]
+    assert summary["rows_total"] == 3
+    assert summary["rows_internal_excluded"] == 1
+    assert summary["rows_published"] == 2
 
 
 def test_registers_in_runners_and_emits_the_heartbeat(load_modules, monkeypatch) -> None:

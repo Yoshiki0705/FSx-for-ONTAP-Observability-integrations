@@ -215,14 +215,23 @@ def qos_row(
     policy: str,
     uuid: str = "00000000-0000-0000-0000-00000000000a",
     *,
+    workload: str | None = None,
     counters: dict[str, float] | None = None,
     with_uuid_property: bool = True,
 ) -> dict[str, Any]:
-    """Build one counter-manager row with id ``<policy>:<uuid>``.
+    """Build one counter-manager row (one per WORKLOAD) with id ``<name>:<uuid>``.
+
+    The counter-manager table returns one row per workload. ``properties.name``
+    is the workload name and the id prefix; ``policy_group_name`` is the policy
+    group the workload belongs to. When ``workload`` is omitted it defaults to
+    ``policy`` (the common single-workload-per-policy case), and the id prefix
+    follows the workload name.
 
     Args:
-        policy: Policy-group name (and the id prefix).
-        uuid: Policy-group UUID (the id suffix).
+        policy: Policy-group name (``policy_group_name`` property).
+        uuid: Policy-group / row UUID (the id suffix).
+        workload: Workload name (``name`` property and id prefix). Defaults to
+            ``policy``.
         counters: Counter name -> value. Defaults to ops/total_data/latency
             plus the read/write ops split.
         with_uuid_property: Whether the row also carries a
@@ -239,12 +248,16 @@ def qos_row(
             "read_ops": 1000.0,
             "write_ops": 500.0,
         }
-    properties = [{"name": "policy_group_name", "value": policy}]
+    name = workload if workload is not None else policy
+    properties = [
+        {"name": "policy_group_name", "value": policy},
+        {"name": "name", "value": name},
+    ]
     if with_uuid_property:
         properties.append({"name": "policy_group_uuid", "value": uuid})
     return {
-        "id": f"{policy}:{uuid}",
-        "counters": [{"name": name, "value": value} for name, value in counters.items()],
+        "id": f"{name}:{uuid}",
+        "counters": [{"name": name_, "value": value} for name_, value in counters.items()],
         "properties": properties,
     }
 

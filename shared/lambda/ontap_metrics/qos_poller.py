@@ -6,19 +6,40 @@ FSxONTAP/QoS. The counter manager is the only REST route to live QoS
 performance: GET /api/storage/qos/workloads/{uuid} has no ``statistics``
 field and /api/private/cli/qos/statistics returns 405.
 
-Per policy group, for at most max_policy_groups of them (dimensions
-FileSystemId, PolicyGroup; SvmName is added only when the workload map
-resolves one for that policy group):
+Row model. The counter-manager table returns ONE ROW PER WORKLOAD, not one
+row per policy group (confirmed on a live ONTAP 9.19.1P2 file system). Each
+row's ``properties`` carries both ``name`` (the WORKLOAD name, also the row-id
+prefix ``<name>:<uuid>``) and ``policy_group_name`` (the policy group the
+workload belongs to). Many ONTAP-internal workloads share one policy group:
+on the live file system 39 rows collapsed to 4 distinct policy_group_name
+values, 30 of them on the internal _System-Work group.
+
+Internal-workload filtering. A policy_group_name starting with ``_``
+(_System-Work, _System-Best-Effort, _System-Background) is ONTAP-internal and
+is EXCLUDED by default, so the published series are the workloads the operator
+cares about rather than internal noise. User-* groups (User-Best-Effort,
+User-Default) and any user-created policy group (a name not starting with
+``_``) are included. QOS_INCLUDE_SYSTEM_WORKLOADS=true opts the internal rows
+back in. A row with no resolvable policy_group_name but a workload name is
+treated as NOT internal (user data is never dropped).
+
+Per workload row, for at most max_policy_groups published rows (dimensions
+FileSystemId, PolicyGroup, Workload; SvmName is added only when the workload
+map resolves one for that policy group):
   - QosOps                 effective IOPS, from counter ``ops``
   - QosThroughputBytes     effective throughput, from counter ``total_data``
   - QosLatencyMicros       interval-average latency (see below)
   - QosReadOps/QosWriteOps read/write IOPS split, from ``read_ops``/``write_ops``
     (emitted only for the counters present on the row)
 
+The Workload dimension keeps two rows that share a policy_group_name as two
+distinct CloudWatch metric streams, so publishing by policy group alone no
+longer silently statistic-aggregates many workloads into one series.
+
 Per file system, once per run (dimension FileSystemId):
   - QosPolicyGroupsTruncated: 1 when the page cap stopped the read with a
-    next link still present, or the per-policy-group cap dropped a group;
-    else 0.
+    next link still present, or the per-run cap dropped a published workload
+    row; else 0.
 
 What this exposes is effective throughput/IOPS per policy group. There is no
 burst-specific counter in the counter manager, so "pinned at the ceiling" is
@@ -86,6 +107,7 @@ __all__ = [
     "OntapAuthError",
     "PUT_BATCH_SIZE",
     "QOS_NAMESPACE",
+    "_env_flag",
     "build_qos_metric_data",
     "fetch_counter_rows",
     "fetch_counter_schemas",
@@ -96,8 +118,26 @@ __all__ = [
 ]
 
 QOS_NAMESPACE = "FSxONTAP/QoS"
-DEFAULT_MAX_POLICY_GROUPS = 200  # per-run cap on policy groups that get series
+DEFAULT_MAX_POLICY_GROUPS = 200  # per-run cap on published workload rows
 DEFAULT_SAMPLE_INTERVAL_SECONDS = 10.0  # sleep between the two counter samples
+DEFAULT_INCLUDE_SYSTEM_WORKLOADS = False  # internal (_-prefixed) groups excluded
+
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    """Parse a boolean environment variable with the codebase convention.
+
+    Mirrors the ``os.environ.get(..., "false").lower() == "true"`` style used
+    for the other opt-in flags in this repository (e.g. ENABLE_GZIP), so there
+    is one boolean convention rather than a new one here.
+
+    Args:
+        name: Environment variable name.
+        default: Value used when the variable is unset.
+
+    Returns:
+        True only when the value is the string ``true`` (case-insensitive).
+    """
+    return os.environ.get(name, default).lower() == "true"
 
 # Counter name -> (metric name, CloudWatch unit). Only these counters are
 # published; everything else on the row (concurrency, labels) is ignored.
@@ -336,6 +376,48 @@ def _policy_group_name(row: dict[str, Any], properties: dict[str, Any]) -> str:
     return ""
 
 
+def _workload_name(row: dict[str, Any], properties: dict[str, Any]) -> str:
+    """Resolve a row's workload name from properties, then the row-id prefix.
+
+    The counter-manager row is per workload; ``properties.name`` is the
+    workload name, and the row id is ``<name>:<uuid>``. The name is preferred;
+    the row-id prefix before the first ``:`` is the fallback.
+
+    Args:
+        row: A counter-manager row.
+        properties: The row's collapsed ``properties`` dict.
+
+    Returns:
+        The workload name, or ``""`` when neither source carries one.
+    """
+    name = properties.get("name")
+    if isinstance(name, str) and name:
+        return name
+    row_id = row.get("id")
+    if isinstance(row_id, str) and ":" in row_id:
+        return row_id.rsplit(":", 1)[0]
+    if isinstance(row_id, str):
+        return row_id
+    return ""
+
+
+def _is_internal_policy_group(policy_group: str) -> bool:
+    """Return True for an ONTAP-internal policy group (name starts with ``_``).
+
+    _System-Work, _System-Best-Effort and _System-Background are internal.
+    User-* and any user-created policy group are not. A classification can only
+    be made from a resolvable policy_group_name; an empty name is handled by the
+    caller (treated as NOT internal so user data is never dropped).
+
+    Args:
+        policy_group: The resolved policy-group name, or ``""``.
+
+    Returns:
+        True only when a non-empty name starts with ``_``.
+    """
+    return bool(policy_group) and policy_group.startswith("_")
+
+
 def _row_identity(row: dict[str, Any], properties: dict[str, Any]) -> str:
     """Return the stable per-policy-group identity used to match two samples.
 
@@ -387,27 +469,39 @@ def build_qos_metric_data(
     schemas: dict[str, dict[str, str]],
     file_system_id: str,
     max_policy_groups: int,
+    *,
+    include_system_workloads: bool = DEFAULT_INCLUDE_SYSTEM_WORKLOADS,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Build the QoS datums described in the module docstring from two samples.
 
+    The counter-manager table is per workload. Each published row carries a
+    Workload dimension (the workload name) alongside PolicyGroup, so workloads
+    that share a policy_group_name stay distinct. Rows on an ONTAP-internal
+    policy group (name starts with ``_``) are excluded unless
+    include_system_workloads is True.
+
     Rate counters are published as (v2 - v1) / elapsed_seconds; latency is the
     interval-average (delta latency / delta ops). A counter reset (v2 < v1),
-    an ops delta of 0 for latency, a non-positive elapsed, or a policy group
+    an ops delta of 0 for latency, a non-positive elapsed, or a workload row
     present in only one sample is skipped rather than fabricated.
 
     Args:
         rows_v1: First counter-manager sample.
-        rows_v2: Second counter-manager sample (same policy groups, later).
+        rows_v2: Second counter-manager sample (same workloads, later).
         elapsed_seconds: Measured seconds between the two samples.
         workloads: Workload records from fetch_workloads (SvmName resolution).
         schemas: Counter schema map from fetch_counter_schemas (unused for
             value math now; kept for the signature and future honesty checks).
         file_system_id: Value of the FileSystemId dimension.
-        max_policy_groups: Cap on policy groups that get per-group series.
+        max_policy_groups: Cap on the number of published workload rows (the
+            public knob is still named for policy groups; the natural unit is
+            now the per-workload row).
+        include_system_workloads: When True, internal (``_``-prefixed) policy
+            groups are published too; when False (default), they are excluded.
 
     Returns:
-        (metric_data, summary). summary has ``policy_groups``,
-        ``series_policy_groups``, ``rate_policy_groups``, ``truncated`` and
+        (metric_data, summary). summary has ``rows_total``,
+        ``rows_internal_excluded``, ``rows_published``, ``truncated`` and
         ``sample_interval_seconds``.
     """
     del schemas  # counter type is known (rate/average); kept for signature
@@ -415,8 +509,8 @@ def build_qos_metric_data(
     svm_map = _svm_name_map(workloads)
     index_v2 = _index_rows(rows_v2)
     metric_data: list[dict[str, Any]] = []
-    series = 0
-    rate_groups = 0
+    published = 0
+    internal_excluded = 0
     capped = False
     nameless = 0
 
@@ -432,14 +526,26 @@ def build_qos_metric_data(
         counters_v1 = _named_values(row.get("counters"))
         properties = _named_values(row.get("properties"))
         policy_group = _policy_group_name(row, properties)
-        if not policy_group:
+        workload = _workload_name(row, properties)
+
+        # Both name sources empty: the row cannot be dimensioned or matched.
+        if not policy_group and not workload:
             nameless += 1
             logger.warning(
-                "QoS counter row %r has no resolvable policy-group name; skipped",
+                "QoS counter row %r has no resolvable policy-group or workload "
+                "name; skipped",
                 row.get("id"),
             )
             continue
-        if series >= max_policy_groups:
+
+        # Classify from policy_group_name. A row with a workload name but no
+        # resolvable policy group is treated as NOT internal (keep user data).
+        if policy_group and _is_internal_policy_group(policy_group) \
+                and not include_system_workloads:
+            internal_excluded += 1
+            continue
+
+        if published >= max_policy_groups:
             capped = True
             continue
 
@@ -447,16 +553,17 @@ def build_qos_metric_data(
         row_v2 = index_v2.get(identity)
         if row_v2 is None:
             logger.info(
-                "QoS policy group %s present in sample 1 but missing in "
-                "sample 2; skipped for rate counters this run",
-                policy_group,
+                "QoS workload %s (policy group %s) present in sample 1 but "
+                "missing in sample 2; skipped for rate counters this run",
+                workload, policy_group or "<none>",
             )
             continue
         counters_v2 = _named_values(row_v2.get("counters"))
 
         dimensions = [
             {"Name": "FileSystemId", "Value": file_system_id},
-            {"Name": "PolicyGroup", "Value": policy_group},
+            {"Name": "PolicyGroup", "Value": policy_group or workload},
+            {"Name": "Workload", "Value": workload or policy_group},
         ]
         svm_name = svm_map.get(policy_group)
         if isinstance(svm_name, str) and svm_name:
@@ -472,9 +579,9 @@ def build_qos_metric_data(
                 continue  # counter absent or non-numeric in a sample
             if delta < 0:
                 logger.warning(
-                    "QoS counter %s for policy group %s decreased (%s -> %s); "
-                    "counter reset or policy group recreated, skipped this run",
-                    counter_name, policy_group,
+                    "QoS counter %s for workload %s decreased (%s -> %s); "
+                    "counter reset or workload recreated, skipped this run",
+                    counter_name, workload,
                     counters_v1.get(counter_name), counters_v2.get(counter_name),
                 )
                 continue
@@ -488,29 +595,28 @@ def build_qos_metric_data(
             })
 
         # A clock anomaly (elapsed <= 0) makes this run's samples untrustworthy,
-        # so no datum is published for the group this run, latency included.
+        # so no datum is published for the row this run, latency included.
         if elapsed_ok:
             latency_datum = _latency_datum(
-                counters_v1, counters_v2, ops_delta, dimensions, policy_group
+                counters_v1, counters_v2, ops_delta, dimensions, workload
             )
             if latency_datum is not None:
                 row_datums.append(latency_datum)
 
         if not row_datums:
             logger.info(
-                "QoS policy group %s produced no publishable rate this run",
-                policy_group,
+                "QoS workload %s produced no publishable rate this run",
+                workload,
             )
             continue
-        series += 1
-        rate_groups += 1
+        published += 1
         metric_data.extend(row_datums)
 
     truncated = capped or nameless > 0
     if capped:
         logger.warning(
-            "QoS per-policy-group series capped at %d of %d rows; aggregates "
-            "reported as truncated",
+            "QoS published workload rows capped at %d of %d candidate row(s); "
+            "aggregates reported as truncated",
             max_policy_groups, len(rows_v1),
         )
 
@@ -522,16 +628,17 @@ def build_qos_metric_data(
     })
 
     summary = {
-        "policy_groups": len(rows_v1),
-        "series_policy_groups": series,
-        "rate_policy_groups": rate_groups,
+        "rows_total": len(rows_v1),
+        "rows_internal_excluded": internal_excluded,
+        "rows_published": published,
         "truncated": truncated,
         "sample_interval_seconds": elapsed_seconds,
     }
     logger.info(
-        "QoS on %s: %d counter row(s), %d with per-policy-group series, "
-        "%d with a valid delta, sample_interval_seconds=%.3f, truncated=%s",
-        file_system_id, len(rows_v1), series, rate_groups, elapsed_seconds, truncated,
+        "QoS on %s: %d counter row(s) total, %d internal excluded, %d "
+        "published, sample_interval_seconds=%.3f, truncated=%s",
+        file_system_id, len(rows_v1), internal_excluded, published,
+        elapsed_seconds, truncated,
     )
     return metric_data, summary
 
@@ -565,21 +672,21 @@ def _latency_datum(
     counters_v2: dict[str, Any],
     ops_delta: float | None,
     dimensions: list[dict[str, str]],
-    policy_group: str,
+    label: str,
 ) -> dict[str, Any] | None:
     """Return the interval-average latency datum, or None when it is skipped.
 
     latency is an ``average`` counter accumulating total latency over ops, so
     the interval-average is (delta latency) / (delta ops) microseconds. When
     the ops delta is 0 (idle) or negative (reset), latency is skipped: an idle
-    policy group has no meaningful latency, and a reset gives a garbage value.
+    workload has no meaningful latency, and a reset gives a garbage value.
 
     Args:
         counters_v1: First sample's collapsed counters.
         counters_v2: Second sample's collapsed counters.
         ops_delta: v2 - v1 for ``ops`` (the denominator), or None.
         dimensions: Dimension list for the datum.
-        policy_group: Policy-group name (for logging).
+        label: Workload name (for logging).
 
     Returns:
         A QosLatencyMicros datum, or None when latency is skipped this run.
@@ -591,16 +698,16 @@ def _latency_datum(
         return None
     if ops_delta <= 0:
         logger.debug(
-            "QoS policy group %s has ops delta %s (idle or reset); latency "
+            "QoS workload %s has ops delta %s (idle or reset); latency "
             "skipped this run",
-            policy_group, ops_delta,
+            label, ops_delta,
         )
         return None
     if latency_delta < 0:
         logger.warning(
-            "QoS latency accumulator for policy group %s decreased; counter "
+            "QoS latency accumulator for workload %s decreased; counter "
             "reset, latency skipped this run",
-            policy_group,
+            label,
         )
         return None
     metric_name, unit = _COUNTER_METRICS["latency"]
@@ -642,6 +749,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     sample_interval = float(
         os.environ.get("QOS_SAMPLE_INTERVAL_SECONDS", str(DEFAULT_SAMPLE_INTERVAL_SECONDS))
     )
+    include_system_workloads = _env_flag("QOS_INCLUDE_SYSTEM_WORKLOADS")
 
     schemas = fetch_counter_schemas()
     workloads = fetch_workloads()
@@ -649,7 +757,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         sample_interval
     )
     metric_data, summary = build_qos_metric_data(
-        rows_v1, rows_v2, elapsed, workloads, schemas, file_system_id, max_policy_groups
+        rows_v1, rows_v2, elapsed, workloads, schemas, file_system_id,
+        max_policy_groups, include_system_workloads=include_system_workloads,
     )
     published = ontap._put_metric_data(namespace, metric_data)
 

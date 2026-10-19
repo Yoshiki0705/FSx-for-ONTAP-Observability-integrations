@@ -12,8 +12,9 @@ Environment (secrets are never in the environment, only the secret ARN):
   COLLECTORS                       comma list of ``qtree``, ``snapmirror``, ``qos``
   SVM_NAME                         required when ``qtree`` is enabled
   SNAPMIRROR_MAX_RELATIONSHIPS     per-relationship series cap (default 100)
-  QOS_MAX_POLICY_GROUPS            per-policy-group series cap (default 200)
+  QOS_MAX_POLICY_GROUPS            published QoS workload-row cap (default 200)
   QOS_SAMPLE_INTERVAL_SECONDS      sleep between the two QoS counter samples (default 10)
+  QOS_INCLUDE_SYSTEM_WORKLOADS     include internal (_-prefixed) policy groups (default false)
   CREDENTIALS_CACHE_TTL_SECONDS    secret re-read interval (default 300)
   CA_CERT_PATH                     optional CA bundle for TLS verification
 
@@ -186,13 +187,15 @@ def _run_qos(
     sample_interval = float(
         os.environ.get("QOS_SAMPLE_INTERVAL_SECONDS", str(DEFAULT_QOS_SAMPLE_INTERVAL_SECONDS))
     )
+    include_system_workloads = qos._env_flag("QOS_INCLUDE_SYSTEM_WORKLOADS")
     schemas = qos.fetch_counter_schemas(retries=retries, credentials_ttl=credentials_ttl)
     workloads = qos.fetch_workloads(retries=retries, credentials_ttl=credentials_ttl)
     rows_v1, rows_v2, elapsed, pages, _page_truncated = qos.sample_counter_rows_twice(
         sample_interval, retries=retries, credentials_ttl=credentials_ttl
     )
     metric_data, summary = qos.build_qos_metric_data(
-        rows_v1, rows_v2, elapsed, workloads, schemas, file_system_id, max_policy_groups
+        rows_v1, rows_v2, elapsed, workloads, schemas, file_system_id,
+        max_policy_groups, include_system_workloads=include_system_workloads,
     )
     published = ontap._put_metric_data(qos.QOS_NAMESPACE, metric_data)
     return {**summary, "pages_read": pages, "metrics_published": published}
