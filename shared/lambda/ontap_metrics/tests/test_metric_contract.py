@@ -23,7 +23,7 @@ def _keys(entries: list[dict]) -> set[Key]:
     return {(e["namespace"], e["metric"], frozenset(e["dimensions"])) for e in entries}
 
 
-def _run_all(load_modules):
+def _run_all(load_modules, monkeypatch):
     lam = load_modules(
         route(
             quota=[page([
@@ -33,16 +33,27 @@ def _run_all(load_modules):
             snapmirror=[load_fixture("snapmirror_page.json")],
             qos_schema=[load_fixture("qos_schema.json")],
             qos_workloads=[load_fixture("qos_workloads.json")],
-            qos_rows=[load_fixture("qos_rows.json")],
+            # Two counter-manager samples: the QoS collector differences them
+            # in-invocation and publishes per-second deltas (see qos_poller).
+            qos_rows=[
+                load_fixture("qos_rows_sample1.json"),
+                load_fixture("qos_rows_sample2.json"),
+            ],
         ),
         env={"COLLECTORS": "qtree,snapmirror,qos"},
     )
+    # Never sleep in tests; control the two-sample elapsed time. The clock only
+    # advances when the collector sleeps, so credential-cache reads of
+    # monotonic() between the two window reads do not perturb the elapsed.
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(lam.qos.time, "sleep", lambda s: clock.__setitem__("now", clock["now"] + s))
+    monkeypatch.setattr(lam.qos.time, "monotonic", lambda: clock["now"])
     lam.run()
     return lam
 
 
-def test_emitted_series_equal_the_contract(load_modules) -> None:
-    lam = _run_all(load_modules)
+def test_emitted_series_equal_the_contract(load_modules, monkeypatch) -> None:
+    lam = _run_all(load_modules, monkeypatch)
     emitted = lam.emitted()
     expected = _keys(_contract())
     assert emitted == expected, (
@@ -51,23 +62,23 @@ def test_emitted_series_equal_the_contract(load_modules) -> None:
     )
 
 
-def test_units_match_the_contract(load_modules) -> None:
-    lam = _run_all(load_modules)
+def test_units_match_the_contract(load_modules, monkeypatch) -> None:
+    lam = _run_all(load_modules, monkeypatch)
     units = {(e["namespace"], e["metric"]): e["unit"] for e in _contract()}
     for namespace, datum in lam.calls():
         assert datum["Unit"] == units[(namespace, datum["MetricName"])], datum["MetricName"]
 
 
-def test_every_alarm_entry_is_emitted(load_modules) -> None:
-    lam = _run_all(load_modules)
+def test_every_alarm_entry_is_emitted(load_modules, monkeypatch) -> None:
+    lam = _run_all(load_modules, monkeypatch)
     alarm_keys = _keys([e for e in _contract() if e["alarm"]])
     assert len(alarm_keys) == 6
     assert alarm_keys <= lam.emitted()
 
 
-def test_negative_control_a_wrong_dimension_set_is_not_emitted(load_modules) -> None:
+def test_negative_control_a_wrong_dimension_set_is_not_emitted(load_modules, monkeypatch) -> None:
     """A lag alarm on the per-relationship metric with FileSystemId only reads nothing."""
-    lam = _run_all(load_modules)
+    lam = _run_all(load_modules, monkeypatch)
     wrong = ("FSxONTAP/SnapMirror", "SnapMirrorLagSeconds", frozenset({"FileSystemId"}))
     assert wrong not in lam.emitted()
     assert wrong not in _keys(_contract())

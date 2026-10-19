@@ -1,5 +1,5 @@
 {
-  "_comment": "Shaped like GET /api/storage/qos/workloads?fields=* (verified on ONTAP 9.19.1): each workload carries name, policy.name, svm.name and volume. Used to resolve SvmName for a policy group. Policy-group names match qos_rows.json; the second policy group (pg_batch) is deliberately absent so a row with no resolvable SvmName is exercised. Placeholders only.",
+  "_comment": "Shaped like GET /api/storage/qos/workloads?fields=* (verified on ONTAP 9.19.1): each workload carries name, policy.name, svm.name and volume. Used to resolve SvmName for a policy group. Policy-group names match qos_rows_sample1.json / qos_rows_sample2.json; the second policy group (pg_batch) is deliberately absent so a row with no resolvable SvmName is exercised. Placeholders only.",
   "num_records": 1,
   "records": [
     {

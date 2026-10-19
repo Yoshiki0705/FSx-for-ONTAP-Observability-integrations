@@ -13,6 +13,7 @@ Environment (secrets are never in the environment, only the secret ARN):
   SVM_NAME                         required when ``qtree`` is enabled
   SNAPMIRROR_MAX_RELATIONSHIPS     per-relationship series cap (default 100)
   QOS_MAX_POLICY_GROUPS            per-policy-group series cap (default 200)
+  QOS_SAMPLE_INTERVAL_SECONDS      sleep between the two QoS counter samples (default 10)
   CREDENTIALS_CACHE_TTL_SECONDS    secret re-read interval (default 300)
   CA_CERT_PATH                     optional CA bundle for TLS verification
 
@@ -48,6 +49,7 @@ COLLECTOR_NAMESPACES = {
 }
 DEFAULT_MAX_RELATIONSHIPS = 100
 DEFAULT_MAX_POLICY_GROUPS = 200
+DEFAULT_QOS_SAMPLE_INTERVAL_SECONDS = 10.0
 DEFAULT_CREDENTIALS_TTL_SECONDS = 300.0
 
 
@@ -181,13 +183,16 @@ def _run_qos(
     max_policy_groups = int(
         os.environ.get("QOS_MAX_POLICY_GROUPS", str(DEFAULT_MAX_POLICY_GROUPS))
     )
+    sample_interval = float(
+        os.environ.get("QOS_SAMPLE_INTERVAL_SECONDS", str(DEFAULT_QOS_SAMPLE_INTERVAL_SECONDS))
+    )
     schemas = qos.fetch_counter_schemas(retries=retries, credentials_ttl=credentials_ttl)
     workloads = qos.fetch_workloads(retries=retries, credentials_ttl=credentials_ttl)
-    rows, pages, _page_truncated = qos.fetch_counter_rows(
-        retries=retries, credentials_ttl=credentials_ttl
+    rows_v1, rows_v2, elapsed, pages, _page_truncated = qos.sample_counter_rows_twice(
+        sample_interval, retries=retries, credentials_ttl=credentials_ttl
     )
     metric_data, summary = qos.build_qos_metric_data(
-        rows, workloads, schemas, file_system_id, max_policy_groups
+        rows_v1, rows_v2, elapsed, workloads, schemas, file_system_id, max_policy_groups
     )
     published = ontap._put_metric_data(qos.QOS_NAMESPACE, metric_data)
     return {**summary, "pages_read": pages, "metrics_published": published}
