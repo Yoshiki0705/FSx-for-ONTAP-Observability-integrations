@@ -11,7 +11,7 @@ effective throughput/IOPS per policy group, not a direct "bursting" signal.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 from ontap_test_support import (
     FILE_SYSTEM_ID,
@@ -304,6 +304,15 @@ def test_request_path_hits_the_real_counter_manager_and_workload_routes(load_mod
     assert netlocs == {MGMT_IP}
     # The no-stub discipline: the external call path is real, not echoed.
     assert any(p == "/api/cluster/counter/tables/qos/rows" for p in paths), paths
+    # Regression guard: counter-manager rows return only id + _links unless
+    # fields explicitly requests counters, so the rows request MUST carry
+    # fields=...counters... or every row is published as "no counters"
+    # (the live-run bug this test missed when the fixture pre-filled counters).
+    rows_q = [parse_qs(urlsplit(u).query) for u in lam.urls
+              if urlsplit(u).path == "/api/cluster/counter/tables/qos/rows"]
+    assert rows_q and all(
+        "counters" in ",".join(q.get("fields", [""])) for q in rows_q
+    ), rows_q
     assert any(p == "/api/cluster/counter/tables/qos" for p in paths), paths
     assert any(p == "/api/storage/qos/workloads" for p in paths), paths
 

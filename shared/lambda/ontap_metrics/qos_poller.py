@@ -198,7 +198,7 @@ def fetch_counter_rows(
         ``<policy>:<uuid>`` plus ``counters`` and ``properties`` lists.
     """
     rows, pages, truncated = _paginate(
-        f"/api/cluster/counter/tables/qos/rows?max_records={MAX_RECORDS}",
+        f"/api/cluster/counter/tables/qos/rows?fields=id,counters,properties&max_records={MAX_RECORDS}",
         retries=retries,
         credentials_ttl=credentials_ttl,
     )
