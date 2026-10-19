@@ -179,6 +179,7 @@ def test_secret_is_never_read_from_the_environment() -> None:
     assert keys <= {
         "ONTAP_MGMT_IP", "ONTAP_CREDENTIALS_SECRET_ARN", "FILE_SYSTEM_ID", "COLLECTORS",
         "SVM_NAME", "METRIC_NAMESPACE", "SNAPMIRROR_MAX_RELATIONSHIPS",
+        "QOS_MAX_POLICY_GROUPS", "QOS_SAMPLE_INTERVAL_SECONDS",
         "CREDENTIALS_CACHE_TTL_SECONDS", "CA_CERT_PATH",
     }, keys
 

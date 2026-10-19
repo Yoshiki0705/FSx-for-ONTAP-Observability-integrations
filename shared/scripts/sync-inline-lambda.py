@@ -46,13 +46,35 @@ ZIPFILE_MARKER = "        ZipFile: |\n"
 
 
 class Target:
-    """One inline-code site: a resource in a template, fed by a source file."""
+    """One inline-code site: a resource in a template, fed by source file(s).
 
-    def __init__(self, template: str, resource: str, source: str, entry: str):
+    Most Targets carry a single ``source`` file that is self-contained. A few
+    collectors (the QoS collector below) are split across the shared ONTAP REST
+    client and the collector logic, and are not self-contained; those carry an
+    ordered ``sources`` list that render() concatenates into one inline body.
+    Pass either ``source`` (one file) or ``sources`` (ordered list), not both.
+    """
+
+    def __init__(
+        self,
+        template: str,
+        resource: str,
+        entry: str,
+        *,
+        source: str | None = None,
+        sources: list[str] | None = None,
+    ):
+        if (source is None) == (sources is None):
+            raise ValueError("pass exactly one of source= or sources=")
         self.template = template
         self.resource = resource
-        self.source = source
         self.entry = entry
+        self.sources: list[str] = [source] if source is not None else list(sources or [])
+
+    @property
+    def source(self) -> str:
+        """The primary source file (the last one, which defines the entry point)."""
+        return self.sources[-1]
 
     @property
     def handler(self) -> str:
@@ -70,20 +92,20 @@ TARGETS: list[Target] = [
     Target(
         "shared/templates/ems-webhook-apigw.yaml",
         "AuthorizerFunction",
-        "shared/lambda/authorizers/shared_secret_authorizer.py",
         "lambda_handler",
+        source="shared/lambda/authorizers/shared_secret_authorizer.py",
     ),
     Target(
         "management-console/templates/console.yaml",
         "S3CopyFunction",
-        "management-console/lambda/s3_copy_handler.py",
         "lambda_handler",
+        source="management-console/lambda/s3_copy_handler.py",
     ),
     Target(
         "management-console/templates/observability.yaml",
         "DashboardImporterFunction",
-        "management-console/lambda/dashboard_importer.py",
         "lambda_handler",
+        source="management-console/lambda/dashboard_importer.py",
     ),
     # The qtree poller is also the ONTAP REST client of the Terraform module
     # terraform/fsxn-ontap-custom-metrics, which zips the same directory, so
@@ -91,8 +113,24 @@ TARGETS: list[Target] = [
     Target(
         "shared/templates/qtree-quota-monitor.yaml",
         "QuotaMonitorFunction",
-        "shared/lambda/ontap_metrics/qtree_quota_poller.py",
         "lambda_handler",
+        source="shared/lambda/ontap_metrics/qtree_quota_poller.py",
+    ),
+    # The QoS policy-group collector is NOT self-contained: qos_poller.py reuses
+    # the ONTAP REST client that lives in qtree_quota_poller.py (importing it as
+    # `ontap` and pulling MAX_PAGES/MAX_RECORDS/... by name). CloudFormation
+    # inline code must be one file, so the Target concatenates the client first,
+    # then the collector, as an ordered sources list. render() strips the
+    # sibling imports and the client's own CFN lambda_handler so the single
+    # resulting module defines exactly one lambda_handler (the QoS one, last).
+    Target(
+        "shared/templates/qos-monitor.yaml",
+        "QosMonitorFunction",
+        "lambda_handler",
+        sources=[
+            "shared/lambda/ontap_metrics/qtree_quota_poller.py",
+            "shared/lambda/ontap_metrics/qos_poller.py",
+        ],
     ),
     # The S3 Access Points throughput benchmark. Inlined so `aws cloudformation
     # deploy` yields a working stack with no follow-up upload step; the source
@@ -100,25 +138,154 @@ TARGETS: list[Target] = [
     Target(
         "benchmark/s3ap-throughput/template.yaml",
         "BenchmarkFunction",
-        "benchmark/s3ap-throughput/handler.py",
         "lambda_handler",
+        source="benchmark/s3ap-throughput/handler.py",
     ),
 ]
 
 
-def banner(source: str) -> str:
+def banner(sources: list[str]) -> str:
+    """Return the provenance banner naming every source file in order."""
+    names = ", ".join(sources)
     return (
-        f"# Generated from {source} -- do not edit here.\n"
+        f"# Generated from {names} -- do not edit here.\n"
         "# Regenerate with: python3 shared/scripts/sync-inline-lambda.py\n"
         "# shared/python/tests/test_inline_lambda_sync.py fails if the two drift"
         " apart.\n"
     )
 
 
-def render(source: str) -> str:
-    """Return the indented block-scalar body for a source file."""
-    text = (REPO_ROOT / source).read_text(encoding="utf-8")
-    lines = (banner(source) + text).splitlines()
+def _module_stem(source: str) -> str:
+    """Return the import name a source file is reached by (its file stem)."""
+    return Path(source).stem
+
+
+def _strip_sibling_imports(text: str, siblings: set[str]) -> str:
+    """Drop imports of sibling sources; rebind an aliased client to this module.
+
+    In a concatenated module the client's top-level names (``_ontap_get``,
+    ``MAX_PAGES``, ...) are already defined, so ``from <sibling> import (...)``
+    and ``import <sibling>`` are removed outright. ``import <sibling> as <alias>``
+    is the one that would otherwise break: the collector calls ``<alias>._x``,
+    and after the import is gone ``<alias>`` is undefined. It is replaced with
+    ``<alias> = sys.modules[__name__]`` so the alias resolves to the single
+    concatenated module itself (which carries the client's definitions). The
+    needed ``import sys`` is ensured by _concatenate.
+
+    Args:
+        text: Source text of one non-first file in the list.
+        siblings: Import names of the other sources in the same Target.
+
+    Returns:
+        The text with sibling imports removed or rebound.
+    """
+    alt = "|".join(re.escape(s) for s in sorted(siblings))
+    # `import <sibling> as <alias>` -> rebind alias to the concatenated module.
+    alias_re = re.compile(rf"^import (?:{alt}) as (?P<alias>\w+)\s*$")
+    # `import <sibling>` with no alias -> drop (names are module globals already).
+    plain_re = re.compile(rf"^import (?:{alt})\s*$")
+    # `from <sibling> import ...`, including a parenthesized multi-line form.
+    from_open_re = re.compile(rf"^from (?:{alt}) import \(")
+    from_one_re = re.compile(rf"^from (?:{alt}) import [^(].*$")
+
+    out: list[str] = []
+    lines = text.splitlines(keepends=True)
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.rstrip("\n")
+        alias_match = alias_re.match(stripped)
+        if alias_match:
+            out.append(f"{alias_match.group('alias')} = sys.modules[__name__]\n")
+            i += 1
+            continue
+        if plain_re.match(stripped) or from_one_re.match(stripped):
+            i += 1
+            continue
+        if from_open_re.match(stripped):
+            # Skip through the closing parenthesis of the import block.
+            while i < len(lines) and ")" not in lines[i]:
+                i += 1
+            i += 1  # the line carrying ')'
+            continue
+        out.append(line)
+        i += 1
+    return "".join(out)
+
+
+def _strip_entry_def(text: str, entry: str) -> str:
+    """Remove the ``def <entry>(...)`` block so another source can define it.
+
+    Removes from the ``def <entry>(`` line through the end of its body, i.e.
+    up to the next line that is non-blank and not indented. Only the entry
+    function is removed; everything else in the file is kept verbatim.
+
+    Args:
+        text: Source text of a non-last file whose own entry point is excluded.
+        entry: Function name to remove (e.g. ``lambda_handler``).
+
+    Returns:
+        The text without that function definition.
+    """
+    lines = text.splitlines(keepends=True)
+    def_re = re.compile(rf"^def {re.escape(entry)}\(")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if def_re.match(lines[i]):
+            i += 1
+            while i < len(lines) and (
+                lines[i].strip() == "" or lines[i][:1] in (" ", "\t")
+            ):
+                i += 1
+            # Drop a single trailing blank separator left before the next def.
+            while out and out[-1].strip() == "":
+                out.pop()
+            continue
+        out.append(lines[i])
+        i += 1
+    return "".join(out)
+
+
+def concatenate(target: Target) -> str:
+    """Return the single-file Python body for a Target (no banner, no indent).
+
+    Single-source Targets return their file verbatim, byte for byte, so their
+    inline blocks never change. Multi-source Targets are concatenated in order:
+    every source but the last has its own entry-point definition removed, every
+    source but the first has its sibling imports stripped or rebound, and a lone
+    ``import sys`` is inserted when an alias rebind needs it.
+    """
+    sources = target.sources
+    if len(sources) == 1:
+        return (REPO_ROOT / sources[0]).read_text(encoding="utf-8")
+
+    sibling_stems = {_module_stem(s) for s in sources}
+    pieces: list[str] = []
+    needs_sys = False
+    for idx, source in enumerate(sources):
+        text = (REPO_ROOT / source).read_text(encoding="utf-8")
+        if idx != len(sources) - 1:
+            text = _strip_entry_def(text, target.entry)
+        if idx != 0:
+            others = sibling_stems - {_module_stem(source)}
+            before = text
+            text = _strip_sibling_imports(text, others)
+            if "= sys.modules[__name__]" in text and "= sys.modules[__name__]" not in before:
+                needs_sys = True
+            elif "= sys.modules[__name__]" in text:
+                needs_sys = True
+        pieces.append(text.rstrip("\n"))
+    body = "\n\n\n".join(pieces) + "\n"
+    if needs_sys:
+        body = "import sys\n" + body
+    return body
+
+
+def render(target: Target) -> str:
+    """Return the indented block-scalar body for a Target."""
+    text = concatenate(target)
+    lines = (banner(target.sources) + text).splitlines()
     return "".join(
         f"{BODY_INDENT}{line}\n" if line.strip() else "\n" for line in lines
     )
@@ -194,13 +361,25 @@ def locate(lines: list[str], resource: str) -> Block | None:
 
 
 def check_entry_point(target: Target) -> str | None:
-    """Confirm the source actually defines the entry point the handler names."""
-    text = (REPO_ROOT / target.source).read_text(encoding="utf-8")
-    if not re.search(rf"^def {re.escape(target.entry)}\(", text, re.M):
+    """Confirm the concatenated source defines the entry point exactly once.
+
+    For a multi-source Target the entry must survive concatenation (the last
+    source keeps it) and must not be defined twice (earlier sources have their
+    own entry definition stripped), or CloudFormation would import an ambiguous
+    module.
+    """
+    text = concatenate(target)
+    count = len(re.findall(rf"^def {re.escape(target.entry)}\(", text, re.M))
+    if count == 0:
         return (
-            f"{target.source} does not define `def {target.entry}(`, but the "
-            f"handler is set to {target.handler}. The function would fail to "
-            "resolve at invocation time."
+            f"{target.label} does not define `def {target.entry}(` in the "
+            f"concatenated source, but the handler is set to {target.handler}. "
+            "The function would fail to resolve at invocation time."
+        )
+    if count > 1:
+        return (
+            f"{target.label} defines `def {target.entry}(` {count} times in the "
+            "concatenated source; exactly one entry point is required."
         )
     return None
 
@@ -225,12 +404,13 @@ def process(check: bool) -> int:
             problems += 1
             continue
 
-        expected_body = render(target.source)
+        expected_body = render(target)
+        source_label = ", ".join(target.sources)
         handler_ok = block.handler == target.handler
         body_ok = block.body == expected_body
 
         if handler_ok and body_ok:
-            print(f"in sync: {label} <- {target.source}")
+            print(f"in sync: {label} <- {source_label}")
             continue
 
         if check:
@@ -242,7 +422,7 @@ def process(check: bool) -> int:
             if not body_ok:
                 print(
                     f"ERROR: {label}: inline code no longer matches "
-                    f"{target.source}. Run: "
+                    f"{source_label}. Run: "
                     "python3 shared/scripts/sync-inline-lambda.py"
                 )
             problems += 1
@@ -251,7 +431,7 @@ def process(check: bool) -> int:
         lines[block.body_start:block.body_end] = [expected_body]
         lines[block.handler_idx] = f"      Handler: {target.handler}\n"
         tpl_path.write_text("".join(lines), encoding="utf-8")
-        print(f"updated: {label} <- {target.source}")
+        print(f"updated: {label} <- {source_label}")
 
     return 1 if problems else 0
 

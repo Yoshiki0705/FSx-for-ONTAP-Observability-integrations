@@ -31,12 +31,14 @@
 | **EMS イベントビューア** | CloudWatch Logs（syslog VPC EP） | `syslog-vpce-cloudwatch.yaml` | ✅ |
 | **ARP ステータス** | EMS → Observability パイプライン | 9 ベンダー統合 + EMS webhook | ✅ |
 | **SnapMirror 管理** | Amazon FSx コンソール + ONTAP REST API | ドキュメント（手動手順） | ⚠️ 自動化なし。健全性と遅延の監視は、転送先ファイルシステムからポーリングするカスタムメトリクスとして Terraform モジュール `terraform/fsxn-ontap-custom-metrics/` で提供（T2、オフラインで検証済み、1 つの SVM の中の関係でサンプル実行 1 回により実環境でも検証済み。CloudFormation の版はない）。[monitoring-design.md](monitoring-design.md#メトリクスカタログ) を参照 |
-| **QoS ポリシー** | ONTAP REST API | — | ❌ 対象外 |
+| **QoS ポリシー** | Lambda → ONTAP REST API（counter manager）→ CloudWatch Custom Metric | `qos-monitor.yaml` | ✅ ポリシーグループ単位のカスタムメトリクスで対応（収集の仕組みは 2026-10-18/2026-10-19 にライブの ONTAP 9.19.1P2 で検証済み。レート値の本番妥当性は単体テストと 1 回のライブ確認まで。下記 QoS 補足を参照） |
 | **ネットワーク (LIF/DNS)** | FSx コンソール + ONTAP REST API | — | ❌ インフラ管理 |
 | **FPolicy 設定** | ONTAP REST API | FPolicy サーバー (Fargate) + スクリプト | ✅ |
 | **監査設定** | ONTAP CLI/REST API | セットアップスクリプト + docs | ✅ |
 
 > **実環境での検証に関する補足**: `fsxn-monitoring-dashboard.yaml` の行（IOPS、スループット、ネットワーク利用率、ストレージ使用量、容量アラート）は、2026-10-05 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに対して実行しました。ダッシュボードのすべての系列がデータを返し、容量アラームは INSUFFICIENT_DATA を抜けて OK に達しています（[CloudWatch 監視の動作確認結果](verification-results-cloudwatch-monitoring.md)）。2026-10-07 の後の修正までは、IOPS、スループット、ストレージ使用量のウィジェットが生の入力系列を換算後の値と同じ軸に描画し、換算後の線が 0 付近にありました。テンプレートは現在、それらの生の行を非表示にしています（[ダッシュボード表示に関する補足](verification-results-cloudwatch-monitoring.md#所見)）。その日は ALARM への遷移を観測できませんでした。閾値の下限（50%）が、ファイルシステムの利用率 3.5% を上回っていたためです。2026-10-06 の後の実行では、HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムでテスト用ボリュームに実データを書き込み、SSD の利用率を 58.6% まで上げ、テンプレートと Terraform モジュールの両方の容量アラームが閾値 50 で OK から ALARM へ遷移して OK に戻ることを観測しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の容量アラームの実データによる実行)）。そのため容量: アラートは、第 1 世代のファイルシステムについて ✅ です。SNS の配信経路は 2026-10-10 に検証済みです（強制状態、SNS→SQS、1 回の実行）。メールの描画と SNS の配信ステータスのロギングは引き続き未試験です（[記録](verification-results-cloudwatch-monitoring.md#2026-10-10-の-sns-配信経路の検証)）。削除したボリュームは ONTAP の recovery queue に残って SSD の使用量に数えられ続ける（既定で少なくとも 12 時間）ため、ボリュームを削除しても容量アラームはすぐには解除されません。詳細は記録を参照してください。第 2 世代と複数 HA ペアのファイルシステムは試験していません。Qtree テンプレートは、2026-10-06 に HA ペア 1 つの第 1 世代 `SINGLE_AZ_1` ファイルシステムに別途デプロイしました。最初の実行は 1 回のポーリングの後に ONTAP の HTTP 401 で停止しました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の実行)）。再実行では、連続 4 回のポーリングが全系列を公開して値は ONTAP のクォータレポートと一致し、`QtreeQuotaAlarm` は OK から ALARM へ遷移して OK に戻りました（[記録](verification-results-cloudwatch-monitoring.md#2026-10-06-の-qtree-クォータ監視の再実行)）。そのため Qtree: クォータ監視と Qtree: クォータアラートは、第 1 世代のファイルシステムについて ✅ です。これらについて未検証のまま残るのは、第 2 世代と複数 HA ペアのファイルシステム、CA 証明書を使った TLS、1 ページを超えるページングと打ち切りの経路、Qtree が 200 を超える SVM、最小権限のセキュリティグループとエクスポートポリシー（再実行は許可範囲の広いテスト環境の設定を使った）です。SNS の配信経路は 2026-10-10 に検証済みです（強制状態、SNS→SQS、1 回の実行）。メールの描画と SNS の配信ステータスのロギングは引き続き未試験です（[記録](verification-results-cloudwatch-monitoring.md#2026-10-10-の-sns-配信経路の検証)）。
+
+> **QoS に関する補足**: QoS ポリシーの行は、`qos-monitor.yaml`（workload 単位のコレクター）で対応します。Lambda が ONTAP REST API の counter manager（`/api/cluster/counter/tables/qos/rows` と `/api/storage/qos/workloads`）をポーリングし、workload（行）単位の `FSxONTAP/QoS` カスタムメトリクス（`QosOps`、`QosThroughputBytes`、`QosLatencyMicros`、`QosReadOps`、`QosWriteOps`）を公開します。counter manager は **workload ごとに 1 行**を返し、各行は workload 名と、その workload が属する `policy_group_name` を持ちます。ディメンションは `FileSystemId` + `PolicyGroup` + `Workload`（SVM を解決できるときは末尾に `SvmName`）で、同じ policy_group_name を共有する workload も区別されます。`_` で始まる policy_group_name（`_System-Work` など）は ONTAP 内部で、既定で除外します（`QOS_INCLUDE_SYSTEM_WORKLOADS=true` で取り込む）。counter manager が rate 型カウンターに返す `value` は累積の生カウンターなので、コレクターは 1 回の呼び出しの中で行を 2 回サンプリングし（`QOS_SAMPLE_INTERVAL_SECONDS`、既定 10 秒）、`(v2 - v1) / 経過秒数` を毎秒レートとして公開します。レイテンシは区間平均（Δlatency / Δops）です。行構造とフィルタ挙動は 2026-10-18/2026-10-19 にライブの ONTAP 9.19.1P2 で検証済みで、「counter manager が累積の生値を返す」ことも同環境で確認した事実です。ただしレート値そのものの本番妥当性は、単体テストと 1 回のライブ確認を超えては未確認です。詳細は [monitoring-design.md](monitoring-design.md#ポリシーグループ単位の-qos-監視) にあります。バースト専用のカウンターは存在しないため、この経路が見せるのは workload 単位の実効スループットと IOPS です。したがって「上限に張り付いている」ことは見えますが、「いまバーストしている」ことは直接のメトリクスではなく、そこから推測する値です。
 
 ---
 
@@ -106,11 +108,11 @@
 
 | プロダクト | マッピング機能数 | ✅ 対応済み | ⚠️ 部分対応 | ❌ 対象外 |
 |----------|:-------------:|:---------:|:---------:|:--------:|
-| System Manager | 21 | 13 | 6 | 2 |
+| System Manager | 21 | 14 | 6 | 1 |
 | Workload Factory | 9 | 5 | 2 | 2 |
 | DII SWS | 13 | 13 | 0 | 0 |
 
-**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **62% 完全対応 + 29% 部分対応**（マッピングした機能のうちそれぞれ21件中13件・6件。容量アラートと、qtree クォータ監視とアラートは、第 1 世代のファイルシステムでの検証だけを根拠に完全対応に数えている）— 部分対応は、ダッシュボード未実装のレイテンシウィジェット、qtree クォータ管理（API のみ）、セキュリティブロック専用のエクスポート/共有管理実装、デモ用ボリュームテンプレート、手動手順のみの SnapMirror です。残る **10%**（21件中2件: QoS、LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。3 つの割合は四捨五入しているため、合計は 101 になります。
+**重要な洞察**: セキュリティ/インシデント対応機能（DII 相当）は **100% カバー**。運用監視（System Manager 相当）は **67% 完全対応 + 29% 部分対応**（マッピングした機能のうちそれぞれ21件中14件・6件。容量アラートと、qtree クォータ監視とアラートは、第 1 世代のファイルシステムでの検証だけを根拠に完全対応に数えている。QoS は、収集の仕組みがライブの ONTAP 9.19.1P2 で検証済み（レート値の本番妥当性は単体テストと 1 回のライブ確認まで）の状態を根拠に完全対応に数えている）— 部分対応は、ダッシュボード未実装のレイテンシウィジェット、qtree クォータ管理（API のみ）、セキュリティブロック専用のエクスポート/共有管理実装、デモ用ボリュームテンプレート、手動手順のみの SnapMirror です。残る **5%**（21件中1件: LIF/DNS）は FSx コンソールに適したインフラ管理タスクです。3 つの割合は四捨五入しているため、合計は 101 になります。
 
 > **この表の正しい読み方**: 「100% カバー」は、本リポジトリが実装している封じ込め/検知対応アクションに限定した機能レベルの対応範囲を示すものであり、本アプローチが DII の完全な代替であるという主張ではなく、両者を単純に比較して一方を推奨する趣旨のものでもありません。DII の ML 検知、エージェントベースの収集、ベンダー管理による運用は、本リポジトリがゼロから構築していない機能です。このカバー率は、本リポジトリのより狭い範囲の AWS ネイティブな仕組みが、別の経路で同じ*封じ込めアクション*に到達していることを表しています。どちらの状況にどちらが適するかは、下記の[選び方ガイド](#選び方ガイド)を参照してください。
 

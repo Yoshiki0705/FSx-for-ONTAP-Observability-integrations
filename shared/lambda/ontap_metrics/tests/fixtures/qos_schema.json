@@ -1,0 +1,17 @@
+{
+  "_comment": "Shaped like GET /api/cluster/counter/tables/qos?fields=counter_schemas on the ONTAP counter manager (verified present on ONTAP 9.19.1). ops/total_data/read_ops/write_ops are rate-typed (already a per-second value); latency is average-typed; a raw-only counter (total_ops_raw) is included so the point_sample path has something to exercise. Counter names only; no real identifiers.",
+  "num_records": 1,
+  "records": [
+    {
+      "name": "qos",
+      "counter_schemas": [
+        {"name": "ops", "type": "rate", "unit": "per_sec"},
+        {"name": "total_data", "type": "rate", "unit": "b_per_sec"},
+        {"name": "read_ops", "type": "rate", "unit": "per_sec"},
+        {"name": "write_ops", "type": "rate", "unit": "per_sec"},
+        {"name": "latency", "type": "average", "unit": "microsec"},
+        {"name": "total_ops_raw", "type": "raw", "unit": "none"}
+      ]
+    }
+  ]
+}
