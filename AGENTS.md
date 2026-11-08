@@ -485,6 +485,10 @@ All scripts use environment variables with sensible defaults:
 
 Prerequisite stacks, EMS/FPolicy capabilities, the add-a-vendor procedure, stack deletion order: [docs/agent/deploying-and-adding-vendors.md](docs/agent/deploying-and-adding-vendors.md)
 
+## Long-Run Discipline
+
+Decision records (`.agents/tasks/<task>/`, 3 sections), evidence tier in the basis (`verified`/`documented`/`unverified:<reason>` — not the ledger), auditor sub-agent triggers, measure-variance-first: [docs/agent/long-run-discipline.md](docs/agent/long-run-discipline.md)
+
 ## Commit Convention
 
 ```
