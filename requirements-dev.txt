@@ -40,4 +40,4 @@ pyyaml==6.0.3
 # imports it too, and this file did not list it. Exact pin per the policy at
 # the top of this file; 12.3.0 ships cp312 wheels for macOS arm64 and Linux
 # x86_64, the two platforms this gate runs on.
-pillow==12.3.0
+pillow==13.0.0
