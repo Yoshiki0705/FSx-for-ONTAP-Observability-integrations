@@ -20,7 +20,7 @@ FSx for ONTAP で System Manager / NetApp Console を利用する際に、ドキ
 
 **問題**: AWS ドキュメント（2023年12月発表）では「FSx for ONTAP now supports using NetApp System Manager」と記載されているが、実際には従来の System Manager UI は独立して提供されておらず、Workload Factory UI に統合されている。
 
-**影響**: お客様が「System Manager = 無料で即座に使える GUI」と誤解し、管理エンドポイントに直接アクセスして 404 エラーに遭遇する。
+**影響**: 利用者が「System Manager = 無料で即座に使える GUI」と誤解し、管理エンドポイントに直接アクセスして 404 エラーに遭遇する。
 
 **提案**: 
 - AWS ドキュメントに「System Manager は NetApp Console の Workload Factory UI 内で提供される」ことを明記
@@ -63,7 +63,7 @@ FSx for ONTAP で System Manager / NetApp Console を利用する際に、ドキ
 
 **問題**: Workload Factory UI でどの ONTAP 操作が可能で、どれが CLI/REST API 必須かがドキュメントに明記されていない。
 
-**影響**: お客様が「GUI で全て管理できる」と期待してセットアップしたが、監査ログやクォータの設定ができないことが後から判明する。
+**影響**: 利用者が「GUI で全て管理できる」と期待してセットアップしたが、監査ログやクォータの設定ができないことが後から判明する。
 
 **提案**:
 - Workload Factory UI で可能な操作の一覧を明記
