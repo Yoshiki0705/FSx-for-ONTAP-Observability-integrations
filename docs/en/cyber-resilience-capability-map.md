@@ -178,6 +178,8 @@ RC.CO (stakeholder-level recovery communication) is covered only minimally — t
 
 **Status**: ✅ Full for RC.RP verification via the FlexClone pre-filter (fast pre-filter, not a full forensic scan). ⚠️ Requires assembly for an actual end-to-end restore rehearsal — AWS Backup restore testing is the recommended AWS-native complement for FSx for ONTAP specifically. ⚠️ RC.CO stakeholder coordination remains a minimal SNS signal in this repo.
 
+- The Cyber Resilience Patterns repository's [recovery objectives guide](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/en/recovery-objectives-guide.md#features-of-each-recovery-layer-and-where-the-measurements-are) cites this document as the place of the measurements for a recovery layer. Its values are not copied there.
+
 ---
 
 ## Remaining Gaps (Not Yet Addressed)

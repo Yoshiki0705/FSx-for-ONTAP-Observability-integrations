@@ -206,6 +206,8 @@ RC.CO（関係者レベルの復旧連携）は最小限のカバーに留まり
 
 **ステータス**: ✅ FlexClone 事前フィルタによる RC.RP 検証は完全対応（高速な事前フィルタであり、完全なフォレンジックスキャンではない）。⚠️ 実際のエンドツーエンドのリストアリハーサルは組み合わせが必要 — FSx for ONTAP 向けには AWS Backup のリストアテストが推奨される AWS ネイティブの補完です。⚠️ RC.CO の関係者連携は依然、本リポジトリでは最小限の SNS 信号のまま。
 
+- cyber リポジトリの[復旧時間と復旧点の目標のガイド](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/ja/recovery-objectives-guide.md#復旧の層ごとの特徴と実測の所在)は、この文書を、復旧の層ごとの実測の所在として挙げています。値はそちらに写されていません。
+
 ---
 
 ## 残存するギャップ（未対応部分）

@@ -721,3 +721,4 @@ A: `VerificationLedgerTable` の `KeySchema` や `AttributeDefinitions` を変�
 
 - [デプロイメントガイド](deployment-guide.md) — デプロイ前検証、VPC Endpoint 競合回避、パラメータファイルの設定方法
 - [Automated Response ガイド](automated-response-guide.md) — リカバリ検証に先立つインシデント対応アクション
+- cyber リポジトリの[復旧時間と復旧点の目標のガイド](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/ja/recovery-objectives-guide.md#復旧の層ごとの特徴と実測の所在)は、この文書を、復旧の層ごとの実測の所在として挙げています。値はそちらに写されていません。
