@@ -427,7 +427,7 @@ aws events put-targets \
 | Node management | Managed by AWS (managed service) |
 | Disk management | Managed by AWS (managed service) |
 | Cluster configuration | Managed by AWS (managed service) |
-| ONTAP upgrades | Performed via AWS Console |
+| ONTAP patching | Applied by the FSx for ONTAP service during the maintenance window. You can change only the window's start time (Amazon FSx console, AWS CLI, or API) |
 | License management | Included in FSx service |
 
 ---
