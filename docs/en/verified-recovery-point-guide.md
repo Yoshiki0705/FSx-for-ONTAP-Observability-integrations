@@ -628,3 +628,4 @@ A: A CloudFormation stack update that changes `VerificationLedgerTable`'s `KeySc
 
 - [Deployment Guide](deployment-guide.md) — Pre-flight validation, VPC Endpoint conflict avoidance, and parameter file setup for this stack
 - [Automated Response Guide](automated-response-guide.md) — Incident response actions that precede recovery verification
+- The Cyber Resilience Patterns repository's [recovery objectives guide](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/en/recovery-objectives-guide.md#features-of-each-recovery-layer-and-where-the-measurements-are) cites this document as the place of the measurements for a recovery layer. Its values are not copied there.

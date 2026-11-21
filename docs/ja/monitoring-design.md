@@ -89,6 +89,8 @@ FSx for ONTAP の CloudWatch 監視設計は、4 つの問いに順に答えま�
 >
 > このカタログのカスタムコレクターはどれも、ONTAP の管理エンドポイントへの経路を持つ VPC で動き、メトリクスを公開するには NAT ゲートウェイか `com.amazonaws.<region>.monitoring` のインターフェースエンドポイントが必要です。2026-10-06 の Qtree の実行では、このエンドポイントを手で作る必要がありました（記録の所見 QF4）。
 
+- cyber リポジトリの[復旧の測定結果](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/ja/recovery-measurement-results.md#先行記録との関係)は、この記録を、測定の土台にする先行記録として挙げています。値はそちらに写されていません。
+
 ## CloudWatch による監視
 
 CloudWatch ネイティブ経路は、ONTAP System Manager の性能・容量の各ビューを CloudWatch に置くため、日常の監視で ONTAP System Manager を開く必要がなくなります。クォータのビューについては、Qtree メトリクスを CloudWatch に公開する、実装済みでコード確認済みの経路を本リポジトリが提供しています。2026-10-06 に第 1 世代のファイルシステムで、4 回のポーリングサイクルにわたる公開を観測し、クォータアラームが OK から ALARM へ遷移して OK に戻ることを確認しました（下記の Qtree 節を参照）。機能単位のマッピング（System Manager ビュー → CloudWatch メトリクス → テンプレート）は [native-alternative-matrix.md](native-alternative-matrix.md) にあります。本節では、そのマッピングの背後にある 3 つのテンプレートを記載します。

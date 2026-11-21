@@ -1088,6 +1088,8 @@ tags                             = { Purpose = "t2-live-verification" }
 | 残った項目付きで完了 | 15 件中 1 件（M6）。recovery queue のエントリ 2 つ、予定されたシークレットの削除、カスタムメトリクスのデータ |
 | モジュールのコードの欠陥 | 見つかっていない。コードは変更していない |
 
+- cyber リポジトリの[復旧の測定結果](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/ja/recovery-measurement-results.md#先行記録との関係)は、この記録を、測定の土台にする先行記録として挙げています。値はそちらに写されていません。
+
 ---
 
 ## 2026-10-09 の Terraform ログアラームモジュールの実行

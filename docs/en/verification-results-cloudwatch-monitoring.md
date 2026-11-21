@@ -1088,6 +1088,8 @@ No export policy, IAM outside the module, or security group outside the module w
 | Done with remaining items | 1 of 15 (M6): 2 recovery-queue entries, the scheduled secret deletion, and the custom metric data |
 | Module code defects | None found. No code was changed |
 
+- The Cyber Resilience Patterns repository's [recovery measurement results](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/en/recovery-measurement-results.md#relation-to-earlier-records) cite this record among the earlier records that each recovery measurement builds on. Its values are not copied there.
+
 ---
 
 ## Terraform Log-Alarm Module Run on 2026-10-09

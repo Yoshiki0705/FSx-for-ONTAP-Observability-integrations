@@ -89,6 +89,8 @@ Sources for the native rows: [file-system-metrics](https://docs.aws.amazon.com/f
 >
 > Every custom collector in this catalog runs in a VPC with a path to the ONTAP management endpoint, and needs a NAT gateway or a `com.amazonaws.<region>.monitoring` interface endpoint to publish metrics. The qtree runs on 2026-10-06 needed that endpoint created by hand (record finding QF4).
 
+- The Cyber Resilience Patterns repository's [recovery measurement results](https://github.com/Yoshiki0705/FSx-for-ONTAP-Cyber-Resilience-Patterns/blob/main/docs/en/recovery-measurement-results.md#relation-to-earlier-records) cite this record among the earlier records that each recovery measurement builds on. Its values are not copied there.
+
 ## CloudWatch monitoring
 
 The CloudWatch-native path puts ONTAP System Manager's performance and capacity views in CloudWatch, so day-to-day watching does not require opening ONTAP System Manager. For the quota view, the repository ships an implemented, code-inspected path that publishes qtree metrics to CloudWatch; on a first-generation file system on 2026-10-06, publication was observed across 4 poll cycles and the quota alarm went from OK to ALARM and back to OK (see the qtree section below). The feature-by-feature mapping (System Manager view → CloudWatch metric → template) is in [native-alternative-matrix.md](native-alternative-matrix.md); this section documents the three templates behind that mapping.
