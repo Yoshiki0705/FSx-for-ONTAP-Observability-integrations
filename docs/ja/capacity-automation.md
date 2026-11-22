@@ -59,7 +59,7 @@ SSD 容量のアラームを受けて動かす方法は 3 つあります。(a) 
 | 拡張幅 | 増加率に応じて 10% から `MaxIncrementPercent`（既定 100%）まで | 固定の割合を切り上げ。10% を下回らない | 運用者が決める |
 | 状態 / 根拠 | AWS が公開。本ページでは `コード確認済み` として確認し、実行はしていない | `terraform/fsxn-ssd-auto-increase/` に実装済み。オフライン検証済み（`terraform test` と Lambda の単体テスト一式）。元に戻せる経路は 2026-10-09 に第 1 世代のファイルシステム 1 つで実環境で検証済みで、容量は変わっていない（[記録](verification-results-cloudwatch-monitoring.md#2026-10-09-の-terraform-ssd-自動拡張モジュールの実行)）。実際の拡張は未実行 | 本ページの手順。ここでは実行していない |
 
-各選択肢の制約を並べます。(a) は、サービス上限を上限として受け入れ、AWS が公開するテンプレートを使いたいチームに向きます。顧客が決める上限値や承認モードはなく、CloudWatch アラームは状態の変化でしか動きません。(b) は、上限値と承認の段階が必要なチームや、ファイルシステムを Terraform で管理するチームに向きます。`terraform/fsxn-ssd-auto-increase/` に実装済みでオフライン検証済み、元に戻せる経路は実環境で検証済みで、実際の拡張はまだ実行していません。運用対象として Lambda 関数・スケジューラー・2 つの SNS トピック（トリガー用と通知用）・DynamoDB のロックテーブル・2 つのロググループ・T4 自身の判断の記録を置く既存の Object Lock のバケット（ファイルシステムのデータではない。[SnapLock ではなく S3 Object Lock を使う理由](capacity-automation-t4-design.md#faq)）が増えます。(c) はオンコール体制があり増加が遅いチームに向きます。[sizing-and-headroom.md](sizing-and-headroom.md#ヘッドルームの式) で計算したヘッドルームの範囲内で誰かが対応できることが前提です。
+各選択肢の制約を並べます。(a) は、サービス上限を上限として受け入れ、AWS が公開するテンプレートを使いたいチームに向きます。利用者が決める上限値や承認モードはなく、CloudWatch アラームは状態の変化でしか動きません。(b) は、上限値と承認の段階が必要なチームや、ファイルシステムを Terraform で管理するチームに向きます。`terraform/fsxn-ssd-auto-increase/` に実装済みでオフライン検証済み、元に戻せる経路は実環境で検証済みで、実際の拡張はまだ実行していません。運用対象として Lambda 関数・スケジューラー・2 つの SNS トピック（トリガー用と通知用）・DynamoDB のロックテーブル・2 つのロググループ・T4 自身の判断の記録を置く既存の Object Lock のバケット（ファイルシステムのデータではない。[SnapLock ではなく S3 Object Lock を使う理由](capacity-automation-t4-design.md#faq)）が増えます。(c) はオンコール体制があり増加が遅いチームに向きます。[sizing-and-headroom.md](sizing-and-headroom.md#ヘッドルームの式) で計算したヘッドルームの範囲内で誰かが対応できることが前提です。
 
 > **根拠に関する補足**
 >
@@ -86,7 +86,7 @@ flowchart TD
 
 対象は [Updating storage capacity dynamically](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/automate-storage-capacity-increase.html) とダウンロードできる 2 つのアーカイブで、2026-10-07 に読みました。選択肢を選ぶうえで関係する点は次のとおりです。
 
-- 顧客が決める絶対上限値も、承認やドライランのモードもありません。上限はデプロイタイプごとのサービス上限で、コードに定数として持っています（`コード確認済み`）。
+- 利用者が決める絶対上限値も、承認やドライランのモードもありません。上限はデプロイタイプごとのサービス上限で、コードに定数として持っています（`コード確認済み`）。
 - IAM は `fsx:UpdateFileSystem` と `fsx:DescribeFileSystems` を `Resource: "*"` に許可しています（`コード確認済み`）。
 - 3 つの拡張幅の経路のうち 2 つは `int()` で目標値を切り捨てます。割合が 10 に丸められると、1,024 GiB のファイルシステムは 1,126 GiB になり、文書化された 10% の最小幅を下回ります（`コード確認済み`）。API がこれを拒否するかは `仮説` です。
 - CloudWatch がアラームアクションを呼ぶのは状態が変わったときだけです（[AlarmThatSendsEmail](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html)、`文書化済み`）。そのため 1 回の拡張の後もアラームが ALARM のままだと、2 回目の拡張は起きません（サンプルについては `仮説`、実行していない）。

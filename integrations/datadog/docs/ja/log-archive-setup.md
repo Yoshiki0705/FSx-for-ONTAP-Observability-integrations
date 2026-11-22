@@ -56,7 +56,7 @@ Datadog が assume する名前付き IAM ロールを作成するため `CAPABI
 
 | パラメータ | デフォルト | 説明 |
 |-----------|-----------|------|
-| `DatadogExternalId` | — | 必須、`NoEcho`。Datadog AWS 統合ページから取得。他の Datadog 顧客が自社ロールを assume することを防ぐ唯一の要素 |
+| `DatadogExternalId` | — | 必須、`NoEcho`。Datadog AWS 統合ページから取得。他の Datadog 利用者が自社ロールを assume することを防ぐ唯一の要素 |
 | `ArchiveBucketName` | `''` | 空の場合 `fsxn-datadog-archive-<account>-<region>` |
 | `DatadogAwsAccountId` | `464622532012` | US1/AP1 は `464622532012`、EU1 は `417141415827` |
 | `RetentionDays` | `30` | Glacier へ移行するまでの S3 Standard 保持日数 |
