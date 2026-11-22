@@ -83,7 +83,7 @@ The sections below follow the order of a first deployment: prerequisites, permis
 
 - Terraform `>= 1.11.0`; `hashicorp/aws` `>= 6.67.0` and `hashicorp/archive` `>= 2.8.1` (tested with 6.67.0 and 2.8.1).
 - An existing S3 bucket with Object Lock default retention, administered outside this module. For `auto` the bucket must be in compliance mode with at least `decision_archive_min_retention_days`; `notify_only` and `approve` accept a governance bucket and the retention check reports the gap without blocking.
-- The file system's deployment type and HA-pair count must be one this design lists (`SINGLE_AZ_1`, `MULTI_AZ_1`, `MULTI_AZ_2`, `SINGLE_AZ_2`). A map lookup on an unknown type fails the plan on purpose.
+- The file system's deployment type and HA-pair count must be one this design lists (`SINGLE_AZ_1`, `MULTI_AZ_1`, `MULTI_AZ_2`, `SINGLE_AZ_2`, `MULTI_AZ_3`, `SINGLE_AZ_3`; the two third-generation types follow AWS documentation and have not been run on a third-generation file system by this repository). A map lookup on an unknown type fails the plan on purpose.
 
 > **Mode note**
 >

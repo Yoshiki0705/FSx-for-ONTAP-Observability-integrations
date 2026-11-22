@@ -45,6 +45,11 @@ locals {
     MULTI_AZ_1  = 196608
     MULTI_AZ_2  = 524288
     SINGLE_AZ_2 = min(524288 * data.aws_fsx_ontap_file_system.target.ha_pairs, 1048576)
+    # Third generation: same SSD maximums as second generation (quotas page,
+    # documented, read 2026-11-22). Not run against a third-generation file
+    # system by this repository.
+    MULTI_AZ_3  = 524288
+    SINGLE_AZ_3 = min(524288 * data.aws_fsx_ontap_file_system.target.ha_pairs, 1048576)
   }[data.aws_fsx_ontap_file_system.target.deployment_type]
 
   # Passed to the function; a blocked latch clears when this value changes.

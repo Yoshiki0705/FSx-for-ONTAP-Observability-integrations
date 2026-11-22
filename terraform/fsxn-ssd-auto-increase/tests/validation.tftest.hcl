@@ -246,6 +246,59 @@ run "single_az_2_one_ha_pair_one_above_maximum_fails" {
   expect_failures = [aws_lambda_function.evaluator]
 }
 
+# --- ceiling precondition on SINGLE_AZ_3 ha_pairs (documented, not run on a
+# third-generation file system) -------------------------------------------
+run "single_az_3_two_ha_pairs_at_1_pib_passes" {
+  command = plan
+  variables {
+    max_storage_capacity_gib = 1048576
+  }
+  override_data {
+    target = data.aws_fsx_ontap_file_system.target
+    values = {
+      deployment_type  = "SINGLE_AZ_3"
+      ha_pairs         = 2
+      storage_capacity = 1024
+    }
+  }
+  assert {
+    condition     = aws_lambda_function.evaluator.function_name == "fsxn-ssd-auto-increase-evaluator"
+    error_message = "SINGLE_AZ_3 with 2 HA pairs allows 1,048,576 GiB."
+  }
+}
+run "single_az_3_one_ha_pair_at_maximum_passes" {
+  command = plan
+  variables {
+    max_storage_capacity_gib = 524288
+  }
+  override_data {
+    target = data.aws_fsx_ontap_file_system.target
+    values = {
+      deployment_type  = "SINGLE_AZ_3"
+      ha_pairs         = 1
+      storage_capacity = 1024
+    }
+  }
+  assert {
+    condition     = aws_lambda_function.evaluator.function_name == "fsxn-ssd-auto-increase-evaluator"
+    error_message = "524288 GiB on SINGLE_AZ_3 with 1 HA pair is the documented maximum and must pass."
+  }
+}
+run "single_az_3_one_ha_pair_one_above_maximum_fails" {
+  command = plan
+  variables {
+    max_storage_capacity_gib = 524289
+  }
+  override_data {
+    target = data.aws_fsx_ontap_file_system.target
+    values = {
+      deployment_type  = "SINGLE_AZ_3"
+      ha_pairs         = 1
+      storage_capacity = 1024
+    }
+  }
+  expect_failures = [aws_lambda_function.evaluator]
+}
 # --- auto-requires-COMPLIANCE precondition -------------------------------
 
 run "auto_with_governance_fails_precondition" {

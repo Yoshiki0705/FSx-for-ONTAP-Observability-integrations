@@ -196,6 +196,10 @@ def test_iops_within_high_region_maximum() -> None:
         ("SINGLE_AZ_2", 1, 524288),
         ("SINGLE_AZ_2", 2, 1048576),
         ("SINGLE_AZ_2", 3, 1048576),
+        ("MULTI_AZ_3", 1, 524288),
+        ("SINGLE_AZ_3", 1, 524288),
+        ("SINGLE_AZ_3", 2, 1048576),
+        ("SINGLE_AZ_3", 3, 1048576),
     ],
 )
 def test_shape_max_gib(deployment_type: str, ha_pairs: int, expected: int) -> None:
@@ -212,3 +216,5 @@ def test_max_ssd_iops_regions() -> None:
     assert max_ssd_iops("SINGLE_AZ_1", 1, "ap-northeast-1") == 80000
     assert max_ssd_iops("SINGLE_AZ_2", 3, "ap-northeast-1") == 600000
     assert max_ssd_iops("MULTI_AZ_2", 1, "ap-northeast-1") == 200000
+    assert max_ssd_iops("SINGLE_AZ_3", 3, "ap-northeast-1") == 2160000
+    assert max_ssd_iops("MULTI_AZ_3", 1, "ap-northeast-1") == 720000

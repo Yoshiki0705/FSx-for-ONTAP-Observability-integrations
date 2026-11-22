@@ -52,6 +52,8 @@ Valid throughput values per HA pair ([UpdateFileSystemOntapConfiguration](https:
 | `SINGLE_AZ_1`, `MULTI_AZ_1` | 128, 256, 512, 1024, 2048, 4096 |
 | `SINGLE_AZ_2` | 1536, 3072, 6144 |
 | `MULTI_AZ_2` | 384, 768, 1536, 3072, 6144 |
+| `SINGLE_AZ_3` (third generation, documented, not run) | 1536, 3072, 6144, 12288, 18432 |
+| `MULTI_AZ_3` (third generation, documented, not run) | 384, 768, 1536, 3072, 6144, 12288, 18432 |
 
 > **Generation note**
 >
