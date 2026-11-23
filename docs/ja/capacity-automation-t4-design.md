@@ -19,7 +19,7 @@ T4 が SSD 容量を拡張するのは、必須の絶対上限値の範囲内で
 T4 のガードは、公開されている AWS のサンプル（[Updating storage capacity dynamically](https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/automate-storage-capacity-increase.html) とダウンロードできる 2 つのアーカイブ。2026-10-07 に読んだ）と比べて書いています。読者向けのガイドには選択肢を選ぶうえで関係する点だけを載せており、ここに確認結果の全体を置きます。
 
 - パラメータと既定値（`文書化済み`）は `FileSystemId`、`LowFreeDataStorageCapacityThreshold`（既定値なし）、`EmailAddress`、`LambdaS3Bucket`、`LambdaS3Key`、`PercentIncrease` 20（10-100）、`EnableIntelligentScaling` true、`MaxIncrementPercent` 100（10-500）、`GrowthThresholds`、`MinHoursBetweenScaling` 6（1-24）、`MaxRetryAttempts` 12（1-50）、`RetryDelayMinutes` 5（1-60）、`RetryBufferMinutes` 5（0-60）、`ScheduleCleanupAgeDays` 7（1-30）です。アラームは閾値を 5 分間続けて超えると発火します。
-- 顧客が決める絶対上限値も、承認やドライランのモードもありません（`コード確認済み`）。上限はデプロイタイプごとのサービス上限で、コードに定数として持っています。
+- 利用者が決める絶対上限値も、承認やドライランのモードもありません（`コード確認済み`）。上限はデプロイタイプごとのサービス上限で、コードに定数として持っています。
 - IAM は `fsx:UpdateFileSystem` と `fsx:DescribeFileSystems` を `Resource: "*"` に許可しています（`コード確認済み`）。
 - インテリジェントな経路と履歴が足りない場合の経路は `int(current * (1 + pct / 100))` で計算し、切り捨てます。固定の経路は `math.ceil` を使います（`コード確認済み`）。`pct` が 10 に丸められると、1,024 GiB のファイルシステムは 1,126.4 ではなく 1,126 GiB になり、文書化された 10% の最小幅を下回るので、`UpdateFileSystem` はおそらく拒否します（`仮説`）。
 - 上限で丸めた目標値が上限と等しいと、現在の容量が上限未満でも、ハンドラーは "Already at or near maximum capacity" で止まり API を呼びません（`コード確認済み`）。

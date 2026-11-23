@@ -12,7 +12,7 @@
 
 ## Infor Cloverleaf — NetApp Trident 経由の FSx for ONTAP
 
-[NetApp の顧客事例](https://www.netapp.com/customers/infor/) は、Infor のヘルスケアデータ連携基盤 Cloverleaf が、NetApp Trident 経由でプロビジョニングされた FSx for ONTAP を伴う Amazon EKS 上で稼働し、**組み込みの RaimaDB と SQLite データベース**をサポートしていると説明しています。この事例は、最大 7000 万メッセージ/日の処理、重複排除/圧縮による最大 65% のストレージコスト削減、マルチ AZ 可用性を報告しており、実名の引用元(Jesse Evans, Principal Solution Architect, Infor)を伴います。
+[NetApp の導入事例](https://www.netapp.com/customers/infor/) は、Infor のヘルスケアデータ連携基盤 Cloverleaf が、NetApp Trident 経由でプロビジョニングされた FSx for ONTAP を伴う Amazon EKS 上で稼働し、**組み込みの RaimaDB と SQLite データベース**をサポートしていると説明しています。この事例は、最大 7000 万メッセージ/日の処理、重複排除/圧縮による最大 65% のストレージコスト削減、マルチ AZ 可用性を報告しており、実名の引用元(Jesse Evans, Principal Solution Architect, Infor)を伴います。
 
 **確認済みの内容と未確認の内容**: この事例は、SQLite と RaimaDB が本番環境で FSx for ONTAP 上で稼働していることを確認しています。この構成が[NetApp Trident のバックエンドドライバ](https://docs.netapp.com/us-en/trident/trident-use/trident-fsx.html) — `ontap-nas`(NFS)か `ontap-san`(iSCSI)のどちらを使っているかは**述べていません**。本ドキュメントの[iSCSI 推論](README.md#sqliteinfluxdb-と-iscsi-未検証の推論)は、この事例を iSCSI 固有の裏付けとして主張することはできず、SQLite と FSx for ONTAP の組み合わせがどこかの本番環境で稼働しているというエビデンスとしてのみ主張できます。
 

@@ -8,7 +8,7 @@
 
 マネージド IoT テレメトリは、IoT Core → Lambda → FSx for ONTAP の S3 Access Points で取り込み、Firehose → S3 Parquet → Glue → Athena/Snowflake で保存・分析する。この経路はリポジトリ内で既に E2E 検証済みであり(`integrations/lakehouse-retention/`)、本パターンはそれを再構築せず、検証結果を検証記録として残すだけである。
 
-Amazon Timestream for LiveAnalytics は 2025-06-20 に新規顧客の受付を終了している。再利用する経路は Timestream に依存せず、Firehose → S3 Parquet → Athena/Snowflake の分析テールを用いる。Timestream・Athena・Snowflake はいずれも用途に応じた選択肢であり、本記録は特定の分析エンジンを推奨しない。
+Amazon Timestream for LiveAnalytics は 2025-06-20 に新規利用者の受付を終了している。再利用する経路は Timestream に依存せず、Firehose → S3 Parquet → Athena/Snowflake の分析テールを用いる。Timestream・Athena・Snowflake はいずれも用途に応じた選択肢であり、本記録は特定の分析エンジンを推奨しない。
 
 ## 既存カバレッジと net-new の区別
 

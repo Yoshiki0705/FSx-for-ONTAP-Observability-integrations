@@ -54,7 +54,7 @@
 
 | 主張 | 出典 | Claim_Tier |
 |---|---|---|
-| Amazon Timestream for LiveAnalytics は 2025-06-20 に新規顧客の受付を終了 | [AWS 公式アナウンス](https://docs.aws.amazon.com/timestream/latest/developerguide/timestream-availability-change.html) | documented |
+| Amazon Timestream for LiveAnalytics は 2025-06-20 に新規利用者の受付を終了 | [AWS 公式アナウンス](https://docs.aws.amazon.com/timestream/latest/developerguide/timestream-availability-change.html) | documented |
 
 ## コスト要因
 
