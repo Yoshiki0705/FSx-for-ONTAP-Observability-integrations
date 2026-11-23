@@ -67,6 +67,8 @@ The service maximum depends on the deployment shape. The quotas page lists the m
 | `SINGLE_AZ_1`, `MULTI_AZ_1` (first generation) | 196,608 GiB |
 | `MULTI_AZ_2` | 524,288 GiB |
 | `SINGLE_AZ_2` | min(524,288 × HA pairs, 1,048,576) GiB |
+| `MULTI_AZ_3` (third generation, documented, not run) | 524,288 GiB |
+| `SINGLE_AZ_3` (third generation, documented, not run) | min(524,288 × HA pairs, 1,048,576) GiB |
 
 The same page lists an account-level, per-Region quota of 524,288 GiB of SSD capacity across all FSx for ONTAP file systems, which can be increased. A ceiling within the per-file-system maximum can therefore still be rejected with `ServiceLimitExceeded`; the latch in the failure-classification section handles that case.
 
@@ -99,6 +101,8 @@ locals {
     MULTI_AZ_1  = 196608
     MULTI_AZ_2  = 524288
     SINGLE_AZ_2 = min(524288 * data.aws_fsx_ontap_file_system.target.ha_pairs, 1048576)
+    MULTI_AZ_3  = 524288
+    SINGLE_AZ_3 = min(524288 * data.aws_fsx_ontap_file_system.target.ha_pairs, 1048576)
   }[data.aws_fsx_ontap_file_system.target.deployment_type]
 
   # Passed to the function; a blocked latch clears when this value changes.

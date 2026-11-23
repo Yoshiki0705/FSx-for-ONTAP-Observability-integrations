@@ -10,6 +10,13 @@ Values are from the FSx for ONTAP quotas page
 read 2026-10-08): 192 TiB (196,608 GiB) for first-generation file systems,
 512 TiB (524,288 GiB) for second-generation Multi-AZ, and 512 TiB per HA pair
 up to 1 PiB (1,048,576 GiB) for second-generation Single-AZ.
+
+Third generation (``MULTI_AZ_3``, ``SINGLE_AZ_3``) uses the same SSD maximums as
+second generation: 512 TiB for Multi-AZ, and 512 TiB per HA pair up to 1 PiB
+for Single-AZ. These values are from the quotas page above and
+https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/high-availability-AZ.html
+(documented, read 2026-11-22). This repository has not run a third-generation
+file system; the third-generation values are not verified by execution.
 """
 
 from __future__ import annotations
@@ -21,12 +28,17 @@ from dataclasses import dataclass
 # generation: 160,000 in us-east-2/us-east-1/us-west-2/eu-west-1, 80,000
 # elsewhere. Second generation: 200,000 per HA pair Single-AZ (up to 12 pairs),
 # 200,000 total Multi-AZ (quotas page, documented, read 2026-10-07/08).
+# Third generation: 720,000 per HA pair Single-AZ (up to 12 pairs), 720,000
+# total Multi-AZ (quotas page and high-availability-AZ page, documented, read
+# 2026-11-22; not run against a third-generation file system in this
+# repository).
 FIRST_GEN_HIGH_IOPS_REGIONS = frozenset(
     {"us-east-2", "us-east-1", "us-west-2", "eu-west-1"}
 )
 FIRST_GEN_HIGH_IOPS = 160000
 FIRST_GEN_DEFAULT_IOPS = 80000
 SECOND_GEN_IOPS_PER_UNIT = 200000
+THIRD_GEN_IOPS_PER_UNIT = 720000
 
 FIRST_GEN_DEPLOYMENT_TYPES = frozenset({"SINGLE_AZ_1", "MULTI_AZ_1"})
 
@@ -142,9 +154,10 @@ def shape_max_gib(deployment_type: str, ha_pairs: int) -> int:
     """Return the per-file-system SSD maximum for a deployment shape.
 
     Args:
-        deployment_type: One of ``SINGLE_AZ_1``, ``MULTI_AZ_1``, ``MULTI_AZ_2``
-            or ``SINGLE_AZ_2``.
-        ha_pairs: HA-pair count (used only for ``SINGLE_AZ_2``).
+        deployment_type: One of ``SINGLE_AZ_1``, ``MULTI_AZ_1``, ``MULTI_AZ_2``,
+            ``SINGLE_AZ_2``, ``MULTI_AZ_3`` or ``SINGLE_AZ_3``.
+        ha_pairs: HA-pair count (used only for ``SINGLE_AZ_2`` and
+            ``SINGLE_AZ_3``).
 
     Returns:
         The maximum SSD capacity in GiB.
@@ -158,7 +171,9 @@ def shape_max_gib(deployment_type: str, ha_pairs: int) -> int:
         return 196608
     if deployment_type == "MULTI_AZ_2":
         return 524288
-    if deployment_type == "SINGLE_AZ_2":
+    if deployment_type == "MULTI_AZ_3":
+        return 524288
+    if deployment_type in ("SINGLE_AZ_2", "SINGLE_AZ_3"):
         return min(524288 * ha_pairs, 1048576)
     raise ConfigError(
         f"unknown deployment_type {deployment_type!r}; no SSD maximum is defined for it"
@@ -170,7 +185,8 @@ def max_ssd_iops(deployment_type: str, ha_pairs: int, region: str) -> int:
 
     Args:
         deployment_type: The file system's deployment type.
-        ha_pairs: HA-pair count (used for second-generation Single-AZ).
+        ha_pairs: HA-pair count (used for second- and third-generation
+            Single-AZ).
         region: AWS Region name.
 
     Returns:
@@ -184,5 +200,10 @@ def max_ssd_iops(deployment_type: str, ha_pairs: int, region: str) -> int:
         )
     if deployment_type == "SINGLE_AZ_2":
         return SECOND_GEN_IOPS_PER_UNIT * ha_pairs
-    # MULTI_AZ_2 and any other second-generation shape: 200,000 total.
+    if deployment_type == "SINGLE_AZ_3":
+        return THIRD_GEN_IOPS_PER_UNIT * ha_pairs
+    if deployment_type == "MULTI_AZ_3":
+        return THIRD_GEN_IOPS_PER_UNIT
+    # MULTI_AZ_2, and any second-generation shape not listed above: 200,000
+    # total. Third-generation shapes branch explicitly above and never reach here.
     return SECOND_GEN_IOPS_PER_UNIT

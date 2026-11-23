@@ -67,6 +67,8 @@ T4 のガードは、公開されている AWS のサンプル（[Updating stora
 | `SINGLE_AZ_1`、`MULTI_AZ_1`（第 1 世代） | 196,608 GiB |
 | `MULTI_AZ_2` | 524,288 GiB |
 | `SINGLE_AZ_2` | min(524,288 × HA ペア数, 1,048,576) GiB |
+| `MULTI_AZ_3`（第 3 世代、記載のみで未実行） | 524,288 GiB |
+| `SINGLE_AZ_3`（第 3 世代、記載のみで未実行） | min(524,288 × HA ペア数, 1,048,576) GiB |
 
 同じページには、アカウント内のすべての FSx for ONTAP ファイルシステムにまたがる、リージョンごとの SSD 容量のクォータ 524,288 GiB もあり、引き上げを申請できます。そのため、ファイルシステムあたりの最大値の範囲内の上限値でも `ServiceLimitExceeded` で拒否されることがあります。この場合は失敗の分類の節の固定で扱います。
 
@@ -99,6 +101,8 @@ locals {
     MULTI_AZ_1  = 196608
     MULTI_AZ_2  = 524288
     SINGLE_AZ_2 = min(524288 * data.aws_fsx_ontap_file_system.target.ha_pairs, 1048576)
+    MULTI_AZ_3  = 524288
+    SINGLE_AZ_3 = min(524288 * data.aws_fsx_ontap_file_system.target.ha_pairs, 1048576)
   }[data.aws_fsx_ontap_file_system.target.deployment_type]
 
   # Passed to the function; a blocked latch clears when this value changes.

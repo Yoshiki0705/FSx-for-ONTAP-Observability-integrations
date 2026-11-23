@@ -83,7 +83,7 @@ git checkout FETCH_HEAD
 
 - Terraform `>= 1.11.0`、`hashicorp/aws` `>= 6.67.0`、`hashicorp/archive` `>= 2.8.1`（6.67.0 と 2.8.1 で検証）。
 - モジュール外で管理される、Object Lock の既定保持期間を持つ既存の S3 バケット。`auto` ではバケットはコンプライアンスモードで少なくとも `decision_archive_min_retention_days` が必要です。`notify_only` と `approve` はガバナンスバケットを受け入れ、保持期間チェックはブロックせずギャップを報告します。
-- ファイルシステムのデプロイタイプと HA ペア数は、この設計が列挙するもの（`SINGLE_AZ_1`、`MULTI_AZ_1`、`MULTI_AZ_2`、`SINGLE_AZ_2`）でなければなりません。未知のタイプへのマップ参照は意図的にプランを失敗させます。
+- ファイルシステムのデプロイタイプと HA ペア数は、この設計が列挙するもの（`SINGLE_AZ_1`、`MULTI_AZ_1`、`MULTI_AZ_2`、`SINGLE_AZ_2`、`MULTI_AZ_3`、`SINGLE_AZ_3`。第 3 世代の 2 タイプは AWS の公式ドキュメントの記載にもとづき、このリポジトリでは第 3 世代で実行していません）でなければなりません。未知のタイプへのマップ参照は意図的にプランを失敗させます。
 
 > **モードに関する補足**
 >
